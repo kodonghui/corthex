@@ -5,6 +5,8 @@ import unittest
 from _common import ROOT, local_links, read_text
 
 TRANSLATION = ".ko.md"
+# Instructions for coding agents, written in English only.
+AGENT_FILES = {"AGENTS.md", "CLAUDE.md"}
 
 
 def doc_files():
@@ -23,6 +25,8 @@ class DocsTest(unittest.TestCase):
     def test_every_page_has_english_and_korean(self):
         for doc in doc_files():
             name = doc.name
+            if name in AGENT_FILES:
+                continue
             pair = name[: -len(TRANSLATION)] + ".md" if name.endswith(TRANSLATION) else name[:-3] + TRANSLATION
             with self.subTest(doc=str(doc.relative_to(ROOT))):
                 self.assertTrue((doc.parent / pair).exists(), "missing " + pair)
