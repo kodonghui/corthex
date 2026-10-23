@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "corthex",
+  "version": "0.1.0",
+  "description": "Working principles, a 13-stage project workflow with one shared six-slot contract, and a profile and project registry for one person running several projects.",
+  "author": {
+    "name": "kodonghui",
+    "url": "https://github.com/kodonghui"
+  },
+  "homepage": "https://github.com/kodonghui/corthex",
+  "repository": "https://github.com/kodonghui/corthex",
+  "license": "Apache-2.0",
+  "keywords": ["workflow", "project-management", "requirements", "ddd", "prd", "erd", "openapi", "sitemap", "qa", "records"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "CORTHEX",
+        "shortDescription": "Stage-by-stage AI collaboration for software projects",
+        "developerName": "kodonghui",
+        "category": "Productivity"
+      }
+    }
+  }
+}

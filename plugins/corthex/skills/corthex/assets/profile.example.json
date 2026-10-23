@@ -1,0 +1,6 @@
+{
+  "address_as": "사용자님",
+  "language": "ko",
+  "records": { "default": "notion", "hub": "<link to your records hub>" },
+  "ask_before": ["external messages", "deploys", "payments", "deletions", "publishing"]
+}

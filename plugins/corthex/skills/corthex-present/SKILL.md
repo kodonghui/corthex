@@ -1,0 +1,31 @@
+---
+name: corthex-present
+description: CORTHEX stage 13, the presentation. Use when preparing a project demo or final presentation: turning project records into a script, the script into a scene table (SCENE IDs) with screens, narration and timing, and the scene table into slides or a demo video plan.
+license: Apache-2.0
+metadata:
+  author: kodonghui
+  version: "0.1.0"
+---
+
+# Presentation
+
+This skill covers one stage. Its contract, steps, checks and output template are in the reference file.
+
+| Key | Stage | Contract |
+| --- | --- | --- |
+| `13-presentation` | Presentation | [references/13-presentation.md](references/13-presentation.md) |
+
+## How a stage runs
+
+1. **Settings.** Read the stage's entry under `stages` in `.corthex/project.json`: `human` (where people look), `source` (the text in the repository) and `truth` (`source` or `human`, the side that wins when they differ). If there is no project file, use the `corthex` skill first.
+2. **Inputs.** Read the inputs in the stage contract, with their trace IDs. Name any missing input and ask whether to go on without it.
+3. **Outputs.** Write the outputs to `source` with the stage's trace IDs. Never reuse or renumber an ID; mark removed items as removed.
+4. **Checks.** Run the stage's checks. Report what passed, what failed and what you could not check.
+5. **Sync.** Bring the human view and the source into line in the direction `truth` gives. When `truth` is `human`, refresh the source from the human view and do not edit the source directly.
+6. **Checkpoint.** Stop at the stage's human checkpoint and ask. Silence, a read receipt or an edit is not approval.
+7. **Record.** Record decisions and the next action with `corthex-record`.
+
+## Notes for this stage
+
+- Every claim on a slide comes from a record, a test result or a demo the audience can see. Mark plans as plans.
+- Pick one way to make the demo video and keep to it; switching tools late costs more than it saves.

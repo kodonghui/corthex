@@ -1,0 +1,20 @@
+{
+  "name": "corthex",
+  "interface": {
+    "displayName": "CORTHEX"
+  },
+  "plugins": [
+    {
+      "name": "corthex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/corthex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

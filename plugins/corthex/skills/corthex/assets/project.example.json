@@ -1,0 +1,22 @@
+{
+  "name": "acme-shop",
+  "title": "Acme Shop",
+  "team": true,
+  "language": "en",
+  "records": { "kind": "notion", "location": "<link to the project's records>" },
+  "stages": {
+    "01-domain": { "human": "miro", "source": "docs/01-domain/", "truth": "source" },
+    "02-prd": { "human": "notion", "source": "docs/02-prd/requirements.md", "truth": "human" },
+    "03-user-flow": { "human": "notion", "source": "docs/03-user-flow/", "truth": "human" },
+    "04-functional-spec": { "human": "notion", "source": "docs/04-functional-spec/spec.md", "truth": "human" },
+    "05-erd": { "human": "erdcloud", "source": "db/schema.sql", "truth": "human" },
+    "06-api": { "human": "swagger-ui", "source": "api/openapi.yaml", "truth": "source" },
+    "07-sitemap": { "human": "board", "source": "docs/07-sitemap/sitemap.yaml", "truth": "source" },
+    "08-screen-states": { "human": "wireframes", "source": "docs/08-screens/", "truth": "source" },
+    "09-mockup": { "human": "figma", "source": "design/base.tokens.json", "truth": "human" },
+    "10-wbs": { "human": "github", "source": "docs/10-wbs/wbs.md", "truth": "human" },
+    "11-development": { "human": "github", "source": ".", "truth": "source" },
+    "12-qa": { "human": "github", "source": "docs/12-qa/test-plan.md", "truth": "source" },
+    "13-presentation": { "human": "slides", "source": "docs/13-presentation/script.md", "truth": "source" }
+  }
+}
