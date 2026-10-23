@@ -100,8 +100,8 @@ Every stage fills six slots: inputs, outputs, human view, sync, human checkpoint
 | File | Where | Holds |
 | --- | --- | --- |
 | `profile.json` | `~/.corthex/` on each machine | how to address the user, language, where records go, what to ask about first |
-| `project.json` | `.corthex/` in each product repository, committed | name, team or personal, records, ID prefixes, and each stage's human view, source and truth |
-| `projects.json` | `~/.corthex/` on each machine | the projects on this machine and their paths |
+| `project.json` | `.corthex/` in each product repository, committed | name, team or personal, records, other repositories that hold sources, ID formats, and each stage's human view, source and truth |
+| `projects.json` | `~/.corthex/` on each machine | the projects on this machine and the local paths of their repositories |
 
 The fields are in [profile.md](../plugins/corthex/skills/corthex/references/profile.md) and [project.md](../plugins/corthex/skills/corthex/references/project.md).
 

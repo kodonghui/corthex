@@ -1,6 +1,7 @@
 """Checks the 13-stage contract: every stage has the six slots and a home skill."""
 
 import json
+import re
 import unittest
 
 from _common import KEBAB, PLUGINS, read_text
@@ -24,6 +25,13 @@ STAGES = [
 SLOTS = ["Inputs", "Outputs", "Human view", "Sync", "Human checkpoints", "Trace IDs"]
 STAGE_SKILLS = sorted({skill for _, skill in STAGES})
 TRUTH = {"source", "human"}
+ID_KINDS = [
+    "context", "term", "requirement", "flow", "spec", "table", "api",
+    "screen", "task", "test", "bug", "decision", "scene",
+]
+PROJECT_FIELDS = {"name", "title", "team", "language", "records", "repos", "ids", "stages"}
+STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip"}
+PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
 
 
 def section(text, heading):
@@ -66,17 +74,49 @@ class StageContractTest(unittest.TestCase):
                 row = next(line for line in contract.splitlines() if line.startswith("| `%s` |" % key))
                 self.assertIn("`%s`" % skill, row)
 
+    def test_id_kinds_are_documented(self):
+        for doc in ("stage-contract.md", "project.md"):
+            text = read_text(SKILLS / "corthex" / "references" / doc)
+            for kind in ID_KINDS:
+                with self.subTest(doc=doc, kind=kind):
+                    self.assertIn("`%s`" % kind, text)
+
     def test_project_example(self):
         with open(SKILLS / "corthex" / "assets" / "project.example.json", encoding="utf-8") as handle:
             project = json.load(handle)
+        self.assertLessEqual(set(project), PROJECT_FIELDS)
         self.assertRegex(project["name"], KEBAB)
+        repos = project.get("repos", {})
+        for alias, location in repos.items():
+            self.assertRegex(alias, KEBAB)
+            self.assertTrue(location)
+        for kind, value in project.get("ids", {}).items():
+            with self.subTest(ids=kind):
+                self.assertIn(kind, ID_KINDS)
+                if isinstance(value, str):
+                    self.assertRegex(value, PREFIX)
+                    continue
+                prefixes = value["prefix"] if isinstance(value["prefix"], list) else [value["prefix"]]
+                self.assertTrue(prefixes)
+                for prefix in prefixes:
+                    self.assertRegex(prefix, PREFIX)
+                self.assertIn(value["digits"], range(1, 7))
         keys = {key for key, _ in STAGES}
         for key, stage in project["stages"].items():
             with self.subTest(stage=key):
                 self.assertIn(key, keys)
+                self.assertLessEqual(set(stage), STAGE_FIELDS)
                 self.assertIn(stage["truth"], TRUTH)
                 self.assertTrue(stage["human"])
-                self.assertTrue(stage["source"])
+                source = stage.get("source")
+                if source is None:
+                    continue
+                self.assertTrue(source)
+                self.assertNotIn("\\", source)
+                alias, sep, path = source.rpartition(":")
+                if sep:
+                    self.assertIn(alias, repos)
+                self.assertFalse(path.startswith("/"), "source paths are relative")
 
     def test_profile_example(self):
         with open(SKILLS / "corthex" / "assets" / "profile.example.json", encoding="utf-8") as handle:

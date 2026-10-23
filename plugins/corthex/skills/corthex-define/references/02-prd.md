@@ -3,7 +3,7 @@
 | Slot | This stage |
 | --- | --- |
 | Inputs | Stage 01 contexts and glossary (CTX, TERM), and the product goals and constraints from the user |
-| Outputs | `requirements.md`, by default `docs/02-prd/requirements.md`: one REQ ID per requirement in EARS wording, with its priority, source and context |
+| Outputs | `requirements.md`, by default `docs/02-prd/requirements.md`: one REQ ID per requirement in EARS wording, with its type (functional or non-functional), priority, source and context |
 | Human view | Often a shared database such as Notion, as set in `human` |
 | Sync | In a team project the shared database is often the truth (`truth: human`), and the text is a refreshed copy. Otherwise edit the text and update the view |
 | Human checkpoints | Scope freeze (what is in this release), then version freeze |
@@ -27,21 +27,22 @@ Write requirements in the project's language; keep the shape.
 
 1. Read the contexts and the glossary. Use the glossary's words.
 2. Write one requirement per row in one EARS shape. Split a row that needs "and" to describe two behaviours.
-3. Give each row its context (CTX), its source (who asked, where and when) and a priority on the project's scale, such as Must, Should, Could.
+3. Give each row its type (functional or non-functional), its context (CTX), its source (who asked, where and when) and a priority on the project's scale, such as Must, Should, Could.
 4. List conflicts, duplicates and open questions separately for the user.
 
 ## Checks
 
 - Each requirement uses one EARS shape and one "shall".
-- Each requirement names its context and its source.
+- Each requirement names its type, priority, context and source. List the ones without a priority: later checks on Must requirements cannot cover them.
 - No two requirements say the same thing or contradict each other.
 - Terms match the glossary.
 
 ## Output template
 
 ```markdown
-| ID | Requirement | Priority | Context | Source | Status |
-| --- | --- | --- | --- | --- | --- |
-| REQ-001 | When a customer places an order, the system shall send an order confirmation within one minute. | Must | CTX-001 | Kickoff meeting, 2026-01-05 | active |
-| REQ-002 | If a payment fails, then the system shall cancel the order and tell the customer why. | Must | CTX-001 | Kickoff meeting, 2026-01-05 | active |
+| ID | Requirement | Type | Priority | Context | Source | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| REQ-001 | When a customer places an order, the system shall send an order confirmation within one minute. | functional | Must | CTX-001 | Kickoff meeting, 2026-01-05 | active |
+| REQ-002 | If a payment fails, then the system shall cancel the order and tell the customer why. | functional | Must | CTX-001 | Kickoff meeting, 2026-01-05 | active |
+| REQ-003 | The system shall work in the latest two versions of the major desktop and mobile browsers. | non-functional | Must | none | Kickoff meeting, 2026-01-05 | active |
 ```

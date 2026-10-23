@@ -25,6 +25,7 @@ Look for `.corthex/project.json` from the current directory up to the repository
 
 - If there is none and the work is project work, offer to register the project: create `.corthex/project.json` in the product repository and add one entry to `~/.corthex/projects.json`, the list of this user's projects on this machine.
 - If the user has several projects and the request does not say which one, ask once.
+- Some sources may sit in other repositories, named under `repos`. Find their local checkouts in the project's entry in `~/.corthex/projects.json`, and ask when one is missing.
 - Project settings override profile defaults for that project only.
 
 ## 3. Work by the principles

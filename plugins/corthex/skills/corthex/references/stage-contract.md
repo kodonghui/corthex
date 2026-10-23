@@ -34,13 +34,14 @@ The principle behind the split: the human view can change from team to team, but
 
 ## Trace IDs
 
-- Format: a prefix, a hyphen and three digits, such as `REQ-001`.
+- Default format: a prefix, a hyphen and three digits, such as `REQ-001`.
+- A project can set other prefixes, several prefixes for one kind (such as one per bounded context) and another number of digits in `.corthex/project.json` under `ids`, with these keys: `context`, `term`, `requirement`, `flow`, `spec`, `table`, `api`, `screen`, `task`, `test`, `bug`, `decision`, `scene`. See [project.md](project.md).
 - Never reuse or renumber an ID. Mark a removed item as removed, with the date, and keep its ID.
 - Each item names the IDs it comes from, such as `SPEC-014 ← REQ-003, FL-002`.
-- A project can change the prefixes in `.corthex/project.json` under `ids`, with these keys: `context`, `term`, `requirement`, `flow`, `spec`, `table`, `api`, `screen`, `task`, `test`, `bug`, `decision`, `scene`.
 
 ## Source of truth
 
 - `truth: source`: change the text source first, then update the human view.
-- `truth: human`: people edit in the human view. Refresh the text copy from it, note when you refreshed it, and do not edit the copy directly.
+- `truth: human`: people edit in the human view. Refresh the text copy from it and do not edit the copy directly. Start each copied file or item with where it came from and when: its link, the human view's last edit time if the tool shows one, and the refresh time.
 - When the two sides differ, list the differences and ask before changing either side.
+- When the copy is older than the human view's last edit, say so before you rely on it, and offer to refresh it.

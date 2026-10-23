@@ -18,7 +18,7 @@
 
 ## Checks
 
-- Each SPEC row links at least one REQ, and each Must REQ has at least one SPEC row.
+- Each SPEC row links at least one REQ, and each functional Must REQ has at least one SPEC row. Non-functional requirements are checked in QA (stage 12) instead.
 - Each row has acceptance criteria and its exceptions.
 - Names match the glossary.
 

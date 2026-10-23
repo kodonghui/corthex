@@ -100,8 +100,8 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 | 파일 | 위치 | 담는 것 |
 | --- | --- | --- |
 | `profile.json` | 기기마다 `~/.corthex/` | 사용자 호칭, 언어, 기록 위치, 먼저 물어볼 일 |
-| `project.json` | 제품 저장소마다 `.corthex/`, 커밋함 | 이름, 팀 또는 개인, 기록 위치, ID 접두어, 단계별 사람 화면·원본·정본 |
-| `projects.json` | 기기마다 `~/.corthex/` | 이 기기에 있는 프로젝트와 경로 |
+| `project.json` | 제품 저장소마다 `.corthex/`, 커밋함 | 이름, 팀 또는 개인, 기록 위치, 원본이 있는 다른 저장소, ID 형식, 단계별 사람 화면·원본·정본 |
+| `projects.json` | 기기마다 `~/.corthex/` | 이 기기에 있는 프로젝트와 그 저장소들의 로컬 경로 |
 
 항목은 [profile.md](../plugins/corthex/skills/corthex/references/profile.md)와 [project.md](../plugins/corthex/skills/corthex/references/project.md)에 있습니다.
 
