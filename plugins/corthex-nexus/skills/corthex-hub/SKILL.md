@@ -36,7 +36,7 @@ hub.py status <project> 02-prd --state done --checkpoint "PRD approved in the ki
 ```
 
 - States are `done`, `in_progress`, `not_started` and `skipped`. Stage keys are `01-domain` to `13-presentation`.
-- Record `done` only when the stage's human checkpoint was passed and recorded: say what was approved, by whom and where with `--checkpoint`, and when with `--date`. An AI recommendation, a read receipt or an edit time is not a checkpoint.
+- Record `done` only when the stage's human checkpoint was passed and recorded: say what was approved, by whom and where with `--checkpoint`, and when with `--date`. The script refuses `done` without both. An AI recommendation, a read receipt or an edit time is not a checkpoint.
 - Record a state when the user tells you one, or after a stage's work as the stage skill says. Do not record what you only infer.
 - `--check LEVEL MESSAGE` adds a finding from your own review, such as a spec row that contradicts its requirement. LEVEL is `error`, `warn` or `info`. Name the IDs in the message so the page links them. `--clear-checks` removes the stage's earlier findings first, and `--reset` removes everything recorded for the stage.
 - Each write keeps the previous file as `~/.corthex/hub/status/<project>.json.bak`.
