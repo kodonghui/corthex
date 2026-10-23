@@ -8,7 +8,7 @@
 - `09-mockup` and `11-development` are never read for IDs, because their sources are design tokens and code. Their settings still show on the page.
 - A source is a file or a folder. Folders are read with their subfolders.
 - These files are read: `.md`, `.markdown`, `.mdx`, `.yaml`, `.yml`, `.json`, `.sql`, `.csv`, `.tsv`, `.txt`, `.mmd`, `.mermaid`, `.feature`, `.rst` and `.adoc`. Other files are only counted.
-- These are skipped: hidden files and folders, `node_modules`, `__pycache__` and `venv`, files over 1 MB, files after the first 400 of a stage, files whose names look like secrets (such as `secrets.yaml`, `api-key.txt` or `*.pem`), and links that lead outside the repository. The stage's `files-skipped` note says how many and why.
+- These are skipped: hidden files and folders, `node_modules`, `__pycache__` and `venv`, files over 1 MB, files after the first 400 of a stage, files whose names look like secrets or that sit in a folder whose name does (such as `secrets.yaml`, `api-key.txt`, `*.pem` or anything under `credentials/`), and links that lead outside the repository. The stage's `files-skipped` note says how many and why.
 
 ## Trace IDs
 
@@ -38,6 +38,7 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 - **Fields** come from columns, front matter keys or two-column rows with these names: `Status`, `State` or `상태`; `Type`, `Category`, `유형`, `구분` or `종류`; `Priority`, `우선순위` or `중요도`; `Link`, `URL`, `Notion` or `링크`.
 - **Copy time**: front matter `exported_at`, `refreshed_at`, `copied_at` or `synced_at` shows on the page as the time of the text copy.
 - **Deleted text**: struck-through Markdown, `~~…~~`, is ignored, as in exports from Notion.
+- **YAML comments**: text after ` #` is not part of a value, so `- id: SCR-001 # Home` defines `SCR-001`.
 - **Listings**: a file named `index`, `README`, `list` or `목록`, or one whose name starts with `_`, only fills in what the items' own files leave out. It never counts as a second definition.
 - **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks.
 

@@ -257,7 +257,12 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
     "unknown-alias": function (a) { return stageName(a.stage) + ": project.json의 repos에 없는 저장소 이름입니다 (" + a.alias + ")"; },
     "no-checkout": function (a) { return stageName(a.stage) + ": " + a.alias + " 저장소가 이 기기에 없습니다. ~/.corthex/projects.json에 경로를 적어 주세요"; },
     "files-skipped": function (a) { return stageName(a.stage) + ": 읽지 않은 파일 " + a.count + "개 (" + Object.keys(a.reasons).map(function (r) { return r + " " + a.reasons[r]; }).join(", ") + ")"; },
-    "truncated": function (a) { return "스냅샷 크기 한도 때문에 항목 " + a.total + "개 가운데 " + a.shown + "개만 담았습니다"; }
+    "truncated": function (a) {
+      var parts = [];
+      if (a.shown < a.total) parts.push("항목 " + a.total + "개 가운데 " + a.shown + "개");
+      if (a.checks_shown < a.checks_total) parts.push("점검 " + a.checks_total + "개 가운데 " + a.checks_shown + "개");
+      return "스냅샷 크기 한도 때문에 " + parts.join(", ") + "만 담았습니다";
+    }
   };
 
   var data;

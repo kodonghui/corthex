@@ -79,6 +79,7 @@ LEVELS = ("error", "warn", "info")
 MAX_FILE_BYTES = 1024 * 1024
 MAX_FILES = 400
 MAX_ITEMS = 3000
+MAX_CHECKS = 2000
 MAX_LINKS = 60
 MAX_PLACES = 3
 MAX_SNAPSHOT_BYTES = 1000 * 1000
@@ -100,6 +101,8 @@ SECRET_TEXT = re.compile(
     r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
 )
 
+csv.field_size_limit(max(csv.field_size_limit(), MAX_FILE_BYTES))
+
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
 ALIAS = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 NAME = ALIAS
@@ -118,6 +121,8 @@ STRUCK = re.compile(r"~~[^~\n]+~~")
 URL = re.compile(r"https?://[^\s<>\"'`|\])]+")
 YAML_KEY = re.compile(r"^(\s*)(-\s+)?(\"[^\"]*\"|'[^']*'|[^\s#\"'-][^:#]*?|-[^\s:#][^:#]*?)\s*:(?:\s+(.*))?$")
 YAML_ITEM = re.compile(r"^(\s*)-\s+(.*)$")
+YAML_COMMENT = re.compile(r"(?:^|\s)#.*$")
+JSON_ID = re.compile(r'"id"\s*:\s*"([^"\\]{1,80})"')
 SQL_COMMENT = re.compile(r"--\s?(.*)$")
 GITHUB = re.compile(
     r"^(?:https://(?:[^@/\s]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)"
@@ -652,12 +657,12 @@ def scan_yaml(scan, src, text):
             stack.pop()
         if match:
             key = match.group(3).strip().strip("\"'")
-            value = (match.group(4) or "").strip()
+            value = yaml_value(match.group(4) or "")
             while keys and keys[-1][0] >= level:
                 keys.pop()
             keys.append((level, key))
             if key.lower() == "id":
-                found = scan.ids.whole(value.strip("\"' "))
+                found = scan.ids.whole(value)
                 if found:
                     ident, kind, state = found
                     parent = stack[-1][1] if stack else None
@@ -673,7 +678,7 @@ def scan_yaml(scan, src, text):
                     field = None
                 entry = stack[-1][2]
                 if field and not entry.get(field):
-                    entry[field] = plain(value.strip("\"'")) if field == "title" else field_value(field, value)
+                    entry[field] = plain(value) if field == "title" else field_value(field, value)
             inline = re.search(r"\bid\s*:\s*[\"']?([^\s,\"'}]+)", value) if value.startswith("{") else None
             found = scan.ids.whole(inline.group(1)) if inline else None
             if found:
@@ -681,6 +686,15 @@ def scan_yaml(scan, src, text):
                 scan.refer(value, src, number, found[0])
                 continue
         scan.refer(line, src, number, stack[-1][1] if stack else None)
+
+
+def yaml_value(value):
+    """A YAML scalar without its quotes or its trailing comment."""
+    value = value.strip()
+    if value[:1] in ("\"", "'"):
+        end = value.find(value[0], 1)
+        return value[1:end] if end > 0 else value[1:]
+    return YAML_COMMENT.sub("", value).strip()
 
 
 def api_title(keys):
@@ -699,12 +713,22 @@ def scan_json(scan, src, text):
         scan_yaml(scan, src, text)
         return
     first_line = {}
+    id_lines = {}
     for number, line in enumerate(text.splitlines(), 1):
         for ident, _, _ in scan.ids.find(line):
             first_line.setdefault(ident, number)
+        for match in JSON_ID.finditer(line):
+            found = scan.ids.whole(match.group(1))
+            if found:
+                id_lines.setdefault(found[0], []).append(number)
 
     def line_of(ident):
         return first_line.get(ident, 1)
+
+    def definition_line(ident):
+        """The line of the next `"id": "<ident>"`, in the order the walk meets them."""
+        lines = id_lines.get(ident)
+        return lines.pop(0) if lines else line_of(ident)
 
     def walk(node, subject, path):
         if isinstance(node, dict):
@@ -724,7 +748,7 @@ def scan_json(scan, src, text):
                     field = field_of(norm(key))
                     if field and field != "title" and isinstance(value, str):
                         fields[field] = field_value(field, value)
-                number = line_of(ident)
+                number = definition_line(ident)
                 scan.claim(ident, kind, src, number, fields, subject)
                 scan.mention(ident, src, number)
                 subject = ident
@@ -760,7 +784,11 @@ def scan_sql(scan, src, text):
 
 
 def scan_table_file(scan, src, text, delimiter):
-    rows = list(csv.reader(text.splitlines(), delimiter=delimiter))
+    try:
+        rows = list(csv.reader(text.splitlines(), delimiter=delimiter))
+    except csv.Error:
+        scan_text(scan, src, text)
+        return
     if not rows:
         return
     header = [norm(plain(cell, 60)) for cell in rows[0]]
@@ -814,7 +842,7 @@ def source_files(target, root, skipped):
         try:
             if path.suffix.lower() not in TEXT:
                 reason = "format"
-            elif SECRET_NAME.search(path.name):
+            elif secret_path(path, root):
                 reason = "secret"
             elif not inside(path.resolve(), root):
                 reason = "outside"
@@ -829,6 +857,15 @@ def source_files(target, root, skipped):
         else:
             chosen.append(path)
     return chosen
+
+
+def secret_path(path, root):
+    """True when the file's name, or a folder between it and the repository root, looks like a secret."""
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        parts = (path.name,)
+    return any(SECRET_NAME.search(part) for part in parts)
 
 
 def read_text(path):
@@ -931,7 +968,10 @@ def select_projects(home, names, path=None, extra=None):
 def git(root, *args):
     try:
         result = subprocess.run(
-            ["git", "-C", str(root)] + list(args), capture_output=True, timeout=30,
+            # The fsmonitor hook would run a program from the repository's config,
+            # and optional locks let `git status` rewrite the index.
+            ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
+            capture_output=True, timeout=30,
             stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.SubprocessError):
@@ -1309,20 +1349,33 @@ def summary(items, checks, stages):
 
 
 def fit(snapshot):
-    """Keep a snapshot under the size limit by dropping items from the end."""
-    items = snapshot["items"]
-    if len(items) > MAX_ITEMS:
-        snapshot["items"] = items[:MAX_ITEMS]
-        snapshot["truncated"] = True
-    while len(dump(snapshot, compact=True).encode("utf-8")) > MAX_SNAPSHOT_BYTES and snapshot["items"]:
-        snapshot["items"] = snapshot["items"][: len(snapshot["items"]) * 3 // 4]
-        snapshot["truncated"] = True
-    if snapshot["truncated"]:
-        snapshot["checks"].insert(0, check(
-            "truncated", "warn", "The snapshot was cut to %d of %d items to stay under the size limit" % (len(snapshot["items"]), snapshot["summary"]["items"]),
-            args={"shown": len(snapshot["items"]), "total": snapshot["summary"]["items"]},
-        ))
-    return snapshot
+    """Keep a snapshot under the size limits by dropping items, then checks, from the end."""
+    items, checks = snapshot["items"], snapshot["checks"]
+    shown_items, shown_checks = min(len(items), MAX_ITEMS), min(len(checks), MAX_CHECKS)
+    while True:
+        cut = shown_items < len(items) or shown_checks < len(checks)
+        notice = [truncation(shown_items, len(items), shown_checks, len(checks))] if cut else []
+        result = dict(snapshot, items=items[:shown_items], checks=notice + checks[:shown_checks], truncated=cut)
+        if len(dump(result, compact=True).encode("utf-8")) <= MAX_SNAPSHOT_BYTES:
+            return result
+        if shown_items:
+            shown_items = shown_items * 3 // 4
+        elif shown_checks:
+            shown_checks = shown_checks * 3 // 4
+        else:
+            raise ValueError("%s: the project's settings alone are over the snapshot size limit" % snapshot["project"]["name"])
+
+
+def truncation(shown_items, total_items, shown_checks, total_checks):
+    parts = []
+    if shown_items < total_items:
+        parts.append("%d of %d items" % (shown_items, total_items))
+    if shown_checks < total_checks:
+        parts.append("%d of %d checks" % (shown_checks, total_checks))
+    return check(
+        "truncated", "warn", "The snapshot was cut to %s to stay under the size limit" % " and ".join(parts),
+        args={"shown": shown_items, "total": total_items, "checks_shown": shown_checks, "checks_total": total_checks},
+    )
 
 
 # ---------------------------------------------------------------- stored files
@@ -1397,6 +1450,8 @@ def record_status(home, name, stage, state=None, checkpoint=None, date=None, nex
             entry.pop("checks", None)
         for level, message in checks:
             entry.setdefault("checks", []).append({"level": level, "message": one_line(message, 600), "at": now[:10]})
+        if entry.get("state") == "done" and not (entry.get("checkpoint") and DATE.match(entry.get("checkpoint_date") or "")):
+            raise ValueError("record done with its checkpoint: --checkpoint (what was approved, by whom, where) and --date")
         entry["updated"] = now
     data["project"] = name
     path = status_path(home, name)
@@ -1449,8 +1504,10 @@ def build_hub(home, names=(), out=None, scan=True, now=None):
             snapshot = make_snapshot(project, load_status(home, project.name), now)
             save_snapshot(home, snapshot)
     stored = stored_snapshots(home)
-    order = [n for n in wanted if n in stored] + sorted(n for n in stored if n not in wanted and not names)
-    snapshots = [stored[n] for n in order]
+    snapshots = [stored[n] for n in wanted if n in stored]
+    if not names:
+        for name in sorted(n for n in stored if n not in wanted):
+            notes.append("%s: left off the page because it is not in ~/.corthex/projects.json; its saved snapshot stays in %s" % (name, snapshot_path(home, name).parent))
     missing = [{"name": n, "reason": "no snapshot"} for n in wanted if n not in stored]
     path = Path(out).expanduser().resolve() if out else hub_dir(home) / "index.html"
     write_file(path, render_page(page_data(home, snapshots, missing, now)))

@@ -303,6 +303,30 @@ class FormsTest(HubCase):
         self.assertEqual(self.refs(snapshot, "screen-not-in-sitemap"), ["SCR-009"])
         self.assertEqual(self.refs(snapshot, "screen-without-states"), ["SCR-002"])
 
+    def test_yaml_comments(self):
+        self.project(stages={"07-sitemap": {"human": "board", "source": "sitemap.yaml", "truth": "source"}})
+        self.write(self.repo / "sitemap.yaml", "# Screens\n- id: SCR-001 # Home\n  name: Home # the first screen\n  status: \"live\" # since January\n")
+        snapshot = self.snapshot()
+        item = self.items(snapshot)["SCR-001"]
+        self.assertEqual((item["title"], item["status"], item["where"]), ("Home", "live", "sitemap.yaml:2"))
+        self.assertEqual(self.found(snapshot, "unknown-ref"), [])
+
+    def test_json_definitions_keep_their_own_lines(self):
+        self.project(stages={"07-sitemap": {"human": "board", "source": "sitemap.json", "truth": "source"}})
+        self.write(self.repo / "sitemap.json", json.dumps({
+            "intro": "Start at SCR-002.",
+            "screens": [{"id": "SCR-001", "name": "Home"}, {"id": "SCR-002", "name": "Cart"}, {"id": "SCR-001", "name": "Home again"}],
+        }, indent=1))
+        snapshot = self.snapshot()
+        self.assertEqual(self.items(snapshot)["SCR-002"]["where"], "sitemap.json:9", "the definition, not the earlier mention")
+        (check,) = self.found(snapshot, "duplicate-id")
+        self.assertEqual(check["args"]["places"], ["sitemap.json:5", "sitemap.json:13"])
+
+    def test_large_table_fields(self):
+        self.project(stages={"02-prd": {"human": "notion", "source": "requirements.csv", "truth": "human"}})
+        self.write(self.repo / "requirements.csv", "ID,Title,Notes\nREQ-001,Sign in,%s\n" % ("x" * 200000))
+        self.assertEqual(self.items(self.snapshot())["REQ-001"]["title"], "Sign in")
+
 
 class SourcesTest(HubCase):
     def test_other_repository(self):
@@ -354,6 +378,15 @@ class SourcesTest(HubCase):
         self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"secret": 1, "format": 1})
         self.assertEqual(self.found(snapshot, "files-skipped")[0]["args"]["reasons"], {"secret": 1})
 
+    def test_secret_folders_are_skipped(self):
+        self.project(stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "source"}})
+        self.write(self.repo / "prd/requirements.md", "## REQ-001 Sign in\n")
+        self.write(self.repo / "prd/secrets/REQ-002.md", "# REQ-002 Hidden\n")
+        self.write(self.repo / "prd/team/credentials/notes.md", "## REQ-003 Hidden\n")
+        snapshot = self.snapshot()
+        self.assertEqual(set(self.items(snapshot)), {"REQ-001"})
+        self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"secret": 2})
+
     def test_secrets_and_emails_are_redacted(self):
         key = "sk-" + "x" * 24
         address = "dev" + "@" + "corp.test"
@@ -379,6 +412,28 @@ class SourcesTest(HubCase):
         self.assertEqual((info["branch"], info["dirty"], info["web"]), ("main", False, "https://github.com/example/acme-shop"))
         self.write(self.repo / "notes.md", "draft\n")
         self.assertTrue(self.snapshot()["repos"]["."]["dirty"])
+
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_reading_a_repository_runs_no_hook_and_writes_nothing(self):
+        self.project()
+        def git(*args):
+            subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                            "-c", "commit.gpgsign=false"] + list(args), check=True, capture_output=True)
+        git("init", "-q", "-b", "main")
+        git("add", ".")
+        git("commit", "-q", "-m", "start")
+        marker = self.base / "hook-ran"
+        hook = self.base / "fsmonitor.sh"
+        self.write(hook, "#!/bin/sh\necho ran > '%s'\nexit 1\n" % marker.as_posix())
+        hook.chmod(0o755)
+        git("config", "core.fsmonitor", hook.as_posix())
+        settings = self.repo / ".corthex" / "project.json"
+        os.utime(settings, (1000000000, 1000000000))  # makes `git status` want to refresh the index
+        index = self.repo / ".git" / "index"
+        before = (index.read_bytes(), index.stat().st_mtime_ns)
+        self.assertIn("commit", hub.repo_info(self.repo))
+        self.assertFalse(marker.exists(), "the repository's fsmonitor hook ran")
+        self.assertEqual((index.read_bytes(), index.stat().st_mtime_ns), before, "the index was rewritten")
 
 
 class StatusTest(HubCase):
@@ -408,13 +463,56 @@ class StatusTest(HubCase):
         self.assertEqual(hub.load_status(self.home, "acme-shop")["stages"], {})
 
     def test_bad_values_are_refused(self):
-        for kwargs in ({"stage": "2-prd"}, {"state": "finished"}, {"date": "12/01/2026"}, {"checks": [("fatal", "x")]}, {"checks": [("warn", " ")]}, {"name": "Acme Shop"}):
+        for kwargs in ({"stage": "2-prd"}, {"state": "finished"}, {"date": "12/01/2026"}, {"checks": [("fatal", "x")]}, {"checks": [("warn", " ")]}, {"name": "Acme Shop"},
+                       {"state": "done"}, {"state": "done", "checkpoint": "PRD approved"}, {"state": "done", "date": "2026-01-12"}):
             with self.subTest(**{key: str(value) for key, value in kwargs.items()}):
                 args = {"name": "acme-shop", "stage": "02-prd"}
                 args.update(kwargs)
                 with self.assertRaises(ValueError):
                     hub.record_status(self.home, **args)
         self.assertFalse(hub.status_path(self.home, "acme-shop").exists())
+
+
+class DoneTest(HubCase):
+    def test_done_keeps_its_checkpoint(self):
+        hub.record_status(self.home, "acme-shop", "02-prd", "done", "PRD approved in the kickoff review", "2026-01-12", now=NOW)
+        entry = hub.record_status(self.home, "acme-shop", "02-prd", next_action="Write the user flows", now=NOW)
+        self.assertEqual((entry["state"], entry["checkpoint_date"], entry["next"]), ("done", "2026-01-12", "Write the user flows"))
+        with self.assertRaises(ValueError):
+            hub.record_status(self.home, "acme-shop", "02-prd", checkpoint="", now=NOW)
+        self.assertEqual(hub.load_status(self.home, "acme-shop")["stages"]["02-prd"]["checkpoint"], "PRD approved in the kickoff review")
+
+
+class FitTest(unittest.TestCase):
+    def snapshot(self, items=0, checks=0, title="Acme Shop"):
+        return {
+            "project": {"name": "acme-shop", "title": title},
+            "items": [{"id": "REQ-%d" % i, "title": "t" * 100} for i in range(items)],
+            "checks": [hub.check("unknown-ref", "warn", "REQ-%d is mentioned but not defined: %s" % (i, "x" * 500)) for i in range(checks)],
+            "summary": {"items": items},
+            "truncated": False,
+        }
+
+    def size(self, snapshot):
+        return len(hub.dump(snapshot, compact=True).encode("utf-8"))
+
+    def test_checks_are_cut_after_items(self):
+        result = hub.fit(self.snapshot(items=500, checks=6000))
+        self.assertLessEqual(self.size(result), hub.MAX_SNAPSHOT_BYTES)
+        notice = result["checks"][0]
+        self.assertEqual((notice["rule"], result["truncated"], result["items"]), ("truncated", True, []))
+        self.assertEqual((notice["args"]["shown"], notice["args"]["total"], notice["args"]["checks_total"]), (0, 500, 6000))
+        self.assertEqual(notice["args"]["checks_shown"], len(result["checks"]) - 1)
+        self.assertLessEqual(notice["args"]["checks_shown"], hub.MAX_CHECKS)
+
+    def test_small_snapshots_are_kept_whole(self):
+        snapshot = self.snapshot(items=10, checks=10)
+        result = hub.fit(snapshot)
+        self.assertEqual((result["truncated"], len(result["items"]), len(result["checks"])), (False, 10, 10))
+
+    def test_settings_over_the_limit_are_refused(self):
+        with self.assertRaises(ValueError):
+            hub.fit(self.snapshot(title="t" * hub.MAX_SNAPSHOT_BYTES))
 
 
 class PageTest(HubCase):
@@ -453,6 +551,18 @@ class PageTest(HubCase):
         self.assertEqual(data["lang"], "ko")
         self.assertEqual(notes, ["blog: its folder is not on this machine"])
         self.assertTrue(hub.snapshot_path(self.home, "acme-shop").is_file())
+
+    def test_unregistered_snapshots_stay_off_the_page(self):
+        self.project()
+        self.register()
+        old = self.snapshot()
+        old["project"]["name"] = "old-shop"
+        hub.save_snapshot(self.home, old)
+        path, snapshots, notes = hub.build_hub(self.home, now=NOW)
+        self.assertEqual([p["project"]["name"] for p in self.page_data(read_text(path))["projects"]], ["acme-shop"])
+        self.assertEqual(len(notes), 1)
+        self.assertTrue(notes[0].startswith("old-shop: left off the page"))
+        self.assertTrue(hub.snapshot_path(self.home, "old-shop").is_file(), "the saved snapshot is kept")
 
     @unittest.skipUnless(shutil.which("node"), "node is not installed")
     def test_page_script_parses(self):
