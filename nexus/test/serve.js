@@ -5,7 +5,6 @@
 
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { Readable } from "node:stream";
 
 import { handle } from "../src/app.js";
 import { fakeD1 } from "./fake-d1.js";
@@ -19,12 +18,16 @@ const server = createServer(async (incoming, outgoing) => {
   for (const [name, value] of Object.entries(incoming.headers)) {
     if (typeof value === "string") headers.set(name, value);
   }
+  // Read the whole body before the Worker answers. The Worker refuses some
+  // requests without reading their body, and a socket closed with unread data
+  // can reset the connection before the client reads the answer.
   const reads = incoming.method !== "GET" && incoming.method !== "HEAD";
+  const chunks = [];
+  if (reads) for await (const chunk of incoming) chunks.push(chunk);
   const request = new Request(`http://${incoming.headers.host}${incoming.url}`, {
     method: incoming.method,
     headers,
-    body: reads ? Readable.toWeb(incoming) : undefined,
-    duplex: "half",
+    body: reads ? Buffer.concat(chunks) : undefined,
   });
   const response = await handle(request, env, ctx, template);
   outgoing.writeHead(response.status, Object.fromEntries(response.headers));
