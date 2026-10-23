@@ -134,7 +134,7 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 
 - **Codex는 신뢰를 묻습니다.** Codex는 `/hooks`에서 검토하고 신뢰한 플러그인 훅만 돌립니다. 설치한 뒤 한 번, 갱신으로 훅이 바뀌면 다시 신뢰합니다.
 - **끄는 법.** 플러그인을 끄거나 지웁니다. Claude Code는 `claude plugin disable corthex-memory@corthex`를 실행합니다. Codex는 `~/.codex/config.toml`의 `[plugins."corthex-memory@corthex"]`에 `enabled = false`를 두거나 `codex plugin remove corthex-memory@corthex`를 실행합니다. 훅이 저장하는 것이 없어서 따로 되돌릴 것은 없습니다.
-- **지금까지 확인한 것.** Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려, 두 도구 모두 첫 모델 요청에 문맥이 실린 것을 봤습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다. Windows와 macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다. Windows에서 Claude Code는 훅을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다.
+- **지금까지 확인한 것.** Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려, 두 도구 모두 첫 모델 요청에 문맥이 실린 것을 봤습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다. 이어 연 세션(`claude -p --resume`, `codex exec resume`)에는 두 도구 모두 기록에 있던 문맥이 한 번만 실렸습니다. 갈라 낸 세션, Windows, macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다. Windows에서 Claude Code는 훅을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다.
 
 ## 버전과 릴리스
 
