@@ -12,6 +12,13 @@
       "description": "Working principles, a 13-stage project workflow with one shared six-slot contract, and a profile and project registry for one person running several projects.",
       "category": "productivity",
       "tags": ["workflow", "project-management", "requirements", "design", "qa", "records"]
+    },
+    {
+      "name": "corthex-memory",
+      "source": "./plugins/corthex-memory",
+      "description": "Adds the CORTHEX working principles, your profile and the current project's settings to the start of each session, from local files.",
+      "category": "productivity",
+      "tags": ["memory", "context", "hooks"]
     }
   ]
 }

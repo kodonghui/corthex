@@ -5,6 +5,7 @@ This repository is a plugin marketplace for Claude Code and Codex. Read [docs/ar
 ## Rules
 
 - The core plugin, `plugins/corthex`, holds skills only: no hooks, commands, agents, MCP servers or user settings. Anything that needs them is a separate plugin.
+- A plugin with hooks has `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` and no root `plugin.json`, because Codex skips a plugin's hooks when a root `plugin.json` exists. Hook scripts use the Python standard library only, keep their output under the hosts' limits, and add nothing and exit 0 when they fail.
 - Skills follow the Agent Skills format: only the portable frontmatter fields, the name equal to the folder name, a body under 500 lines, and links that stay inside the skill's folder.
 - Skill text is English. README and docs come in pairs, `<name>.md` and `<name>.ko.md`, and a change to one is made to both.
 - How to address the user, their language and where records go come from the profile. Never write a person's name, title, email or home path into a skill, doc or example.
@@ -20,6 +21,7 @@ Run before every commit:
 python -m unittest discover -s tests -v
 claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
+claude plugin validate --strict plugins/corthex-memory
 ```
 
 ## Releases

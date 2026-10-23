@@ -4,13 +4,15 @@
 
 CORTHEX is a plugin for Claude Code and Codex that helps one person run software projects with an AI collaborator, stage by stage: from domain discovery and requirements to screens, building, QA and the final presentation.
 
-It does not add a runtime of its own. Installation and updates use the hosts' plugin marketplaces, and everything else is skills. On top of that, CORTHEX adds three things:
+It does not add a service of its own. Installation and updates use the hosts' plugin marketplaces, and the core plugin is skills only. On top of that, CORTHEX adds three things:
 
 - **Working principles** for the AI: lead with the result, keep facts and guesses apart, ask before anything that cannot be undone, and keep records.
 - **A 13-stage workflow** in which every stage fills the same six slots (inputs, outputs, human view, sync, human checkpoints, trace IDs), so each artifact can be traced to the one before it.
 - **A profile and a project registry**, so the same plugin fits different people and several projects at once.
 
-> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use.
+An optional second plugin, `corthex-memory`, starts each session with the principles, your profile and the current project's settings.
+
+> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use, and `corthex-memory` so far only adds the session start context.
 
 ## Install
 
@@ -29,6 +31,17 @@ Then start a session and say what you are working on, or run `/corthex:corthex`.
 codex plugin marketplace add kodonghui/corthex
 codex plugin add corthex@corthex
 ```
+
+### Optional: session start context
+
+`corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It reads local files only and makes no network calls.
+
+```bash
+claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too
+codex plugin add corthex-memory@corthex        # Codex, after corthex
+```
+
+In Codex, open `/hooks` once and trust the plugin's hook; Codex skips plugin hooks until you do. To stop it, disable or remove the plugin. Details: [Session start context](docs/architecture.md#session-start-context).
 
 ## Skills
 
@@ -54,7 +67,7 @@ codex plugin add corthex@corthex
 ## Compatibility
 
 - Claude Code reads `.claude-plugin/marketplace.json` and each plugin's `.claude-plugin/plugin.json`.
-- Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and each plugin's root `plugin.json`.
+- Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and the core plugin's root `plugin.json`. `corthex-memory` has hooks, so it has `.codex-plugin/plugin.json` instead and works in Claude Code and Codex only.
 - The skills follow the [Agent Skills](https://agentskills.io) format and are shared by both, so each skill can also be used on its own.
 
 ## Development
@@ -63,6 +76,7 @@ codex plugin add corthex@corthex
 python -m unittest discover -s tests -v
 claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
+claude plugin validate --strict plugins/corthex-memory
 ```
 
 ## License

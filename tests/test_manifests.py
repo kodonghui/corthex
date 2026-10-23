@@ -18,6 +18,12 @@ SHARED_FIELDS = ("name", "version", "description", "author", "homepage", "reposi
 LICENSE = "Apache-2.0"
 
 
+def codex_manifest(plugin):
+    """The manifest Codex reads: the root plugin.json, or .codex-plugin/plugin.json without one."""
+    root = plugin / "plugin.json"
+    return load_json(root if root.exists() else plugin / ".codex-plugin" / "plugin.json")
+
+
 class MarketplaceTest(unittest.TestCase):
     def setUp(self):
         self.claude = load_json(ROOT / ".claude-plugin" / "marketplace.json")
@@ -69,15 +75,34 @@ class ManifestTest(unittest.TestCase):
         for plugin in plugin_dirs():
             with self.subTest(plugin=plugin.name):
                 claude = load_json(plugin / ".claude-plugin" / "plugin.json")
-                portable = load_json(plugin / "plugin.json")
+                codex = codex_manifest(plugin)
                 self.assertEqual(claude["name"], plugin.name)
                 self.assertRegex(claude["version"], SEMVER)
                 self.assertEqual(claude["license"], LICENSE)
                 for field in SHARED_FIELDS:
-                    self.assertEqual(claude.get(field), portable.get(field), field)
+                    self.assertEqual(claude.get(field), codex.get(field), field)
+
+    def test_each_plugin_has_one_codex_manifest(self):
+        for plugin in plugin_dirs():
+            with self.subTest(plugin=plugin.name):
+                root = (plugin / "plugin.json").exists()
+                folder = (plugin / ".codex-plugin" / "plugin.json").exists()
+                self.assertNotEqual(root, folder, "keep one of plugin.json and .codex-plugin/plugin.json")
+
+    def test_hook_plugins_have_no_root_manifest(self):
+        # Codex CLI 0.164.0 skips a plugin's hooks when the plugin has a root
+        # plugin.json, even next to .codex-plugin/plugin.json (openai/codex#39895,
+        # reproduced on 2026-10-23). A plugin with hooks uses .codex-plugin only.
+        for plugin in plugin_dirs():
+            if (plugin / "hooks").exists():
+                with self.subTest(plugin=plugin.name):
+                    self.assertFalse((plugin / "plugin.json").exists())
+                    self.assertTrue((plugin / ".codex-plugin" / "plugin.json").exists())
 
     def test_portable_manifest_follows_agent_plugins(self):
         for plugin in plugin_dirs():
+            if not (plugin / "plugin.json").exists():
+                continue
             with self.subTest(plugin=plugin.name):
                 portable = load_json(plugin / "plugin.json")
                 self.assertEqual(portable["$schema"], AGENT_PLUGINS_SCHEMA)
