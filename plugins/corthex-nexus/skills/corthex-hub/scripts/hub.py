@@ -223,6 +223,14 @@ def resolve(raw):
         return None
 
 
+def same_folder(path, root):
+    """Whether path is root, also when it is spelled another way, such as in other letter cases."""
+    try:
+        return path is not None and (path == root or os.path.samefile(path, root))
+    except OSError:
+        return False
+
+
 def inside(path, root):
     return path == root or root in path.parents
 
@@ -963,6 +971,9 @@ def open_project(root, entry=None, extra=None):
     if settings is None:
         return None, "no readable .corthex/project.json in the project folder"
     name = settings.get("name") if isinstance(settings.get("name"), str) else ""
+    if entry and NAME.match(name) and name != entry["name"]:
+        # Snapshots are saved and sent under the registered name, so the settings may not give another.
+        return None, "its .corthex/project.json names it %s, but ~/.corthex/projects.json registers it as %s; use one name in both" % (name, entry["name"])
     if not NAME.match(name or ""):
         name = entry.get("name") if entry else ""
     if not NAME.match(name or ""):
@@ -982,12 +993,10 @@ def select_projects(home, names, path=None, extra=None):
         if found is None:
             return [(None, None, "no .corthex/project.json from %s up to the repository root" % start)]
         root = found.parent.parent
-        entry = next((e for e in entries if resolve(e.get("path")) == root), None)
+        entry = next((e for e in entries if same_folder(resolve(e.get("path")), root)), None)
         project, reason = open_project(root, entry, extra)
-        if project and entry is None:
-            entry = by_name.get(project.name)
-            if entry:
-                project.checkouts = dict(checkouts_of(entry), **(extra or {}))
+        if project and entry is None and project.name in by_name:
+            return [(None, None, "%s is registered for another folder in ~/.corthex/projects.json; update that entry's path if the project moved here, or give this project its own name" % project.name)]
         return [(project.name if project else None, project, reason)]
     result = []
     for name in names:
