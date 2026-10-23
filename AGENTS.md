@@ -13,6 +13,7 @@ This repository is a plugin marketplace for Claude Code and Codex. Read [docs/ar
 - How to address the user, their language and where records go come from the profile. Never write a person's name, title, email or home path into a skill, doc or example.
 - The two manifests of a plugin agree on their shared fields. A version change updates both manifests and every skill's `metadata.version` together.
 - A change to the stage contract updates the stage's reference file, `skills/corthex/references/stage-contract.md` when IDs or slots change, the stage table in `corthex-nexus`'s `hub.py`, and the tests. `tests/test_hub.py` reads the stage skills' output templates, so a template change must stay readable by the hub.
+- `nexus/` is the NEXUS server, a Cloudflare Worker and not a plugin. It is plain JavaScript with no runtime dependencies; Wrangler is its only development dependency, and its tests use Node's built-in test runner. All database code stays in `nexus/src/store.js`. `nexus/src/hub.html` is a copy of the hub page template, so copy it again after changing the template; `tests/test_nexus.py` compares them. The shared `wrangler.jsonc` keeps the example address and names no database.
 - Never commit secrets. Keys belong in the host's secret store or environment variables.
 
 ## Checks
@@ -25,6 +26,7 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
+node --test nexus/test/*.test.js     # Node 22.5 or later
 ```
 
 ## Releases

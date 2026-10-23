@@ -1,8 +1,8 @@
 ---
 name: corthex-hub
-description: One page with every CORTHEX project's 13 stages, checks and trace links. Use when the user wants an overview of all their projects, asks where each project stands, what a trace ID such as REQ-003 connects to, or which IDs are missing, duplicated or unlinked; when a stage's progress, last checkpoint or next action should be recorded; and when sending project snapshots to their own NEXUS server.
+description: One page with every CORTHEX project's 13 stages, checks and trace links. Use when the user wants an overview of all their projects, asks where each project stands, what a trace ID such as REQ-003 connects to, or which IDs are missing, duplicated or unlinked; when a stage's progress, last checkpoint or next action should be recorded; and when sending project snapshots to their own NEXUS server or removing them from it.
 license: Apache-2.0
-compatibility: Needs Python 3.8 or later. Uses git when it is installed. Reads local files only; the optional push command sends snapshots to a server the user configured.
+compatibility: Needs Python 3.8 or later. Uses git when it is installed. Reads local files only; the optional push and remove commands talk to a server the user configured.
 metadata:
   author: kodonghui
   version: "0.1.0"
@@ -51,14 +51,17 @@ The checks and the forms of source the hub reads are in [references/reading.md](
 
 ## Send snapshots to a NEXUS server (optional)
 
-`hub.py push` sends saved snapshots to a NEXUS server that the user runs on their own domain. It sends only what the page shows: IDs, titles, states, checks, file locations and commit IDs, never file contents or local paths. The formats are in [references/snapshot.md](references/snapshot.md).
+`hub.py push` sends saved snapshots to a NEXUS server that the user runs on their own domain: the Cloudflare Worker in the `nexus/` folder of the CORTHEX repository, whose README says how to deploy it behind Cloudflare Access. It sends only what the page shows: IDs, titles, states, checks, file locations and commit IDs, never file contents or local paths. The formats and the server's replies are in [references/snapshot.md](references/snapshot.md).
 
 1. The user lists the projects that may be sent in `nexus.push` in `~/.corthex/profile.json`, and the address in `nexus.url`. Ask before the first push of each project.
 2. The service token goes in the environment variables `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET`, never in a file, the profile, a command line or a message.
 3. Run `hub.py push --dry-run` first and show what would be sent. Then run `hub.py push`.
+4. Report a refusal with the server's reason. The server keeps the newer snapshot of a project, so an older one is refused: build again and push. A refused token means the service token or its Access policy needs fixing.
+
+`hub.py remove <project>` deletes a project from the server; ask before you run it. Taking a project out of `nexus.push` stops further pushes but leaves what the server holds.
 
 ## Never
 
 - Never write into a project's repository from this skill, and never edit the snapshots by hand; build them again.
 - Never record a state, a checkpoint or a finding the user did not give or you did not check.
-- Never send a project that is not listed in `nexus.push`, and never put a token where it would be saved or shown.
+- Never send a project that is not listed in `nexus.push`, never remove one from the server without the user's go-ahead, and never put a token where it would be saved or shown.

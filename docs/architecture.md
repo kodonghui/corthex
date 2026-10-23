@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: 0.1.0. The core plugin, `corthex`, exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub). The rest of both is planned (see [Roadmap](#roadmap)).
+Status: 0.1.0. The core plugin, `corthex`, exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub and a NEXUS server to deploy yourself). The rest of both is planned (see [Roadmap](#roadmap)).
 
 ## Goals
 
@@ -43,10 +43,15 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │       ├── .claude-plugin/plugin.json   manifest for Claude Code
 │       ├── plugin.json                  Agent Plugins 1.0 manifest, read by Codex
 │       ├── skills/corthex-hub/
-│       │   ├── scripts/hub.py           snapshots, checks, page and push, Python standard library only
+│       │   ├── scripts/hub.py           snapshots, checks, page, push and remove, Python standard library only
 │       │   ├── assets/hub.html          page template that loads nothing from the network
 │       │   └── references/              what the hub reads and checks, and its file formats
 │       └── LICENSE, NOTICE
+├── nexus/                               NEXUS server, a Cloudflare Worker; not a plugin
+│   ├── src/                             Worker, D1 storage, snapshot checks, copy of the hub page
+│   ├── test/                            Node tests over an in-memory stand-in for D1
+│   ├── wrangler.jsonc                   Worker settings, copied into wrangler.local.jsonc to deploy
+│   └── README.md                        how to deploy it behind Cloudflare Access
 ├── tests/                               checks, Python standard library only
 └── docs/
 ```
@@ -148,15 +153,18 @@ It reads only those files, writes nothing and makes no network calls. Each value
 
 ## Project hub
 
-`corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server.
+`corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The NEXUS server in `nexus/` is optional and puts the same page on the user's own address.
 
 - **Snapshot.** For each project in `~/.corthex/projects.json`, the script reads the stage sources that `.corthex/project.json` names, also in the project's other repositories, and saves what they define and link: trace IDs with their titles and fields, the file and line of each, the links between them, and the checks. It reads text only, never runs project code, and skips files whose names look like secrets. The forms it reads and the checks are in [reading.md](../plugins/corthex-nexus/skills/corthex-hub/references/reading.md).
 - **Progress.** A stage's state, last checkpoint and next action come only from what was recorded with `hub.py status`, because a file that exists is not a finished stage. Findings of a review are recorded the same way.
 - **Page.** `hub.py build` writes `~/.corthex/hub/index.html`: for each project the 13 stages with their states and counts, the checks, each stage's settings and items, a trace view for every ID (what it comes from and what it leads to), and search. The data is inside the page, its Content Security Policy blocks every request, and it shows text only as text, so it works from the disk and offline. It follows the profile's language, Korean or English, and the system's light or dark mode.
 - **What leaves the machine.** Nothing, unless the user runs `hub.py push`. A snapshot holds IDs, titles, fields, checks, file locations relative to their repositories and commit IDs. It holds no other file contents and no local paths, and secrets and email addresses in titles become `[redacted]`. The formats are in [snapshot.md](../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md).
-- **Push.** `hub.py push` sends the snapshots of the projects listed in the profile's `nexus.push` to `nexus.url`, over HTTPS, with a Cloudflare Access service token from environment variables. It does not follow redirects, so a refused token is reported instead of sent on. The server is not part of 0.1.0 (see [Roadmap](#roadmap)).
+- **Push.** `hub.py push` sends the snapshots of the projects listed in the profile's `nexus.push` to `nexus.url`, over HTTPS, with a Cloudflare Access service token from environment variables. It does not follow redirects, so a refused token is reported instead of sent on, and it shows the server's reason when a snapshot is refused. `hub.py remove` deletes a project from the server.
+- **Server.** `nexus/` is a Cloudflare Worker with a Cloudflare D1 database, which the user deploys on their own Cloudflare account. It answers only requests that Cloudflare Access checked, through `ctx.access`, so a Worker without Access shows nothing. It has no `workers.dev` or preview addresses and no static assets, which would take that check away. It checks each snapshot against the format, keeps the newer snapshot of each project, up to 30 projects of 1 MiB, and serves the same page with a policy that allows only its own script, by its hash. All database code is in one file, so another database can replace D1 later. Setup: [nexus/README.md](../nexus/README.md).
 
 Checked so far: `tests/test_hub.py` builds a project from the stage skills' own output templates and checks every item, link and finding the hub reads from them, then each source form, the status file, the page and the push client against a local stand-in server. It passes on Linux with Python 3.8 and 3.13. The page was opened in Chromium at 1440 and 320 pixels wide, in light and dark mode, with no script errors, no sideways scrolling and no network requests. A real project spread over three repositories, with requirements exported from Notion, was read without changing it. Windows and macOS have not been run yet.
+
+For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-in for D1, and `tests/test_nexus.py` runs it on the machine: `hub.py` pushes a project made from the stage templates, reads it back, has an older snapshot refused and removes the project, and without Access every request gets `403`. With Wrangler 4.152.0, `wrangler deploy --dry-run` bundles the Worker, and `wrangler dev` ran the same steps in the Workers runtime with Access simulated, and returned `403` without it. The snapshot of the real project, 92 items and about 40 KB, passed the server's checks and came back unchanged. The server has not been deployed to Cloudflare yet.
 
 ## Versions and releases
 
@@ -168,17 +176,18 @@ Checked so far: `tests/test_hub.py` builds a project from the stage skills' own 
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the NEXUS server with `hub.py` when Node 22.5 or later is installed, links and translations of the docs, no secrets or private text |
+| Server checks | `node --test nexus/test/*.test.js` | the NEXUS Worker: the Access check, snapshot checks, storage, the page and its security headers |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
-CI runs the repository checks on Linux, Windows and macOS, and the Claude Code validation on Linux, for every pull request and every push to `main`.
+CI runs the repository and server checks on Linux, Windows and macOS, and the Claude Code validation and a Wrangler build of the server on Linux, for every pull request and every push to `main`.
 
 ## Roadmap
 
 Planned, not in 0.1.0. Both need components the core plugin leaves out.
 
 - `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context.
-- `corthex-nexus`, later versions: a NEXUS server that the user runs on their own domain, behind Cloudflare Access, so the hub can be opened from any device. It receives the snapshots that `hub.py push` sends and serves the same page; the first version keeps them in Cloudflare D1. After that, editors for sitemaps and user flows, and an MCP server over the same data.
+- `corthex-nexus`, later versions: editors for sitemaps and user flows on the NEXUS server, and an MCP server over the same data. The server's storage can move from D1 to Postgres if memory comes to be shared across devices.
 
 ## Sources
 
@@ -189,4 +198,5 @@ Checked on 2026-10-23.
 - Agent Plugins: [Plugin manifest](https://agent-plugins.org/plugin-authors/manifest), [Client extensions](https://agent-plugins.org/plugin-authors/client-extensions), [Compatible clients](https://agent-plugins.org/compatible-clients)
 - Hooks: [Claude Code hooks reference](https://code.claude.com/docs/en/hooks), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [openai/codex#39895](https://github.com/openai/codex/issues/39895)
 - Cloudflare Access: [Authenticate agents](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/), [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
+- Cloudflare Workers and D1: [Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/cloudflare-access/), [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/)
 - [Agent Skills specification](https://agentskills.io/specification)

@@ -110,6 +110,26 @@ Settings in `~/.corthex/profile.json`:
 
 - `url`: the server. `--url` and the environment variable `CORTHEX_NEXUS_URL` take precedence. It must use `https`; `http` works only for `localhost`, `127.0.0.1` and `::1`, for testing.
 - `push`: the projects that may be sent. `hub.py push` with no names sends these; a name that is not listed is refused.
+- `hub.py remove` deletes the projects it names from the server, listed in `push` or not.
 - The service token is read from `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET` and sent as the Cloudflare Access headers `CF-Access-Client-Id` and `CF-Access-Client-Secret`. A server on this machine may be used without a token.
 
-Each project is one request: `POST <url>/api/snapshots` with the snapshot as the JSON body. Any `2xx` reply means it was stored; the reply may hold `{"revision": <number>}`. Redirects are not followed: a redirect, `401` or `403` means the token was refused, because Cloudflare Access sends a refused request to its login page.
+Each project is one request: `POST <url>/api/snapshots` with the snapshot as the JSON body. Any `2xx` reply means it was stored. Redirects are not followed, because Cloudflare Access answers a refused token with a redirect to its login page, or with `401` or `403`. When a refusal holds a reason from the server, `hub.py` shows it.
+
+## NEXUS server
+
+The server in the `nexus/` folder of the CORTHEX repository answers only requests that Cloudflare Access checked. Its replies are JSON, apart from the page, and a refusal holds `{"error": "<reason>"}`.
+
+| Request | Reply |
+| --- | --- |
+| `POST /api/snapshots` | `{"name": "acme-shop", "revision": 3}`: stored. `revision` counts the snapshots of the project the server has stored. |
+| `GET /api/snapshots` | `{"projects": [...]}`, with each project's `name`, `revision`, `generated_at`, `received_at` and `bytes` |
+| `GET /api/snapshots/<project>` | the stored snapshot |
+| `DELETE /api/snapshots/<project>` | `{"name": "acme-shop", "removed": true}`, or `404` when the server does not hold the project. `hub.py remove` sends this. |
+| `GET /` | the hub page, with `origin` set to `server` |
+
+The server refuses a request with:
+
+- `400` when the snapshot is not in the `corthex-hub/0.1` format, or is dated more than 10 minutes ahead of the server's clock;
+- `403` when Access did not check the request, when an Access application other than the ones in `ACCESS_AUD` checked it, or when a browser sent a change from another site;
+- `409` when the server holds a snapshot of the project generated later, or already holds 30 projects;
+- `413` when the snapshot is larger than 1 MiB, and `415` when it is not sent as `application/json`.

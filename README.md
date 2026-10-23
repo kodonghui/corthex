@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use. `corthex-memory` so far only adds the session start context, and `corthex-nexus` so far has the local hub page but no server.
+> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use. `corthex-memory` so far only adds the session start context, and `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
 
 ## Install
 
@@ -52,7 +52,7 @@ claude plugin install corthex-nexus@corthex   # Claude Code; installs corthex to
 codex plugin add corthex-nexus@corthex        # Codex, after corthex
 ```
 
-Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 or later. It can also send project snapshots to a NEXUS server on your own domain, but only for the projects you list; the server itself comes in a later version. Details: [Project hub](docs/architecture.md#project-hub).
+Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 or later. It can also send project snapshots to a NEXUS server on your own domain, but only for the projects you list. The server is a Cloudflare Worker behind Cloudflare Access that you deploy on your own Cloudflare account: [nexus/](nexus/README.md). Details: [Project hub](docs/architecture.md#project-hub).
 
 ## Skills
 
@@ -91,6 +91,7 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
+node --test nexus/test/*.test.js     # Node 22.5 or later
 ```
 
 ## License

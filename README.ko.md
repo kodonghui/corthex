@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 0.1.0, 초기 골격입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다. `corthex-memory`는 아직 세션 시작 문맥만 넣고, `corthex-nexus`는 아직 로컬 허브 페이지만 있고 서버는 없습니다.
+> 상태: 0.1.0, 초기 골격입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다. `corthex-memory`는 아직 세션 시작 문맥만 넣고, `corthex-nexus`에는 로컬 허브 페이지와 직접 배포하는 첫 NEXUS 서버가 있습니다.
 
 ## 설치
 
@@ -52,7 +52,7 @@ claude plugin install corthex-nexus@corthex   # Claude Code, corthex도 함께 �
 codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 ```
 
-설치한 뒤 허브를 보여 달라고 하거나 `/corthex-nexus:corthex-hub`를 실행하세요. Python 3.8 이상이 필요합니다. 내 도메인의 NEXUS 서버로 프로젝트 스냅샷을 보낼 수도 있지만, 목록에 적어 둔 프로젝트만 보냅니다. 서버는 다음 판에서 나옵니다. 자세한 내용은 [프로젝트 허브](docs/architecture.ko.md#프로젝트-허브)에 있습니다.
+설치한 뒤 허브를 보여 달라고 하거나 `/corthex-nexus:corthex-hub`를 실행하세요. Python 3.8 이상이 필요합니다. 내 도메인의 NEXUS 서버로 프로젝트 스냅샷을 보낼 수도 있지만, 목록에 적어 둔 프로젝트만 보냅니다. 서버는 Cloudflare Access 뒤에서 도는 Cloudflare Worker로, 내 Cloudflare 계정에 직접 배포합니다: [nexus/](nexus/README.ko.md). 자세한 내용은 [프로젝트 허브](docs/architecture.ko.md#프로젝트-허브)에 있습니다.
 
 ## 스킬
 
@@ -91,6 +91,7 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
+node --test nexus/test/*.test.js     # Node 22.5 이상
 ```
 
 ## 라이선스

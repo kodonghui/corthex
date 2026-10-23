@@ -471,9 +471,15 @@ class Server(http.server.BaseHTTPRequestHandler):
     reply = (200, b'{"revision": 3}', {})
 
     def do_POST(self):
+        self.answer()
+
+    def do_DELETE(self):
+        self.answer()
+
+    def answer(self):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         headers = {name.lower(): value for name, value in self.headers.items()}
-        type(self).received.append((self.path, headers, body))
+        type(self).received.append((self.command, self.path, headers, body))
         code, payload, headers = type(self).reply
         self.send_response(code)
         for name, value in headers.items():
@@ -513,8 +519,8 @@ class PushTest(HubCase):
     def test_push_sends_each_listed_project(self):
         lines = hub.push(self.home, env=self.env)
         self.assertEqual(lines, ["acme-shop: sent, HTTP 200, revision 3"])
-        ((path, headers, body),) = Server.received
-        self.assertEqual(path, "/api/snapshots")
+        ((method, path, headers, body),) = Server.received
+        self.assertEqual((method, path), ("POST", "/api/snapshots"))
         self.assertEqual((headers["cf-access-client-id"], headers["cf-access-client-secret"]), ("test-id", "test-secret"))
         self.assertEqual(headers["content-type"], "application/json")
         self.assertEqual(json.loads(body.decode("utf-8")), json.loads(read_text(hub.snapshot_path(self.home, "acme-shop"))))
@@ -552,6 +558,51 @@ class PushTest(HubCase):
         with self.assertRaisesRegex(RuntimeError, "HTTP 500"):
             hub.push(self.home, env=self.env)
 
+    def test_the_server_reason_is_shown(self):
+        cases = (
+            (409, "the server holds a newer snapshot of acme-shop, made at 2026-01-12T10:00:00+09:00; build it again and send that"),
+            (403, "Cloudflare Access did not check this request; protect this Worker with Access first"),
+            (413, "the snapshot is larger than 1048576 bytes"),
+        )
+        for code, reason in cases:
+            with self.subTest(code=code):
+                Server.reply = (code, json.dumps({"error": reason}).encode("utf-8"), {"Content-Type": "application/json"})
+                with self.assertRaises(RuntimeError) as caught:
+                    hub.push(self.home, env=self.env)
+                self.assertEqual(str(caught.exception), "the server refused it (HTTP %d): %s" % (code, reason))
+        Server.reply = (400, json.dumps({"error": "bad \x1b[2Jsnapshot\x07"}).encode("utf-8"), {})
+        with self.assertRaises(RuntimeError) as caught:
+            hub.push(self.home, env=self.env)
+        self.assertEqual(str(caught.exception), "the server refused it (HTTP 400): bad [2Jsnapshot")
+
+    def test_remove(self):
+        self.profile(push=[])
+        Server.reply = (200, b'{"name": "acme-shop", "removed": true}', {})
+        self.assertEqual(hub.remove(self.home, ["acme-shop"], env=self.env), ["acme-shop: removed from the server"])
+        ((method, path, headers, body),) = Server.received
+        self.assertEqual((method, path, body), ("DELETE", "/api/snapshots/acme-shop", b""))
+        self.assertEqual((headers["cf-access-client-id"], headers["cf-access-client-secret"]), ("test-id", "test-secret"))
+        Server.reply = (404, b'{"error": "no such project"}', {"Content-Type": "application/json"})
+        self.assertEqual(hub.remove(self.home, ["blog"], env=self.env), ["blog: not on the server"])
+        Server.reply = (404, b"", {})
+        with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+            hub.remove(self.home, ["blog"], env=self.env)
+
+    def test_remove_refusals_and_dry_run(self):
+        (line,) = hub.remove(self.home, ["acme-shop"], dry_run=True, env={})
+        self.assertEqual(line, "acme-shop: would remove it from %s" % self.url)
+        cases = [
+            ({"names": []}, "name the projects"),
+            ({"names": ["../acme"]}, "../acme is not a project name"),
+            ({"names": ["acme-shop"], "url": "https://nexus.example.com"}, "CORTHEX_NEXUS_CLIENT_ID"),
+        ]
+        for kwargs, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaises(ValueError) as caught:
+                    hub.remove(self.home, env={}, **kwargs)
+                self.assertIn(message, str(caught.exception))
+        self.assertEqual(Server.received, [])
+
 
 class CommandLineTest(HubCase):
     def run_hub(self, *args):
@@ -578,9 +629,10 @@ class CommandLineTest(HubCase):
         code, out, err = self.run_hub("status", "acme-shop", "02-prd", "--date", "12/01/2026")
         self.assertEqual(code, 1)
         self.assertIn("the date must start with YYYY-MM-DD", err)
-        code, out, err = self.run_hub("push")
-        self.assertEqual(code, 1)
-        self.assertIn("no NEXUS address", err)
+        for command in (["push"], ["remove", "acme-shop"]):
+            code, out, err = self.run_hub(*command)
+            self.assertEqual(code, 1)
+            self.assertIn("no NEXUS address", err)
         code, out, err = self.run_hub("snapshot")
         self.assertEqual(code, 1)
         self.assertIn("no .corthex/project.json", err)
