@@ -4,7 +4,7 @@
 
 ## Stages and files
 
-- A stage is read when it has a text source: its `source` in `.corthex/project.json`, or the default path of the stage contract when the stage has no entry. A stage with `skip: true`, or with an entry but no `source`, is not read.
+- A stage is read when it has a text source: its `source` in `.corthex/project.json`, or the default path of the stage contract when the stage has no entry. A stage with `skip: true`, or with an entry but no `source` (even an empty `{}`), is not read.
 - `09-mockup` and `11-development` are never read for IDs, because their sources are design tokens and code. Their settings still show on the page.
 - A source is a file or a folder. Folders are read with their subfolders.
 - These files are read: `.md`, `.markdown`, `.mdx`, `.yaml`, `.yml`, `.json`, `.sql`, `.csv`, `.tsv`, `.txt`, `.mmd`, `.mermaid`, `.feature`, `.rst` and `.adoc`. Other files are only counted.
@@ -26,10 +26,10 @@ An ID is defined only in the stage that creates its kind, as the stage contract 
 | A Markdown heading that starts with an ID, such as `## CTX-001 Ordering` | that ID | the rest of the heading | IDs under the heading, up to the next heading of the same or a higher level |
 | A Markdown table with an ID column | the ID in each row | the first title column, else the first other cell with words | the other IDs in the row |
 | A Markdown table row whose first cell is an ID, in a table without an ID column | nothing | | the other IDs in the row |
-| A YAML mapping with `id: SCR-001` | that ID | its `title` or `name` | the other IDs in the mapping; a nested mapping with its own `id` records this one as its `parent` |
+| A YAML mapping with `id: SCR-001`, in any place among its keys | that ID | its `title` or `name` | the other IDs in the mapping; a nested mapping with its own `id` records this one as its `parent` |
 | An OpenAPI operation with `x-corthex: { id: API-001 }`, in YAML or JSON | that ID | the method and the path, such as `POST /orders` | the other IDs in the `x-corthex` block, such as `spec: [SPEC-001]` |
 | An SQL comment such as `-- TBL-001 orders ← SPEC-001` | that ID | the first words after the ID | IDs on that line and the lines after it, up to the next table comment |
-| A CSV or TSV file with an ID column | the ID in each row | as for tables | the other IDs in the row |
+| A CSV or TSV file with an ID column | the ID in each row; a quoted cell may run over several lines, and the row's place is the line it starts on | as for tables | the other IDs in the row |
 
 Any other text only mentions IDs. A file named by an ID links its mentions from that ID.
 

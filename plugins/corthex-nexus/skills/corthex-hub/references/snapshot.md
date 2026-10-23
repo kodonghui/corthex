@@ -66,7 +66,7 @@ Files are written through a temporary file, so a failed write keeps the old one.
 
 - File contents, other than IDs, titles and the status, type, priority and link fields.
 - Local paths: `where` and `source` are relative to their repository.
-- Secrets and email addresses in titles and fields, which become `[redacted]`, and user names and passwords in links.
+- Secrets and email addresses in titles and fields, which become `[redacted]`, and user names and passwords in links. A link that holds a secret or an email address, even percent-encoded, is left out whole, since it would not work with the secret taken out.
 
 Limits: 3,000 items, 2,000 checks and 1,000,000 bytes per snapshot. Items are dropped from the end first, then checks, and a `truncated` check gives how many of each were kept. A project whose settings alone are over the limit gets no snapshot. Titles have up to 120 characters, and an item up to 60 links.
 
