@@ -555,6 +555,28 @@ class SourcesTest(HubCase):
         self.assertIs(hub.repo_info(self.repo)["dirty"], True)
         self.assertFalse(marker.exists())
 
+    @unittest.skipIf(os.name == "nt", "the stand-in git is a shell script")
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_git_never_comes_from_the_current_folder(self):
+        real = os.path.dirname(shutil.which("git"))
+        self.project()
+        self.commit_all(self.repo)
+        marker = self.base / "stand-in-ran"
+        stand_in = self.repo / "git"
+        self.write(stand_in, "#!/bin/sh\necho ran > '%s'\n" % marker.as_posix())
+        stand_in.chmod(0o755)
+        here, path = os.getcwd(), os.environ.get("PATH", "")
+        os.chdir(str(self.repo))
+        # A relative entry is the current folder, which Windows searches first anyway.
+        os.environ["PATH"] = os.pathsep.join([".", real])
+        try:
+            info = hub.repo_info(self.repo)
+        finally:
+            os.chdir(here)
+            os.environ["PATH"] = path
+        self.assertFalse(marker.exists(), "a git from the current folder ran")
+        self.assertIn("commit", info)
+
     @unittest.skipUnless(shutil.which("git"), "git is not installed")
     def test_reading_a_repository_does_not_enter_its_submodules(self):
         self.project()

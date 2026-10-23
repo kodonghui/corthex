@@ -1006,13 +1006,33 @@ def select_projects(home, names, path=None, extra=None):
 
 # ---------------------------------------------------------------- repositories
 
+def git_program():
+    """Git's full path, found in the absolute folders of PATH.
+
+    Windows looks for a program in the current folder before PATH, and a relative
+    PATH entry is the current folder too, so a repository could supply its own git.
+    """
+    name = "git.exe" if os.name == "nt" else "git"
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        folder = folder.strip('"')
+        path = os.path.join(folder, name)
+        if os.path.isabs(folder) and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
 def run_git(root, args, data=None):
     """Git's output as bytes, or None when Git fails."""
+    program = git_program()
+    if program is None:
+        return None
     try:
         result = subprocess.run(
             # The fsmonitor hook would run a program from the repository's config,
             # and optional locks let `git status` rewrite the index.
-            ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
+            [program, "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
+            # Git starts in its own folder, so no file of the repository sits in the current folder.
+            cwd=os.path.dirname(program),
             capture_output=True, timeout=30,
             **({"input": data} if data is not None else {"stdin": subprocess.DEVNULL}),
         )
