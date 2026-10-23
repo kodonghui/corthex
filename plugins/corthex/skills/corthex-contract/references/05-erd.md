@@ -5,7 +5,7 @@
 | Inputs | The functional spec (SPEC) for the data each behaviour needs, and the glossary (TERM) for names |
 | Outputs | `schema.sql`, by default `db/schema.sql`, with a TBL ID comment on each table, plus the migrations; optionally a Mermaid `erDiagram` in `docs/05-erd/` |
 | Human view | An ERD tool such as ERD Cloud, as set in `human` |
-| Sync | Compare the DDL in the repository with the tool's export. Report the differences table by table and column by column, then apply them in the direction `truth` gives |
+| Sync | Compare the DDL in the repository with the tool's latest SQL export and name the export's date. Report the differences table by table and column by column, then apply them in the direction `truth` gives. If the AI cannot reach the tool, a person exports and imports the SQL; see "Human views the AI cannot reach" in the `corthex` skill's stage contract |
 | Human checkpoints | Schema freeze before the API contract is written, and every later breaking change |
 | Trace IDs | TBL-001… |
 
@@ -21,7 +21,7 @@
 - Every data need in the spec maps to a table and a column.
 - Every table has a primary key and a TBL ID, and no table is unused.
 - The migrations rebuild the schema from an empty database.
-- The repository and the ERD tool agree, or their differences are listed.
+- The repository and the ERD tool's latest export agree, or their differences are listed with the export's date.
 
 ## Output template
 
