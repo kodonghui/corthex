@@ -56,7 +56,7 @@ Files are written through a temporary file, so a failed write keeps the old one.
 ```
 
 - `ids` maps each prefix to its kind.
-- `repos` has `.` for the project's own repository and one entry per alias in the project's `repos`. `checkout: false` means this machine has no local copy. `web` is set for GitHub repositories and lets the page link each `where` to the file at that commit.
+- `repos` has `.` for the project's own repository and one entry per alias in the project's `repos`. `checkout: false` means this machine has no local copy. `web` is set for GitHub repositories and lets the page link each `where` to the file at that commit. `dirty` says whether the working tree has changes, not counting changes inside submodules. It is left out when a tracked file uses a clean filter, such as Git LFS, because Git would have to run the filter to tell.
 - Each stage has `source_state`: `found`, `missing`, `none` (no text source), `no-checkout`, `skipped` or `invalid`. `default_source: true` marks the contract's default path. `read` and `files` are set for stages that were read, `skipped` counts the files that were not.
 - `state` is `done`, `in_progress`, `not_started` or `skipped` as recorded, and `unknown` when nothing is recorded. A stage with `skip: true` and no record shows as `skipped`.
 - Items are in stage order, then by ID. `where` is `file:line`, with the repository alias in front for another repository. Optional fields: `title`, `status`, `type`, `priority`, `link`, `parent`, `screen_doc`, `states` and `links`.

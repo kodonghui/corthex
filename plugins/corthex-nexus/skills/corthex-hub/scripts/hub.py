@@ -601,6 +601,8 @@ def scan_sections(scan, src, lines, body):
                 level = len(heading.group(1))
                 while sections and sections[-1][0] >= level:
                     sections.pop()
+                # The heading ends the sections it closes, so its IDs link from what is left.
+                subject = sections[-1][1] if sections else None
                 header = None
                 lead = scan.ids.lead(plain(heading.group(2), 400))
                 if lead:
@@ -877,17 +879,19 @@ def source_files(target, root, skipped):
     for path in candidates:
         reason = None
         try:
+            real = path.resolve()
             if path.suffix.lower() not in TEXT:
                 reason = "format"
-            elif secret_path(path, root):
+            elif secret_path(path, root) or secret_path(real, root):
+                # A link with a plain name can still lead into a secret folder.
                 reason = "secret"
-            elif not inside(path.resolve(), root):
+            elif not inside(real, root):
                 reason = "outside"
             elif path.stat().st_size > MAX_FILE_BYTES:
                 reason = "size"
             elif len(chosen) >= MAX_FILES:
                 reason = "limit"
-        except OSError:
+        except (OSError, RuntimeError):  # before Python 3.13, a link loop raises RuntimeError
             reason = "unreadable"
         if reason:
             skipped[reason] = skipped.get(reason, 0) + 1
@@ -1002,20 +1006,61 @@ def select_projects(home, names, path=None, extra=None):
 
 # ---------------------------------------------------------------- repositories
 
-def git(root, *args):
+def run_git(root, args, data=None):
+    """Git's output as bytes, or None when Git fails."""
     try:
         result = subprocess.run(
             # The fsmonitor hook would run a program from the repository's config,
             # and optional locks let `git status` rewrite the index.
             ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
             capture_output=True, timeout=30,
-            stdin=subprocess.DEVNULL,
+            **({"input": data} if data is not None else {"stdin": subprocess.DEVNULL}),
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if result.returncode != 0:
+    return result.stdout if result.returncode == 0 else None
+
+
+def git(root, *args):
+    out = run_git(root, args)
+    return None if out is None else out.decode("utf-8", "replace").strip()
+
+
+def filter_drivers(root):
+    """Names of the filter drivers that Git's configuration gives a command, or None if unreadable."""
+    listed = run_git(root, ["config", "-z", "--list"])
+    if listed is None:
         return None
-    return result.stdout.decode("utf-8", "replace").strip()
+    names = set()
+    for entry in listed.split(b"\0"):
+        key, _, value = entry.partition(b"\n")
+        if key.startswith(b"filter.") and key.endswith((b".clean", b".process")) and value.strip():
+            names.add(key[len(b"filter."):key.rindex(b".")])
+    return names
+
+
+def worktree_changed(root):
+    """Whether the working tree has changes, or None when Git fails or could only tell by running a program.
+
+    To compare a file, Git runs its clean filter, such as Git LFS, and `git status`
+    in a submodule follows that submodule's own settings. So this leaves out
+    changes inside submodules, and answers None when a tracked file uses a filter.
+    """
+    drivers = filter_drivers(root)
+    if drivers is None or any(b"=" in name for name in drivers):  # `-c` cannot name such a driver
+        return None
+    if drivers:
+        # Git for Windows and `git lfs install` set filters for every repository; most use none.
+        tracked = run_git(root, ["ls-files", "-z"])
+        used = None if tracked is None else run_git(root, ["check-attr", "-z", "--stdin", "filter"], tracked)
+        if used is None or drivers & set(used.split(b"\0")[2::3]):
+            return None
+    off = []
+    for name in sorted(drivers):
+        name = name.decode("utf-8", "surrogateescape")
+        off += ["-c", "filter.%s.clean=" % name, "-c", "filter.%s.process=" % name, "-c", "filter.%s.required=false" % name]
+    status = run_git(root, off + ["status", "--porcelain", "--ignore-submodules=dirty"])
+    return None if status is None else bool(status.strip())
 
 
 def github_base(url):
@@ -1035,9 +1080,9 @@ def repo_info(root, url=""):
         branch = git(root, "symbolic-ref", "--short", "-q", "HEAD")
         if branch:
             info["branch"] = one_line(branch, 120)
-        status = git(root, "status", "--porcelain")
-        if status is not None:
-            info["dirty"] = bool(status)
+        dirty = worktree_changed(root)
+        if dirty is not None:
+            info["dirty"] = dirty
     web = github_base(url) or github_base(git(root, "remote", "get-url", "origin") or "")
     if web:
         info["web"] = web
@@ -1228,7 +1273,7 @@ def item_checks(scan, items, stages):
         if kind == "screen" and item["stage"] == SCREEN_STAGE and "07-sitemap" in scanned:
             found.append(check("screen-not-in-sitemap", "warn", "%s has a screen definition but is not in the sitemap" % ident, [ident], SCREEN_STAGE, {"id": ident}))
         wanted = [k for k in UPSTREAM.get(kind, ()) if k in kinds_with_items]
-        linked = {scan.ids.kind(other) for other in near.get(ident, ())}
+        linked = {scan.ids.kind(other) for other in near.get(ident, ()) if not (other in items and is_removed(items[other]))}
         if wanted and not linked.intersection(UPSTREAM[kind]):
             names = "/".join(UPSTREAM[kind])
             found.append(check("missing-upstream", "warn", "%s links no %s" % (ident, names), [ident], item["stage"], {"id": ident, "kinds": list(UPSTREAM[kind])}))
@@ -1250,7 +1295,8 @@ def requirement_checks(scan, items, near, scanned):
         for req in in_scope:
             if norm(req.get("priority", "")) not in MUST or norm(req.get("type", "")) in NON_FUNCTIONAL:
                 continue
-            if any(scan.ids.kind(other) == "spec" for other in near.get(req["id"], ())):
+            # The stage was read, so a spec that is not defined there, or is removed, covers nothing.
+            if any(scan.ids.kind(other) == "spec" and other in items and not is_removed(items[other]) for other in near.get(req["id"], ())):
                 continue
             unknown = not req.get("type")
             message = "%s is a %sMust requirement with no spec row" % (req["id"], "" if unknown else "functional ")

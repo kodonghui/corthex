@@ -8,7 +8,7 @@
 - `09-mockup` and `11-development` are never read for IDs, because their sources are design tokens and code. Their settings still show on the page.
 - A source is a file or a folder. Folders are read with their subfolders.
 - These files are read: `.md`, `.markdown`, `.mdx`, `.yaml`, `.yml`, `.json`, `.sql`, `.csv`, `.tsv`, `.txt`, `.mmd`, `.mermaid`, `.feature`, `.rst` and `.adoc`. Other files are only counted.
-- These are skipped: hidden files and folders, `node_modules`, `__pycache__` and `venv`, files over 1 MB, files after the first 400 of a stage, files whose names look like secrets or that sit in a folder whose name does (such as `secrets.yaml`, `api-key.txt`, `*.pem` or anything under `credentials/`), and links that lead outside the repository. The stage's `files-skipped` note says how many and why.
+- These are skipped: hidden files and folders, `node_modules`, `__pycache__` and `venv`, files over 1 MB, files after the first 400 of a stage, files whose names look like secrets or that sit in a folder whose name does (such as `secrets.yaml`, `api-key.txt`, `*.pem` or anything under `credentials/`), also when a link leads to them, and links that lead outside the repository. The stage's `files-skipped` note says how many and why.
 
 ## Trace IDs
 
@@ -40,7 +40,7 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 - **Deleted text**: struck-through Markdown, `~~…~~`, is ignored, as in exports from Notion.
 - **YAML comments**: text after ` #` is not part of a value, so `- id: SCR-001 # Home` defines `SCR-001`.
 - **Listings**: a file named `index`, `README`, `list` or `목록`, or one whose name starts with `_`, only fills in what the items' own files leave out. It never counts as a second definition.
-- **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks.
+- **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks: it is not checked, and a link to it does not count.
 
 ## Checks
 
@@ -48,8 +48,8 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 | --- | --- | --- |
 | `duplicate-id` | error | The ID is defined in more than one place. |
 | `unknown-ref` | warn | The ID is mentioned but not defined, although the stage that creates its kind was read. |
-| `missing-upstream` | warn | The item names none of the items it comes from: `FL` and `SPEC` name a `REQ`; `TBL`, `API` and `TASK` a `SPEC`; `TC` a `REQ`, `FL` or `SPEC`; `BUG` a `TC`, `SCR` or `SPEC`. Checked only when the project has items of those kinds. |
-| `req-without-spec` | warn | A Must requirement (`Must`, `required`, `P0` or `필수`) that is not non-functional has no `SPEC` linked to it. Checked when `04-functional-spec` was read. |
+| `missing-upstream` | warn | The item names none of the items it comes from, other than removed ones: `FL` and `SPEC` name a `REQ`; `TBL`, `API` and `TASK` a `SPEC`; `TC` a `REQ`, `FL` or `SPEC`; `BUG` a `TC`, `SCR` or `SPEC`. Checked only when the project has items of those kinds. |
+| `req-without-spec` | warn | A Must requirement (`Must`, `required`, `P0` or `필수`) that is not non-functional has no `SPEC` linked to it that `04-functional-spec` defines and that is not removed. Checked when that stage was read. |
 | `req-without-priority` | info | Requirements have no priority, while others have one. |
 | `screen-not-in-sitemap` | warn | A screen has a file in `08-screen-states` but is not in the sitemap. |
 | `screen-without-states` | info | Screens in the sitemap have no file in `08-screen-states` yet. |
