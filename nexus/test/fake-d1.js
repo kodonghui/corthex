@@ -1,5 +1,5 @@
 // The part of the D1 binding the store uses, over an in-memory SQLite
-// database from Node (22.5 or later). For tests only.
+// database from Node (22.13 or later). For tests only.
 
 import { DatabaseSync } from "node:sqlite";
 

@@ -184,7 +184,7 @@ For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-i
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the NEXUS server with `hub.py` when Node 22.5 or later is installed, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the NEXUS server with `hub.py` when Node 22.13 or later is installed, links and translations of the docs, no secrets or private text |
 | Server checks | `node --test nexus/test/*.test.js` | the NEXUS Worker: the Access check, snapshot checks, storage, the page and its security headers |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 

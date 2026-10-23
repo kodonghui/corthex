@@ -1,5 +1,5 @@
 """Checks the NEXUS server in nexus/: the files it shares with the plugin, its
-Worker settings and, with Node 22.5 or later, hub.py talking to it on this
+Worker settings and, with Node 22.13 or later, hub.py talking to it on this
 machine. The server's own checks run with `node --test nexus/test/*.test.js`."""
 
 import json
@@ -70,7 +70,7 @@ class ServerCase(hub_tests.HubCase):
     def setUp(self):
         node = node_with_sqlite()
         if not node:
-            self.skipTest("needs Node 22.5 or later")
+            self.skipTest("needs Node 22.13 or later")
         super().setUp()
         args = [node, str(NEXUS / "test" / "serve.js")] + ([] if self.access else ["--no-access"])
         server = subprocess.Popen(args, cwd=str(NEXUS), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

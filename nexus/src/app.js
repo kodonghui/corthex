@@ -120,14 +120,12 @@ async function receive(request, env) {
   const now = Date.now();
   const sent = readSnapshot(text, now);
   const db = store(env);
-  if (!(await db.meta(sent.name)) && (await db.count()) >= MAX_PROJECTS) {
-    throw new Refused(409, `the hub already holds ${MAX_PROJECTS} projects; remove one with hub.py remove first`);
-  }
   const bytes = new TextEncoder().encode(sent.body).byteLength;
-  const revision = await db.put(sent.name, sent.generatedMs, sent.generatedAt, new Date(now).toISOString(), sent.body, bytes);
+  const revision = await db.put(sent.name, sent.generatedMs, sent.generatedAt, new Date(now).toISOString(), sent.body, bytes, MAX_PROJECTS);
   if (revision === null) {
     const stored = await db.meta(sent.name);
-    throw new Refused(409, `the server holds a newer snapshot of ${sent.name}, made at ${stored ? stored.generated_at : "a later time"}; build it again and send that`);
+    if (!stored) throw new Refused(409, `the hub already holds ${MAX_PROJECTS} projects; remove one with hub.py remove first`);
+    throw new Refused(409, `the server holds a newer snapshot of ${sent.name}, made at ${stored.generated_at}; build it again and send that`);
   }
   return json({ name: sent.name, revision });
 }

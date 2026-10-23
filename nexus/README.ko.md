@@ -16,17 +16,17 @@ NEXUS 서버는 CORTHEX 프로젝트 허브를 내 주소에 올려, 어느 기�
 ## 필요한 것
 
 - 도메인을 올려 둔 Cloudflare 계정과 Cloudflare Zero Trust 설정. Zero Trust Free 요금제로 충분하지만, 설정할 때 결제 정보를 넣어야 합니다.
-- Node.js 22.5 이상과 이 저장소를 내려받은 사본.
+- Node.js 22.13 이상과 이 저장소를 내려받은 사본.
 - 스냅샷을 보내는 컴퓨터마다 설치한 `corthex-nexus`.
 
 ## 설정
 
 1. 도구 설치: 이 폴더에서 `npm install`을 실행합니다.
 2. 내 설정 파일 만들기: `wrangler.jsonc`를 `wrangler.local.jsonc`로 복사합니다. 이 사본은 git이 무시합니다. 사본의 `routes`에 내 계정에 있는 도메인의 주소, 예를 들어 `nexus.example.com`을 적고, 한국어 페이지를 원하면 `NEXUS_LANGUAGE`를 `ko`로 바꿉니다.
-3. 배포: `npx wrangler login`을 실행한 뒤 `npm run deploy`를 실행합니다. 첫 배포 때 D1 데이터베이스 `corthex-nexus`가 만들어지고 그 ID가 내 설정 파일에 적히며, Cloudflare가 주소의 DNS 레코드와 인증서를 더합니다. 다음 단계를 마칠 때까지 주소는 `403`으로 답합니다.
-4. Access로 보호하기: Cloudflare 대시보드에서 **Workers & Pages**로 가서 `corthex-nexus`를 고르고, **Access** 탭에서 **Protect this Worker behind Access**를 누릅니다. **All traffic**을 고르고, 로그인할 수 있는 사람을 정한 뒤(나 혼자라면 **Cloudflare account**) **Apply Access**를 누릅니다.
+3. 배포: `npx wrangler login`을 실행한 뒤 `npm run deploy`를 실행합니다. 첫 배포 때 D1 데이터베이스 `corthex-nexus`가 만들어져 Worker에 연결됩니다. 터미널에서 실행하면 그 ID가 내 설정 파일에도 적히고, 적히지 않아도 다음 배포는 같은 데이터베이스를 씁니다. 이어서 Cloudflare가 주소의 DNS 레코드와 인증서를 더합니다. 예전 서비스 등이 남긴 DNS 레코드가 주소에 이미 있으면 Cloudflare가 그 위에 Worker의 레코드를 만들지 않습니다. 필요하면 그 값을 적어 두고, 대시보드의 내 도메인 **DNS** › **Records**에서 지운 뒤 다시 배포합니다. 다음 단계를 마칠 때까지 주소는 `403`으로 답합니다.
+4. Access로 보호하기: Cloudflare 대시보드에서 **Workers & Pages**로 가서 `corthex-nexus`를 고르고, **Access** 탭에서 **Protect this Worker behind Access**를 누릅니다. **All traffic**을 고르고, 로그인할 수 있는 사람을 정한 뒤(나 혼자라면 **Cloudflare account**) **Apply Access**를 누릅니다. **Zero Trust** › **Access controls** › **Applications**에 이 주소의 Access 애플리케이션이 이미 있으면, 그것이 Worker 단위 Access보다 먼저 적용되어 이미 허브를 보호합니다. 그 정책이 원하는 사람만 들이는지 확인하고 이 단계는 건너뜁니다.
 5. 확인: 시크릿 창에서 주소를 엽니다. Access 로그인이 먼저 나오고, 로그인하면 허브 페이지가 나옵니다. 처음 보내기 전까지는 비어 있습니다.
-6. `hub.py`용 서비스 토큰 만들기: **Zero Trust** › **Access controls** › **Service credentials** › **Service Tokens**에서 토큰을 만들고 Client ID와 Client Secret을 복사합니다. Secret은 이때 한 번만 보입니다. 그다음 **Zero Trust** › **Access controls** › **Applications**에서 이 Worker를 보호하는 Access 애플리케이션을 열고, 동작이 **Service Auth**이고 이 토큰을 포함하는 정책을 더합니다. 같은 Worker에 애플리케이션을 하나 더 만들면 서로 부딪칠 수 있으니, 기존 애플리케이션에 더합니다.
+6. `hub.py`용 서비스 토큰 만들기: **Zero Trust** › **Access controls** › **Service credentials** › **Service Tokens**에서 토큰을 만들고 Client ID와 Client Secret을 복사합니다. Secret은 이때 한 번만 보입니다. 그다음 **Zero Trust** › **Access controls** › **Applications**에서 허브를 보호하는 Access 애플리케이션, 곧 4단계에서 만든 것이나 주소에 이미 있던 것을 열고, 동작이 **Service Auth**이고 이 토큰을 포함하는 정책을 더합니다. 같은 Worker에 애플리케이션을 하나 더 만들면 서로 부딪칠 수 있으니, 기존 애플리케이션에 더합니다.
 7. 스냅샷을 보내는 컴퓨터마다 `~/.corthex/profile.json`에 주소와 보내도 되는 프로젝트를 적습니다.
 
    ```json
@@ -37,7 +37,7 @@ NEXUS 서버는 CORTHEX 프로젝트 허브를 내 주소에 올려, 어느 기�
 
 선택: 그 Access 애플리케이션이 확인한 요청만 받으려면, 애플리케이션의 **Application Audience (AUD) Tag**를 내 설정 파일의 `ACCESS_AUD`에 넣고 다시 배포합니다. 쉼표로 나눠 여러 개를 넣을 수 있습니다.
 
-대시보드 메뉴 이름은 2026년 10월 Cloudflare 문서를 따랐습니다: [Workers용 Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/), [서비스 토큰](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/), [Zero Trust 설정](https://developers.cloudflare.com/cloudflare-one/setup/).
+대시보드 메뉴 이름은 2026년 10월 Cloudflare 문서를 따랐습니다: [Workers용 Cloudflare Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/), [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/), [서비스 토큰](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/), [Zero Trust 설정](https://developers.cloudflare.com/cloudflare-one/setup/).
 
 ## 쓰기
 

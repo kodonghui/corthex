@@ -91,7 +91,7 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
-node --test nexus/test/*.test.js     # Node 22.5 이상
+node --test nexus/test/*.test.js     # Node 22.13 이상
 ```
 
 ## 라이선스

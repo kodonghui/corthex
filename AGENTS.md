@@ -26,7 +26,7 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
-node --test nexus/test/*.test.js     # Node 22.5 or later
+node --test nexus/test/*.test.js     # Node 22.13 or later
 ```
 
 ## Releases

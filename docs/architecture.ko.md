@@ -184,7 +184,7 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 
 | 검사 | 명령 | 범위 |
 | --- | --- | --- |
-| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, Node 22.5 이상이 있을 때 `hub.py`와 NEXUS 서버, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
+| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, Node 22.13 이상이 있을 때 `hub.py`와 NEXUS 서버, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
 | 서버 검사 | `node --test nexus/test/*.test.js` | NEXUS Worker: Access 확인, 스냅샷 검사, 저장, 페이지와 보안 헤더 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 

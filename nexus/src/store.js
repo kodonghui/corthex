@@ -13,9 +13,13 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS snapshots (
 )`;
 
 // The newer of two snapshots of a project wins: the update runs only when
-// the incoming snapshot was generated at the same time or later.
+// the incoming snapshot was generated at the same time or later. A new name
+// is added only while the hub holds fewer projects than the limit. SQLite,
+// which D1 runs, makes the statement one serializable transaction, so two
+// uploads cannot both take the last place; Postgres would need a lock for that.
 const PUT = `INSERT INTO snapshots (name, revision, generated_ms, generated_at, received_at, bytes, body)
-VALUES (?, 1, ?, ?, ?, ?, ?)
+SELECT ?, 1, ?, ?, ?, ?, ?
+WHERE EXISTS (SELECT 1 FROM snapshots WHERE name = ?) OR (SELECT COUNT(*) FROM snapshots) < ?
 ON CONFLICT (name) DO UPDATE SET
   revision = snapshots.revision + 1,
   generated_ms = excluded.generated_ms,
@@ -42,11 +46,6 @@ export class Store {
       pending.catch(() => ready.delete(this.db));
     }
     await pending;
-  }
-
-  async count() {
-    await this.ensure();
-    return (await this.db.prepare("SELECT COUNT(*) AS n FROM snapshots").first("n")) || 0;
   }
 
   async meta(name) {
@@ -76,12 +75,13 @@ export class Store {
     return this.db.prepare("SELECT body FROM snapshots WHERE name = ?").bind(name).first("body");
   }
 
-  // Returns the new revision, or null when the stored snapshot is newer.
-  async put(name, generatedMs, generatedAt, receivedAt, body, bytes) {
+  // Returns the new revision, or null when nothing was stored: the stored
+  // snapshot is newer, or the name is new and the hub holds `limit` projects.
+  async put(name, generatedMs, generatedAt, receivedAt, body, bytes, limit) {
     await this.ensure();
     const row = await this.db
       .prepare(PUT)
-      .bind(name, generatedMs, generatedAt, receivedAt, bytes, body)
+      .bind(name, generatedMs, generatedAt, receivedAt, bytes, body, name, limit)
       .first();
     return row ? row.revision : null;
   }

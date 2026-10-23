@@ -1,5 +1,5 @@
 // Checks the NEXUS server with an in-memory database: run `node --test test/`
-// in this folder (Node 22.5 or later).
+// in this folder (Node 22.13 or later).
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -166,6 +166,16 @@ test("limits the number of projects", async () => {
   assert.equal(full.status, 409);
   assert.match(full.data().error, /already holds 30 projects/);
   assert.equal((await call("POST", "/api/snapshots", { body: snapshot({ project: { name: "project-0" } }) })).data().revision, 2);
+});
+
+test("keeps the limit when new projects arrive together", async () => {
+  const call = server();
+  for (let index = 0; index < MAX_PROJECTS - 1; index += 1) {
+    await call("POST", "/api/snapshots", { body: snapshot({ project: { name: `project-${index}` } }) });
+  }
+  const replies = await Promise.all(["late-a", "late-b"].map((name) => call("POST", "/api/snapshots", { body: snapshot({ project: { name } }) })));
+  assert.deepEqual(replies.map((reply) => reply.status).sort(), [200, 409]);
+  assert.equal((await call("GET", "/api/snapshots")).data().projects.length, MAX_PROJECTS);
 });
 
 test("removes a project", async () => {
