@@ -134,17 +134,25 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 
 ## 세션 시작 문맥
 
-`corthex-memory` 0.1.0에는 훅이 하나 있습니다. 세션이 시작될 때, `/clear` 뒤, 문맥 압축 뒤에 `scripts/session_start.py`가 짧은 문맥을 넣습니다. 이어 하는 세션과 갈라 낸 세션은 기록에 이미 들어 있어 건너뜁니다. 문맥에는 이것이 들어갑니다.
+`corthex-memory` 0.1.0에는 훅이 하나 있습니다. 세션이 시작될 때마다 `scripts/session_start.py`가 짧은 문맥을 넣습니다. 새로 시작할 때, 이어 열 때, `/clear` 뒤, 문맥 압축 뒤, 세션을 갈라 낼 때입니다. 이어 연 세션과 갈라 낸 세션은 기록에 예전 문맥을 이미 갖고 있고, 새 문맥이 그 뒤에 바뀐 파일 내용을 들여옵니다. 문맥에는 이것이 들어갑니다.
 
 - 일하는 원칙의 짧은 판. `tests/test_memory.py`가 입구 스킬의 목록과 같게 유지합니다.
-- `~/.corthex/profile.json`의 프로필. 없으면 기본값을 알립니다.
-- 프로젝트: 저장소 루트까지 올라가며 찾은 가장 가까운 `.corthex/project.json`, 없으면 `~/.corthex/projects.json`에서 지금 폴더를 경로나 저장소로 가진 프로젝트. 단계마다 사람 화면, 정본, 원본을 알리고, 메모는 160자에서 자릅니다. 이 기기의 다른 프로젝트는 이름만 적습니다.
+- `~/.corthex/profile.json`의 프로필. 없으면 기본 `ask_before` 목록을 포함한 기본값을 알립니다. 파일이 있는데 읽을 수 없으면 그렇다고 알리고, 파일을 새로 만들어 덮어쓰지 말라고 한 뒤 기본값을 알립니다.
+- 프로젝트: 저장소 루트까지 올라가며 찾은 가장 가까운 `.corthex/project.json`, 없으면 `~/.corthex/projects.json`에서 지금 폴더를 경로나 저장소로 가진 프로젝트. 단계마다 사람 화면, 정본, 원본을 알립니다. 이 기기의 다른 프로젝트는 이름만 적습니다.
 
-이 파일들만 읽고, 아무것도 쓰지 않으며, 네트워크에 연결하지 않습니다. 값은 한 줄로 펴고 프로젝트 설정은 자료라고 밝혀서, 메모가 제목이나 지시를 따로 만들 수 없게 합니다. 문맥은 8,000자, 약 2,000토큰 아래로 둡니다. Claude Code는 10,000자, Codex는 약 2,500토큰을 넘는 훅 출력을 파일로 돌리기 때문입니다. 넘치면 메모를 먼저 빼고, 그래도 넘치면 글을 줄입니다. 무엇이든 실패하면 훅은 아무것도 넣지 않고 세션은 평소대로 시작합니다.
+이 파일들만 읽고, 아무것도 쓰지 않으며, 네트워크에 연결하지 않습니다. 무엇이든 실패하면 훅은 아무것도 넣지 않고 세션은 평소대로 시작합니다.
 
+- **저장소 설정은 정해진 형식만 보여 줍니다.** `project.json`은 아직 살펴보지 않은 저장소에서 올 수 있고, Codex는 훅 문맥을 개발자 메시지로 넣습니다. 그래서 이 파일에서는 공백 없는 짧은 ASCII 값만 보여 줍니다. 이름, 도구 이름, 경로, 링크, `truth` 값입니다. 제목과 단계 메모 같은 자유 글은 보여 주지 않고, 메모가 있는 단계는 표시만 해서 에이전트가 파일에서 읽게 합니다. 형식에 맞지 않는 다른 값은 뺐다고 표시합니다. 프로필과 프로젝트 목록은 사용자 자신의 파일이므로 값마다 한 줄로 펴서 그대로 보여 줍니다.
+- **크기.** 문맥은 UTF-8 8,000바이트 아래로 둡니다. Claude Code는 10,000자를 넘는 훅 문맥을 파일로 돌리고, Codex는 핸들러의 `additionalContextLimit`을 넘는 문맥을 그렇게 합니다. `hooks/hooks.json`은 이 값을 기본값 2,500 대신 8,000토큰으로 둡니다. 글자 하나도 토큰 하나도 1바이트 이상이므로 어느 도구도 문맥을 파일로 돌리지 않습니다. 설정이 더 크면 글을 자르고 잘랐다고 적습니다.
 - **Codex는 신뢰를 묻습니다.** Codex는 `/hooks`에서 검토하고 신뢰한 플러그인 훅만 돌립니다. 설치한 뒤 한 번, 갱신으로 훅이 바뀌면 다시 신뢰합니다.
 - **끄는 법.** 플러그인을 끄거나 지웁니다. Claude Code는 `claude plugin disable corthex-memory@corthex`를 실행합니다. Codex는 `~/.codex/config.toml`의 `[plugins."corthex-memory@corthex"]`에 `enabled = false`를 두거나 `codex plugin remove corthex-memory@corthex`를 실행합니다. 훅이 저장하는 것이 없어서 따로 되돌릴 것은 없습니다.
-- **지금까지 확인한 것.** Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려, 두 도구 모두 첫 모델 요청에 문맥이 실린 것을 봤습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다. 이어 연 세션(`claude -p --resume`, `codex exec resume`)에는 두 도구 모두 기록에 있던 문맥이 한 번만 실렸습니다. 갈라 낸 세션, Windows, macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다. Windows에서 Claude Code는 훅을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다.
+- **Windows.** 훅 명령은 `python3`를 먼저 쓰고, 안 되면 `python`을 쓰도록 둘을 `||`로 잇습니다. Windows에서 Claude Code는 훅 명령을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다. PowerShell 7은 `||`를 받지만 Windows PowerShell 5.1은 받지 않으므로, Windows의 Claude Code에서는 Git for Windows나 PowerShell 7이 있어야 합니다. 둘 다 없으면 훅이 실패하고 세션은 문맥 없이 시작합니다. 두 도구 모두 Windows에서는 아직 돌려 보지 않았습니다.
+- **지금까지 확인한 것.** 2026-10-23에 Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려 확인했습니다.
+  - 두 도구 모두 첫 모델 요청에 문맥이 실렸고, 프로젝트 파일의 제목과 메모는 실리지 않았습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다.
+  - 프로필을 바꾼 뒤 이어 연 세션(`claude -p --resume`, `codex exec resume`)과 갈라 낸 세션(`claude -p --resume … --fork-session`)에는 기록에 있던 예전 문맥과 함께 새 문맥이 실렸습니다.
+  - Codex에서 28,872바이트짜리 시험 문맥은 `additionalContextLimit`을 8,000으로 두면 그대로 모델에 갔고, 두지 않으면 미리보기로 바뀌었습니다.
+
+  Codex의 세션 갈라 내기와 macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다.
 
 ## 프로젝트 허브
 

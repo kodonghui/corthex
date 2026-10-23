@@ -134,17 +134,25 @@ The fields are in [profile.md](../plugins/corthex/skills/corthex/references/prof
 
 ## Session start context
 
-`corthex-memory` 0.1.0 has one hook. When a session starts, after `/clear` and after compaction, `scripts/session_start.py` adds a short context. It skips resumed and forked sessions, whose history already holds it. The context has:
+`corthex-memory` 0.1.0 has one hook. Whenever a session starts, `scripts/session_start.py` adds a short context: at startup, on resume, after `/clear`, after compaction and when a session is forked. A resumed or forked session already holds an earlier copy in its history, and the new copy brings in any change to the files since then. The context has:
 
 - the working principles in short form, which `tests/test_memory.py` keeps equal to the list in the entry skill;
-- the profile from `~/.corthex/profile.json`, or the defaults when there is none;
-- the project: the nearest `.corthex/project.json` up to the repository root, or else the project in `~/.corthex/projects.json` whose path or repository holds the current folder. For each stage it gives the human view, the truth and the source, with notes cut to 160 characters. Other projects on the machine are listed by name.
+- the profile from `~/.corthex/profile.json`. Without one, it gives the defaults, including the default `ask_before` list. If the file exists but cannot be read, it says so, tells the agent not to replace the file, and gives the defaults;
+- the project: the nearest `.corthex/project.json` up to the repository root, or else the project in `~/.corthex/projects.json` whose path or repository holds the current folder. For each stage it gives the human view, the truth and the source. Other projects on the machine are listed by name.
 
-It reads only those files, writes nothing and makes no network calls. Each value is put on one line and the project settings are marked as data, so a note cannot add headings or instructions of its own. The context stays under 8,000 characters and about 2,000 tokens, because Claude Code moves hook output over 10,000 characters into a file and Codex does so over about 2,500 tokens. Notes are dropped first, then the text is shortened. If anything fails, the hook adds nothing and the session starts as usual.
+It reads only those files, writes nothing and makes no network calls. If anything fails, the hook adds nothing and the session starts as usual.
 
+- **Repository settings in a fixed format only.** `project.json` comes from a repository you may not have checked yet, and Codex adds hook context as a developer message. So from that file the hook shows only short ASCII values without spaces: names, tool names, paths, links and the `truth` value. Free text, such as the title and stage notes, is never shown; a stage that has a note is marked, so the agent can read the note in the file. Other values that do not fit their format are shown as left out. The profile and the project list are the user's own files and are shown as written, one line per value.
+- **Size.** The context stays under 8,000 bytes of UTF-8. Claude Code moves hook context over 10,000 characters into a file, and Codex does so over the handler's `additionalContextLimit`, which `hooks/hooks.json` sets to 8,000 tokens instead of the default 2,500. A character or a token takes at least one byte, so neither host moves the context. Larger settings are cut, and the text says so.
 - **Codex asks for trust.** Codex runs a plugin's hooks only after you review and trust them in `/hooks`: once after installing, and again after an update changes the hook.
 - **Stopping it.** Disable or remove the plugin. In Claude Code, run `claude plugin disable corthex-memory@corthex`. In Codex, set `enabled = false` under `[plugins."corthex-memory@corthex"]` in `~/.codex/config.toml`, or run `codex plugin remove corthex-memory@corthex`. The hook stores nothing, so there is nothing else to undo.
-- **Checked so far.** On Linux, with Claude Code 2.1.309 and Codex CLI 0.164.0 in isolated settings and a local stand-in for the model API, the context reached the first model request in both hosts. Codex ran the hook only when it was trusted; the test skipped the review with `--dangerously-bypass-hook-trust`. A resumed session (`claude -p --resume`, `codex exec resume`) carried the context once, from its history, in both hosts. Forked sessions, Windows and macOS are not tested yet. The hook needs `python3` or `python` on the PATH of the shell that runs it; on Windows, Claude Code runs hooks in Git Bash, or in PowerShell when Git Bash is missing.
+- **Windows.** The hook command tries `python3`, then `python`, joined by `||`. On Windows, Claude Code runs hook commands in Git Bash, or in PowerShell when Git Bash is missing. PowerShell 7 accepts `||` but Windows PowerShell 5.1 does not, so with Claude Code on Windows the hook needs Git for Windows or PowerShell 7. Without either, the hook fails and the session starts without the context. The hook has not been run on Windows yet, in either host.
+- **Checked so far.** On 2026-10-23, on Linux, with Claude Code 2.1.309 and Codex CLI 0.164.0 in isolated settings and a local stand-in for the model API:
+  - The context reached the first model request in both hosts, without the title or the notes of the project file. Codex ran the hook only when it was trusted; the test skipped the review with `--dangerously-bypass-hook-trust`.
+  - After the profile changed, a resumed session (`claude -p --resume`, `codex exec resume`) and a forked one (`claude -p --resume … --fork-session`) carried the new copy as well as the earlier ones from their history.
+  - In Codex, a 28,872-byte test context reached the model whole with `additionalContextLimit` set to 8,000, and was replaced by a preview without it.
+
+  Forking in Codex and macOS are not tested yet. The hook needs `python3` or `python` on the PATH of the shell that runs it.
 
 ## Project hub
 
