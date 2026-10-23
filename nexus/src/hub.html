@@ -203,6 +203,8 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
       missing: "Not on this machine: {list}", truncated: "Only part of this project is shown: its snapshot reached the size limit.",
       footerLocal: "Built from files on this machine. This page loads nothing from the network.",
       footerServer: "Built from snapshots sent to your NEXUS server.",
+      serverNoCheckout: "repository not on the machine that made the snapshot",
+      serverNoCheckoutCheck: "{stage}: the {alias} repository has no local checkout on the machine that made this snapshot; add its path to ~/.corthex/projects.json there",
       level: { error: "Error", warn: "Warning", info: "Note" },
       states: { done: "Done", in_progress: "In progress", not_started: "Not started", skipped: "Skipped", unknown: "Not recorded" },
       sourceStates: { found: "found", missing: "not found", none: "no text source", "no-checkout": "repository not on this machine", skipped: "stage skipped", invalid: "setting needs a fix" },
@@ -232,6 +234,8 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
       missing: "이 기기에 없는 프로젝트: {list}", truncated: "스냅샷 크기 한도 때문에 이 프로젝트는 일부만 보입니다.",
       footerLocal: "이 기기의 파일로 만든 페이지입니다. 네트워크에서 아무것도 불러오지 않습니다.",
       footerServer: "NEXUS 서버에 올린 스냅샷으로 만든 페이지입니다.",
+      serverNoCheckout: "스냅샷을 만든 기기에 저장소 없음",
+      serverNoCheckoutCheck: "{stage}: {alias} 저장소가 스냅샷을 만든 기기에 없습니다. 그 기기의 ~/.corthex/projects.json에 경로를 적어 주세요",
       level: { error: "오류", warn: "경고", info: "참고" },
       states: { done: "완료", in_progress: "진행 중", not_started: "시작 전", skipped: "건너뜀", unknown: "기록 없음" },
       sourceStates: { found: "있음", missing: "없음", none: "텍스트 원본 없음", "no-checkout": "이 기기에 저장소 없음", skipped: "단계 건너뜀", invalid: "설정을 고쳐야 함" },
@@ -268,6 +272,8 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
   }
   var lang = data.lang === "ko" ? "ko" : "en";
   var S = STR[lang];
+  // A server page shows snapshots made on other machines, where "this machine" would be wrong.
+  var remote = data.origin === "server";
   document.documentElement.lang = lang;
   document.title = S.title;
 
@@ -367,6 +373,9 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
   }
 
   function checkText(c) {
+    if (remote && c.rule === "no-checkout" && c.args) {
+      return fmt(S.serverNoCheckoutCheck, { stage: lang === "ko" ? stageName(c.args.stage) : c.args.stage, alias: c.args.alias });
+    }
     if (lang === "ko" && c.by !== "review" && KO_CHECKS[c.rule] && c.args) {
       try { return KO_CHECKS[c.rule](c.args); } catch (error) { return c.message; }
     }
@@ -504,7 +513,7 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
     fact(S.truth, stage.truth === "human" ? S.truthHuman : S.truthSource);
     var sourceParts = [];
     if (stage.source) { sourceParts.push(stage.source + (stage.default_source ? " (" + S.defaultSource + ")" : "")); }
-    sourceParts.push((S.sourceStates[stage.source_state] || stage.source_state || ""));
+    sourceParts.push(remote && stage.source_state === "no-checkout" ? S.serverNoCheckout : (S.sourceStates[stage.source_state] || stage.source_state || ""));
     if (stage.files !== undefined) { sourceParts.push(count(S.files, stage.files)); }
     if (stage.copied) { sourceParts.push(fmt(S.copied, { time: when(stage.copied.oldest) + (stage.copied.newest !== stage.copied.oldest ? "–" + when(stage.copied.newest) : "") })); }
     if (stage.skipped) { sourceParts.push(fmt(S.notRead, { list: Object.keys(stage.skipped).map(function (r) { return r + " " + stage.skipped[r]; }).join(", ") })); }
@@ -709,7 +718,7 @@ footer { color: var(--muted); font-size: 0.8rem; padding: 8px 0 28px; }
     document.getElementById("find-label").textContent = S.findLabel;
     document.getElementById("q").setAttribute("placeholder", S.findHint);
     document.getElementById("find-button").textContent = S.find;
-    document.getElementById("footer").textContent = data.origin === "server" ? S.footerServer : S.footerLocal;
+    document.getElementById("footer").textContent = remote ? S.footerServer : S.footerLocal;
     var holder = document.getElementById("projects");
     if (!projects.length) {
       holder.appendChild(el("p", { class: "panel note", text: S.empty }));
