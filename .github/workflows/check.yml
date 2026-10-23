@@ -33,3 +33,4 @@ jobs:
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/corthex
       - run: claude plugin validate --strict plugins/corthex-memory
+      - run: claude plugin validate --strict plugins/corthex-nexus

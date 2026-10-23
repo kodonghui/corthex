@@ -19,6 +19,13 @@
       "description": "Adds the CORTHEX working principles, your profile and the current project's settings to the start of each session, from local files.",
       "category": "productivity",
       "tags": ["memory", "context", "hooks"]
+    },
+    {
+      "name": "corthex-nexus",
+      "source": "./plugins/corthex-nexus",
+      "description": "One page with the stages, checks and trace links of all your CORTHEX projects, from local files. Can send snapshots to a NEXUS server you run yourself.",
+      "category": "productivity",
+      "tags": ["hub", "dashboard", "traceability"]
     }
   ]
 }

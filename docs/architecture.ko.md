@@ -4,7 +4,7 @@
 
 CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파일 형식은 입구 스킬의 참고 문서에 한 번만 정의되어 있고, 이 문서는 그 내용을 되풀이하지 않고 링크합니다.
 
-상태: 0.1.0. 핵심 플러그인 `corthex`와 `corthex-memory`의 첫 부분인 세션 시작 문맥이 있습니다. `corthex-memory`의 나머지와 `corthex-nexus`는 계획 중입니다([앞으로](#앞으로) 참고).
+상태: 0.1.0. 핵심 플러그인 `corthex`가 있고, `corthex-memory`의 첫 부분(세션 시작 문맥)과 `corthex-nexus`의 첫 부분(로컬 프로젝트 허브)이 있습니다. 둘의 나머지는 계획 중입니다([앞으로](#앞으로) 참고).
 
 ## 목표
 
@@ -32,12 +32,20 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │       │   └── assets/              profile.json과 project.json 예시
 │   │       ├── corthex-discover/ …      단계 스킬, 단계마다 참고 문서 하나
 │   │       └── corthex-record/          회의록, 결정, 진행 기록
-│   └── corthex-memory/                  세션 시작 문맥, 훅이 있음
+│   ├── corthex-memory/                  세션 시작 문맥, 훅이 있음
+│   │   ├── .claude-plugin/plugin.json   Claude Code용 매니페스트
+│   │   ├── .codex-plugin/plugin.json    Codex용 매니페스트, 루트 plugin.json은 없음
+│   │   ├── hooks/hooks.json             세션 시작 훅 하나, 두 도구가 함께 읽음
+│   │   ├── scripts/session_start.py     문맥을 만듦, Python 표준 라이브러리만 씀
+│   │   ├── context/principles.md        일하는 원칙의 짧은 판
+│   │   └── LICENSE, NOTICE
+│   └── corthex-nexus/                   프로젝트 허브, 스크립트가 든 스킬
 │       ├── .claude-plugin/plugin.json   Claude Code용 매니페스트
-│       ├── .codex-plugin/plugin.json    Codex용 매니페스트, 루트 plugin.json은 없음
-│       ├── hooks/hooks.json             세션 시작 훅 하나, 두 도구가 함께 읽음
-│       ├── scripts/session_start.py     문맥을 만듦, Python 표준 라이브러리만 씀
-│       ├── context/principles.md        일하는 원칙의 짧은 판
+│       ├── plugin.json                  Agent Plugins 1.0 매니페스트, Codex가 읽음
+│       ├── skills/corthex-hub/
+│       │   ├── scripts/hub.py           스냅샷, 점검, 페이지, 보내기, Python 표준 라이브러리만 씀
+│       │   ├── assets/hub.html          네트워크에서 아무것도 불러오지 않는 페이지 틀
+│       │   └── references/              허브가 읽고 점검하는 것, 파일 형식
 │       └── LICENSE, NOTICE
 ├── tests/                               검사, Python 표준 라이브러리만 씀
 └── docs/
@@ -47,7 +55,7 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 
 Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에서 읽습니다. Codex와 다른 Agent Plugins 클라이언트는 플러그인 루트의 `plugin.json`을 읽고, Codex는 그 파일의 `extensions.com.openai`에서 자기 설정을 가져갑니다. Agent Plugins 1.0의 호환 클라이언트 목록에 Claude Code가 없어서 두 파일을 함께 둡니다. `skills/` 폴더는 하나를 같이 씁니다.
 
-훅이 든 플러그인은 예외입니다. Codex CLI 0.164.0은 플러그인 루트에 `plugin.json`이 있으면 `.codex-plugin/plugin.json`을 함께 둬도 그 플러그인의 훅을 돌리지 않습니다([openai/codex#39895](https://github.com/openai/codex/issues/39895), 2026-10-23에 재현). 루트 `plugin.json`이 없으면 Codex는 `.codex-plugin/plugin.json`을 읽고 `hooks/hooks.json`을 스스로 찾습니다. 그래서 `corthex-memory`는 `.claude-plugin/plugin.json`과 `.codex-plugin/plugin.json`을 두고 루트 `plugin.json`은 두지 않습니다. 이 때문에 다른 Agent Plugins 클라이언트에는 가지 않고, OpenAI 디렉터리는 원래 훅이 든 플러그인을 받지 않습니다.
+훅이 든 플러그인은 예외입니다. Codex CLI 0.164.0은 플러그인 루트에 `plugin.json`이 있으면 `.codex-plugin/plugin.json`을 함께 둬도 그 플러그인의 훅을 돌리지 않습니다([openai/codex#39895](https://github.com/openai/codex/issues/39895), 2026-10-23에 재현). 루트 `plugin.json`이 없으면 Codex는 `.codex-plugin/plugin.json`을 읽고 `hooks/hooks.json`을 스스로 찾습니다. 그래서 `corthex-memory`는 `.claude-plugin/plugin.json`과 `.codex-plugin/plugin.json`을 두고 루트 `plugin.json`은 두지 않습니다. 이 때문에 다른 Agent Plugins 클라이언트에는 가지 않고, OpenAI 디렉터리는 원래 훅이 든 플러그인을 받지 않습니다. `corthex-nexus`는 훅이 없어서 핵심 플러그인처럼 두 파일을 모두 둡니다.
 
 `tests/test_manifests.py`가 매니페스트를 맞춰 둡니다.
 
@@ -65,7 +73,7 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 
 두 파일은 같은 마켓플레이스 이름 아래 같은 플러그인을 싣습니다. 그래서 두 도구 모두 설치 이름이 `corthex@corthex`입니다.
 
-기억 플러그인도 같은 방식으로 `corthex-memory@corthex`를 설치합니다. 이 플러그인은 `corthex`를 의존 플러그인으로 밝혀 두어 Claude Code는 둘을 함께 설치하고, Codex에서는 둘을 모두 추가합니다.
+선택 플러그인도 같은 방식으로 `corthex-memory@corthex`, `corthex-nexus@corthex`를 설치합니다. 둘 다 `corthex`를 의존 플러그인으로 밝혀 두어 Claude Code는 `corthex`도 함께 설치하고, Codex에서는 `corthex`를 먼저 추가합니다.
 
 ## 핵심 플러그인을 스킬만으로 만드는 이유
 
@@ -85,6 +93,8 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 | `corthex-build` | 10 WBS, 11 개발, 12 QA |
 | `corthex-present` | 13 발표 |
 | `corthex-record` | 회의록, 결정, 진행 기록. 어느 단계에서나 |
+
+`corthex-nexus`는 스킬 `corthex-hub` 하나를 더합니다([프로젝트 허브](#프로젝트-허브) 참고).
 
 - **14개가 아니라 8개입니다.** 도구는 세션마다 모든 스킬의 설명을 보여 주고, Codex는 이 첫 목록을 문맥 창의 2%(창 크기를 모르면 8,000자)로 제한합니다. 묶어서 목록을 짧게 유지합니다. 단계별 내용은 `references/`에 두고 필요할 때만 읽습니다.
 - **이름은 `corthex-`로 시작합니다.** 스킬을 플러그인 밖에서 따로 써도 이름이 겹치지 않게 하려는 것입니다. 플러그인 안에서는 두 도구 모두 `corthex:<스킬>`로 보여 줍니다.
@@ -136,6 +146,18 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 - **끄는 법.** 플러그인을 끄거나 지웁니다. Claude Code는 `claude plugin disable corthex-memory@corthex`를 실행합니다. Codex는 `~/.codex/config.toml`의 `[plugins."corthex-memory@corthex"]`에 `enabled = false`를 두거나 `codex plugin remove corthex-memory@corthex`를 실행합니다. 훅이 저장하는 것이 없어서 따로 되돌릴 것은 없습니다.
 - **지금까지 확인한 것.** Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려, 두 도구 모두 첫 모델 요청에 문맥이 실린 것을 봤습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다. 이어 연 세션(`claude -p --resume`, `codex exec resume`)에는 두 도구 모두 기록에 있던 문맥이 한 번만 실렸습니다. 갈라 낸 세션, Windows, macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다. Windows에서 Claude Code는 훅을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다.
 
+## 프로젝트 허브
+
+`corthex-nexus` 0.1.0에는 스킬 `corthex-hub` 하나와 스크립트 `scripts/hub.py` 하나가 있습니다. 프로젝트마다 이미 있는 파일로 모든 프로젝트를 한 페이지에 모으고, 서버는 쓰지 않습니다.
+
+- **스냅샷.** `~/.corthex/projects.json`의 프로젝트마다 `.corthex/project.json`이 가리키는 단계별 원본을 읽습니다. 프로젝트의 다른 저장소에 있는 원본도 읽습니다. 그 원본이 정의하고 잇는 것을 저장합니다: 추적 ID와 제목·항목 값, 각 ID가 있는 파일과 줄, ID 사이의 링크, 점검 결과. 글자만 읽고 프로젝트 코드를 실행하지 않으며, 이름이 비밀값처럼 보이는 파일은 건너뜁니다. 읽는 형식과 점검은 [reading.md](../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)에 있습니다.
+- **진행 상태.** 단계의 상태, 마지막 확인 지점, 다음 행동은 `hub.py status`로 기록한 것만 씁니다. 파일이 있다고 단계가 끝난 것은 아니기 때문입니다. 검토에서 찾은 점도 같은 방법으로 기록합니다.
+- **페이지.** `hub.py build`가 `~/.corthex/hub/index.html`을 씁니다. 프로젝트마다 13단계의 상태와 개수, 점검 결과, 단계별 설정과 항목, ID마다 앞뒤로 이어진 항목을 보여 주는 추적 화면, 검색이 있습니다. 자료는 페이지 안에 들어 있고, 콘텐츠 보안 정책이 모든 요청을 막으며, 글은 글로만 보여 줍니다. 그래서 디스크에서 바로, 오프라인에서도 열립니다. 언어는 프로필을 따라 한국어나 영어로, 밝은 화면과 어두운 화면은 시스템 설정을 따릅니다.
+- **기기 밖으로 나가는 것.** 사용자가 `hub.py push`를 실행하지 않으면 아무것도 나가지 않습니다. 스냅샷에는 ID, 제목, 항목 값, 점검 결과, 저장소 기준의 파일 위치, 커밋 ID가 들어갑니다. 그 밖의 파일 내용과 로컬 경로는 들어가지 않고, 제목에 든 비밀값과 이메일 주소는 `[redacted]`로 바꿉니다. 형식은 [snapshot.md](../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md)에 있습니다.
+- **보내기.** `hub.py push`는 프로필의 `nexus.push`에 적은 프로젝트의 스냅샷만 `nexus.url`로 보냅니다. HTTPS를 쓰고, Cloudflare Access 서비스 토큰은 환경 변수에서 읽습니다. 리다이렉트를 따라가지 않아서, 토큰이 거절되면 다른 곳으로 보내지 않고 알립니다. 서버는 0.1.0에 들어 있지 않습니다([앞으로](#앞으로) 참고).
+
+지금까지 확인한 것: `tests/test_hub.py`는 단계 스킬의 산출물 틀 그대로 프로젝트를 만들고, 허브가 거기서 읽은 항목, 링크, 점검 결과를 모두 확인합니다. 이어서 원본 형식마다, 진행 기록 파일, 페이지, 로컬 가짜 서버를 상대로 한 보내기를 확인합니다. Linux의 Python 3.8과 3.13에서 통과합니다. 페이지는 Chromium에서 1440과 320픽셀 폭, 밝은 화면과 어두운 화면으로 열어 스크립트 오류, 가로 스크롤, 네트워크 요청이 없는 것을 봤습니다. 저장소 세 곳에 나뉘고 요구사항을 Notion에서 내보낸 실제 프로젝트도 바꾸지 않고 읽었습니다. Windows와 macOS는 아직 돌려 보지 않았습니다.
+
 ## 버전과 릴리스
 
 - 버전은 유의적 버전을 씁니다. 버전은 두 매니페스트와 모든 스킬의 `metadata.version`에 있고, 검사가 셋을 같게 유지합니다.
@@ -146,7 +168,7 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 
 | 검사 | 명령 | 범위 |
 | --- | --- | --- |
-| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
+| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 
 CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사를 Linux, Windows, macOS에서, Claude Code 검증을 Linux에서 돌립니다.
@@ -156,7 +178,7 @@ CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장
 0.1.0에는 없고 계획만 있습니다. 둘 다 핵심 플러그인에 넣지 않는 구성 요소가 필요합니다.
 
 - `corthex-memory`의 다음 판: 대화 기록을 모아 프로젝트마다 현재 상태로 정리하고, 필요한 것을 다시 꺼내는 훅. 그 현재 상태도 세션 시작 문맥에 넣습니다.
-- `corthex-nexus`(선택): 모든 프로젝트를 모아 보는 허브와 사이트맵·플로우 편집 화면을 갖춘 MCP 서버. 사용자가 자기 도메인에서 돌립니다.
+- `corthex-nexus`의 다음 판: 사용자가 자기 도메인에서 Cloudflare Access 뒤에 두고 돌리는 NEXUS 서버. 어느 기기에서나 허브를 열 수 있게 합니다. `hub.py push`가 보낸 스냅샷을 받아 같은 페이지를 보여 주고, 첫 판은 Cloudflare D1에 저장합니다. 그다음 사이트맵과 유저 플로우 편집 화면, 같은 자료를 쓰는 MCP 서버를 더합니다.
 
 ## 근거
 
@@ -166,4 +188,5 @@ CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장
 - OpenAI: [Codex plugins](https://developers.openai.com/codex/plugins/build), [Submit your Claude Code plugin to OpenAI](https://developers.openai.com/plugins/guides/submit-claude-plugin), [Build skills](https://learn.chatgpt.com/docs/build-skills)
 - Agent Plugins: [Plugin manifest](https://agent-plugins.org/plugin-authors/manifest), [Client extensions](https://agent-plugins.org/plugin-authors/client-extensions), [Compatible clients](https://agent-plugins.org/compatible-clients)
 - 훅: [Claude Code hooks reference](https://code.claude.com/docs/en/hooks), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [openai/codex#39895](https://github.com/openai/codex/issues/39895)
+- Cloudflare Access: [Authenticate agents](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/), [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
 - [Agent Skills specification](https://agentskills.io/specification)
