@@ -280,6 +280,29 @@ class FormsTest(HubCase):
         self.assertEqual(self.refs(snapshot, "missing-upstream"), ["CHAT-01"], "removed items are left out")
         self.assertEqual(self.found(snapshot, "req-without-spec"), [])
 
+    def test_links_to_removed_or_undefined_items_do_not_count(self):
+        self.project(stages={
+            "02-prd": {"human": "notion", "source": "prd.md", "truth": "source"},
+            "04-functional-spec": {"human": "notion", "source": "spec.md", "truth": "source"},
+        })
+        self.write(self.repo / "prd.md", "| ID | Requirement | Type | Priority | Status | Spec |\n| --- | --- | --- | --- | --- | --- |\n"
+                   "| REQ-001 | Check out | functional | Must | active | |\n| REQ-002 | Old sign in | functional | Must | removed | |\n"
+                   "| REQ-003 | Pay | functional | Must | active | SPEC-009 |\n| REQ-004 | Sign in | functional | Must | active | |\n")
+        self.write(self.repo / "spec.md", "| ID | Behaviour | From | Status |\n| --- | --- | --- | --- |\n"
+                   "| SPEC-001 | Old checkout | REQ-001 | removed |\n| SPEC-002 | Sign in again | REQ-002 | active |\n"
+                   "| SPEC-003 | Sign in | REQ-004 | active |\n")
+        snapshot = self.snapshot()
+        self.assertEqual(self.refs(snapshot, "req-without-spec"), ["REQ-001", "REQ-003"], "a removed or undefined spec covers nothing")
+        self.assertEqual(self.refs(snapshot, "missing-upstream"), ["SPEC-002"], "a removed requirement is not an upstream")
+
+    def test_a_heading_without_an_id_closes_the_item(self):
+        self.project(stages={"02-prd": {"human": "notion", "source": "prd.md", "truth": "source"}})
+        self.write(self.repo / "prd.md", "# Requirements\n\n## REQ-001 One\n\nLeads to SPEC-001.\n\n## References for SPEC-002\n\nAnd SPEC-003.\n\n"
+                   "## REQ-002 Two\n\n### Notes on SPEC-004\n")
+        items = self.items(self.snapshot())
+        self.assertEqual(items["REQ-001"]["links"], ["SPEC-001"])
+        self.assertEqual(items["REQ-002"]["links"], ["SPEC-004"], "a lower heading stays in the item")
+
     def test_fields_are_cleaned(self):
         self.project(stages={"02-prd": {"human": "notion", "source": "prd.md", "truth": "human"}})
         self.write(self.repo / "prd.md", "| ID | Title | Status | Link |\n| --- | --- | --- | --- |\n"
@@ -415,6 +438,19 @@ class SourcesTest(HubCase):
         self.assertEqual(set(self.items(snapshot)), {"REQ-001"})
         self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"secret": 2})
 
+    def test_links_to_secret_files_are_skipped(self):
+        self.project(stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "source"}})
+        self.write(self.repo / "prd/requirements.md", "## REQ-001 Sign in\n")
+        self.write(self.repo / "secrets/REQ-002.md", "# REQ-002 Hidden\n")
+        try:
+            os.symlink(os.path.join("..", "secrets", "REQ-002.md"), str(self.repo / "prd/REQ-002.md"))
+            os.symlink("loop.md", str(self.repo / "prd/loop.md"))
+        except (OSError, NotImplementedError):
+            self.skipTest("symbolic links are not available")
+        snapshot = self.snapshot()
+        self.assertEqual(set(self.items(snapshot)), {"REQ-001"})
+        self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"secret": 1, "unreadable": 1})
+
     def test_secrets_and_emails_are_redacted(self):
         key = "sk-" + "x" * 24
         address = "dev" + "@" + "corp.test"
@@ -482,6 +518,82 @@ class SourcesTest(HubCase):
         self.assertIn("commit", hub.repo_info(self.repo))
         self.assertFalse(marker.exists(), "the repository's fsmonitor hook ran")
         self.assertEqual((index.read_bytes(), index.stat().st_mtime_ns), before, "the index was rewritten")
+
+    def commit_all(self, root):
+        for args in (["init", "-q", "-b", "main"], ["add", "."], ["commit", "-q", "-m", "start"]):
+            subprocess.run(["git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                            "-c", "commit.gpgsign=false"] + args, check=True, capture_output=True)
+
+    def set_filter(self, root, name, marker):
+        subprocess.run(["git", "-C", str(root), "config", "filter.%s.clean" % name, "echo ran > '%s'; cat" % marker.as_posix()],
+                       check=True, capture_output=True)
+
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_reading_a_repository_runs_no_clean_filter(self):
+        self.project()
+        self.write(self.repo / ".gitattributes", "* filter=probe\n")
+        self.commit_all(self.repo)
+        marker = self.base / "filter-ran"
+        self.set_filter(self.repo, "probe", marker)
+        os.utime(self.repo / ".corthex" / "project.json", (1000000000, 1000000000))  # makes Git compare the content
+        info = hub.repo_info(self.repo)
+        self.assertIn("commit", info)
+        self.assertFalse(marker.exists(), "the repository's clean filter ran")
+        self.assertNotIn("dirty", info, "Git can only tell by running the filter")
+
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_changes_are_found_when_no_file_uses_a_filter(self):
+        # Git for Windows and `git lfs install` set a filter for every repository.
+        self.project()
+        self.commit_all(self.repo)
+        marker = self.base / "filter-ran"
+        self.set_filter(self.repo, "unused", marker)
+        settings = self.repo / ".corthex" / "project.json"
+        os.utime(settings, (1000000000, 1000000000))
+        self.assertIs(hub.repo_info(self.repo)["dirty"], False)
+        self.write(settings, settings.read_text(encoding="utf-8").replace("Acme", "Acne"))
+        self.assertIs(hub.repo_info(self.repo)["dirty"], True)
+        self.assertFalse(marker.exists())
+
+    @unittest.skipIf(os.name == "nt", "the stand-in git is a shell script")
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_git_never_comes_from_the_current_folder(self):
+        real = os.path.dirname(shutil.which("git"))
+        self.project()
+        self.commit_all(self.repo)
+        marker = self.base / "stand-in-ran"
+        stand_in = self.repo / "git"
+        self.write(stand_in, "#!/bin/sh\necho ran > '%s'\n" % marker.as_posix())
+        stand_in.chmod(0o755)
+        here, path = os.getcwd(), os.environ.get("PATH", "")
+        os.chdir(str(self.repo))
+        # A relative entry is the current folder, which Windows searches first anyway.
+        os.environ["PATH"] = os.pathsep.join([".", real])
+        try:
+            info = hub.repo_info(self.repo)
+        finally:
+            os.chdir(here)
+            os.environ["PATH"] = path
+        self.assertFalse(marker.exists(), "a git from the current folder ran")
+        self.assertIn("commit", info)
+
+    @unittest.skipUnless(shutil.which("git"), "git is not installed")
+    def test_reading_a_repository_does_not_enter_its_submodules(self):
+        self.project()
+        part = self.base / "work" / "parts"
+        self.write(part / "notes.md", "draft\n")
+        self.write(part / ".gitattributes", "* filter=probe\n")
+        self.commit_all(part)
+        self.commit_all(self.repo)
+        subprocess.run(["git", "-C", str(self.repo), "-c", "protocol.file.allow=always", "submodule", "add", "-q", part.as_posix(), "parts"],
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                        "-c", "commit.gpgsign=false", "commit", "-q", "-m", "parts"], check=True, capture_output=True)
+        marker = self.base / "filter-ran"
+        self.set_filter(self.repo / "parts", "probe", marker)
+        os.utime(self.repo / "parts" / "notes.md", (1000000000, 1000000000))
+        self.assertIs(hub.repo_info(self.repo)["dirty"], False)
+        self.assertFalse(marker.exists(), "the submodule's clean filter ran")
 
 
 class StatusTest(HubCase):
