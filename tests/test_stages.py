@@ -62,6 +62,25 @@ class StageContractTest(unittest.TestCase):
             with self.subTest(skill=skill):
                 self.assertEqual(block, first)
 
+    def test_unreachable_human_views_keep_their_rules(self):
+        contract = section(read_text(SKILLS / "corthex" / "references" / "stage-contract.md"), "## Human views the AI cannot reach")
+        texts = {"stage-contract.md": contract}
+        for skill in STAGE_SKILLS:
+            steps = section(read_text(SKILLS / skill / "SKILL.md"), "## How a stage runs")
+            texts[skill] = next(line for line in steps.splitlines() if line.startswith("5. **Sync.**"))
+        rules = [
+            "new export at the start", "before each", "date of the copy you used",
+            "`truth: human`", "as proposed, not as done",
+            "`truth: source`", "done once it is in the source", "not yet updated until a newer export shows the change",
+        ]
+        for name, text in texts.items():
+            with self.subTest(text=name):
+                for rule in rules:
+                    self.assertIn(rule, text)
+                # Changes stay proposed only where the human view is the truth.
+                at = [text.index(rule) for rule in rules[3:]]
+                self.assertEqual(at, sorted(at))
+
     def test_entry_skill_routes_every_stage(self):
         entry = read_text(SKILLS / "corthex" / "SKILL.md")
         for skill in STAGE_SKILLS + ["corthex-record"]:

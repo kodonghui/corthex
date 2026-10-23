@@ -95,7 +95,7 @@ AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화�
 
 - 계약, 단계 키, 추적 ID 규칙: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md)
 - 각 단계의 여섯 칸, 진행 순서, 점검, 산출물 틀: 단계 스킬의 `references/<단계>.md`. 예: [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md)
-- `tests/test_stages.py`는 모든 단계가 여섯 칸을 채우는지, 단계 스킬이 자기 단계를 링크하는지, 단계 스킬들이 같은 진행 순서를 쓰는지 검사합니다.
+- `tests/test_stages.py`는 모든 단계가 여섯 칸을 채우는지, 단계 스킬이 자기 단계를 링크하는지, 단계 스킬들이 같은 진행 순서를 쓰는지, 진행 순서와 계약이 AI가 닿지 못하는 사람 화면의 규칙을 지키는지 검사합니다.
 
 ## 프로필과 프로젝트
 

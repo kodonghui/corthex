@@ -52,5 +52,5 @@ At the start of a stage, check whether this session can reach the human view thr
 
 - The text copy is only as fresh as the last export a person made. Ask for a new export at the start of the stage and before each human checkpoint, and give the date of the copy you used when you report.
 - With `truth: human`, give each change you propose as a list a person can apply in the tool, item by item, or as a file the tool can import. Until a newer export shows the change, report it as proposed, not as done.
-- With `truth: source`, give the person the file to import and the steps to import it, then compare the next export with the source.
+- With `truth: source`, a change is done once it is in the source. Give the person the file to import and the steps to import it, and report the tool as not yet updated until a newer export shows the change.
 - When a team is still choosing a tool, say which candidates keep their file in the repository or have an MCP server. The choice of a team's tool is the team's.

@@ -95,7 +95,7 @@ The AI reaches a human view through an MCP server, a connector or an API when th
 
 - The contract, the stage keys and the trace ID rules: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md).
 - Each stage's slots, steps, checks and output template: `references/<stage>.md` in the stage skill, such as [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md).
-- `tests/test_stages.py` checks that every stage fills all six slots, that each stage skill links its stages, and that all stage skills share one procedure.
+- `tests/test_stages.py` checks that every stage fills all six slots, that each stage skill links its stages, that all stage skills share one procedure, and that the procedure and the contract keep the rules for a human view the AI cannot reach.
 
 ## Profile and projects
 
