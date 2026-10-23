@@ -327,6 +327,22 @@ class FormsTest(HubCase):
         self.write(self.repo / "requirements.csv", "ID,Title,Notes\nREQ-001,Sign in,%s\n" % ("x" * 200000))
         self.assertEqual(self.items(self.snapshot())["REQ-001"]["title"], "Sign in")
 
+    def test_table_records_over_several_lines(self):
+        self.project(stages={"02-prd": {"human": "notion", "source": "requirements.csv", "truth": "human"}})
+        self.write(self.repo / "requirements.csv", 'ID,Title,Notes\nREQ-001,"Access is not\nallowed",See SPEC-001\nREQ-002,Sign in,"Two\nlines"\nREQ-003,Sign out,\n')
+        items = self.items(self.snapshot())
+        self.assertEqual(items["REQ-001"].get("title"), "Access is not allowed")
+        self.assertEqual([items[ident]["where"] for ident in ("REQ-001", "REQ-002", "REQ-003")],
+                         ["requirements.csv:2", "requirements.csv:4", "requirements.csv:6"], "the line each record starts on")
+
+    def test_yaml_keys_in_any_order(self):
+        self.project(stages={"07-sitemap": {"human": "board", "source": "sitemap.yaml", "truth": "source"}})
+        self.write(self.repo / "sitemap.yaml", "- name: Home\n  flows: [FL-001]\n  children:\n    - name: Cart\n      id: SCR-002\n  id: SCR-001\n")
+        items = self.items(self.snapshot())
+        home, cart = items["SCR-001"], items["SCR-002"]
+        self.assertEqual((home.get("title"), home.get("links"), home["where"]), ("Home", ["FL-001"], "sitemap.yaml:6"))
+        self.assertEqual((cart.get("title"), cart.get("parent"), cart["where"]), ("Cart", "SCR-001", "sitemap.yaml:5"))
+
 
 class SourcesTest(HubCase):
     def test_other_repository(self):
@@ -367,6 +383,18 @@ class SourcesTest(HubCase):
         for form in (str(self.base), json.dumps(str(self.base))[1:-1], self.base.as_posix()):
             self.assertNotIn(form, text)
 
+    def test_an_entry_without_a_source_is_not_read(self):
+        self.project(stages={"02-prd": {}, "03-user-flow": {"human": "notion"}})
+        self.write(self.repo / "docs/02-prd/requirements.md", "## REQ-001 Sign in\n")
+        self.write(self.repo / "docs/03-user-flow/FL-001.md", "# FL-001 Sign in\n")
+        self.write(self.repo / "docs/04-functional-spec/spec.md", "## SPEC-001 Sign in\n")
+        snapshot = self.snapshot()
+        stages = snapshot["stages"]
+        self.assertEqual(set(self.items(snapshot)), {"SPEC-001"}, "only the stage without an entry uses its default path")
+        self.assertEqual([stages[key]["source_state"] for key in ("02-prd", "03-user-flow")], ["none", "none"])
+        self.assertNotIn("default_source", stages["02-prd"])
+        self.assertTrue(stages["04-functional-spec"]["default_source"])
+
     def test_skipped_files(self):
         self.project(stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "source"}})
         self.write(self.repo / "prd/requirements.md", "## REQ-001 Sign in\n")
@@ -396,6 +424,26 @@ class SourcesTest(HubCase):
         self.assertNotIn(key, text)
         self.assertNotIn(address, text)
         self.assertIn("Ask [redacted] with [redacted]", text)
+
+    def test_links_that_hold_secrets_are_left_out(self):
+        token = "ghp_" + "x" * 36
+        address = "dev" + "%40" + "corp.test"
+        # A word that ends in "sk" before a hyphen is not a key, in a title or in a page address.
+        title = "Task" + "-management-and-reporting"
+        page = "https://www.notion.so/acme/Task" + "-board-for-the-spring-release-" + "0123456789abcdef" * 2
+        self.project(records={"kind": "notion", "location": "https://example.com/records?token=" + token},
+                     stages={"02-prd": {"human": "notion", "source": "prd.md", "truth": "human", "link": "https://example.com/prd?owner=" + address}})
+        self.write(self.repo / "prd.md", "| ID | Title | Link |\n| --- | --- | --- |\n"
+                   "| REQ-001 | Sign in | https://example.com/req-1?token=%s |\n| REQ-002 | %s | %s |\n" % (token, title, page))
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertNotIn("link", items["REQ-001"])
+        self.assertEqual((items["REQ-002"].get("title"), items["REQ-002"].get("link")), (title, page))
+        self.assertEqual(snapshot["project"]["records"]["link"], "")
+        self.assertNotIn("link", snapshot["stages"]["02-prd"])
+        text = json.dumps(snapshot)
+        self.assertNotIn(token, text)
+        self.assertNotIn("corp.test", text)
 
     @unittest.skipUnless(shutil.which("git"), "git is not installed")
     def test_repository_state(self):

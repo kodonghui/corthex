@@ -17,6 +17,7 @@ use the network. Standard library only.
 import argparse
 import csv
 import html
+import io
 import json
 import os
 import re
@@ -97,9 +98,10 @@ SECRET_NAME = re.compile(
     r"(?i)(?:^|[._-])(?:secrets?|credentials?|passwords?|passwd|api[-_]?keys?|private[-_]?keys?"
     r"|access[-_]?tokens?|auth[-_]?tokens?)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$"
 )
+# A key starts a word, so "Task-board-…" in a title or a page address is not one.
 SECRET_TEXT = re.compile(
-    r"sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
-    r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----"
+    r"(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})|-----BEGIN [A-Z ]*PRIVATE KEY-----"
     r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
 )
 
@@ -262,7 +264,11 @@ def field_value(field, raw):
 
 
 def web_link(raw):
-    """The first http(s) address in raw text, without any user name or password."""
+    """The first http(s) address in raw text, without any user name or password.
+
+    A link that holds a secret or an email address, even percent-encoded, is
+    left out whole: with the secret taken out it would no longer work.
+    """
     match = URL.search(raw if isinstance(raw, str) else "")
     if not match:
         return ""
@@ -274,7 +280,10 @@ def web_link(raw):
     if parts.scheme not in ("http", "https") or not parts.hostname:
         return ""
     netloc = parts.hostname + (":%d" % port if port else "")
-    return urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))[:500]
+    link = urllib.parse.urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+    if SECRET_TEXT.search(link) or SECRET_TEXT.search(urllib.parse.unquote(link)):
+        return ""
+    return link[:500]
 
 
 def field_of(name):
@@ -644,8 +653,7 @@ def scan_row(scan, src, number, row, header, sections):
 
 def scan_yaml(scan, src, text):
     """Mappings with an `id:` key define items; the rest of the mapping links from them."""
-    stack = []
-    keys = []
+    lines = []
     for number, line in enumerate(text.splitlines(), 1):
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
@@ -655,39 +663,61 @@ def scan_yaml(scan, src, text):
         indent = len(line) - len(line.lstrip(" "))
         dash = bool(match and match.group(2)) or (item is not None and not match)
         level = indent + (len(match.group(2)) if match and match.group(2) else 2 if dash else 0)
-        while stack and (level < stack[-1][0] or (level == stack[-1][0] and dash)):
-            stack.pop()
-        if match:
-            key = match.group(3).strip().strip("\"'")
-            value = yaml_value(match.group(4) or "")
+        key = match.group(3).strip().strip("\"'") if match else None
+        value = yaml_value(match.group(4) or "") if match else ""
+        lines.append((number, line, level, dash, key, value))
+    # The keys of a mapping may come in any order, so first find each mapping's
+    # ID and fields: [level, enclosing mapping, ID, line of the ID, fields].
+    maps = []
+    owners = []
+    open_maps = []
+    for number, line, level, dash, key, value in lines:
+        while open_maps and (level < maps[open_maps[-1]][0] or (level == maps[open_maps[-1]][0] and dash)):
+            open_maps.pop()
+        if key is not None and not (open_maps and maps[open_maps[-1]][0] == level):
+            maps.append([level, open_maps[-1] if open_maps else None, None, 0, {}])
+            open_maps.append(len(maps) - 1)
+        owners.append(open_maps[-1] if open_maps else None)
+        if key is None:
+            continue
+        mapping = maps[open_maps[-1]]
+        if key.lower() == "id":
+            found = scan.ids.whole(value)
+            if found and mapping[2] is None:
+                mapping[2], mapping[3] = found, number
+            continue
+        # Only clear names give a title here; `feature:` may be anything.
+        field = field_of(norm(key))
+        if field == "title" and norm(key) not in TITLE_NAMES:
+            field = None
+        if field and not mapping[4].get(field):
+            mapping[4][field] = plain(value) if field == "title" else field_value(field, value)
+    # Each mapping speaks for its own ID, else for that of the nearest mapping around it.
+    subjects = []
+    for _, outer, found, _, _ in maps:
+        subjects.append(found[0] if found else subjects[outer] if outer is not None else None)
+    keys = []
+    for (number, line, level, dash, key, value), owner in zip(lines, owners):
+        if key is not None:
             while keys and keys[-1][0] >= level:
                 keys.pop()
             keys.append((level, key))
-            if key.lower() == "id":
-                found = scan.ids.whole(value)
-                if found:
-                    ident, kind, state = found
-                    parent = stack[-1][1] if stack else None
-                    title = api_title(keys) if kind == "api" else ""
-                    entry = scan.claim(ident, kind, src, number, {"title": title}, parent)
-                    scan.mention(ident, src, number)
-                    stack.append((level, ident, entry))
-                    continue
-            elif stack and level == stack[-1][0] and stack[-1][2] is not None:
-                # Only clear names give a title here; `feature:` may be anything.
-                field = field_of(norm(key))
-                if field == "title" and norm(key) not in TITLE_NAMES:
-                    field = None
-                entry = stack[-1][2]
-                if field and not entry.get(field):
-                    entry[field] = plain(value) if field == "title" else field_value(field, value)
+            _, outer, found, id_line, fields = maps[owner]
+            if id_line == number:
+                ident, kind, _ = found
+                fields = dict(fields)
+                if kind == "api" and api_title(keys):
+                    fields["title"] = api_title(keys)
+                scan.claim(ident, kind, src, number, fields, subjects[outer] if outer is not None else None)
+                scan.mention(ident, src, number)
+                continue
             inline = re.search(r"\bid\s*:\s*[\"']?([^\s,\"'}]+)", value) if value.startswith("{") else None
             found = scan.ids.whole(inline.group(1)) if inline else None
             if found:
-                entry = scan.claim(found[0], found[1], src, number, {"title": api_title(keys) if found[1] == "api" else ""})
+                scan.claim(found[0], found[1], src, number, {"title": api_title(keys) if found[1] == "api" else ""})
                 scan.refer(value, src, number, found[0])
                 continue
-        scan.refer(line, src, number, stack[-1][1] if stack else None)
+        scan.refer(line, src, number, subjects[owner] if owner is not None else None)
 
 
 def yaml_value(value):
@@ -786,16 +816,23 @@ def scan_sql(scan, src, text):
 
 
 def scan_table_file(scan, src, text, delimiter):
+    # The stream keeps its line breaks, so a quoted field can span lines; each
+    # record is numbered by the line it starts on.
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter)
+    rows = []
+    start = 1
     try:
-        rows = list(csv.reader(text.splitlines(), delimiter=delimiter))
+        for row in reader:
+            rows.append((start, row))
+            start = reader.line_num + 1
     except csv.Error:
         scan_text(scan, src, text)
         return
     if not rows:
         return
-    header = [norm(plain(cell, 60)) for cell in rows[0]]
+    header = [norm(plain(cell, 60)) for cell in rows[0][1]]
     column = id_column(header)
-    for number, row in enumerate(rows[1:], 2):
+    for number, row in rows[1:]:
         found = scan.ids.whole(plain(row[column], 200)) if column is not None and column < len(row) else None
         if found is None:
             scan.refer(" | ".join(row), src, number)
@@ -1089,18 +1126,20 @@ def read_stages(project, scan, problems):
             stage["skip"] = True
             stage["source_state"] = "skipped"
             continue
-        source = given.get("source") if given else default
+        # Only a stage without an entry takes the default path; an entry, even
+        # an empty one, is read from its own `source` or not at all.
+        source = given.get("source") if given is not None else default
         if not isinstance(source, str) or not source.strip():
             stage["source_state"] = "none"
             continue
         stage["source"] = one_line(shown_source(source.strip()), 200)
-        if not given:
+        if given is None:
             stage["default_source"] = True
         alias, root, target, state = locate(source.strip(), project, problems, key)
         stage["source_state"] = state
         if alias != ".":
             stage["repo"] = alias
-        if state == "missing" and given:
+        if state == "missing" and given is not None:
             problems.append(check("source-missing", "warn", "%s: the source %s does not exist" % (key, source), stage=key, args={"stage": key, "source": source}))
         if state != "found" or not readable:
             continue
