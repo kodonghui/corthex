@@ -712,6 +712,37 @@ class PageTest(HubCase):
         self.assertEqual(notes, ["blog: its folder is not on this machine"])
         self.assertTrue(hub.snapshot_path(self.home, "acme-shop").is_file())
 
+    def test_a_project_is_read_only_under_its_registered_name(self):
+        blog = self.base / "work" / "blog"
+        self.write(blog / ".corthex" / "project.json", {"name": "blog", "title": "Blog"})
+        self.project(name="blog")
+        self.write(self.home / ".corthex" / "projects.json", {"projects": [{"name": "blog", "path": str(blog)}, {"name": "acme-shop", "path": str(self.repo)}]})
+        path, snapshots, notes = hub.build_hub(self.home, now=NOW)
+        self.assertEqual([s["project"]["title"] for s in snapshots], ["Blog"])
+        self.assertEqual(self.page_data(read_text(path))["missing"], [{"name": "acme-shop", "reason": "no snapshot"}])
+        self.assertEqual(notes, ["acme-shop: its .corthex/project.json names it blog, but ~/.corthex/projects.json registers it as acme-shop; use one name in both"])
+        ((_, project, reason),) = hub.select_projects(self.home, [], self.repo)
+        self.assertIsNone(project)
+        self.assertIn("registers it as acme-shop", reason)
+
+    def test_a_folder_cannot_take_a_registered_name(self):
+        other = self.base / "work" / "acme-old"
+        self.write(other / ".corthex" / "project.json", {"name": "acme-shop"})
+        self.project()
+        self.write(self.home / ".corthex" / "projects.json", {"projects": [{"name": "acme-shop", "path": str(other)}]})
+        ((_, project, reason),) = hub.select_projects(self.home, [], self.repo)
+        self.assertIsNone(project)
+        self.assertIn("acme-shop is registered for another folder", reason)
+
+    def test_a_registered_folder_may_be_spelled_another_way(self):
+        variant = self.repo.parent / self.repo.name.upper()
+        if not hub.is_dir(variant):
+            self.skipTest("this file system tells letter cases apart")
+        self.project()
+        self.register(path=str(variant))
+        ((_, project, reason),) = hub.select_projects(self.home, [], self.repo)
+        self.assertIsNotNone(project, reason)
+
     def test_unregistered_snapshots_stay_off_the_page(self):
         self.project()
         self.register()

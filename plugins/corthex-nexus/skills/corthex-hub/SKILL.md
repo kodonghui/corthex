@@ -20,7 +20,7 @@ Run the script in this skill's folder, `scripts/hub.py`, with Python 3: `python3
 2. Tell the user where the page is and what the checks found, the most serious first, with the IDs. Open the page only if they ask.
 3. The page loads nothing from the network and runs from the disk. It holds item titles from the projects, so share it only where the projects' material may go.
 
-If a project is missing, register it with the `corthex` skill first. If a stage's source sits in another repository without a local checkout, the page says so; ask for the checkout's path and add it to the project's entry in `~/.corthex/projects.json`.
+If a project is missing, register it with the `corthex` skill first. The hub reads a project only under the name it is registered with; when it says a project's `.corthex/project.json` gives another name, or a name registered for another folder, ask the user which name is right and fix the registration or the project's settings with the `corthex` skill. If a stage's source sits in another repository without a local checkout, the page says so; ask for the checkout's path and add it to the project's entry in `~/.corthex/projects.json`.
 
 ## Answer questions about IDs
 
