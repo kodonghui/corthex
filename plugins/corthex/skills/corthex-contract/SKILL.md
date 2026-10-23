@@ -22,7 +22,7 @@ This skill covers two stages. Each stage's contract, steps, checks and output te
 2. **Inputs.** Read the inputs in the stage contract, with their trace IDs. Name any missing input and ask whether to go on without it.
 3. **Outputs.** Write the outputs to `source` with the stage's trace IDs. Never reuse or renumber an ID; mark removed items as removed.
 4. **Checks.** Run the stage's checks. Report what passed, what failed and what you could not check.
-5. **Sync.** Bring the human view and the source into line in the direction `truth` gives. When `truth` is `human`, refresh the source from the human view and do not edit the source directly. If this session cannot reach the human view through an MCP server, a connector or an API, work from the latest export and follow "Human views the AI cannot reach" in the `corthex` skill's stage contract.
+5. **Sync.** Bring the human view and the source into line in the direction `truth` gives. When `truth` is `human`, refresh the source from the human view and do not edit the source directly. If this session cannot reach the human view through an MCP server, a connector or an API, work from a person's latest export. Ask for a new export at the start and before each checkpoint, and give the date of the copy you used. Hand over each change as steps a person can apply in the tool or as a file the tool can import, and report it as proposed, not done, until a newer export shows it.
 6. **Checkpoint.** Stop at the stage's human checkpoint and ask. Silence, a read receipt or an edit is not approval.
 7. **Record.** Record decisions and the next action with `corthex-record`.
 
