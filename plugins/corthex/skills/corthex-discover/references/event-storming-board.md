@@ -39,7 +39,7 @@ Miro's official MCP server lets the AI read and write boards.
 - Sign-in uses OAuth, and the server reaches only the boards of the team chosen at sign-in. On an Enterprise plan, an administrator may have to allow it first.
 - Ask before creating a board: the tool cannot undo it. Then put the board's link in the stage's `link`.
 - Search the board for the frame you need, then read only that area. Do not read the whole board.
-- Write each step's stickies in the step's frame, with the legend's colours, in the project's language.
+- Write each step's stickies in the step's frame, with the legend's colours. Use the language people work in on the board; when the document is in another language, put the document's word on a second line of the sticky, so the board and the glossary use the same words.
 - To copy a frame, read it and create the copy from what you read, without the board's item IDs.
 - The server acts as the signed-in person, so what the AI adds shows that person's name. Keep the AI's proposals in a strip labelled as AI proposals until people accept them, and start the AI's comments with "AI:".
 - Ask questions as comments on the sticky concerned. Before the next step, read the replies, carry each answer into the document, and resolve the comment.

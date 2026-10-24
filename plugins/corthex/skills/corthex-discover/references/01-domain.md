@@ -38,6 +38,10 @@ Each step adds one layer to the board. Start each step in a copy of the previous
 - **Step 9 · Context tables.** For each context, fill one table: commands (API candidates), domain events, read models, aggregates, hotspots (risks), links to other contexts, policies and external systems. **Checkpoint 3: the tables and the context map.**
 - **Document.** Write or update the domain design document from the board, with the template below, and link the frames of steps 7 to 9. Keep each open hotspot as an open question, and name those that need an answer before the requirements are written, for stage 02.
 
+## Starting from an existing document
+
+When the stage already has a domain document, written without a board, draw it on the board as the draft of steps 1 to 9, one frame per step, and go through the checkpoints as usual. Put each context's CTX ID in its name on the board, such as "CTX-001 Ordering", so the board and the document keep the same IDs. What changes on the board updates the document under its existing IDs; an item that goes away is marked as removed, never renumbered.
+
 ## Checkpoints
 
 At each checkpoint, stop and send the user a short note: what you put on the board since the last checkpoint, a link to each frame concerned, and the three to five things that most need a look, such as hotspots and guesses. The user answers on the board or in the conversation. Read the board again before you go on: a change on the board is an answer, but silence is not approval.
