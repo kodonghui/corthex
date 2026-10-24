@@ -15,7 +15,7 @@
       "human": "notion",
       "source": "docs/02-prd/",
       "truth": "source",
-      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day), NEXUS in nexus.md (draft of 2026-10-24, for the scope check). Translations beside them are not read as sources. Korean copies, with the tables as databases, are reviewed in the project's Notion records, as the maintainer asked on 2026-10-24; the copies follow these files."
+      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day), NEXUS in nexus.md (rewritten on 2026-10-24 from the event storming board and the new stage 01, for the scope check). Translations beside them are not read as sources. Korean copies, with the tables as databases, are reviewed in the project's Notion records, as the maintainer asked on 2026-10-24; the copies follow these files."
     },
     "03-user-flow": {
       "human": "notion",
