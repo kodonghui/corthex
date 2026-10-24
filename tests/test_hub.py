@@ -733,15 +733,34 @@ class SourcesTest(HubCase):
         self.assertEqual(snapshot["stages"]["01-domain"]["skipped"], {"translation": 2})
         self.assertEqual(self.found(snapshot, "files-skipped"), [], "translations are expected, not a finding")
 
+    def test_a_file_with_ids_of_its_own_is_read(self):
+        self.project(stages={"02-prd": {"human": "github", "source": "prd/", "truth": "source"}})
+        self.write(self.repo / "prd/spec.md", "## REQ-001 Sign in\n")
+        # Not a translation: the screens' requirements, in a file of their own.
+        self.write(self.repo / "prd/spec.ui.md", "## REQ-002 Show the sign-in screen\n")
+        self.write(self.repo / "prd/spec.ui.ko.md", "## REQ-002 로그인 화면 보이기\n")
+        # A translation ahead of its original is read, and its shared IDs show as duplicates.
+        self.write(self.repo / "prd/plan.md", "## REQ-003 Plan the release\n")
+        self.write(self.repo / "prd/plan.ko.md", "## REQ-003 출시 계획\n## REQ-004 새 요구사항\n")
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertEqual(set(items), {"REQ-001", "REQ-002", "REQ-003", "REQ-004"})
+        self.assertEqual(items["REQ-002"]["where"], "prd/spec.ui.md:1")
+        self.assertEqual(items["REQ-003"]["where"], "prd/plan.md:1", "the original's definition comes first")
+        self.assertEqual(items["REQ-004"]["where"], "prd/plan.ko.md:2")
+        self.assertEqual(self.refs(snapshot, "duplicate-id"), ["REQ-003"])
+        self.assertEqual(snapshot["stages"]["02-prd"]["files"], 4)
+        self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"translation": 1}, "spec.ui.ko.md translates spec.ui.md")
+
     def test_translation_names(self):
         present = {Path("docs") / name for name in ("spec.md", "spec.MD", "notes.txt", "a.b.md")}
         for name, expected in (
-            ("spec.ko.md", True), ("spec.pt-BR.md", True), ("spec.zh-Hans.md", True), ("spec.es-419.md", True),
-            ("spec.ko.MD", True), ("a.b.ko.md", True), ("notes.ko.txt", True), ("notes.ko.md", False),
-            ("spec.v2.md", False), ("spec.old.md", False), ("spec.KO.md", False), ("ko.md", False), ("other.ko.md", False),
+            ("spec.ko.md", "spec.md"), ("spec.pt-BR.md", "spec.md"), ("spec.zh-Hans.md", "spec.md"), ("spec.es-419.md", "spec.md"),
+            ("spec.ko.MD", "spec.MD"), ("a.b.ko.md", "a.b.md"), ("notes.ko.txt", "notes.txt"), ("notes.ko.md", None),
+            ("spec.v2.md", None), ("spec.old.md", None), ("spec.KO.md", None), ("ko.md", None), ("other.ko.md", None),
         ):
             with self.subTest(name=name):
-                self.assertEqual(hub.translation(Path("docs") / name, present), expected)
+                self.assertEqual(hub.original_of(Path("docs") / name, present), expected and Path("docs") / expected)
 
     def test_secret_folders_are_skipped(self):
         self.project(stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "source"}})

@@ -48,7 +48,7 @@ The principle behind the split: the human view can change from team to team, but
 
 ## Translations
 
-- A translation sits beside its original, with a language tag before the extension: `requirements.ko.md` beside `requirements.md`, or `spec.pt-BR.md` beside `spec.md`. The original is the source. Tools that read a folder source skip such a translation, so its IDs are not defined twice.
+- A translation sits beside its original, with a language tag before the extension: `requirements.ko.md` beside `requirements.md`, or `spec.pt-BR.md` beside `spec.md`. The original is the source. Tools that read a folder source skip a translation that defines only its original's IDs, so they are not defined twice; a file with an ID of its own, such as `spec.ui.md`, is read like any other.
 - Keep the original's IDs in the translation and change the original first. Where the two differ, the original holds.
 
 ## Human views the AI cannot reach

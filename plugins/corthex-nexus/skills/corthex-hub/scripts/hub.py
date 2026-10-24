@@ -410,13 +410,14 @@ class IdFormat:
 # ---------------------------------------------------------------- reading sources
 
 class Source:
-    """One file of a stage source: where it is and which IDs it can define."""
+    """One file of a stage source: where it is, which IDs it can define and which it does."""
 
     def __init__(self, stage, kinds, alias, rel):
         self.stage = stage
         self.kinds = kinds
         self.alias = alias
         self.rel = rel
+        self.defined = set()
         stem = rel.rsplit("/", 1)[-1].rsplit(".", 1)[0]
         self.stem = stem
         # Listings, such as an exported database index, only fill in what the
@@ -456,6 +457,7 @@ class Scan:
         if parent:
             entry["parent"] = parent
         self.defs.setdefault(ident, []).append(entry)
+        src.defined.add(ident)
         return entry
 
     def link(self, source, target):
@@ -1106,7 +1108,6 @@ def source_files(target, root, skipped):
         for folder, dirs, files in os.walk(target):
             dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS)
             candidates.extend(Path(folder) / name for name in sorted(files) if not name.startswith("."))
-    present = set(candidates)
     chosen = []
     for path in candidates:
         reason = None
@@ -1119,9 +1120,6 @@ def source_files(target, root, skipped):
                 reason = "secret"
             elif not inside(real, root):
                 reason = "outside"
-            elif translation(path, present):
-                # Its original is the source, and the copy would define each ID again.
-                reason = "translation"
             elif path.stat().st_size > MAX_FILE_BYTES:
                 reason = "size"
             elif len(chosen) >= MAX_FILES:
@@ -1135,10 +1133,13 @@ def source_files(target, root, skipped):
     return chosen
 
 
-def translation(path, present):
-    """True for a name with a language tag, such as spec.ko.md, when its original spec.md is in the source too."""
+def original_of(path, present):
+    """The file that a name with a language tag translates, such as spec.md for spec.ko.md, when it is in present."""
     stem, dot, tag = path.stem.rpartition(".")
-    return bool(dot and stem and LANGUAGE_TAG.match(tag)) and path.with_name(stem + path.suffix) in present
+    original = path.with_name(stem + path.suffix)
+    if dot and stem and LANGUAGE_TAG.match(tag) and original in present:
+        return original
+    return None
 
 
 def secret_path(path, root):
@@ -1451,14 +1452,33 @@ def read_stages(project, scan, problems):
         skipped = {}
         files = source_files(target, root, skipped)
         stage["read"] = True
-        stage["files"] = len(files)
-        for path in files:
+        present = set(files)
+        originals = {path: original_of(path, present) for path in files}
+        # Translations come after the files they translate, shorter names first,
+        # so that each is compared with what its original defines.
+        order = [path for path in files if not originals[path]]
+        order += sorted((path for path in files if originals[path]), key=lambda path: len(path.name))
+        defined = {}
+        for path in order:
             text = read_text(path)
             if text is None:
                 skipped["unreadable"] = skipped.get("unreadable", 0) + 1
                 continue
             rel = path.resolve().relative_to(root).as_posix()
-            scan_file(scan, Source(key, kinds, alias, rel), text)
+            src = Source(key, kinds, alias, rel)
+            original = originals[path]
+            if original:
+                scan_file(Scan(scan.ids), src, text)
+                if src.defined and src.defined <= defined.get(original, set()):
+                    # It would only define its original's IDs again. A file with
+                    # an ID of its own, such as spec.ui.md beside spec.md, is read.
+                    skipped["translation"] = skipped.get("translation", 0) + 1
+                    defined[path] = src.defined
+                    continue
+                src = Source(key, kinds, alias, rel)
+            scan_file(scan, src, text)
+            defined[path] = src.defined
+        stage["files"] = len(files) - skipped.get("translation", 0)
         if skipped:
             stage["skipped"] = skipped
             noted = {reason: count for reason, count in skipped.items() if reason not in ("format", "translation")}
