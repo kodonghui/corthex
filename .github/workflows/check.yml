@@ -20,7 +20,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # Node runs the NEXUS server's tests, and the Python tests that push to it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - run: python -m unittest discover -s tests -v
+      - run: node --test nexus/test/*.test.js
 
   claude-validate:
     runs-on: ubuntu-latest
@@ -32,3 +37,20 @@ jobs:
       - run: npm install -g @anthropic-ai/claude-code@2.1.309
       - run: claude plugin validate --strict .
       - run: claude plugin validate --strict plugins/corthex
+      - run: claude plugin validate --strict plugins/corthex-memory
+      - run: claude plugin validate --strict plugins/corthex-nexus
+
+  nexus-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nexus
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx wrangler deploy --dry-run --outdir dist

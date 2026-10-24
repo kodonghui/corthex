@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "corthex-nexus",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  // Change this to the address you chose, on a domain in your Cloudflare account.
+  "routes": [{ "pattern": "nexus.example.com", "custom_domain": true }],
+  // Only the address above serves the hub: no workers.dev or preview addresses.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Wrangler creates the database on the first deploy and, run in a terminal,
+  // writes its ID here; later deploys keep using the database either way.
+  "d1_databases": [{ "binding": "DB", "database_name": "corthex-nexus" }],
+  // The page template is bundled as text. Do not add static assets: a Worker
+  // with assets does not receive the Access check (ctx.access) it relies on.
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": true }],
+  "vars": {
+    // "ko" for a Korean page, otherwise English.
+    "NEXUS_LANGUAGE": "en",
+    // Optional: the AUD tag of the Access application that protects this
+    // Worker. When set, a request checked by any other application is refused.
+    "ACCESS_AUD": ""
+  }
+}

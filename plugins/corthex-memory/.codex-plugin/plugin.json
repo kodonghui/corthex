@@ -1,0 +1,19 @@
+{
+  "name": "corthex-memory",
+  "version": "0.1.0",
+  "description": "Adds the CORTHEX working principles, your profile and the current project's settings to the start of each Claude Code and Codex session. Reads local files only and makes no network calls.",
+  "author": {
+    "name": "kodonghui",
+    "url": "https://github.com/kodonghui"
+  },
+  "homepage": "https://github.com/kodonghui/corthex",
+  "repository": "https://github.com/kodonghui/corthex",
+  "license": "Apache-2.0",
+  "keywords": ["memory", "context", "hooks", "session-start", "profile", "projects"],
+  "interface": {
+    "displayName": "CORTHEX Memory",
+    "shortDescription": "Session context from your CORTHEX profile and project",
+    "developerName": "kodonghui",
+    "category": "Productivity"
+  }
+}

@@ -4,13 +4,15 @@
 
 CORTHEX is a plugin for Claude Code and Codex that helps one person run software projects with an AI collaborator, stage by stage: from domain discovery and requirements to screens, building, QA and the final presentation.
 
-It does not add a runtime of its own. Installation and updates use the hosts' plugin marketplaces, and everything else is skills. On top of that, CORTHEX adds three things:
+It does not add a service of its own. Installation and updates use the hosts' plugin marketplaces, and the core plugin is skills only. On top of that, CORTHEX adds three things:
 
 - **Working principles** for the AI: lead with the result, keep facts and guesses apart, ask before anything that cannot be undone, and keep records.
 - **A 13-stage workflow** in which every stage fills the same six slots (inputs, outputs, human view, sync, human checkpoints, trace IDs), so each artifact can be traced to the one before it.
 - **A profile and a project registry**, so the same plugin fits different people and several projects at once.
 
-> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use.
+Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
+
+> Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use. `corthex-memory` so far only adds the session start context, and `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
 
 ## Install
 
@@ -30,6 +32,28 @@ codex plugin marketplace add kodonghui/corthex
 codex plugin add corthex@corthex
 ```
 
+### Optional: session start context
+
+`corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It reads local files only and makes no network calls. It needs Python 3 (`python3` or `python`) on the PATH, and with Claude Code on Windows also Git for Windows or PowerShell 7.
+
+```bash
+claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too
+codex plugin add corthex-memory@corthex        # Codex, after corthex
+```
+
+In Codex, open `/hooks` once and trust the plugin's hook; Codex skips plugin hooks until you do. To stop it, disable or remove the plugin. Details: [Session start context](docs/architecture.md#session-start-context).
+
+### Optional: project hub
+
+`corthex-nexus` reads the stage sources of every registered project and writes one page, `~/.corthex/hub/index.html`, with each project's 13 stages, the checks on its trace IDs and the links between its items. Each stage shows the progress you recorded, such as its last checkpoint. The page works offline and loads nothing from the network.
+
+```bash
+claude plugin install corthex-nexus@corthex   # Claude Code; installs corthex too
+codex plugin add corthex-nexus@corthex        # Codex, after corthex
+```
+
+Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 or later. It can also send project snapshots to a NEXUS server on your own domain, but only for the projects you list. The server is a Cloudflare Worker behind Cloudflare Access that you deploy on your own Cloudflare account: [nexus/](nexus/README.md). Details: [Project hub](docs/architecture.md#project-hub).
+
 ## Skills
 
 | Skill | Stages | Use it to |
@@ -42,19 +66,21 @@ codex plugin add corthex@corthex
 | `corthex-build` | 10–12 | work breakdown, development and QA |
 | `corthex-present` | 13 | script, scene table and slides for the presentation |
 | `corthex-record` | any | minutes, decision log and progress records |
+| `corthex-hub` | all, in `corthex-nexus` | see every project's stages, checks and trace links on one page, and record each stage's progress |
 
 ## Profile and projects
 
 - `~/.corthex/profile.json` holds how to address you, your language, where records go and what to ask about first. The `corthex` skill offers to create it. It never holds secrets.
 - `.corthex/project.json` in each product repository says, stage by stage, where people look at the work (`human`), where the text source lives (`source`) and which side wins when they differ (`truth`).
 - `~/.corthex/projects.json` lists the projects on one machine.
+- `~/.corthex/hub/` holds the hub's snapshots, the progress you recorded and the page, when `corthex-nexus` is installed.
 
 [The architecture notes](docs/architecture.md) explain the design and link to each format.
 
 ## Compatibility
 
 - Claude Code reads `.claude-plugin/marketplace.json` and each plugin's `.claude-plugin/plugin.json`.
-- Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and each plugin's root `plugin.json`.
+- Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and the core plugin's root `plugin.json`. `corthex-memory` has hooks, so it has `.codex-plugin/plugin.json` instead and works in Claude Code and Codex only. `corthex-nexus` has no hooks and keeps a root `plugin.json`.
 - The skills follow the [Agent Skills](https://agentskills.io) format and are shared by both, so each skill can also be used on its own.
 
 ## Development
@@ -63,6 +89,9 @@ codex plugin add corthex@corthex
 python -m unittest discover -s tests -v
 claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
+claude plugin validate --strict plugins/corthex-memory
+claude plugin validate --strict plugins/corthex-nexus
+node --test nexus/test/*.test.js     # Node 22.13 or later
 ```
 
 ## License

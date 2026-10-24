@@ -6,7 +6,8 @@ from pathlib import Path
 
 from _common import ROOT
 
-SKIP_DIRS = {".git", "__pycache__"}
+# Ignored by git: installed packages and Wrangler's local state.
+SKIP_DIRS = {".git", "__pycache__", "node_modules", ".wrangler"}
 SKIP_FILES = {Path(__file__).resolve()}
 PATTERNS = {
     "honorific reserved for one person": re.compile("대표님"),
