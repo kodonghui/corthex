@@ -481,7 +481,8 @@ class Scan:
                     self.states.setdefault(ident, set()).add(state.group(1))
 
     def add_state(self, ident, state, src):
-        if state and src.stage == SCREEN_STAGE:
+        # Only screens have states; `API-001#default` names a response.
+        if state and src.stage == SCREEN_STAGE and self.ids.kind(ident) == "screen":
             self.states.setdefault(ident, set()).add(state)
 
 
