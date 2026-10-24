@@ -42,7 +42,7 @@ REQ-060 (Linux, macOS and Windows), REQ-061 (Python 3.8 and its standard library
 
 ## Points for the functional spec
 
-Drawing the flows raised these questions, which the requirements leave open:
+Drawing the flows raised these questions, which the requirements leave open. The functional spec answers them in [Answers to the points of the user flows](../../04-functional-spec/memory.md#answers-to-the-points-of-the-user-flows).
 
 1. Curation triggers: after a number of turns, after some minutes or at the end of a session (the open question of CTX-002). FL-005 starts at any of them.
 2. Devices that disappear: a cloud session runs in a container whose files go when it ends, so its raw log and unprocessed turns are lost unless curation and sync run before the end (REQ-008, REQ-012).

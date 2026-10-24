@@ -22,6 +22,12 @@
       "source": "docs/03-user-flow/",
       "truth": "source",
       "note": "User flows, one Mermaid file per flow, in one folder per part of the project: CORTHEX-MEMORY in memory/ (draft of 2026-10-24, reviewed together with the functional spec). The README there lists the flows; translations beside them are not read as sources. Korean copies of the flows, with their diagrams, are in the project's Notion records (2026-10-24)."
+    },
+    "04-functional-spec": {
+      "human": "notion",
+      "source": "docs/04-functional-spec/",
+      "truth": "source",
+      "note": "Functional spec, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-24, checked together with the user flows). Translations beside them are not read as sources. A Korean copy, with the tables as databases, is in the project's Notion records (2026-10-24); the copy follows these files."
     }
   }
 }

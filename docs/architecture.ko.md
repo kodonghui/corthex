@@ -201,7 +201,7 @@ CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장
 
 0.1.0에는 없고 계획만 있습니다. 둘 다 핵심 플러그인에 넣지 않는 구성 요소가 필요합니다.
 
-- `corthex-memory`의 다음 판: 대화 기록을 모아 프로젝트마다 현재 상태로 정리하고, 필요한 것을 다시 꺼내는 훅. 그 현재 상태도 세션 시작 문맥에 넣습니다. 요구사항: [docs/02-prd/memory.ko.md](02-prd/memory.ko.md). 사용자 흐름: [docs/03-user-flow/memory/](03-user-flow/memory/README.ko.md).
+- `corthex-memory`의 다음 판: 대화 기록을 모아 프로젝트마다 현재 상태로 정리하고, 필요한 것을 다시 꺼내는 훅. 그 현재 상태도 세션 시작 문맥에 넣습니다. 요구사항: [docs/02-prd/memory.ko.md](02-prd/memory.ko.md). 사용자 흐름: [docs/03-user-flow/memory/](03-user-flow/memory/README.ko.md). 기능 명세: [docs/04-functional-spec/memory.ko.md](04-functional-spec/memory.ko.md).
 - `corthex-nexus`의 다음 판: 요구사항 [docs/02-prd/nexus.ko.md](02-prd/nexus.ko.md)로 정합니다. NEXUS 서버의 사이트맵·유저 플로우 편집 화면과 같은 자료를 쓰는 MCP 서버는 거기서 후보입니다(결정 D5). 기억을 여러 기기에서 함께 쓰게 되면 서버 저장소를 D1에서 Postgres로 옮길 수 있습니다.
 
 ## 근거
