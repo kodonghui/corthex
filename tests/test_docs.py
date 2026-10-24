@@ -10,7 +10,7 @@ AGENT_FILES = {"AGENTS.md", "CLAUDE.md"}
 
 
 def doc_files():
-    return sorted(ROOT.glob("*.md")) + sorted((ROOT / "docs").rglob("*.md"))
+    return sorted(ROOT.glob("*.md")) + sorted((ROOT / "docs").rglob("*.md")) + sorted((ROOT / "nexus").glob("*.md"))
 
 
 class DocsTest(unittest.TestCase):

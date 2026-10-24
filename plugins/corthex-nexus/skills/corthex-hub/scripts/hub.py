@@ -6,11 +6,12 @@ Commands, each with --help:
   status    record a stage's progress, last checkpoint and next action
   build     refresh the snapshots and write the hub page
   push      send snapshots to your own NEXUS server
+  remove    remove projects from your NEXUS server
 
 It reads ~/.corthex/profile.json, ~/.corthex/projects.json, each project's
 .corthex/project.json and the stage sources that file names. It writes only
-under ~/.corthex/hub/ and never into a repository. Only `push` uses the
-network. Standard library only.
+under ~/.corthex/hub/ and never into a repository. Only `push` and `remove`
+use the network. Standard library only.
 """
 
 import argparse
@@ -33,6 +34,7 @@ SCHEMA = "corthex-hub/0.1"
 PAGE_SCHEMA = "corthex-hub-page/0.1"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"
 PLACEHOLDER = "__CORTHEX_HUB_DATA__"
+CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 # The stage contract of the `corthex` skill: key, name, default source, the ID
 # kinds the stage creates, and whether the hub reads the stage's files for IDs.
@@ -1232,7 +1234,7 @@ def read_stages(project, scan, problems):
             if noted:
                 total = sum(noted.values())
                 reasons = ", ".join("%d %s" % (count, reason) for reason, count in sorted(noted.items()))
-                problems.append(check("files-skipped", "info", "%s: %d files were not read (%s)" % (key, total, reasons), stage=key, args={"stage": key, "count": total, "reasons": noted}))
+                problems.append(check("files-skipped", "info", "%s: files not read (%d): %s" % (key, total, reasons), stage=key, args={"stage": key, "count": total, "reasons": noted}))
     for key, times in scan.copied.items():
         stages[key]["copied"] = {"oldest": min(times), "newest": max(times)}
     return stages
@@ -1312,7 +1314,7 @@ def item_checks(scan, items, stages):
         bare = [i for i, item in items.items() if item["kind"] == "screen" and "screen_doc" not in item and not is_removed(item)]
         if bare:
             bare.sort(key=id_key)
-            found.append(check("screen-without-states", "info", "%d screens have no screen definition yet: %s" % (len(bare), ", ".join(bare[:20])), bare, SCREEN_STAGE, {"count": len(bare), "ids": bare[:20]}))
+            found.append(check("screen-without-states", "info", "Screens without a screen definition yet (%d): %s" % (len(bare), ", ".join(bare[:20])), bare, SCREEN_STAGE, {"count": len(bare), "ids": bare[:20]}))
     return found
 
 
@@ -1333,7 +1335,7 @@ def requirement_checks(scan, items, near, scanned):
     if any(r.get("priority") for r in requirements):
         bare = [r["id"] for r in in_scope if not r.get("priority")]
         if bare:
-            found.append(check("req-without-priority", "info", "%d requirements have no priority: %s" % (len(bare), ", ".join(bare[:20])), bare, "02-prd", {"count": len(bare), "ids": bare[:20]}))
+            found.append(check("req-without-priority", "info", "Requirements without a priority (%d): %s" % (len(bare), ", ".join(bare[:20])), bare, "02-prd", {"count": len(bare), "ids": bare[:20]}))
     return found
 
 
@@ -1346,7 +1348,7 @@ def format_checks(scan, items):
         odd = sorted((i for i in seen if scan.ids.kind(i) == kind and len(i.rpartition("-")[2]) != digits), key=id_key)
         if odd:
             sample = "%s-%s" % (next(p for p, k in scan.ids.kind_of.items() if k == kind), "0" * digits)
-            found.append(check("id-format", "info", "%d %s IDs do not follow the format %s: %s" % (len(odd), kind, sample, ", ".join(odd[:20])), odd, DEFINED_IN.get(kind), {"kind": kind, "format": sample, "count": len(odd), "ids": odd[:20]}))
+            found.append(check("id-format", "info", "IDs not in the format %s (%d): %s" % (sample, len(odd), ", ".join(odd[:20])), odd, DEFINED_IN.get(kind), {"kind": kind, "format": sample, "count": len(odd), "ids": odd[:20]}))
     return found
 
 
@@ -1648,9 +1650,8 @@ def nexus_url(raw):
     return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", "")), local
 
 
-def push(home, names=(), url=None, dry_run=False, env=None, timeout=30):
-    """Send the stored snapshots of opted-in projects. Returns a list of result lines."""
-    env = os.environ if env is None else env
+def nexus_settings(home, url, env):
+    """The server address, whether it is on this machine, and the projects that may be sent."""
     settings = profile_of(home).get("nexus")
     settings = settings if isinstance(settings, dict) else {}
     address = url or env.get("CORTHEX_NEXUS_URL") or settings.get("url")
@@ -1659,6 +1660,37 @@ def push(home, names=(), url=None, dry_run=False, env=None, timeout=30):
     base, local = nexus_url(address)
     listed = settings.get("push")
     allowed = [n for n in listed if isinstance(n, str)] if isinstance(listed, list) else []
+    return base, local, allowed
+
+
+def service_token(env, local, dry_run):
+    client_id = env.get("CORTHEX_NEXUS_CLIENT_ID", "")
+    secret = env.get("CORTHEX_NEXUS_CLIENT_SECRET", "")
+    if not (client_id and secret) and not local and not dry_run:
+        raise ValueError("set CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET to the service token")
+    return (client_id, secret) if client_id and secret else None
+
+
+def nexus_request(base, path, method, token, body=None):
+    request = urllib.request.Request(base + path, data=body, method=method)
+    if body is not None:
+        request.add_header("Content-Type", "application/json")
+    request.add_header("User-Agent", "corthex-nexus/" + VERSION)
+    if token:
+        request.add_header("CF-Access-Client-Id", token[0])
+        request.add_header("CF-Access-Client-Secret", token[1])
+    return request
+
+
+def nexus_opener(local):
+    handlers = [NoRedirect()] + ([urllib.request.ProxyHandler({})] if local else [])
+    return urllib.request.build_opener(*handlers)
+
+
+def push(home, names=(), url=None, dry_run=False, env=None, timeout=30):
+    """Send the stored snapshots of opted-in projects. Returns a list of result lines."""
+    env = os.environ if env is None else env
+    base, local, allowed = nexus_settings(home, url, env)
     chosen = list(names) or allowed
     refused = [n for n in chosen if n not in allowed]
     if refused:
@@ -1669,44 +1701,85 @@ def push(home, names=(), url=None, dry_run=False, env=None, timeout=30):
     missing = [n for n in chosen if n not in stored]
     if missing:
         raise ValueError("no snapshot for %s yet; run `hub.py snapshot` or `hub.py build` first" % ", ".join(missing))
-    client_id = env.get("CORTHEX_NEXUS_CLIENT_ID", "")
-    secret = env.get("CORTHEX_NEXUS_CLIENT_SECRET", "")
-    if not (client_id and secret) and not local and not dry_run:
-        raise ValueError("set CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET to the service token")
-    handlers = [NoRedirect()] + ([urllib.request.ProxyHandler({})] if local else [])
-    opener = urllib.request.build_opener(*handlers)
+    token = service_token(env, local, dry_run)
+    opener = nexus_opener(local)
     lines = []
     for name in chosen:
         body = dump(stored[name], compact=True).encode("utf-8")
         if dry_run:
             lines.append("%s: would send %d bytes to %s/api/snapshots" % (name, len(body), base))
             continue
-        request = urllib.request.Request(base + "/api/snapshots", data=body, method="POST")
-        request.add_header("Content-Type", "application/json")
-        request.add_header("User-Agent", "corthex-nexus/" + VERSION)
-        if client_id and secret:
-            request.add_header("CF-Access-Client-Id", client_id)
-            request.add_header("CF-Access-Client-Secret", secret)
-        lines.append("%s: %s" % (name, send(opener, request, timeout)))
+        code, reply = send(opener, nexus_request(base, "/api/snapshots", "POST", token, body), timeout)
+        try:
+            revision = json.loads(reply).get("revision")
+        except (ValueError, AttributeError):
+            revision = None
+        lines.append("%s: sent, HTTP %d%s" % (name, code, ", revision %s" % revision if isinstance(revision, int) else ""))
     return lines
 
 
+def remove(home, names, url=None, dry_run=False, env=None, timeout=30):
+    """Remove projects from the NEXUS server. Returns a list of result lines."""
+    env = os.environ if env is None else env
+    base, local, _ = nexus_settings(home, url, env)
+    names = list(names)
+    if not names:
+        raise ValueError("name the projects to remove from the server")
+    wrong = [n for n in names if not isinstance(n, str) or not NAME.match(n)]
+    if wrong:
+        raise ValueError("%s is not a project name" % ", ".join(str(n) for n in wrong))
+    token = service_token(env, local, dry_run)
+    opener = nexus_opener(local)
+    lines = []
+    for name in names:
+        if dry_run:
+            lines.append("%s: would remove it from %s" % (name, base))
+            continue
+        try:
+            send(opener, nexus_request(base, "/api/snapshots/" + name, "DELETE", token), timeout)
+        except ServerRefused as error:
+            if error.code == 404 and error.reason:
+                lines.append("%s: not on the server" % name)
+                continue
+            raise
+        lines.append("%s: removed from the server" % name)
+    return lines
+
+
+class ServerRefused(RuntimeError):
+    """A request the server or Cloudflare Access did not accept."""
+
+    def __init__(self, message, code, reason=""):
+        RuntimeError.__init__(self, message)
+        self.code = code
+        self.reason = reason
+
+
+def server_reason(error):
+    """The reason a NEXUS server gave, from its JSON reply, on one line and
+    without control characters, since it is printed to the terminal."""
+    try:
+        reply = json.loads(error.read(4096).decode("utf-8", "replace"))
+    except (ValueError, OSError, AttributeError):
+        return ""
+    reason = reply.get("error") if isinstance(reply, dict) else None
+    return one_line(CONTROL.sub(" ", reason), 300) if isinstance(reason, str) else ""
+
+
 def send(opener, request, timeout):
+    """Send one request. Returns (status, reply text) or raises ServerRefused."""
     try:
         with opener.open(request, timeout=timeout) as response:
-            reply = response.read(4096).decode("utf-8", "replace")
-            code = response.getcode()
+            return response.getcode(), response.read(4096).decode("utf-8", "replace")
     except urllib.error.HTTPError as error:
+        reason = server_reason(error)
+        if reason:
+            raise ServerRefused("the server refused it (HTTP %d): %s" % (error.code, reason), error.code, reason)
         if error.code in (301, 302, 303, 307, 308, 401, 403):
-            raise RuntimeError("the server refused the service token (HTTP %d); check the token and the Access policy" % error.code)
-        raise RuntimeError("the server answered HTTP %d" % error.code)
+            raise ServerRefused("the server refused the service token (HTTP %d); check the token and the Access policy" % error.code, error.code)
+        raise ServerRefused("the server answered HTTP %d" % error.code, error.code)
     except (urllib.error.URLError, OSError) as error:
         raise RuntimeError("could not reach the server (%s)" % type(error).__name__)
-    try:
-        revision = json.loads(reply).get("revision")
-    except (ValueError, AttributeError):
-        revision = None
-    return "sent, HTTP %d%s" % (code, ", revision %s" % revision if isinstance(revision, int) else "")
 
 
 # ---------------------------------------------------------------- command line
@@ -1775,6 +1848,12 @@ def run_push(args, home):
     return 0
 
 
+def run_remove(args, home):
+    for line in remove(home, args.project, args.url, args.dry_run):
+        say(line)
+    return 0
+
+
 def parser():
     top = argparse.ArgumentParser(prog="hub.py", description="CORTHEX hub: stages, checks and trace links of your projects.")
     top.add_argument("--home", help="the folder that holds .corthex (default: your home folder)")
@@ -1807,13 +1886,18 @@ def parser():
     send_cmd.add_argument("project", nargs="*", help="projects to send (default: all in nexus.push)")
     send_cmd.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
     send_cmd.add_argument("--dry-run", action="store_true", help="show what would be sent without sending it")
+
+    drop = commands.add_parser("remove", help="remove projects from your own NEXUS server")
+    drop.add_argument("project", nargs="+", help="projects to remove from the server")
+    drop.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
+    drop.add_argument("--dry-run", action="store_true", help="show what would be removed without removing it")
     return top
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     home = Path(args.home).expanduser().resolve() if args.home else Path.home()
-    commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push}
+    commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push, "remove": run_remove}
     try:
         return commands[args.command](args, home)
     except (ValueError, RuntimeError) as error:
