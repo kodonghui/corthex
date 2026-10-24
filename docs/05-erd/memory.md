@@ -260,7 +260,7 @@ The memory skill makes it, empty, before it first enables the project, so a miss
 | `stopped` | optional object: `at`, `by` (`curate` or `consolidate`), `errors` (the kinds of error) | The fault guard's stop, until the user resumes (SPEC-018) |
 | `rebuilt` | optional time | When the record was last made again from the raw log |
 
-Before the curator counts entries as processed, or applies a quote of them, it flushes their raw log file to disk, so that no entry that the curation record counts can be lost to a power cut. If the record is lost, the curator makes it again: for each raw log file, the newest entry that an item quotes or a current state line cites counts as processed, with the entries before it and the rest of its turn, and the entries after them as unprocessed. Turns curated twice make duplicate items, which consolidation merges. A notice says so once, and a stop of the fault guard is lost with the record.
+Before the curator counts entries as processed, or applies a quote of them, it flushes their raw log file to disk, so that no entry that the curation record counts can be lost to a power cut. If the record is lost, the curator makes it again: for each raw log file, the newest entry that an item quotes or a current state line cites counts as processed, with the entries before it, and every entry after it as unprocessed, even in its own turn, since a final answer appended while the last curation ran may never have been sent. Turns curated twice make duplicate items, which consolidation merges. A notice says so once, and a stop of the fault guard is lost with the record.
 
 ### Notices (TBL-010)
 
@@ -418,7 +418,7 @@ Every other change of a file, and every rewrite of a JSON Lines file, goes throu
 3. Move the new file over the old one, which replaces it at once.
 4. Delete `<name>.bak`.
 
-A raw log or injection log rewrite builds the new file without the lock, then holds the file's lock for its last read and the move, copying into the new file, unchanged, the lines appended since its first read (SPEC-007). Files that the code can make again from others (the markers, notices, the item list and the search index) skip the flush to disk and the backup.
+A raw log or injection log rewrite builds the new file without the lock, then holds the file's lock for its last read and the move, copying into the new file, unchanged, the lines appended since its first read (SPEC-007). That carries appends over but not another rewrite's changes, so the rewrites of one file run one after another: each holds the project's curated layer lock from its first read to the move. Forgets and tombstones hold it anyway, and retention takes it for each raw log or injection log file that it rewrites or deletes. Files that the code can make again from others (the markers, notices, the item list and the search index) skip the flush to disk and the backup.
 
 On Windows a move fails while another process holds the old file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once.
 
@@ -435,7 +435,7 @@ On Windows a move fails while another process holds the old file open. The code 
 | Store lock | `store.lock` | One change of the store record or the memory configuration, or a migration | every 30 seconds | 2 minutes |
 | Curation lock | `projects/<project>/curation.lock` | A whole curator run, retention of the project, or a resume (SPEC-012) | at least every minute | 10 minutes |
 | Sync lock | `sync/sync.lock` | One sync | every minute | 10 minutes |
-| Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin or merge in the project, or the deletion of its memory | every 30 seconds | 2 minutes |
+| Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin or merge in the project, retention's rewrite or deletion of one raw log or injection log file, or the deletion of its memory | every 30 seconds | 2 minutes |
 | Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, or the last read and the move of a rewrite; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
 | Log locks | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | One append | not refreshed | 10 seconds |
 
@@ -627,6 +627,6 @@ The store library comes first in C1: IDs and JSON form, appending, rewriting and
 
 - Each record checked against its field table, and the same content giving the same bytes.
 - A stop at each step of a rewrite (after the new file, after the backup, after the move), on Linux, macOS and Windows, with a reader restoring afterwards; and on Windows, a move while a reader holds the old file open.
-- Locks: two processes taking a stale lock over at once, a holder paused past its limit, and hooks appending while retention, forgets and tombstones rewrite (SPEC-007).
+- Locks: two processes taking a stale lock over at once, a holder paused past its limit, retention and a forget rewriting one raw log file at once, and hooks appending while retention, forgets and tombstones rewrite (SPEC-007).
 - [memory-index.sql](memory-index.sql) run on an empty file gives the same tables as the code's own; an index of another version is built again.
 - After a sync, the sync remote holds only the files of TBL-012 to TBL-018, and no file of the memory store holds a test key.
