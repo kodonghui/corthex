@@ -707,6 +707,61 @@ class SourcesTest(HubCase):
         self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"secret": 1, "format": 1})
         self.assertEqual(self.found(snapshot, "files-skipped")[0]["args"]["reasons"], {"secret": 1})
 
+    def test_translations_beside_their_originals_are_skipped(self):
+        self.project(stages={
+            "01-domain": {"human": "github", "source": "docs/01-domain/", "truth": "source"},
+            "02-prd": {"human": "github", "source": "docs/02-prd/memory.ko.md", "truth": "source"},
+        })
+        self.write(self.repo / "docs/01-domain/memory.md", "## CTX-001 Capture\n")
+        self.write(self.repo / "docs/01-domain/memory.ko.md", "## CTX-001 기록\n")
+        self.write(self.repo / "docs/01-domain/hub.md", "## CTX-002 Hub\n")
+        self.write(self.repo / "docs/01-domain/hub.pt-BR.md", "## CTX-002 Central\n")
+        self.write(self.repo / "docs/01-domain/sync.zh-Hans.md", "## CTX-003 同步\n")
+        self.write(self.repo / "docs/01-domain/plan.md", "## CTX-004 Plan\n")
+        self.write(self.repo / "docs/01-domain/plan.v2.md", "## CTX-005 Plan again\n")
+        self.write(self.repo / "docs/02-prd/memory.md", "## REQ-001 Record prompts\n")
+        self.write(self.repo / "docs/02-prd/memory.ko.md", "## REQ-001 프롬프트 기록\n")
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertEqual((items["CTX-001"]["title"], items["CTX-001"]["where"]), ("Capture", "docs/01-domain/memory.md:1"))
+        self.assertEqual(items["CTX-002"]["where"], "docs/01-domain/hub.md:1")
+        self.assertEqual(items["CTX-003"]["where"], "docs/01-domain/sync.zh-Hans.md:1", "a translation without its original is read")
+        self.assertIn("CTX-005", items, "v2 is not a language tag")
+        self.assertEqual(items["REQ-001"]["where"], "docs/02-prd/memory.ko.md:1", "a source may name a translation")
+        self.assertEqual(self.found(snapshot, "duplicate-id"), [])
+        self.assertEqual(snapshot["stages"]["01-domain"]["files"], 5)
+        self.assertEqual(snapshot["stages"]["01-domain"]["skipped"], {"translation": 2})
+        self.assertEqual(self.found(snapshot, "files-skipped"), [], "translations are expected, not a finding")
+
+    def test_a_file_with_ids_of_its_own_is_read(self):
+        self.project(stages={"02-prd": {"human": "github", "source": "prd/", "truth": "source"}})
+        self.write(self.repo / "prd/spec.md", "## REQ-001 Sign in\n")
+        # Not a translation: the screens' requirements, in a file of their own.
+        self.write(self.repo / "prd/spec.ui.md", "## REQ-002 Show the sign-in screen\n")
+        self.write(self.repo / "prd/spec.ui.ko.md", "## REQ-002 로그인 화면 보이기\n")
+        # A translation ahead of its original is read, and its shared IDs show as duplicates.
+        self.write(self.repo / "prd/plan.md", "## REQ-003 Plan the release\n")
+        self.write(self.repo / "prd/plan.ko.md", "## REQ-003 출시 계획\n## REQ-004 새 요구사항\n")
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertEqual(set(items), {"REQ-001", "REQ-002", "REQ-003", "REQ-004"})
+        self.assertEqual(items["REQ-002"]["where"], "prd/spec.ui.md:1")
+        self.assertEqual(items["REQ-003"]["where"], "prd/plan.md:1", "the original's definition comes first")
+        self.assertEqual(items["REQ-004"]["where"], "prd/plan.ko.md:2")
+        self.assertEqual(self.refs(snapshot, "duplicate-id"), ["REQ-003"])
+        self.assertEqual(snapshot["stages"]["02-prd"]["files"], 4)
+        self.assertEqual(snapshot["stages"]["02-prd"]["skipped"], {"translation": 1}, "spec.ui.ko.md translates spec.ui.md")
+
+    def test_translation_names(self):
+        present = {Path("docs") / name for name in ("spec.md", "spec.MD", "notes.txt", "a.b.md")}
+        for name, expected in (
+            ("spec.ko.md", "spec.md"), ("spec.pt-BR.md", "spec.md"), ("spec.zh-Hans.md", "spec.md"), ("spec.es-419.md", "spec.md"),
+            ("spec.ko.MD", "spec.MD"), ("a.b.ko.md", "a.b.md"), ("notes.ko.txt", "notes.txt"), ("notes.ko.md", None),
+            ("spec.v2.md", None), ("spec.old.md", None), ("spec.KO.md", None), ("ko.md", None), ("other.ko.md", None),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(hub.original_of(Path("docs") / name, present), expected and Path("docs") / expected)
+
     def test_secret_folders_are_skipped(self):
         self.project(stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "source"}})
         self.write(self.repo / "prd/requirements.md", "## REQ-001 Sign in\n")

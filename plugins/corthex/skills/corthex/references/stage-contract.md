@@ -46,6 +46,11 @@ The principle behind the split: the human view can change from team to team, but
 - When the two sides differ, list the differences and ask before changing either side.
 - When the copy is older than the human view's last edit, say so before you rely on it, and offer to refresh it.
 
+## Translations
+
+- A translation sits beside its original, with a language tag before the extension: `requirements.ko.md` beside `requirements.md`, or `spec.pt-BR.md` beside `spec.md`. The original is the source. Tools that read a folder source skip a translation that defines only its original's IDs, so they are not defined twice; a file with an ID of its own, such as `spec.ui.md`, is read like any other.
+- Keep the original's IDs in the translation and change the original first. Where the two differ, the original holds.
+
 ## Human views the AI cannot reach
 
 At the start of a stage, check whether this session can reach the human view through an MCP server, a connector or an API. Some tools offer none and only import and export files. For such a tool:
