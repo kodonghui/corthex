@@ -2,7 +2,7 @@
 
 [한국어](FL-003-start-a-session.ko.md)
 
-Serves: REQ-003, REQ-005, REQ-006, REQ-009, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-036, REQ-037, REQ-038, REQ-039
+Serves: REQ-003, REQ-005, REQ-006, REQ-009, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-036, REQ-037, REQ-038, REQ-039, REQ-057
 
 Context: CTX-003 Recall. Starts when a session starts, resumes, forks, is cleared or is compacted. The base of the start summary is built in 0.1.0; the memory part is new.
 
@@ -12,7 +12,9 @@ flowchart TD
   B --> C{"Is the session's folder<br/>in an enabled project?<br/>REQ-005, REQ-006"}
   C -->|no| S["Inject the start summary"]
   S --> Z(["End"])
-  C -->|yes| D["Append a session boundary<br/>to the raw log<br/>REQ-003"]
+  C -->|yes| X{"Does the memory configuration leave out<br/>the session's folder or session boundaries?<br/>REQ-057"}
+  X -->|yes| E
+  X -->|no| D["Append a session boundary<br/>to the raw log<br/>REQ-003"]
   D --> E{"Is the memory store readable?"}
   E -->|no| E1["Leave memory out<br/>and say it could not be read"]
   E1 --> S

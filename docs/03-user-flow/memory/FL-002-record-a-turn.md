@@ -11,16 +11,20 @@ flowchart TD
   A(["User submits a prompt<br/>in Claude Code or Codex<br/>REQ-059"]) --> B{"Is the session's folder in an<br/>enabled project of the project list?<br/>REQ-005, REQ-006"}
   B -->|no| N["Record nothing"]
   N --> Z(["End"])
-  B -->|yes| C{"Is the folder or the entry kind<br/>left out in the memory configuration?<br/>REQ-057"}
+  B -->|yes| C{"Is the session's folder left out<br/>in the memory configuration?<br/>REQ-057"}
   C -->|yes| N
-  C -->|no| D["Remove secrets and private spans<br/>REQ-007"]
+  C -->|no| P{"Are prompts left out<br/>in the memory configuration?<br/>REQ-057"}
+  P -->|yes| H
+  P -->|no| D["Remove secrets and private spans<br/>REQ-007"]
   D --> E["Append the prompt to the project's<br/>raw log on this device<br/>REQ-001, REQ-008"]
   E --> F{"Written?"}
   F -->|no| G["Note the failure for the memory status;<br/>the prompt goes on<br/>REQ-010, REQ-053"]
   F -->|yes| H["The agent works; tool calls and<br/>tool results are not recorded<br/>REQ-004"]
   G --> H
   H --> I{"Does the turn end<br/>with a final answer?"}
-  I -->|yes| J["Remove secrets and private spans,<br/>then append the final answer<br/>REQ-002, REQ-007"]
+  I -->|yes| Q{"Are final answers left out<br/>in the memory configuration?<br/>REQ-057"}
+  Q -->|yes| Z
+  Q -->|no| J["Remove secrets and private spans,<br/>then append the final answer<br/>REQ-002, REQ-007"]
   I -->|no, the session was cut off| K["The raw log keeps every entry<br/>appended before the cut<br/>REQ-012, REQ-064"]
   J --> L{"Written?"}
   L -->|no| G2["Note the failure;<br/>the session goes on<br/>REQ-010"]
