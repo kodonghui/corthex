@@ -6,7 +6,7 @@ Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draf
 
 Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. The flows assume the recommendations of decisions D1 to D4; FL-004 depends on D2 and FL-012 on D3.
 
-Each flow has its own file with one Mermaid flowchart, and each step names the requirements it serves.
+Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. To keep its first chart readable, FL-005 draws how one proposed change is applied as a second chart.
 
 | ID | Flow | Context | Starts when |
 | --- | --- | --- | --- |

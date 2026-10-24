@@ -27,8 +27,22 @@ flowchart TD
   I2 -->|no| Z
   I2 -->|yes| I3["Stop curating this project and note it<br/>for the status and the start summary<br/>REQ-024, REQ-029"]
   I3 --> Z
-  I -->|yes| O{"Any proposed change left?"}
-  O -->|yes| J{"Does the next change's quote appear<br/>word for word in the raw log?<br/>REQ-017"}
+  I -->|yes| J[["Apply the proposed changes one at a time,<br/>as the second chart shows<br/>REQ-016 to REQ-020"]]
+  J --> P["Update the current state,<br/>each line with its provenance<br/>REQ-015"]
+  P --> Q["Update the item list; embed the new items<br/>for the search index once an OpenAI memory key is there<br/>REQ-040, REQ-050"]
+  Q --> R["Mark the turns processed"]
+  R --> S{"More unprocessed turns?"}
+  S -->|yes| F
+  S -->|no| Z
+```
+
+## Applying one proposed change
+
+The curator model's answer proposes changes to the item list. Each change goes through this chart before the next one.
+
+```mermaid
+flowchart TD
+  A(["The next proposed change"]) --> J{"Does its quote appear<br/>word for word in the raw log?<br/>REQ-017"}
   J -->|no| J1["Drop the change"]
   J -->|yes| K{"What does the change do?"}
   K -->|adds an item| L{"A decision in the<br/>user's own words?<br/>REQ-018"}
@@ -38,18 +52,12 @@ flowchart TD
   K -->|takes an item back| N{"Taken back by the<br/>item's own speaker?<br/>REQ-020"}
   N -->|yes| N1["Mark the item withdrawn<br/>REQ-020"]
   N -->|no| N2["Keep the item and save the new<br/>statement as an item of its own<br/>REQ-016"]
-  J1 --> O
-  L1 --> O
-  L2 --> O
-  M --> O
-  N1 --> O
-  N2 --> O
-  O -->|no| P["Update the current state,<br/>each line with its provenance<br/>REQ-015"]
-  P --> Q["Update the item list; embed the new items<br/>for the search index once an OpenAI memory key is there<br/>REQ-040, REQ-050"]
-  Q --> R["Mark the turns processed"]
-  R --> S{"More unprocessed turns?"}
-  S -->|yes| F
-  S -->|no| Z
+  J1 --> Z(["On to the next change"])
+  L1 --> Z
+  L2 --> Z
+  M --> Z
+  N1 --> Z
+  N2 --> Z
 ```
 
 The curator changes nothing it cannot quote: a proposed change whose quote check fails is dropped, and items are superseded or withdrawn, never deleted. Forgetting is the user's own act (FL-009).
