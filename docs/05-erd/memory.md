@@ -232,7 +232,7 @@ One file per host session, named `<host>-<key>`: the host, `claude-code` or `cod
 
 Turns: a prompt starts a turn, and its `turn` is its own `seq`. A final answer joins the turn of the last prompt or final answer before it in the file when that entry is the turn's prompt, or when it is a final answer and the host reports that the agent went on after another hook (SPEC-003); any other final answer starts a turn of its own, as when prompts are left out. Boundaries belong to no turn.
 
-Forgetting: a forget, or a tombstone applied on this device, replaces each character of a quoted range with U+FFFD, so that the text keeps its length and the positions of the entry's other quotes stay valid, and adds the range to `forgotten`. Requests to the curator show each forgotten range as `[forgotten]`, so no quote can hold it.
+Forgetting: a forget, or a tombstone applied on this device, replaces each character of a quoted range with U+FFFD, so that the text keeps its length and the positions of the entry's other quotes stay valid, and adds the range to `forgotten`. A quoted range that overlaps a quote of an item that stays on this device is kept whole, so that item's provenance holds (SPEC-035). Once a later forget or tombstone leaves no such item, it replaces that range too, which it finds in the earlier item's tombstone. Requests to the curator show each forgotten range as `[forgotten]`, so no quote can hold it.
 
 ### Unprocessed turn markers (TBL-008)
 
@@ -523,7 +523,7 @@ Besides these records, the hooks and the memory skill read the project list (SPE
 | SPEC-032 | Log each model call's usage | TBL-002 | TBL-003 |
 | SPEC-033 | Show the memory status, and resume curation | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006, TBL-008, TBL-009, TBL-012, TBL-014 | TBL-009 |
 | SPEC-034 | Pin or unpin an item | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010 | TBL-014, TBL-010 |
-| SPEC-035 | Forget an item | TBL-012, TBL-013, TBL-014, TBL-007 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020 |
+| SPEC-035 | Forget an item | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020 |
 | SPEC-036 | Turn memory off for a project | TBL-002 | TBL-002 |
 | SPEC-037 | Delete one project's memory | TBL-002, TBL-007, TBL-012, TBL-014 | deletes TBL-007 to TBL-015 and the search index, and without sync TBL-016; writes TBL-002, and with sync on TBL-017 |
 | SPEC-038 | Delete all memory on the device | the memory store | deletes the memory store |
