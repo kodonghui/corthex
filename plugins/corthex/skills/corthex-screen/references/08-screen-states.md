@@ -31,13 +31,13 @@ Every response the API contract lists for an operation the screen calls (stage 0
 | Success with data | normal | The data |
 | Success with nothing to show | empty | What will appear here and how to add it |
 | 400 or 422 | error | The message beside the input it concerns; the input is kept |
-| 401 | permission | A sign-in prompt, then back to this screen |
+| 401 | permission | A sign-in prompt, then back to this screen. On the sign-in screen itself, an error: the message beside the form |
 | 403 | permission | Why this is not allowed, and a way back |
 | 404 | error | That the item no longer exists, and a link to where it was listed |
 | 409 | stale | That the data changed; reload, then try again |
-| 429, `default`, a timeout or no network | error | A short message and a retry |
+| 429, 503, `default`, a timeout or no network | error | A short message and a retry |
 
-The mock server returns any listed response on request (stage 06), so each state can be built and checked before the back end is ready.
+By default the screen shows the message of the error code in the API contract's list (stage 06); write down where it says more. A screen can add states of its own, such as rate-limited or expired, with the responses that lead to them. The mock server returns any listed response on request, so each state can be built and checked before the back end is ready.
 
 ## Steps
 

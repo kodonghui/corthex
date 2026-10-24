@@ -14,7 +14,7 @@
 1. Read the repository's own rules first, such as `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`.
 2. Check the real repository root, the branch, existing changes and work in progress by others.
 3. Implement against the contracts. If the code needs a contract change, change the contract first (stage 05 or 06) and say so.
-4. Back end: return exactly the responses the API contract lists, with their schemas. Run the contract tests against a development or staging server, never production, with a test account: for example `schemathesis run api/openapi.yaml --url <server> -H "Authorization: Bearer <test token>"`.
+4. Back end: return exactly the responses the API contract lists, with their schemas, and every error in the contract's error shape with one of its error codes; log the `traceId` of each error response. If the framework also generates an OpenAPI document from the code, the contract file stays the source. Run the contract tests against a development or staging server, never production, with a test account: for example `schemathesis run api/openapi.yaml --url <server> -H "Authorization: Bearer <test token>"`.
 5. Front end: build each screen against the mock server first (stage 06), show each response the way the screen definition says, then switch to the real server.
 6. Write tests for each acceptance criterion the change touches.
 7. Open a pull request that names the TASK and SPEC IDs and says what was tested and what was not.
@@ -23,7 +23,8 @@
 
 - The tests for the touched acceptance criteria pass.
 - The contract tests pass for every operation the change touches, and the report names the tool, the server and the commit.
-- Each touched operation is reported in two steps that do not imply each other: provided, when the back end passes its contract tests, and accepted, when the front end works against the real server and its screens pass.
+- Every response a touched operation lists has a passing test.
+- Each touched operation is reported in two steps that do not imply each other: provided, when the back end passes its contract tests and a test for each response, and accepted, when the front end works against the real server and its screens pass.
 - The diff holds only the intended files and no secrets.
 - Screen changes match their screen definitions, including the state each response leads to.
 
