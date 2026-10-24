@@ -369,4 +369,4 @@ Removed with the board, with their IDs kept:
 | TERM-095 | Chat client | removed | Removed with CTX-011 |
 | TERM-096 | In-chat view | removed | Removed with CTX-011 |
 
-Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have updated contexts; TERM-109 to TERM-123 are new.
+Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names and definitions under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have only updated contexts; TERM-109 to TERM-123 are new.

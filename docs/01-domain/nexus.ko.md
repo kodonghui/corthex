@@ -369,4 +369,4 @@ ID를 그대로 두고 보드와 함께 삭제한 용어:
 | TERM-095 | 대화 앱 | 삭제 | CTX-011과 함께 삭제 |
 | TERM-096 | 대화 안 화면 | 삭제 | CTX-011과 함께 삭제 |
 
-2026-10-24 보드와 함께 바뀐 것: TERM-085와 TERM-089는 같은 ID로 이름이 바뀌었고(TERM-092는 영어 이름만 Apply에서 Reflect로 바뀜), TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091, TERM-097은 뜻이 바뀌었으며, TERM-050, TERM-059, TERM-065, TERM-072, TERM-076, TERM-082는 컨텍스트가 바뀌었습니다. TERM-109~TERM-123은 새것입니다.
+2026-10-24 보드와 함께 바뀐 것: TERM-085와 TERM-089는 같은 ID로 이름과 뜻이 바뀌었고(TERM-092는 뜻이 바뀌고 영어 이름만 Apply에서 Reflect로 바뀜), TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091, TERM-097은 뜻이 바뀌었으며, TERM-050, TERM-059, TERM-065, TERM-072, TERM-076, TERM-082는 컨텍스트만 바뀌었습니다. TERM-109~TERM-123은 새것입니다.
