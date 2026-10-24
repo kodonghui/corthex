@@ -4,13 +4,15 @@
 
 CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별로 진행하도록 돕는 Claude Code·Codex용 플러그인입니다. 도메인 탐색과 요구사항부터 화면, 개발, QA, 마지막 발표까지 다룹니다.
 
-따로 돌아가는 실행기를 더하지 않습니다. 설치와 갱신은 각 도구의 플러그인 마켓플레이스를 쓰고, 나머지는 모두 스킬입니다. 그 위에 세 가지를 더합니다.
+따로 돌아가는 서비스를 더하지 않습니다. 설치와 갱신은 각 도구의 플러그인 마켓플레이스를 쓰고, 핵심 플러그인은 스킬만 담습니다. 그 위에 세 가지를 더합니다.
 
 - **AI가 일하는 원칙**: 결과부터 말하기, 사실과 추측 나누기, 되돌릴 수 없는 일은 먼저 묻기, 기록 남기기.
 - **13단계 작업 흐름**: 모든 단계가 같은 여섯 칸(입력, 산출물, 사람 화면, 동기화, 사람 확인 지점, 추적 ID)을 채워서, 각 산출물을 앞 단계까지 거슬러 따라갈 수 있습니다.
 - **프로필과 프로젝트 등록**: 같은 플러그인을 사람마다, 그리고 여러 프로젝트에 함께 쓸 수 있습니다.
 
-> 상태: 0.1.0, 초기 골격입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다.
+선택해서 쓰는 두 번째 플러그인 `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다.
+
+> 상태: 0.1.0, 초기 골격입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대이고, `corthex-memory`는 아직 세션 시작 문맥만 넣습니다.
 
 ## 설치
 
@@ -29,6 +31,17 @@ claude plugin install corthex@corthex
 codex plugin marketplace add kodonghui/corthex
 codex plugin add corthex@corthex
 ```
+
+### 선택: 세션 시작 문맥
+
+`corthex-memory`는 세션이 시작될 때 일하는 원칙, 프로필, 현재 프로젝트 설정을 넣습니다. 로컬 파일만 읽고 네트워크에 연결하지 않습니다. PATH에 Python 3(`python3`나 `python`)이 있어야 하고, Windows의 Claude Code에서는 Git for Windows나 PowerShell 7도 있어야 합니다.
+
+```bash
+claude plugin install corthex-memory@corthex   # Claude Code, corthex도 함께 설치
+codex plugin add corthex-memory@corthex        # Codex, corthex를 추가한 뒤
+```
+
+Codex에서는 `/hooks`를 한 번 열어 이 플러그인의 훅을 신뢰해 주세요. 신뢰하기 전에는 Codex가 플러그인 훅을 돌리지 않습니다. 끄려면 플러그인을 끄거나 지웁니다. 자세한 내용은 [세션 시작 문맥](docs/architecture.ko.md#세션-시작-문맥)에 있습니다.
 
 ## 스킬
 
@@ -54,7 +67,7 @@ codex plugin add corthex@corthex
 ## 호환
 
 - Claude Code는 `.claude-plugin/marketplace.json`과 각 플러그인의 `.claude-plugin/plugin.json`을 읽습니다.
-- Codex와 다른 [Agent Plugins](https://agent-plugins.org) 클라이언트는 `.agents/plugins/marketplace.json`과 각 플러그인 루트의 `plugin.json`을 읽습니다.
+- Codex와 다른 [Agent Plugins](https://agent-plugins.org) 클라이언트는 `.agents/plugins/marketplace.json`과 핵심 플러그인 루트의 `plugin.json`을 읽습니다. `corthex-memory`는 훅이 있어 그 대신 `.codex-plugin/plugin.json`을 두고, Claude Code와 Codex에서만 씁니다.
 - 스킬은 [Agent Skills](https://agentskills.io) 형식이라 두 도구가 함께 쓰고, 스킬 하나만 따로 쓸 수도 있습니다.
 
 ## 개발
@@ -63,6 +76,7 @@ codex plugin add corthex@corthex
 python -m unittest discover -s tests -v
 claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
+claude plugin validate --strict plugins/corthex-memory
 ```
 
 ## 라이선스
