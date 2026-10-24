@@ -63,7 +63,7 @@ Every tester also keeps to these rules:
 
 ## The report
 
-The orchestrator writes one report per run, by default `docs/12-qa/runs/<date>-<where>.md`, with the evidence in a folder of the same name beside it. Keep only the screenshots that a bug or an impression cites, and attach those to the bug in the tracker.
+The orchestrator writes one report per run, by default `docs/12-qa/runs/<date>-<where>.md`, with the evidence in a folder of the same name beside it. Keep only the screenshots that the report cites, and attach each bug's screenshots to it in the tracker.
 
 ```markdown
 # Run 2026-10-24 on staging (commit abc1234)
