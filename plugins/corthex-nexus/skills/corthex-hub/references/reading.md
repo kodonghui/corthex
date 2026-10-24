@@ -28,7 +28,7 @@ An ID is defined only in the stage that creates its kind, as the stage contract 
 | A Markdown table row whose first cell is an ID, in a table without an ID column | nothing | | the other IDs in the row |
 | A YAML mapping with `id: SCR-001`, in any place among its keys | that ID | its `title` or `name` | the other IDs in the mapping; a nested mapping with its own `id` records this one as its `parent` |
 | An OpenAPI operation with `x-corthex: { id: API-001 }`, in YAML or JSON | that ID | the method and the path, such as `POST /orders` | the other IDs in the `x-corthex` block, such as `spec: [SPEC-001]` |
-| An SQL comment such as `-- TBL-001 orders ← SPEC-001` | that ID | the first words after the ID | IDs on that line and the lines after it, up to the next table comment |
+| An SQL table comment that starts with an ID: a `--` comment such as `-- TBL-001 orders ← SPEC-001` before `CREATE TABLE`, or the comment the database keeps with the table, in the forms ERD Editor writes: `COMMENT 'TBL-001 …'` after the columns (MySQL, MariaDB, Snowflake, Databricks), `COMMENT ON TABLE orders IS 'TBL-001 …'` (PostgreSQL, Oracle) or an `MS_Description` property from `sp_addextendedproperty` (SQL Server) | that ID | the first words after the ID, else the table's name | IDs in the statements about that table: its `CREATE TABLE` with the column comments, `ALTER TABLE`, `CREATE INDEX … ON` and the comments on its columns. Other lines link from the ID defined last above them |
 | A CSV or TSV file with an ID column | the ID in each row; a quoted cell may run over several lines, and the row's place is the line it starts on | as for tables | the other IDs in the row |
 
 Any other text only mentions IDs. A file named by an ID links its mentions from that ID.
@@ -39,6 +39,7 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 - **Copy time**: front matter `exported_at`, `refreshed_at`, `copied_at` or `synced_at` shows on the page as the time of the text copy.
 - **Deleted text**: struck-through Markdown, `~~…~~`, is ignored, as in exports from Notion.
 - **YAML comments**: text after ` #` is not part of a value, so `- id: SCR-001 # Home` defines `SCR-001`.
+- **SQL**: a statement ends at `;`, at a `GO` line (SQL Server) or at a `/` line (Oracle). A comment inside a column list, such as a column's comment in SQLite, and an ID in any other string only mention IDs, and `--` inside a string is not a comment.
 - **Listings**: a file named `index`, `README`, `list` or `목록`, or one whose name starts with `_`, only fills in what the items' own files leave out. It never counts as a second definition.
 - **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks: it is not checked, and a link to it does not count.
 

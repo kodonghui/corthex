@@ -242,6 +242,213 @@ class TemplateTest(HubCase):
         self.assertNotIn("REQ-004", self.refs(snapshot, "unknown-ref"))
 
 
+# The same schema as the ERD Editor MCP server 1.1.0 writes it for each database, with the line
+# of each table ID.
+# A column comment of `customers` names SPEC-003 and one of `orders` names TBL-001 and SPEC-004;
+# `shipments` has no ID, so its SPEC-005 links from nothing.
+ERD_EXPORTS = {
+    "mysql": ("""\
+CREATE TABLE customers
+(
+  id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'Customer id',
+  email VARCHAR(255) NOT NULL COMMENT 'Sign-in email; see SPEC-003',
+  PRIMARY KEY (id)
+) COMMENT 'TBL-001 customers (CTX-001) <- SPEC-001';
+
+CREATE TABLE orders
+(
+  id          BIGINT NOT NULL AUTO_INCREMENT,
+  customer_id BIGINT NOT NULL COMMENT 'TBL-001 buyer -- see SPEC-004',
+  PRIMARY KEY (id)
+) COMMENT 'TBL-002 orders (CTX-001) <- SPEC-001, SPEC-002';
+
+CREATE TABLE shipments
+(
+  id    BIGINT NOT NULL AUTO_INCREMENT,
+  label TEXT   NOT NULL COMMENT 'Printed for SPEC-005',
+  PRIMARY KEY (id)
+);
+
+ALTER TABLE orders
+  ADD CONSTRAINT FK_customers_TO_orders
+    FOREIGN KEY (customer_id)
+    REFERENCES customers (id)
+    ON DELETE RESTRICT;
+""", 6, 13),
+    "postgresql": ("""\
+CREATE TABLE "customers"
+(
+  id    BIGINT       NOT NULL GENERATED ALWAYS AS IDENTITY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  PRIMARY KEY (id)
+);
+
+COMMENT ON TABLE "customers" IS 'TBL-001 customers (CTX-001) <- SPEC-001';
+
+COMMENT ON COLUMN "customers".email IS 'Sign-in email; see SPEC-003';
+
+CREATE TABLE orders
+(
+  id          BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+  customer_id BIGINT NOT NULL,
+  PRIMARY KEY (id)
+);
+
+COMMENT ON TABLE orders IS 'TBL-002 orders (CTX-001)
+<- SPEC-001, SPEC-002';
+
+COMMENT ON COLUMN orders.customer_id IS 'TBL-001 buyer''s id -- see SPEC-004';
+
+CREATE TABLE shipments
+(
+  id    BIGINT NOT NULL GENERATED ALWAYS AS IDENTITY,
+  label TEXT   NOT NULL,
+  PRIMARY KEY (id)
+);
+
+COMMENT ON COLUMN shipments.label IS 'Printed for SPEC-005';
+""", 8, 19),
+    "oracle": ("""\
+CREATE TABLE customers
+(
+  id    NUMBER(19)    NOT NULL,
+  email VARCHAR2(255) NOT NULL,
+  CONSTRAINT PK_customers PRIMARY KEY (id)
+);
+
+CREATE SEQUENCE SEQ_customers
+START WITH 1
+INCREMENT BY 1;
+
+CREATE OR REPLACE TRIGGER SEQ_TRG_customers
+BEFORE INSERT ON customers
+REFERENCING NEW AS NEW FOR EACH ROW
+BEGIN
+  SELECT SEQ_customers.NEXTVAL
+  INTO :NEW.id
+  FROM DUAL;
+END;
+/
+
+COMMENT ON TABLE customers IS 'TBL-001 customers (CTX-001) <- SPEC-001';
+
+COMMENT ON COLUMN customers.email IS 'Sign-in email; see SPEC-003';
+
+CREATE TABLE orders
+(
+  id          NUMBER(19) NOT NULL,
+  customer_id NUMBER(19) NOT NULL,
+  CONSTRAINT PK_orders PRIMARY KEY (id)
+);
+
+COMMENT ON TABLE orders IS 'TBL-002 orders (CTX-001) <- SPEC-001, SPEC-002';
+
+COMMENT ON COLUMN orders.customer_id IS 'TBL-001 buyer -- see SPEC-004';
+
+CREATE TABLE shipments
+(
+  id    NUMBER(19)    NOT NULL,
+  label VARCHAR2(255) NOT NULL,
+  CONSTRAINT PK_shipments PRIMARY KEY (id)
+);
+
+COMMENT ON COLUMN shipments.label IS 'Printed for SPEC-005';
+""", 22, 33),
+    "sql server": ("""\
+CREATE TABLE [customers]
+(
+  [id]    bigint       NOT NULL IDENTITY(1,1),
+  [email] varchar(255) NOT NULL,
+  CONSTRAINT [PK_customers] PRIMARY KEY ([id])
+)
+GO
+
+EXECUTE sys.sp_addextendedproperty 'MS_Description',
+  N'TBL-001 customers (CTX-001) <- SPEC-001', 'schema', 'dbo', 'table', 'customers'
+GO
+
+EXECUTE sys.sp_addextendedproperty 'MS_Description',
+  N'Sign-in email; see SPEC-003', 'schema', 'dbo', 'table', 'customers', 'column', 'email'
+GO
+
+CREATE TABLE [orders]
+(
+  [id]          bigint NOT NULL IDENTITY(1,1),
+  [customer_id] bigint NOT NULL,
+  CONSTRAINT [PK_orders] PRIMARY KEY ([id])
+)
+GO
+
+EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'TBL-002 orders (CTX-001) <- SPEC-001, SPEC-002',
+  @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'orders';
+
+EXEC sp_addextendedproperty @name = N'MS_Description', @value = N'TBL-001 buyer -- see SPEC-004',
+  @level0type = N'SCHEMA', @level0name = N'dbo', @level1type = N'TABLE', @level1name = N'orders',
+  @level2type = N'COLUMN', @level2name = N'customer_id';
+
+CREATE TABLE [shipments]
+(
+  [id]    bigint NOT NULL IDENTITY(1,1),
+  [label] text   NOT NULL,
+  CONSTRAINT [PK_shipments] PRIMARY KEY ([id])
+)
+GO
+
+EXECUTE sys.sp_addextendedproperty 'MS_Description',
+  N'Printed for SPEC-005', 'schema', 'dbo', 'table', 'shipments', 'column', 'label'
+GO
+""", 10, 25),
+    "snowflake and databricks": ("""\
+CREATE TABLE customers
+(
+  id    NUMBER  NOT NULL COMMENT 'Customer id',
+  email VARCHAR NOT NULL COMMENT 'Sign-in email; see SPEC-003',
+  CONSTRAINT PK_customers PRIMARY KEY (id)
+)
+COMMENT = 'TBL-001 customers (CTX-001) <- SPEC-001';
+
+CREATE TABLE orders
+(
+  id          BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL COMMENT 'TBL-001 buyer -- see SPEC-004'
+)
+USING DELTA
+COMMENT 'TBL-002 orders (CTX-001) <- SPEC-001, SPEC-002';
+
+CREATE TABLE shipments
+(
+  id    NUMBER  NOT NULL,
+  label VARCHAR NOT NULL COMMENT 'Printed for SPEC-005'
+);
+""", 7, 15),
+    "sqlite": ("""\
+-- TBL-001 customers (CTX-001) <- SPEC-001
+CREATE TABLE customers
+(
+  -- Sign-in email; see SPEC-003
+  email TEXT    NOT NULL,
+  id    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
+);
+
+-- TBL-002 orders (CTX-001) <- SPEC-001, SPEC-002
+CREATE TABLE orders
+(
+  -- TBL-001 buyer's id -- see SPEC-004
+  customer_id INTEGER NOT NULL,
+  id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  FOREIGN KEY (customer_id) REFERENCES customers (id)
+);
+
+CREATE TABLE shipments
+(
+  -- Printed for SPEC-005
+  label TEXT    NOT NULL,
+  id    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT
+);
+""", 1, 9),
+}
+
+
 class FormsTest(HubCase):
     def test_item_files_and_listings(self):
         self.project(ids={"requirement": {"prefix": "REQ", "digits": 2}}, stages={"02-prd": {"human": "notion", "source": "prd/", "truth": "human"}})
@@ -365,6 +572,37 @@ class FormsTest(HubCase):
         home, cart = items["SCR-001"], items["SCR-002"]
         self.assertEqual((home.get("title"), home.get("links"), home["where"]), ("Home", ["FL-001"], "sitemap.yaml:6"))
         self.assertEqual((cart.get("title"), cart.get("parent"), cart["where"]), ("Cart", "SCR-001", "sitemap.yaml:5"))
+
+    def test_table_comments_as_erd_editor_writes_them(self):
+        self.project(stages={"05-erd": {"human": "erd-editor", "source": "db/schema.sql", "truth": "human"}})
+        for database, (sql, first, second) in ERD_EXPORTS.items():
+            with self.subTest(database=database):
+                self.write(self.repo / "db/schema.sql", sql)
+                snapshot = self.snapshot()
+                items = self.items(snapshot)
+                self.assertEqual({ident: (item["kind"], item["title"], item["where"]) for ident, item in items.items()}, {
+                    "TBL-001": ("table", "customers", "db/schema.sql:%d" % first),
+                    "TBL-002": ("table", "orders", "db/schema.sql:%d" % second),
+                })
+                self.assertEqual(set(items["TBL-001"]["links"]), {"CTX-001", "SPEC-001", "SPEC-003"})
+                self.assertEqual(set(items["TBL-002"]["links"]), {"CTX-001", "SPEC-001", "SPEC-002", "SPEC-004", "TBL-001"},
+                                 "a column comment links from its own table, even one that starts with an ID")
+                self.assertEqual(self.found(snapshot, "duplicate-id"), [])
+
+    def test_sql_strings_and_trailing_comments(self):
+        self.project(stages={"05-erd": {"human": "erd-editor", "source": "db/schema.sql", "truth": "source"}})
+        self.write(self.repo / "db/schema.sql", "-- Schema for the shop; TBL-009 is planned.\n"
+                   "-- TBL-001 customers (CTX-001) ← SPEC-001\n-- One row per account.\nCREATE TABLE IF NOT EXISTS customers (\n"
+                   "  id   BIGINT PRIMARY KEY,\n  note TEXT DEFAULT '-- TBL-003 is a value; not a comment'\n);\n"
+                   "CREATE INDEX customers_note ON customers (note); -- for SPEC-003\n\n"
+                   "CREATE TABLE orders (id BIGINT PRIMARY KEY) ENGINE=InnoDB COMMENT='TBL-002 <- SPEC-002';\n")
+        items = self.items(self.snapshot())
+        self.assertEqual({ident: (item["title"], item["where"]) for ident, item in items.items()}, {
+            "TBL-001": ("customers", "db/schema.sql:2"),
+            "TBL-002": ("orders", "db/schema.sql:10"),
+        }, "an ID in a string is not a definition, and a table comment without a name takes the table's")
+        self.assertEqual(set(items["TBL-001"]["links"]), {"CTX-001", "SPEC-001", "SPEC-003", "TBL-003"})
+        self.assertEqual(items["TBL-002"]["links"], ["SPEC-002"])
 
 
 class SourcesTest(HubCase):

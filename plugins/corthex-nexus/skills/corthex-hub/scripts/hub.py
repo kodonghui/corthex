@@ -15,6 +15,7 @@ use the network. Standard library only.
 """
 
 import argparse
+import bisect
 import csv
 import html
 import io
@@ -127,7 +128,18 @@ YAML_KEY = re.compile(r"^(\s*)(-\s+)?(\"[^\"]*\"|'[^']*'|[^\s#\"'-][^:#]*?|-[^\s
 YAML_ITEM = re.compile(r"^(\s*)-\s+(.*)$")
 YAML_COMMENT = re.compile(r"(?:^|\s)#.*$")
 JSON_ID = re.compile(r'"id"\s*:\s*"([^"\\]{1,80})"')
-SQL_COMMENT = re.compile(r"--\s?(.*)$")
+# One SQL token: a comment, a string (also N'…' and $tag$…$tag$), a name (also quoted) or a mark.
+SQL_TOKEN = re.compile(
+    r"(?P<comment>--[^\n]*|#(?!\S)[^\n]*|/\*.*?(?:\*/|\Z))"
+    r"|(?P<string>[NnEe]?'(?:[^']|'')*(?:'|\Z)|\$(?P<tag>[A-Za-z_]\w*|)\$.*?(?:\$(?P=tag)\$|\Z))"
+    r"|(?P<name>\"(?:[^\"]|\"\")*(?:\"|\Z)|`(?:[^`]|``)*(?:`|\Z)|\[[^\]\n]*\]|[A-Za-z_@][\w$@#]*)"
+    r"|(?P<mark>\S)",
+    re.S,
+)
+# A line that ends a statement: SQL Server's `GO` or Oracle's `/`.
+SQL_END_LINE = re.compile(r"^\s*(?:GO(?:\s+\d+)?|/)\s*(?:--.*)?$", re.I)
+SQL_EXTENDED_PROPERTY = ("sp_addextendedproperty", "sp_updateextendedproperty")
+SQL_PROPERTY_ARGS = ("name", "value", "level0type", "level0name", "level1type", "level1name", "level2type", "level2name")
 GITHUB = re.compile(
     r"^(?:https://(?:[^@/\s]+@)?github\.com/|ssh://git@github\.com/|git@github\.com:)"
     r"([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$"
@@ -811,18 +823,184 @@ def scan_json(scan, src, text):
     walk(data, None, [])
 
 
+def sql_statements(text):
+    """The statements of an SQL text, each a list of (group, text, line, depth, last line) tokens.
+
+    A statement ends at `;` or at a `GO` or `/` line. The comments before a statement belong to it,
+    and a comment on the line where a statement ends belongs to that statement."""
+    starts, offset = [], 0
+    for piece in text.splitlines(True):
+        starts.append(offset)
+        offset += len(piece)
+    end_lines = {number for number, line in enumerate(text.splitlines(), 1) if SQL_END_LINE.match(line)}
+    statements, tokens, depth, ended = [], [], 0, None
+    for match in SQL_TOKEN.finditer(text):
+        group, value = match.lastgroup, match.group()
+        line = bisect.bisect_right(starts, match.start())
+        token = (group, value, line, depth, bisect.bisect_right(starts, match.end() - 1))
+        if group == "comment" and not tokens and line == ended:
+            statements[-1].append(token)
+        elif group == "mark" and value == "(":
+            tokens.append(token)
+            depth += 1
+        elif group == "mark" and value == ")":
+            tokens.append(token)
+            depth = max(depth - 1, 0)
+        else:
+            tokens.append(token)
+            on_end_line = line in end_lines and (group, value.upper()) in (("name", "GO"), ("mark", "/"))
+            if (group, value) == ("mark", ";") or on_end_line:
+                statements.append(tokens)
+                tokens, depth, ended = [], 0, line
+    if tokens:
+        statements.append(tokens)
+    return statements
+
+
+def sql_name(value):
+    """A name without its quotes."""
+    if len(value) >= 2 and value[0] + value[-1] in ('""', "``"):
+        return value[1:-1].replace(value[0] * 2, value[0])
+    if len(value) >= 2 and value[0] + value[-1] == "[]":
+        return value[1:-1]
+    return value
+
+
+def sql_string(value):
+    """The text of a string token."""
+    if value.startswith("$"):
+        tag = value[:value.index("$", 1) + 1]
+        body = value[len(tag):]
+        return body[:-len(tag)] if len(body) >= len(tag) and body.endswith(tag) else body
+    if value[0] in "NnEe":
+        value = value[1:]
+    body = value[1:-1] if len(value) >= 2 and value.endswith("'") else value[1:]
+    return body.replace("''", "'")
+
+
+def sql_arguments(code):
+    """The string arguments of a procedure call as {name: (text, line)}, by position or by @name."""
+    args, position, argument = {}, 0, []
+    for token in code + [("mark", ",", 0, 0, 0)]:
+        if token[:2] != ("mark", ","):
+            argument.append(token)
+            continue
+        if len(argument) >= 3 and argument[0][1].startswith("@") and argument[1][1] == "=":
+            key, value = argument[0][1][1:].lower(), argument[2]
+        elif argument and position < len(SQL_PROPERTY_ARGS):
+            key, value = SQL_PROPERTY_ARGS[position], argument[0]
+            position += 1
+        else:
+            key = value = None
+        if key and value[0] == "string":
+            args[key] = (sql_string(value[1]), value[2])
+        argument = []
+    return args
+
+
+def sql_about(tokens):
+    """(table, creates, comment) of a statement: the table it is about as (key, name), whether it
+    creates the table, and the table's own comment in it as (text, line)."""
+    code = [token for token in tokens if token[0] != "comment"]
+    words = [value.upper() if group == "name" else value for group, value, *_ in code]
+
+    def name_at(index):
+        parts = []
+        while index < len(code) and code[index][0] == "name":
+            parts.append(sql_name(code[index][1]))
+            index += 1
+            if words[index:index + 1] != ["."]:
+                break
+            index += 1
+        return parts, index
+
+    def string_at(index):
+        if index < len(code) and code[index][0] == "string":
+            return sql_string(code[index][1]), code[index][2]
+        return None
+
+    table, creates, comment = [], False, None
+    if words[:1] == ["CREATE"]:
+        place = next((k for k in range(1, min(len(words), 7)) if words[k] == "TABLE"), None)
+        if place and all(code[k][0] == "name" for k in range(1, place)):
+            index = place + 1
+            if words[index:index + 3] == ["IF", "NOT", "EXISTS"]:
+                index += 3
+            table, index = name_at(index)
+            creates = True
+            # MySQL, MariaDB, Snowflake and Databricks keep the table's comment after its columns.
+            for k in range(index, len(code)):
+                if words[k] == "COMMENT" and code[k][3] == 0:
+                    comment = string_at(k + 2 if words[k + 1:k + 2] == ["="] else k + 1)
+                    break
+        elif "INDEX" in words[1:4] and "ON" in words:
+            index = words.index("ON") + 1
+            table = name_at(index + 1 if words[index:index + 1] == ["ONLY"] else index)[0]
+    elif words[:2] == ["ALTER", "TABLE"]:
+        index = 4 if words[2:4] == ["IF", "EXISTS"] else 2
+        table = name_at(index + 1 if words[index:index + 1] == ["ONLY"] else index)[0]
+    elif words[:3] == ["COMMENT", "ON", "TABLE"]:
+        table, index = name_at(3)
+        if words[index:index + 1] == ["IS"]:
+            comment = string_at(index + 1)
+    elif words[:3] == ["COMMENT", "ON", "COLUMN"]:
+        table = name_at(3)[0][:-1]
+    elif words[:1] in (["EXEC"], ["EXECUTE"]):
+        parts, index = name_at(1)
+        if parts and parts[-1].lower() in SQL_EXTENDED_PROPERTY:
+            # SQL Server keeps comments as MS_Description properties of a table or its columns.
+            args = sql_arguments(code[index:])
+            kinds = {key: args[key][0].lower() for key in ("name", "level1type", "level2type") if key in args}
+            if kinds.get("name") == "ms_description" and kinds.get("level1type") == "table" and "level1name" in args:
+                table = [args["level1name"][0]]
+                if not kinds.get("level2type"):
+                    comment = args.get("value")
+    if not table:
+        return None, False, None
+    return (table[-1].casefold(), table[-1]), creates, comment
+
+
 def scan_sql(scan, src, text):
-    """`-- TBL-001 orders ← SPEC-001` defines a table; later lines link from it."""
+    """A table comment that starts with an ID defines the table: `-- TBL-001 orders ← SPEC-001`
+    before `CREATE TABLE`, or the comment the database keeps with the table, as ERD Editor
+    writes it (`COMMENT '…'` after the columns, `COMMENT ON TABLE … IS '…'` or an
+    `MS_Description` property). The lines of the statements about a table link from its ID;
+    other lines link from the ID defined last above them."""
+    owner, found = {}, []
+    for tokens in sql_statements(text):
+        table, creates, comment = sql_about(tokens)
+        for group, value, line, depth, _ in tokens:
+            if group == "comment" and value.startswith("--") and depth == 0:
+                found.append((line, value[2:], table if creates else None))
+        if comment:
+            found.append((comment[1], comment[0], table))
+        if table:
+            first = next(token[2] for token in tokens if token[0] != "comment")
+            for number in range(first, tokens[-1][4] + 1):
+                owner[number] = table[0]
+    defined, subjects, ident_of = set(), {}, {}
+    for line, comment, table in sorted(found, key=lambda entry: entry[0]):
+        lead = scan.ids.lead(comment)
+        if not lead or lead[1] not in src.kinds:
+            continue
+        ident, kind, _, rest = lead
+        if table and (ident, table[0]) in defined:
+            continue
+        name = plain(re.split(r"[(←<,;]|\s-\s", rest, maxsplit=1)[0]) or (plain(table[1]) if table else "")
+        scan.claim(ident, kind, src, line, {"title": name})
+        if table:
+            defined.add((ident, table[0]))
+            ident_of.setdefault(table[0], ident)
+        subjects[line] = ident
     subject = None
     for number, line in enumerate(text.splitlines(), 1):
-        comment = SQL_COMMENT.search(line)
-        lead = scan.ids.lead(comment.group(1)) if comment else None
-        if lead and lead[1] in src.kinds:
-            ident, kind, _, rest = lead
-            name = re.split(r"[(←<,;]|\s-\s", rest, maxsplit=1)[0]
-            scan.claim(ident, kind, src, number, {"title": plain(name)})
-            subject = ident
-        scan.refer(line, src, number, subject)
+        if number in subjects:
+            subject = current = subjects[number]
+        elif number in owner:
+            current = ident_of.get(owner[number])
+        else:
+            current = subject
+        scan.refer(line, src, number, current)
 
 
 def scan_table_file(scan, src, text, delimiter):
