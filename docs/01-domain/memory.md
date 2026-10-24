@@ -100,7 +100,7 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-029 | Search index | The text and embedding index of the items, which can always be rebuilt from them | CTX-003 | database |
 | TERM-030 | Embedding | A vector for a text from the OpenAI embeddings API, used to find items by meaning | CTX-003 | |
 | TERM-031 | Item list | A short list of a project's current items, one line each, read before any item is opened | CTX-003 | index |
-| TERM-032 | Curated layer | The current state, the items, the item list and the tombstones: what sync shares | CTX-004 | |
+| TERM-032 | Curated layer | The current state, the items and their pins, the item list and the tombstones: what sync shares | CTX-004 | |
 | TERM-033 | Sync remote | The private place that the curated layer is synced through, such as a Git repository of the user's | CTX-004 | cloud, server |
 | TERM-034 | Tombstone | A record that an item was forgotten, so that sync does not bring it back | CTX-004, CTX-005 | |
 | TERM-035 | Forget | Removing an item, its search index entries and the raw log text it quotes, and leaving a tombstone | CTX-005 | delete |
@@ -115,3 +115,16 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-044 | Memory configuration | The memory plugin's own settings on the device, kept in the memory store: the enabled projects, the models, the retention period, what is left out of recording, and sync | CTX-002, CTX-005 | config, project settings |
 | TERM-045 | Memory status | What the memory skill shows about memory on the device: the enabled projects, the last curation, the unprocessed turns, the usage and the recent failures | CTX-005 | dashboard |
 | TERM-046 | Memory skill | The memory plugin's skill, which tells the agent how to search, pin, forget, show the memory status and change the memory configuration | CTX-003, CTX-005 | command |
+| TERM-098 | Unprocessed turn | A turn in the raw log that no curation has processed yet | CTX-001, CTX-002 | new turn, pending turn |
+| TERM-099 | Curation trigger | An event after which the unprocessed turns of an enabled project are curated, such as the tenth unprocessed turn at the end of a turn | CTX-002 | schedule |
+| TERM-100 | Curation lock | The mark that a curation is running for a project, which keeps a second one from starting | CTX-002 | mutex |
+| TERM-101 | Temporary device | A device whose files go when its session ends, such as the container of a cloud session | CTX-001, CTX-002, CTX-004 | cloud device |
+| TERM-102 | Deciding quote | The first quote of an item, on which it rests; the deciding quote of a user decision is in the user's own words | CTX-002 | evidence |
+| TERM-103 | Notice | A line of the start summary about something that needs the user, such as stopped curation or a missing memory key | CTX-003 | alert, warning |
+| TERM-104 | Injection log | The record of which items were injected with which prompt or start summary, with recall's scores and without their text | CTX-003 | |
+| TERM-105 | Failure log | The record of failures of recording, recall, curation and sync, without conversation text or keys | CTX-005 | error log |
+| TERM-106 | Hook timings | How long each hook of the memory plugin ran, kept for the memory status | CTX-005 | |
+| TERM-107 | Project tombstone | A record that a project's memory was deleted, so that sync does not bring it back; proposed with SPEC-037 | CTX-004, CTX-005 | |
+| TERM-108 | Price list | The prices per token that the usage log's estimates use, with when and where they were taken | CTX-005 | bill, rate card |
+
+The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](nexus.md), which uses TERM-047 to TERM-097.
