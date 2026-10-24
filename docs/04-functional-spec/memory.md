@@ -213,6 +213,8 @@ The maintainer checks this file together with the user flows. Most worth a look:
 
 ### Stage 05: the memory store
 
+Answered in [docs/05-erd/memory.md](../05-erd/memory.md) (draft of 2026-10-24).
+
 - Per project: raw log files, one per session; the curation record, which stays right when two sessions append at once, with the unprocessed turns, the oldest one's time, how far each raw log file is processed and the failures in a row; the items; the current state's lines, each with its own ID; the item list; the pins; the tombstones and project tombstones; the search index, with words and vectors; and the injection log.
 - Per device: the memory configuration (consent with its date and text version, enabled projects, left-out folders and kinds, the retention period, the curation triggers, the temporary device, the curator model, the recall threshold and the skip length, the price list and the sync address), the usage log, the failure log, the hook timings, and the store's format version (REQ-063).
 - A forget keeps the positions of an entry's other quotes valid (SPEC-035), and a tombstone names quotes by position (SPEC-029).

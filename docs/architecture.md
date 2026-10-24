@@ -201,7 +201,7 @@ CI runs the repository and server checks on Linux, Windows and macOS, and the Cl
 
 Planned, not in 0.1.0. Both need components the core plugin leaves out.
 
-- `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context. Requirements: [docs/02-prd/memory.md](02-prd/memory.md). User flows: [docs/03-user-flow/memory/](03-user-flow/memory/README.md). Functional spec: [docs/04-functional-spec/memory.md](04-functional-spec/memory.md).
+- `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context. Requirements: [docs/02-prd/memory.md](02-prd/memory.md). User flows: [docs/03-user-flow/memory/](03-user-flow/memory/README.md). Functional spec: [docs/04-functional-spec/memory.md](04-functional-spec/memory.md). Memory store: [docs/05-erd/memory.md](05-erd/memory.md).
 - `corthex-nexus`, later versions: decided by its requirements, [docs/02-prd/nexus.md](02-prd/nexus.md). Editors for sitemaps and user flows on the NEXUS server, and an MCP server over the same data, are candidates there (decision D5). The server's storage can move from D1 to Postgres if memory comes to be shared across devices.
 
 ## Sources
