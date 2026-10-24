@@ -317,11 +317,10 @@ class DefaultHumanViewTest(unittest.TestCase):
 
     def test_stage_references_name_their_default(self):
         guides = {
-            "02-prd": "notion-database.md", "03-user-flow": "notion-database.md",
+            "01-domain": "event-storming-board.md", "02-prd": "notion-database.md", "03-user-flow": "notion-database.md",
             "04-functional-spec": "notion-database.md", "09-mockup": "design-tools.md", "10-wbs": "task-board.md",
         }
-        # Stage 01's board has its own reference.
-        for key, skill in STAGES[1:]:
+        for key, skill in STAGES:
             with self.subTest(stage=key):
                 view = next(line for line in self.reference(key).splitlines() if line.startswith("| Human view |"))
                 self.assertIn("default", view)
