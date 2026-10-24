@@ -34,7 +34,7 @@ codex plugin add corthex@corthex
 
 ### Optional: session start context
 
-`corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It reads local files only and makes no network calls. It needs Python 3 (`python3` or `python`) on the PATH, and with Claude Code on Windows also Git for Windows or PowerShell 7.
+`corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It reads local files only and makes no network calls. It needs Python 3 on the PATH (it tries `python3`, `python` and the Windows `py` launcher), and with Claude Code on Windows also Git for Windows or PowerShell 7.
 
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too

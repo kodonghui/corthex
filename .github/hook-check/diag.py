@@ -22,7 +22,7 @@ def parents():
     try:
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-            capture_output=True, text=True, timeout=40,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20,
         )
     except (OSError, subprocess.SubprocessError) as error:
         return [{"error": str(error)}]

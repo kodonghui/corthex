@@ -3,11 +3,12 @@ name: windows-hook-check
 # Runs the corthex-memory session start hook in Claude Code and Codex on Windows,
 # with Git Bash, without it, and with only Windows PowerShell 5.1. Both hosts talk
 # to a mock model server on 127.0.0.1 with fake keys, so no model is called.
-# The report is in the log, the job summary and the hook-check artifact.
+# A step fails when a host it names got no memory context. Claude Code needs Git
+# Bash or PowerShell 7, so the last step expects only Codex. The report is in the
+# log, the job summary and the hook-check artifact.
 
 on:
-  push:
-    branches: [claude/project-thread-mybi3y]
+  pull_request:
     paths:
       - ".github/hook-check/**"
       - ".github/workflows/windows-hook-check.yml"
@@ -36,17 +37,19 @@ jobs:
         run: call npm install -g @anthropic-ai/claude-code@2.1.310 @openai/codex@0.164.0
       - name: With Git Bash
         shell: cmd
-        run: python .github\hook-check\run.py git-bash "%RUNNER_TEMP%\hook-check"
+        run: python .github\hook-check\run.py git-bash "%RUNNER_TEMP%\hook-check" claude,codex
       - name: Without Git Bash
+        if: ${{ !cancelled() }}
         shell: cmd
         run: |
           ren "C:\Program Files\Git" Git.hidden || echo Git could not be hidden
-          python .github\hook-check\run.py no-git-bash "%RUNNER_TEMP%\hook-check"
+          python .github\hook-check\run.py no-git-bash "%RUNNER_TEMP%\hook-check" claude,codex
       - name: With only Windows PowerShell 5.1
+        if: ${{ !cancelled() }}
         shell: cmd
         run: |
           ren "C:\Program Files\PowerShell\7" 7.hidden || echo PowerShell 7 could not be hidden
-          python .github\hook-check\run.py powershell-5.1-only "%RUNNER_TEMP%\hook-check"
+          python .github\hook-check\run.py powershell-5.1-only "%RUNNER_TEMP%\hook-check" codex
       - name: Restore Git and PowerShell 7
         if: always()
         shell: cmd

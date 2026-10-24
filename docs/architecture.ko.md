@@ -153,13 +153,14 @@ AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화�
 - **크기.** 문맥은 UTF-8 8,000바이트 아래로 둡니다. Claude Code는 10,000자를 넘는 훅 문맥을 파일로 돌리고, Codex는 핸들러의 `additionalContextLimit`을 넘는 문맥을 그렇게 합니다. `hooks/hooks.json`은 이 값을 기본값 2,500 대신 8,000토큰으로 둡니다. 글자 하나도 토큰 하나도 1바이트 이상이므로 어느 도구도 문맥을 파일로 돌리지 않습니다. 설정이 더 크면 글을 자르고 잘랐다고 적습니다.
 - **Codex는 신뢰를 묻습니다.** Codex는 `/hooks`에서 검토하고 신뢰한 플러그인 훅만 돌립니다. 설치한 뒤 한 번, 갱신으로 훅이 바뀌면 다시 신뢰합니다.
 - **끄는 법.** 플러그인을 끄거나 지웁니다. Claude Code는 `claude plugin disable corthex-memory@corthex`를 실행합니다. Codex는 `~/.codex/config.toml`의 `[plugins."corthex-memory@corthex"]`에 `enabled = false`를 두거나 `codex plugin remove corthex-memory@corthex`를 실행합니다. 훅이 저장하는 것이 없어서 따로 되돌릴 것은 없습니다.
-- **Windows.** 훅 명령은 `python3`를 먼저 쓰고, 안 되면 `python`을 쓰도록 둘을 `||`로 잇습니다. Windows에서 Claude Code는 훅 명령을 Git Bash로, Git Bash가 없으면 PowerShell로 돌립니다. PowerShell 7은 `||`를 받지만 Windows PowerShell 5.1은 받지 않으므로, Windows의 Claude Code에서는 Git for Windows나 PowerShell 7이 있어야 합니다. 둘 다 없으면 훅이 실패하고 세션은 문맥 없이 시작합니다. 두 도구 모두 Windows에서는 아직 돌려 보지 않았습니다.
+- **Windows.** 훅 명령은 둘입니다. `command`는 `python3`, `python`, `py` 실행기를 차례로 쓰도록 `||`로 잇습니다. Claude Code는 어느 체제에서나 이 명령을 돌리는데, Windows에서는 Git Bash로, Git Bash가 없으면 PowerShell로 돌리고 플러그인 폴더는 환경 변수로 넘깁니다. PowerShell 7은 `||`를 받지만 Windows PowerShell 5.1은 받지 않으므로, Windows의 Claude Code에서는 Git for Windows나 PowerShell 7이 있어야 합니다. 둘 다 없으면 훅이 실패하고 세션은 문맥 없이 시작합니다. Windows의 Codex는 그 대신 `commandWindows`를 돌리고, Git Bash가 있어도 늘 PowerShell로 돌립니다. PowerShell 7이 있으면 그것으로, 없으면 Windows PowerShell 5.1로 돌립니다. 이 명령은 5.1도 아는 `if ($LASTEXITCODE -ne 0)`로 `python` 다음에 `py -3`을 쓰고, Codex가 넣어 주는 `CLAUDE_PLUGIN_ROOT` 변수로 스크립트를 찾습니다.
 - **지금까지 확인한 것.** 2026-10-23에 Linux에서 Claude Code 2.1.309와 Codex CLI 0.164.0을 격리된 설정과 로컬 가짜 모델 API로 돌려 확인했습니다.
   - 두 도구 모두 첫 모델 요청에 문맥이 실렸고, 프로젝트 파일의 제목과 메모는 실리지 않았습니다. Codex는 훅을 신뢰했을 때만 돌렸고, 시험에서는 검토 대신 `--dangerously-bypass-hook-trust`를 썼습니다.
   - 프로필을 바꾼 뒤 이어 연 세션(`claude -p --resume`, `codex exec resume`)과 갈라 낸 세션(`claude -p --resume … --fork-session`)에는 기록에 있던 예전 문맥과 함께 새 문맥이 실렸습니다.
   - Codex에서 28,872바이트짜리 시험 문맥은 `additionalContextLimit`을 8,000으로 두면 그대로 모델에 갔고, 두지 않으면 미리보기로 바뀌었습니다.
+  - 2026-10-24에 Windows Server 2025 실행기에서 Claude Code 2.1.310, Codex CLI 0.164.0, 같은 가짜 모델 API로 확인했습니다(`.github/workflows/windows-hook-check.yml`). Git Bash가 있을 때와, Git Bash 없이 PowerShell 7만 있을 때는 두 도구 모두 모델에 문맥이 실렸습니다. Windows PowerShell 5.1만 있을 때는 `||` 명령을 읽지 못해 Claude Code는 문맥 없이 시작했고, Codex는 `commandWindows`로 문맥을 받았습니다.
 
-  Codex의 세션 갈라 내기와 macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`나 `python`이 있어야 합니다.
+  Codex의 세션 갈라 내기와 macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`, `python`, Windows의 `py` 실행기 중 하나가 있어야 합니다.
 
 ## 프로젝트 허브
 
@@ -190,7 +191,7 @@ AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화�
 | 서버 검사 | `node --test nexus/test/*.test.js` | NEXUS Worker: Access 확인, 스냅샷 검사, 저장, 페이지와 보안 헤더 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 
-CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다.
+CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다. `corthex-memory`나 Windows 훅 검사를 바꾸는 풀 리퀘스트는 Windows에서 Claude Code와 Codex로 기억 훅도 돌립니다. Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다.
 
 ## 앞으로
 

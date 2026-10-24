@@ -7,7 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\" || python \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\"",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\" || python \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\" || py -3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py\"",
+            "commandWindows": "python \"$env:CLAUDE_PLUGIN_ROOT/scripts/session_start.py\"; if ($LASTEXITCODE -ne 0) { py -3 \"$env:CLAUDE_PLUGIN_ROOT/scripts/session_start.py\" }",
             "timeout": 10,
             "additionalContextLimit": 8000
           }

@@ -1,13 +1,14 @@
 """Runs the corthex-memory session start hook on Windows in Claude Code and Codex.
 
-Usage: python run.py LABEL OUTDIR
+Usage: python run.py LABEL OUTDIR [HOSTS]
 
 Both hosts talk only to a mock model server on 127.0.0.1 that records each
 request and answers 400, with fake keys, so no model is called. Each host gets
 its own home folder, settings folder and demo project. Three test plugins show
 how the host started each hook: a shell, its command line and its parents.
-The script reports what reached the model and always exits 0; a failure is
-part of the report.
+The script reports what reached the model. It exits 1 when a host named in
+HOSTS, such as claude,codex, sent no request with the memory context, and 0
+otherwise; any other failure is part of the report.
 """
 
 import gzip
@@ -207,13 +208,17 @@ def facts():
 
 
 def shells(out):
-    """The corthex-memory hook command run directly in each shell, as written and with the path filled in."""
+    """The corthex-memory hook commands run directly in each shell: `command` as written and with the
+    path filled in, and `commandWindows` in PowerShell."""
     home, demo = prepare(out / "shells")
     env = base_env(home)
     env["CLAUDE_PLUGIN_ROOT"] = str(MEMORY)
     hooks = json.loads((MEMORY / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    hook = hooks["hooks"]["SessionStart"][0]["hooks"][0]
+    command = hook["command"]
     forms = {"as written": command, "path filled in": command.replace("${CLAUDE_PLUGIN_ROOT}", str(MEMORY))}
+    if "commandWindows" in hook:
+        forms["commandWindows"] = hook["commandWindows"]
     event = json.dumps({"session_id": "check", "cwd": str(demo), "hook_event_name": "SessionStart", "source": "startup"})
     found = {"git-bash": str(GIT_BASH) if GIT_BASH.exists() else None,
              "pwsh": shutil.which("pwsh", path=env["PATH"]),
@@ -222,6 +227,8 @@ def shells(out):
     results = {"command": command}
     for shell, exe in found.items():
         for form, text in forms.items():
+            if form == "commandWindows" and shell not in ("pwsh", "powershell"):
+                continue
             key = "%s, %s" % (shell, form)
             if not exe:
                 results[key] = "shell missing"
@@ -332,6 +339,12 @@ def codex(label, out, mock, folder, plugins):
     return result
 
 
+def with_context(result):
+    """The model requests of a host's run, and how many of them carry the memory context."""
+    model = [q for q in result.get("requests", []) if re.search(r"/v1/(messages|responses)(\?|$)", q["path"])]
+    return model, sum(1 for q in model if q["context"])
+
+
 def summary(report):
     lines = ["== %s ==" % report["label"]]
     f = report.get("facts", {})
@@ -354,9 +367,9 @@ def summary(report):
             continue
         bad = {k: v for k, v in r["install"].items() if v["exit"] != 0}
         lines.append("%s %s: installs %s; run exit %s in %ss" % (host, r["version"], "ok" if not bad else bad, r["run"]["exit"], r["run"]["seconds"]))
-        model = [q for q in r["requests"] if re.search(r"/v1/(messages|responses)(\?|$)", q["path"])]
+        model, context = with_context(r)
         lines.append("  model requests %d, with memory context %d, with profile marker %d, hook markers %s" % (
-            len(model), sum(1 for q in model if q["context"]), sum(1 for q in model if q["ask"]),
+            len(model), context, sum(1 for q in model if q["ask"]),
             sorted({t for q in model for t in q["diag"]})))
         for tag, records in sorted(r["hooks"].items()):
             for record in records:
@@ -373,6 +386,7 @@ def main():
         pass
     label = sys.argv[1]
     out = Path(sys.argv[2]).resolve() / label
+    expected = [host for host in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if host]
     out.mkdir(parents=True, exist_ok=True)
     report = {"label": label}
     mock = Mock()
@@ -385,15 +399,18 @@ def main():
             report[name] = step()
         except Exception:
             report[name] = {"crash": traceback.format_exc()}
+    missing = [host for host in expected if not with_context(report.get(host, {}))[1]]
+    report["expected"] = {"hosts": expected, "missing": missing}
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
-    text = summary(report)
+    text = summary(report) + "\nmemory context expected from %s: %s" % (
+        ", ".join(expected) or "no host", "missing from " + ", ".join(missing) if missing else "ok")
     print(text)
     print("== %s: full report ==" % label)
     print(json.dumps(report, indent=1, ensure_ascii=False))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
             handle.write("```\n%s\n```\n" % text)
-    return 0
+    return 1 if missing else 0
 
 
 if __name__ == "__main__":

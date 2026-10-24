@@ -153,13 +153,14 @@ It reads only those files, writes nothing and makes no network calls. If anythin
 - **Size.** The context stays under 8,000 bytes of UTF-8. Claude Code moves hook context over 10,000 characters into a file, and Codex does so over the handler's `additionalContextLimit`, which `hooks/hooks.json` sets to 8,000 tokens instead of the default 2,500. A character or a token takes at least one byte, so neither host moves the context. Larger settings are cut, and the text says so.
 - **Codex asks for trust.** Codex runs a plugin's hooks only after you review and trust them in `/hooks`: once after installing, and again after an update changes the hook.
 - **Stopping it.** Disable or remove the plugin. In Claude Code, run `claude plugin disable corthex-memory@corthex`. In Codex, set `enabled = false` under `[plugins."corthex-memory@corthex"]` in `~/.codex/config.toml`, or run `codex plugin remove corthex-memory@corthex`. The hook stores nothing, so there is nothing else to undo.
-- **Windows.** The hook command tries `python3`, then `python`, joined by `||`. On Windows, Claude Code runs hook commands in Git Bash, or in PowerShell when Git Bash is missing. PowerShell 7 accepts `||` but Windows PowerShell 5.1 does not, so with Claude Code on Windows the hook needs Git for Windows or PowerShell 7. Without either, the hook fails and the session starts without the context. The hook has not been run on Windows yet, in either host.
+- **Windows.** The hook has two commands. `command` tries `python3`, `python` and then the `py` launcher, joined by `||`. Claude Code runs it on every system: on Windows in Git Bash, or in PowerShell when Git Bash is missing, with the plugin folder as an environment variable. PowerShell 7 accepts `||` but Windows PowerShell 5.1 does not, so with Claude Code on Windows the hook needs Git for Windows or PowerShell 7. Without either, the hook fails and the session starts without the context. Codex on Windows runs `commandWindows` instead, always in PowerShell: PowerShell 7 when it is installed, else Windows PowerShell 5.1, even when Git Bash is there. That command tries `python` and then `py -3` with `if ($LASTEXITCODE -ne 0)`, which 5.1 understands, and finds the script through the `CLAUDE_PLUGIN_ROOT` variable that Codex sets.
 - **Checked so far.** On 2026-10-23, on Linux, with Claude Code 2.1.309 and Codex CLI 0.164.0 in isolated settings and a local stand-in for the model API:
   - The context reached the first model request in both hosts, without the title or the notes of the project file. Codex ran the hook only when it was trusted; the test skipped the review with `--dangerously-bypass-hook-trust`.
   - After the profile changed, a resumed session (`claude -p --resume`, `codex exec resume`) and a forked one (`claude -p --resume … --fork-session`) carried the new copy as well as the earlier ones from their history.
   - In Codex, a 28,872-byte test context reached the model whole with `additionalContextLimit` set to 8,000, and was replaced by a preview without it.
+  - On 2026-10-24, on a Windows Server 2025 runner with Claude Code 2.1.310, Codex CLI 0.164.0 and the same stand-in (`.github/workflows/windows-hook-check.yml`): with Git Bash, and with PowerShell 7 but no Git Bash, the context reached the model in both hosts. With only Windows PowerShell 5.1, the `||` command could not be parsed, so Claude Code started without the context, and Codex got it through `commandWindows`.
 
-  Forking in Codex and macOS are not tested yet. The hook needs `python3` or `python` on the PATH of the shell that runs it.
+  Forking in Codex and macOS are not tested yet. The hook needs `python3`, `python` or the Windows `py` launcher on the PATH of the shell that runs it.
 
 ## Project hub
 
@@ -190,7 +191,7 @@ For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-i
 | Server checks | `node --test nexus/test/*.test.js` | the NEXUS Worker: the Access check, snapshot checks, storage, the page and its security headers |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
-CI runs the repository and server checks on Linux, Windows and macOS, and the Claude Code validation and a Wrangler build of the server on Linux, for every pull request and every push to `main`.
+CI runs the repository and server checks on Linux, Windows and macOS, and the Claude Code validation and a Wrangler build of the server on Linux, for every pull request and every push to `main`. A pull request that changes `corthex-memory` or the Windows hook check also runs the memory hook in Claude Code and Codex on Windows, with Git Bash, with PowerShell 7 only and with Windows PowerShell 5.1 only, against a local stand-in for the model API.
 
 ## Roadmap
 
