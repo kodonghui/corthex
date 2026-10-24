@@ -175,7 +175,7 @@ It reads only those files, writes nothing and makes no network calls. If anythin
 
 Checked so far: `tests/test_hub.py` builds a project from the stage skills' own output templates and checks every item, link and finding the hub reads from them, then each source form, the status file, the page and the push client against a local stand-in server. It passes on Linux with Python 3.8 and 3.13. The page was opened in Chromium at 1440 and 320 pixels wide, in light and dark mode, with no script errors, no sideways scrolling and no network requests. A real project spread over three repositories, with requirements exported from Notion, was read without changing it. Windows and macOS have not been run yet.
 
-For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-in for D1, and `tests/test_nexus.py` runs it on the machine: `hub.py` pushes a project made from the stage templates, reads it back, has an older snapshot refused and removes the project, and without Access every request gets `403`. With Wrangler 4.152.0, `wrangler deploy --dry-run` bundles the Worker, and `wrangler dev` ran the same steps in the Workers runtime with Access simulated, and returned `403` without it. The snapshot of the real project, 92 items and about 40 KB, passed the server's checks and came back unchanged. The server has not been deployed to Cloudflare yet.
+For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-in for D1, and `tests/test_nexus.py` runs it on the machine: `hub.py` pushes a project made from the stage templates, reads it back, has an older snapshot refused and removes the project, and without Access every request gets `403`. With Wrangler 4.152.0, `wrangler deploy --dry-run` bundles the Worker, and `wrangler dev` ran the same steps in the Workers runtime with Access simulated, and returned `403` without it. The snapshot of the real project, 92 items and about 40 KB, passed the server's checks and came back unchanged. On 2026-10-24 the server was deployed on the maintainer's own address behind Cloudflare Access: requests without a sign-in were sent to the Access sign-in, a sign-in from a phone reached the page, and a push with a service token stored a sample project.
 
 ## Versions and releases
 
@@ -197,8 +197,8 @@ CI runs the repository and server checks on Linux, Windows and macOS, and the Cl
 
 Planned, not in 0.1.0. Both need components the core plugin leaves out.
 
-- `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context.
-- `corthex-nexus`, later versions: editors for sitemaps and user flows on the NEXUS server, and an MCP server over the same data. The server's storage can move from D1 to Postgres if memory comes to be shared across devices.
+- `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context. Requirements: [docs/02-prd/memory.md](02-prd/memory.md).
+- `corthex-nexus`, later versions: decided by its requirements, [docs/02-prd/nexus.md](02-prd/nexus.md). Editors for sitemaps and user flows on the NEXUS server, and an MCP server over the same data, are candidates there (decision D5). The server's storage can move from D1 to Postgres if memory comes to be shared across devices.
 
 ## Sources
 

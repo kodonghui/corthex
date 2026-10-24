@@ -9,13 +9,13 @@
       "human": "github",
       "source": "docs/01-domain/",
       "truth": "source",
-      "note": "Contexts and glossary, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24). Translations beside them, such as memory.ko.md, are not read as sources."
+      "note": "Contexts and glossary, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24), NEXUS in nexus.md (draft of 2026-10-24). Translations beside them, such as memory.ko.md, are not read as sources."
     },
     "02-prd": {
       "human": "github",
       "source": "docs/02-prd/",
       "truth": "source",
-      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day). Translations beside them are not read as sources."
+      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day), NEXUS in nexus.md (draft of 2026-10-24, for the scope check). Translations beside them are not read as sources."
     }
   }
 }
