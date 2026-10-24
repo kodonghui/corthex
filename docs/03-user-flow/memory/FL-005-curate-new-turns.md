@@ -29,7 +29,7 @@ flowchart TD
   I3 --> Z
   I -->|yes| J[["Apply the proposed changes one at a time,<br/>as the second chart shows<br/>REQ-016 to REQ-020"]]
   J --> P["Update the current state,<br/>each line with its provenance<br/>REQ-015"]
-  P --> Q["Update the item list; embed the new items<br/>for the search index once an OpenAI memory key is there<br/>REQ-040, REQ-050"]
+  P --> Q["Update the item list; once an OpenAI memory key<br/>is there, embed the new items for the search index<br/>and append that call to the usage log<br/>REQ-040, REQ-050, REQ-052"]
   Q --> R["Mark the turns processed"]
   R --> S{"More unprocessed turns?"}
   S -->|yes| F

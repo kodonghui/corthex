@@ -2,7 +2,7 @@
 
 [한국어](FL-004-recall-for-a-prompt.ko.md)
 
-Serves: REQ-007, REQ-031, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-038, REQ-040, REQ-049, REQ-050
+Serves: REQ-007, REQ-031, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-038, REQ-040, REQ-049, REQ-050, REQ-052
 
 Context: CTX-003 Recall. Starts in the same prompt hook, after FL-002. The flow follows the recommendation of decision D2: embeddings and rules choose the items, and no model is asked for each prompt.
 
@@ -12,7 +12,8 @@ flowchart TD
   B -->|no| N["Inject nothing;<br/>the prompt goes on<br/>REQ-032"]
   N --> Z(["End"])
   B -->|yes| C["Embed the prompt, after redaction,<br/>with the OpenAI embeddings API<br/>REQ-040, REQ-007"]
-  C --> D{"Back in time,<br/>without an API error?<br/>REQ-034, REQ-035"}
+  C --> U["Append the model, the token counts<br/>and the estimated cost to the usage log<br/>REQ-052"]
+  U --> D{"Back in time,<br/>without an API error?<br/>REQ-034, REQ-035"}
   D -->|no| T["Inject nothing and note it;<br/>the prompt goes on<br/>REQ-035"]
   T --> Z
   D -->|yes| E["Score the current items of this<br/>project in the search index<br/>REQ-036, REQ-037"]

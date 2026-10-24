@@ -6,7 +6,7 @@ Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draf
 
 Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. The flows assume the recommendations of decisions D1 to D4; FL-004 depends on D2 and FL-012 on D3.
 
-Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. To keep its first chart readable, FL-005 draws how one proposed change is applied as a second chart.
+Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. To keep its first chart readable, FL-005 draws how one proposed change is applied as a second chart. Each flow that calls a model API, the curator model or the OpenAI embeddings API, appends the call to the usage log at that step (REQ-052): FL-004 to FL-007 and FL-012.
 
 | ID | Flow | Context | Starts when |
 | --- | --- | --- | --- |
@@ -57,3 +57,4 @@ Drawing the flows raised these questions, which the requirements leave open:
 11. A pinned item that is superseded or withdrawn leaves the start summary (REQ-037). Should the pin move to the newer item?
 12. Hook timings: the success measures read the speed from the memory status, which REQ-053 does not list.
 13. Turning sync on: how the user chooses the sync remote, and how the plugin checks that it is private (REQ-042).
+14. Quote checks on older items: REQ-017 checks a quote against the raw log, but a raw log stays on the device that wrote it and its entries are deleted after 30 days (REQ-008, REQ-009). FL-006 lets a merged item keep the quotes of the items it merges, with their provenance, without checking them again; the spec states this rule.
