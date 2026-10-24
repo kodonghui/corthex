@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -63,8 +64,18 @@ class HookSettingsTest(unittest.TestCase):
         self.assertEqual(group["matcher"], "startup|resume|clear|compact|fork")
         self.assertEqual(handler["type"], "command")
         self.assertLessEqual(handler["timeout"], 30)
-        self.assertIn('"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py"', handler["command"])
+        script = '"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py"'
+        self.assertEqual(handler["command"], " || ".join(python + " " + script for python in ("python3", "python", "py -3")))
         self.assertTrue(SCRIPT.is_file())
+
+    def test_windows_command_parses_in_windows_powershell(self):
+        _, handler = self.handler()
+        # Codex runs commandWindows on Windows, in Windows PowerShell 5.1 when PowerShell 7 is
+        # missing, and 5.1 knows neither `||` nor `&&`.
+        windows = handler["commandWindows"]
+        self.assertNotIn("||", windows)
+        self.assertNotIn("&&", windows)
+        self.assertEqual(windows.count('"$env:CLAUDE_PLUGIN_ROOT/scripts/session_start.py"'), 2)
 
     def test_limits_hold_the_whole_context(self):
         _, handler = self.handler()
@@ -72,6 +83,80 @@ class HookSettingsTest(unittest.TestCase):
         self.assertGreaterEqual(handler["additionalContextLimit"], session_start.MAX_BYTES)
         # Claude Code's limit is 10,000 characters, and a character is at least one byte.
         self.assertLessEqual(session_start.MAX_BYTES, 10000)
+
+
+class HookShellTest(unittest.TestCase):
+    """The hook commands run in the shells the hosts use and fall back from one Python to the next.
+
+    Stand-ins on PATH play each Python: one runs this Python, one fails, one prints junk that
+    would spoil the output if it ran too. `command` runs in sh and, as Claude Code runs it there,
+    in PowerShell 7; `commandWindows` runs in Windows PowerShell 5.1 and in PowerShell 7."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name).resolve()
+        self.home, self.work = self.base / "home", self.base / "work"
+        self.home.mkdir()
+        self.work.mkdir()
+        (handler,) = load_json(PLUGIN / "hooks" / "hooks.json")["hooks"]["SessionStart"][0]["hooks"]
+        self.handler = handler
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def shells(self):
+        """(name, arguments before the command, command, the Pythons it tries in turn)."""
+        command, windows = self.handler["command"], self.handler["commandWindows"]
+        found = [("sh", ["/bin/sh", "-c"], command, ("python3", "python", "py"))] if os.name != "nt" else []
+        for name in ("pwsh", "powershell"):
+            exe = shutil.which(name)
+            if exe:
+                args = [exe, "-NoProfile", "-NonInteractive", "-Command"]
+                if name == "pwsh":
+                    # Claude Code turns the placeholder into an environment variable for PowerShell.
+                    found.append(("pwsh", args, command.replace("${CLAUDE_PLUGIN_ROOT}", "${env:CLAUDE_PLUGIN_ROOT}"),
+                                  ("python3", "python", "py")))
+                found.append((name + " commandWindows", args, windows, ("python", "py")))
+        return found
+
+    def stand_ins(self, folder, roles):
+        folder.mkdir()
+        for name, role in roles.items():
+            if os.name == "nt":
+                args = "%2" if name == "py" else "%*"  # py gets -3 first
+                lines = {"run": '@"%s" %s' % (sys.executable, args), "fail": "@exit /b 9", "junk": "@echo junk"}
+                (folder / (name + ".cmd")).write_text(lines[role] + "\n", encoding="utf-8")
+            else:
+                shift = "shift\n" if name == "py" else ""
+                lines = {"run": '%sexec "%s" "$@"' % (shift, sys.executable), "fail": "exit 9", "junk": "echo junk"}
+                path = folder / name
+                path.write_text("#!/bin/sh\n" + lines[role] + "\n", encoding="utf-8")
+                path.chmod(0o755)
+        system = [os.path.join(os.environ.get("SYSTEMROOT", ""), "System32")] if os.name == "nt" else []
+        return os.pathsep.join([str(folder)] + system)
+
+    def test_each_shell_finds_python(self):
+        shells = self.shells()
+        if not shells:
+            self.skipTest("no sh or PowerShell here")
+        event = json.dumps({"cwd": str(self.work), "source": "startup"})
+        for name, args, command, pythons in shells:
+            first, last = pythons[0], pythons[-1]
+            cases = {
+                "the first one": dict({first: "run"}, **{other: "junk" for other in pythons[1:]}),
+                "the last one after failures": dict({other: "fail" for other in pythons[:-1]}, **{last: "run"}),
+                "the last one alone": {last: "run"},
+            }
+            for case, roles in cases.items():
+                with self.subTest(shell=name, runs=case):
+                    path = self.stand_ins(self.base / ("bin-%d" % len(list(self.base.glob("bin-*")))), roles)
+                    env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
+                               CLAUDE_PLUGIN_ROOT=str(PLUGIN), PATH=path)
+                    result = subprocess.run(args + [command], input=event.encode("utf-8"), capture_output=True,
+                                            cwd=str(self.work), env=env, timeout=120)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    output = json.loads(result.stdout)["hookSpecificOutput"]
+                    self.assertIn("## Working principles", output["additionalContext"])
 
 
 class SessionStartTest(unittest.TestCase):
