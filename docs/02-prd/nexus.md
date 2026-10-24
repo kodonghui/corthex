@@ -20,7 +20,7 @@ The maintainer's goal, the design draft and the first use of the deployed hub sh
 4. The user works from several devices, among them a phone and cloud sessions whose files are lost when they end, and needs the same page on each.
 5. Project material must not leak through the hub: file contents, secrets, and protected data such as answer keys or student records.
 6. Some stages, such as the sitemap and the user flows, have no tool where people and agents change the same diagram of trace items.
-7. The deployed hub showed only a sample project and did not say what it does or how a project gets onto it.
+7. The deployed hub first showed no project at all, and did not say what it does or how a project gets onto it.
 
 ## Scope
 
@@ -51,7 +51,7 @@ This file assumes the recommendations. The requirements whose status says `open`
 | ID | Question | Recommendation | Other choices |
 | --- | --- | --- | --- |
 | D5 | What this release adds | Make the hub useful first: keep phase 1, fix what its first use showed, keep progress and the server current (D6, D7), and put this repository on it. Structure editing and assistant access wait for the first project that needs them | Structure editing now: the editors of phase 2, although no current project has a sitemap or flows to edit; assistant access now: an MCP server for chat clients, whose sign-in through Cloudflare Access is not yet tested; nothing more: phase 1 stays as it is |
-| D6 | Where progress is kept | In the project's repository, beside the stage sources: the stage skills write each stage's state, its date, the next action and a link to the record of the approval, and the hub reads them. Git carries them to every device, cloud session and CI run. In a team project, the team agrees first | On the NEXUS server, recorded from the page or by agents: needs the server and a sign-in for every record, and a device's own page shows only its own records; on each device, as now: a cloud session starts empty and devices disagree; in the project's records, such as Notion: one place that people already read, but every device needs a connection and a key for the records |
+| D6 | Where progress is kept | In the project's repository, beside the stage sources: the stage skills write each stage's state, its date, the next action and where the approval is recorded, and the hub reads them. Git carries them to every device, cloud session and CI run. A public repository names the record without a private link. In a team project, the team agrees first | On the NEXUS server, recorded from the page or by agents: needs the server and a sign-in for every record, and a device's own page shows only its own records; on each device, as now: a cloud session starts empty and devices disagree; in the project's records, such as Notion: one place that people already read, but every device needs a connection and a key for the records |
 | D7 | How the server's hub stays current | The agent pushes after each stage's work and each checkpoint, for the projects in the push list: it works for projects of any shape and needs no new secret | A CI job pushes after each merge: always current, but needs the service token as a secret in each repository and sees only that repository; on request only, as now |
 
 ## Requirements
@@ -84,7 +84,7 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in phase 1 already),
 | REQ-087 | When a person or an agent records a review finding, the hub shall add it to the stage's checks with its level and IDs. | functional | Should | CTX-007 | Phase 1 (the checks find structure, not meaning) | built |
 | REQ-088 | When the hub changes recorded progress, the hub shall keep the previous record as a backup. | non-functional | Must | CTX-007 | Repository rules (owned writes need a backup and a restore path) | built |
 | REQ-089 | The hub shall show the same recorded progress of a project on every device and on the server. | functional | Must | CTX-007 | Problems 3 and 4; decision D6 | open (D6) |
-| REQ-090 | When a checkpoint is recorded, the hub shall keep a link to the record that holds the user's approval. | functional | Should | CTX-007 | Problem 3; the maintainer's working rules (decisions stay in the records and are linked) | active |
+| REQ-090 | When a checkpoint is recorded, the hub shall keep a reference to the record that holds the user's approval. | functional | Should | CTX-007 | Problem 3; the maintainer's working rules (decisions stay in the records and are linked) | active |
 | REQ-091 | The hub page shall show every registered project with its 13 stages, their states, their item counts and their checks. | functional | Must | CTX-008 | Problem 1 | built |
 | REQ-092 | The hub page shall show each project's current stage and next action before its stages. | functional | Must | CTX-008 | Problem 1 | built |
 | REQ-093 | When a viewer selects an ID, the hub page shall show what the item comes from and what it leads to, through all stages. | functional | Must | CTX-008 | Problem 2 | built |

@@ -12,7 +12,7 @@ Sources read:
 - The design draft for NEXUS in the maintainer's records (2026-10-23): what earlier attempts under the same name left (ideas, but no code), which stages only link to an existing tool, the plan in three phases, and the decision of the same day to start with the hub.
 - Phase 1 as built: [`plugins/corthex-nexus/`](../../plugins/corthex-nexus/), [`nexus/`](../../nexus/) and [docs/architecture.md](../architecture.md#project-hub).
 - The deployment of 2026-10-24: the server on the maintainer's own address behind Cloudflare Access, a sign-in from a phone, a push with a service token, and a sample project.
-- The maintainer's questions of 2026-10-24 after opening the hub, which showed nothing but the sample, and the decision of the same day to define NEXUS from stage 01 with the harness, keeping phase 1 as material.
+- The maintainer's questions of 2026-10-24 after opening the hub before any project was on it, and the decision of the same day to define NEXUS from stage 01 with the harness, keeping phase 1 as material.
 - The decision of 2026-10-24 that NEXUS builds no ERD editor and that new projects use ERD Editor for stage 05.
 - The memory domain in [memory.md](memory.md), for the shared terms and the boundary with memory.
 
