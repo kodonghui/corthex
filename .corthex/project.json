@@ -1,0 +1,21 @@
+{
+  "name": "corthex",
+  "title": "CORTHEX",
+  "team": false,
+  "language": "en",
+  "records": { "kind": "notion" },
+  "stages": {
+    "01-domain": {
+      "human": "github",
+      "source": "docs/01-domain/memory.md",
+      "truth": "source",
+      "note": "CORTHEX-MEMORY's contexts and glossary in one file, so that the Korean translation beside it is not read as a second source (2026-10-24). A folder source needs a rule for translations first."
+    },
+    "02-prd": {
+      "human": "github",
+      "source": "docs/02-prd/memory.md",
+      "truth": "source",
+      "note": "CORTHEX-MEMORY's requirements (2026-10-24). The Korean translation beside it is memory.ko.md."
+    }
+  }
+}
