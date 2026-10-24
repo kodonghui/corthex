@@ -14,7 +14,7 @@
     "02-prd": { "human": "notion", "link": "<link to the database>", "source": "design:prd/", "truth": "human" },
     "03-user-flow": { "human": "notion", "source": "design:user-flow/", "truth": "human" },
     "04-functional-spec": { "human": "notion", "source": "design:functional-spec/", "truth": "human" },
-    "05-erd": { "human": "erdcloud", "source": "db/schema.sql", "truth": "human", "note": "The team edits the ERD together; the DDL in this repository follows it." },
+    "05-erd": { "human": "erd-editor", "link": "db/schema.erd.json", "source": "db/schema.sql", "truth": "human", "note": "The team and the AI edit the diagram; the DDL in this repository is read from it." },
     "06-api": { "human": "swagger-ui", "source": "api/openapi.yaml", "truth": "source" },
     "07-sitemap": { "human": "board", "source": "docs/07-sitemap/sitemap.yaml", "truth": "source" },
     "08-screen-states": { "human": "wireframes", "source": "docs/08-screens/", "truth": "source" },
