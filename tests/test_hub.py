@@ -604,6 +604,46 @@ class FormsTest(HubCase):
         self.assertEqual(set(items["TBL-001"]["links"]), {"CTX-001", "SPEC-001", "SPEC-003", "TBL-003"})
         self.assertEqual(items["TBL-002"]["links"], ["SPEC-002"])
 
+    def test_sql_backslashes_in_strings(self):
+        self.project(stages={"05-erd": {"human": "erd-editor", "source": "db/", "truth": "source"}})
+        # MySQL reads \' as a quote, and ERD Editor writes an apostrophe that way for Databricks.
+        self.write(self.repo / "db/mysql.sql", "CREATE TABLE notes (body TEXT DEFAULT 'buyer\\'s account');\n"
+                   "-- TBL-001 customers ← SPEC-001\nCREATE TABLE customers (id BIGINT PRIMARY KEY);\n")
+        self.write(self.repo / "db/databricks.sql", "CREATE TABLE `orders`\n(\n  `id` BIGINT NOT NULL COMMENT 'buyer\\'s id, see SPEC-003'\n)\n"
+                   "USING DELTA\nCOMMENT 'TBL-002 buyer\\'s orders <- SPEC-002';\n")
+        # PostgreSQL reads the backslash as a character.
+        self.write(self.repo / "db/postgres.sql", "CREATE TABLE files (path TEXT DEFAULT 'C:\\');\n"
+                   "-- TBL-003 folders ← SPEC-004\nCREATE TABLE folders (path TEXT DEFAULT 'D:\\');\n")
+        items = self.items(self.snapshot())
+        self.assertEqual({ident: item["title"] for ident, item in items.items()},
+                         {"TBL-001": "customers", "TBL-002": "buyer's orders", "TBL-003": "folders"})
+        self.assertEqual(set(items["TBL-002"]["links"]), {"SPEC-002", "SPEC-003"})
+        self.assertEqual(items["TBL-003"]["links"], ["SPEC-004"])
+
+    def test_sql_server_batches_with_a_count(self):
+        self.project(stages={"05-erd": {"human": "erd-editor", "source": "db/schema.sql", "truth": "source"}})
+        self.write(self.repo / "db/schema.sql", "PRINT 'prelude'\nGO 2\n-- TBL-001 customers\nCREATE TABLE customers (id INT)\nGO\n"
+                   "ALTER TABLE customers ADD note INT -- SPEC-002\nGO 3\n"
+                   "EXECUTE sp_addextendedproperty 'MS_Description', N'TBL-002 orders', 'schema', 'dbo', 'table', 'orders'\nGO\n")
+        items = self.items(self.snapshot())
+        self.assertEqual(sorted(items), ["TBL-001", "TBL-002"])
+        self.assertEqual(items["TBL-001"]["links"], ["SPEC-002"])
+
+    def test_sql_tables_in_schemas(self):
+        self.project(stages={"05-erd": {"human": "erd-editor", "source": "db/", "truth": "source"}})
+        self.write(self.repo / "db/shop.sql", "-- TBL-001 sales orders\nCREATE TABLE sales.orders (\n  id INT\n);\n"
+                   "-- TBL-002 archived orders\nCREATE TABLE archive.orders (\n  id INT -- kept for SPEC-004\n);\n"
+                   "COMMENT ON COLUMN sales.orders.id IS 'SPEC-005';\nALTER TABLE orders ADD note INT; -- SPEC-006\n"
+                   "-- TBL-003 customers\nCREATE TABLE crm.customers (id INT);\nALTER TABLE customers ADD note INT; -- SPEC-007\n")
+        self.write(self.repo / "db/stock.sql", "-- TBL-004 items\nCREATE TABLE items (id INT);\n"
+                   "-- TBL-005 archived items\nCREATE TABLE archive.items (\n  id INT -- kept for SPEC-008\n);\n")
+        items = self.items(self.snapshot())
+        self.assertEqual(items["TBL-001"]["links"], ["SPEC-005"])
+        self.assertEqual(items["TBL-002"]["links"], ["SPEC-004"], "a name in two schemas links from neither table")
+        self.assertEqual(items["TBL-003"]["links"], ["SPEC-007"], "a name without its schema means the only table of that name")
+        self.assertEqual(items["TBL-005"]["links"], ["SPEC-008"])
+        self.assertNotIn("links", items["TBL-004"], "a table created without a schema is a table of its own")
+
 
 class SourcesTest(HubCase):
     def test_other_repository(self):

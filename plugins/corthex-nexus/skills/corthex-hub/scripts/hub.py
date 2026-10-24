@@ -128,14 +128,20 @@ YAML_KEY = re.compile(r"^(\s*)(-\s+)?(\"[^\"]*\"|'[^']*'|[^\s#\"'-][^:#]*?|-[^\s
 YAML_ITEM = re.compile(r"^(\s*)-\s+(.*)$")
 YAML_COMMENT = re.compile(r"(?:^|\s)#.*$")
 JSON_ID = re.compile(r'"id"\s*:\s*"([^"\\]{1,80})"')
-# One SQL token: a comment, a string (also N'…' and $tag$…$tag$), a name (also quoted) or a mark.
-SQL_TOKEN = re.compile(
+# One SQL token: a comment, a string (also N'…', E'…' and $tag$…$tag$), a name (also quoted) or a
+# mark. In the first reading a backslash in '…' escapes the next character, as in MySQL, MariaDB,
+# Snowflake and Databricks; in the second it is a character, as in PostgreSQL, Oracle, SQL Server
+# and SQLite. E'…' always escapes.
+SQL_READINGS = tuple((escapes, re.compile(
     r"(?P<comment>--[^\n]*|#(?!\S)[^\n]*|/\*.*?(?:\*/|\Z))"
-    r"|(?P<string>[NnEe]?'(?:[^']|'')*(?:'|\Z)|\$(?P<tag>[A-Za-z_]\w*|)\$.*?(?:\$(?P=tag)\$|\Z))"
+    r"|(?P<string>[Ee]'(?:[^'\\]|''|\\.)*(?:'|\Z)|[Nn]?'(?:" + quoted + r")*(?:'|\Z)"
+    r"|\$(?P<tag>[A-Za-z_]\w*|)\$.*?(?:\$(?P=tag)\$|\Z))"
     r"|(?P<name>\"(?:[^\"]|\"\")*(?:\"|\Z)|`(?:[^`]|``)*(?:`|\Z)|\[[^\]\n]*\]|[A-Za-z_@][\w$@#]*)"
     r"|(?P<mark>\S)",
     re.S,
-)
+)) for escapes, quoted in ((True, r"[^'\\]|''|\\."), (False, r"[^']|''")))
+SQL_ESCAPE = re.compile(r"''|\\(.)", re.S)
+SQL_ESCAPES = {"n": "\n", "r": "\r", "t": "\t"}
 # A line that ends a statement: SQL Server's `GO` or Oracle's `/`.
 SQL_END_LINE = re.compile(r"^\s*(?:GO(?:\s+\d+)?|/)\s*(?:--.*)?$", re.I)
 SQL_EXTENDED_PROPERTY = ("sp_addextendedproperty", "sp_updateextendedproperty")
@@ -823,8 +829,25 @@ def scan_json(scan, src, text):
     walk(data, None, [])
 
 
+def sql_reading(text):
+    """(escapes, pattern): how to read the strings of an SQL text.
+
+    The readings differ only where a backslash comes before a quote. Read the wrong way, a string
+    runs on over the code after it or breaks into pieces, so the text is read the way that leaves
+    fewer line breaks in its strings, then fewer strings."""
+    def spread(pattern):
+        strings = [match.group() for match in pattern.finditer(text) if match.lastgroup == "string"]
+        return sum(value.count("\n") for value in strings), len(strings)
+
+    escaped, plain_reading = SQL_READINGS
+    if "\\'" in text and spread(escaped[1]) < spread(plain_reading[1]):
+        return escaped
+    return plain_reading
+
+
 def sql_statements(text):
     """The statements of an SQL text, each a list of (group, text, line, depth, last line) tokens.
+    The text of a string token is its value.
 
     A statement ends at `;` or at a `GO` or `/` line. The comments before a statement belong to it,
     and a comment on the line where a statement ends belongs to that statement."""
@@ -833,13 +856,17 @@ def sql_statements(text):
         starts.append(offset)
         offset += len(piece)
     end_lines = {number for number, line in enumerate(text.splitlines(), 1) if SQL_END_LINE.match(line)}
+    escapes, pattern = sql_reading(text)
     statements, tokens, depth, ended = [], [], 0, None
-    for match in SQL_TOKEN.finditer(text):
+    for match in pattern.finditer(text):
         group, value = match.lastgroup, match.group()
         line = bisect.bisect_right(starts, match.start())
-        token = (group, value, line, depth, bisect.bisect_right(starts, match.end() - 1))
+        token = (group, sql_string(value, escapes) if group == "string" else value, line, depth,
+                 bisect.bisect_right(starts, match.end() - 1))
         if group == "comment" and not tokens and line == ended:
             statements[-1].append(token)
+        elif not tokens and line == ended and line in end_lines:
+            continue  # the count of `GO 2`
         elif group == "mark" and value == "(":
             tokens.append(token)
             depth += 1
@@ -866,16 +893,19 @@ def sql_name(value):
     return value
 
 
-def sql_string(value):
-    """The text of a string token."""
+def sql_string(value, escapes):
+    """The value of a string token, reading a backslash in '…' as an escape when `escapes` is set."""
     if value.startswith("$"):
         tag = value[:value.index("$", 1) + 1]
         body = value[len(tag):]
         return body[:-len(tag)] if len(body) >= len(tag) and body.endswith(tag) else body
+    escapes = escapes or value[0] in "Ee"
     if value[0] in "NnEe":
         value = value[1:]
     body = value[1:-1] if len(value) >= 2 and value.endswith("'") else value[1:]
-    return body.replace("''", "'")
+    if not escapes:
+        return body.replace("''", "'")
+    return SQL_ESCAPE.sub(lambda match: SQL_ESCAPES.get(match.group(1), match.group(1)) if match.group(1) else "'", body)
 
 
 def sql_arguments(code):
@@ -893,14 +923,14 @@ def sql_arguments(code):
         else:
             key = value = None
         if key and value[0] == "string":
-            args[key] = (sql_string(value[1]), value[2])
+            args[key] = (value[1], value[2])
         argument = []
     return args
 
 
 def sql_about(tokens):
-    """(table, creates, comment) of a statement: the table it is about as (key, name), whether it
-    creates the table, and the table's own comment in it as (text, line)."""
+    """(table, creates, comment) of a statement: the table it is about as ((schema, name) key, name),
+    whether it creates the table, and the table's own comment in it as (text, line)."""
     code = [token for token in tokens if token[0] != "comment"]
     words = [value.upper() if group == "name" else value for group, value, *_ in code]
 
@@ -916,7 +946,7 @@ def sql_about(tokens):
 
     def string_at(index):
         if index < len(code) and code[index][0] == "string":
-            return sql_string(code[index][1]), code[index][2]
+            return code[index][1], code[index][2]
         return None
 
     table, creates, comment = [], False, None
@@ -950,14 +980,16 @@ def sql_about(tokens):
         if parts and parts[-1].lower() in SQL_EXTENDED_PROPERTY:
             # SQL Server keeps comments as MS_Description properties of a table or its columns.
             args = sql_arguments(code[index:])
-            kinds = {key: args[key][0].lower() for key in ("name", "level1type", "level2type") if key in args}
+            kinds = {key: args[key][0].lower() for key in ("name", "level0type", "level1type", "level2type") if key in args}
             if kinds.get("name") == "ms_description" and kinds.get("level1type") == "table" and "level1name" in args:
-                table = [args["level1name"][0]]
+                schema = [args["level0name"][0]] if kinds.get("level0type") == "schema" and "level0name" in args else []
+                table = schema + [args["level1name"][0]]
                 if not kinds.get("level2type"):
                     comment = args.get("value")
     if not table:
         return None, False, None
-    return (table[-1].casefold(), table[-1]), creates, comment
+    schema = table[-2].casefold() if len(table) > 1 else None
+    return ((schema, table[-1].casefold()), table[-1]), creates, comment
 
 
 def scan_sql(scan, src, text):
@@ -966,9 +998,18 @@ def scan_sql(scan, src, text):
     writes it (`COMMENT '…'` after the columns, `COMMENT ON TABLE … IS '…'` or an
     `MS_Description` property). The lines of the statements about a table link from its ID;
     other lines link from the ID defined last above them."""
+    statements = [(tokens,) + sql_about(tokens) for tokens in sql_statements(text)]
+    created = {}
+    for _, table, creates, _ in statements:
+        if creates:
+            created.setdefault(table[0][1], set()).add(table[0][0])
     owner, found = {}, []
-    for tokens in sql_statements(text):
-        table, creates, comment = sql_about(tokens)
+    for tokens, table, creates, comment in statements:
+        # A name with another schema or none, such as SQL Server's `dbo`, means the one table of
+        # that name the file creates.
+        made = created.get(table[0][1], ()) if table else ()
+        if len(made) == 1 and table[0][0] not in made:
+            table = ((next(iter(made)), table[0][1]), table[1])
         for group, value, line, depth, _ in tokens:
             if group == "comment" and value.startswith("--") and depth == 0:
                 found.append((line, value[2:], table if creates else None))
