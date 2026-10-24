@@ -95,6 +95,8 @@ YAML = {".yaml", ".yml"}
 TABLES = {".csv": ",", ".tsv": "\t"}
 TEXT = MARKDOWN | YAML | set(TABLES) | {".json", ".sql", ".txt", ".mmd", ".mermaid", ".feature", ".rst", ".adoc"}
 SKIP_DIRS = {"node_modules", "__pycache__", "venv"}
+# The language tag of a translation's name, as in spec.ko.md or spec.pt-BR.md.
+LANGUAGE_TAG = re.compile(r"^[a-z]{2}(?:[-_][A-Za-z]{4})?(?:[-_](?:[A-Za-z]{2}|[0-9]{3}))?$")
 SECRET_NAME = re.compile(
     r"(?i)(?:^|[._-])(?:secrets?|credentials?|passwords?|passwd|api[-_]?keys?|private[-_]?keys?"
     r"|access[-_]?tokens?|auth[-_]?tokens?)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$"
@@ -1104,6 +1106,7 @@ def source_files(target, root, skipped):
         for folder, dirs, files in os.walk(target):
             dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS)
             candidates.extend(Path(folder) / name for name in sorted(files) if not name.startswith("."))
+    present = set(candidates)
     chosen = []
     for path in candidates:
         reason = None
@@ -1116,6 +1119,9 @@ def source_files(target, root, skipped):
                 reason = "secret"
             elif not inside(real, root):
                 reason = "outside"
+            elif translation(path, present):
+                # Its original is the source, and the copy would define each ID again.
+                reason = "translation"
             elif path.stat().st_size > MAX_FILE_BYTES:
                 reason = "size"
             elif len(chosen) >= MAX_FILES:
@@ -1127,6 +1133,12 @@ def source_files(target, root, skipped):
         else:
             chosen.append(path)
     return chosen
+
+
+def translation(path, present):
+    """True for a name with a language tag, such as spec.ko.md, when its original spec.md is in the source too."""
+    stem, dot, tag = path.stem.rpartition(".")
+    return bool(dot and stem and LANGUAGE_TAG.match(tag)) and path.with_name(stem + path.suffix) in present
 
 
 def secret_path(path, root):
@@ -1449,7 +1461,7 @@ def read_stages(project, scan, problems):
             scan_file(scan, Source(key, kinds, alias, rel), text)
         if skipped:
             stage["skipped"] = skipped
-            noted = {reason: count for reason, count in skipped.items() if reason != "format"}
+            noted = {reason: count for reason, count in skipped.items() if reason not in ("format", "translation")}
             if noted:
                 total = sum(noted.values())
                 reasons = ", ".join("%d %s" % (count, reason) for reason, count in sorted(noted.items()))
