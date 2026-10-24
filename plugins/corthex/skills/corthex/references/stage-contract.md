@@ -40,6 +40,10 @@ The principle behind the split: the human view can change from team to team, but
 - Each item names the IDs it comes from, such as `SPEC-014 ← REQ-003, FL-002`.
 - A screen state or an API response is written after its ID with `#`: `SCR-002#empty`, `API-001#401`. Test cases name the responses and states they check.
 
+## Kinds of cases
+
+Stages 04, 06, 08 and 12 go through one list of kinds of cases, so that every case the functional spec names has a response in the API contract, a state on the screen and a test: access, input, target, state changes, repeats, concurrency, limits, outside services, data exposure, empty and streamed answers, screen states and AI answers. Each of those stages' reference files gives the list with what that stage writes for each kind. A kind that cannot happen in a behaviour is marked as not applicable, with the reason.
+
 ## Source of truth
 
 - `truth: source`: change the text source first, then update the human view.
@@ -69,7 +73,7 @@ When a project is registered, or a stage is set up for the first time, propose t
 | 09 Mockup | Figma or Claude Design | Figma's MCP server; Claude Design in Claude Code | `source` for the tokens |
 | 10 WBS | GitHub Projects, or a Notion database | `gh project`, or Notion's MCP server | `human` |
 | 11 Development | Pull requests | `gh` or the GitHub MCP server | `source` |
-| 12 QA | The test plan, the test report and the bug tracker | The files; `gh` for issues | `source` |
+| 12 QA | The test plan, the test and run reports, and the bug tracker | The files; `gh` for issues | `source` |
 | 13 Presentation | Slides built from the scene table | The AI builds them | `source` |
 
 Each stage's reference file says how to work with its default tool.

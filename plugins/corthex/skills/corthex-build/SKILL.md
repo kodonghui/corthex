@@ -1,6 +1,6 @@
 ---
 name: corthex-build
-description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, or writing a QA test plan, end-to-end tests and bug reports (TC and BUG IDs) from the user flows and acceptance criteria.
+description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, or writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs) from the user flows and acceptance criteria, including runs in which browser agents, such as Aside, walk every user flow and report what works, what does not and their impressions.
 license: Apache-2.0
 metadata:
   author: kodonghui
@@ -9,7 +9,7 @@ metadata:
 
 # Building and testing
 
-This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md).
+This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md), and how browser agents walk every flow in QA is in [references/browser-agents.md](references/browser-agents.md).
 
 | Key | Stage | Contract |
 | --- | --- | --- |
