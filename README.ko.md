@@ -59,7 +59,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 | 스킬 | 단계 | 쓰는 때 |
 | --- | --- | --- |
 | `corthex` | 입구 | 프로필 설정, 프로젝트 등록, 지금 어느 단계이고 다음은 무엇인지 볼 때 |
-| `corthex-discover` | 01 | 도메인 워크숍 결과를 바운디드 컨텍스트와 용어집으로 정리할 때 |
+| `corthex-discover` | 01 | Miro 같은 보드에서 이벤트 스토밍을 단계별로 함께 하고, 컨텍스트·컨텍스트 지도·용어집을 담은 도메인 설계서로 정리할 때 |
 | `corthex-define` | 02–04 | 요구사항, 유저 플로우, 기능 명세를 쓸 때 |
 | `corthex-contract` | 05–06 | DB 스키마와 API 계약을 명세에 맞출 때 |
 | `corthex-screen` | 07–09 | 사이트맵, 화면 상태, 목업과 디자인 토큰 |
