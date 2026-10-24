@@ -80,7 +80,7 @@ The functional spec's curation record is kept in two parts, so that two sessions
 | TBL-014 | Pins | CTX-003 | `projects/<project>/layer/pins.json` | each record's `item` | for good, until the item is forgotten | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-015 | Item list | CTX-003 | `projects/<project>/layer/item-list.txt` | each line's item ID | made again after every change | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-016 | Tombstones | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | for good | yes | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037 | active |
-| TBL-017 | Project tombstone | CTX-005 | `projects/<project>/layer/deleted.json` | one per project | for good | yes | SPEC-012, SPEC-027, SPEC-028, SPEC-037 | proposed |
+| TBL-017 | Project tombstone | CTX-005 | `projects/<project>/layer/deleted.json` | one per project | for good | yes | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | proposed |
 | TBL-018 | Sync remote marker | CTX-004 | `corthex-memory-sync.json` in the sync remote | one per sync remote | as long as the sync remote | it is in the sync remote | SPEC-026, SPEC-027, SPEC-028 | open (D3) |
 
 The search index is the SQLite file `projects/<project>/index.db`. It is never synced (REQ-044) and can always be made again from the memory items (TERM-029).
@@ -378,7 +378,7 @@ One file per forgotten item, named by the item's ID, made by a forget (SPEC-035)
 
 ### Project tombstone (TBL-017)
 
-Made when the user deletes a project's memory with sync on (SPEC-037). On this device the deletion leaves in the project's folder only `layer/deleted.json` and the tombstones. A device that applies it deletes the project's raw log entries written before `at`, its items saved before `at` with their pins and search index rows, and its current state lines written before `at`; what is saved after `at` stays. It does not change that device's memory configuration. Kept for good; a later deletion moves `at` on, and a merge keeps the later `at`. Synced.
+Made when the user deletes a project's memory with sync on (SPEC-037). On this device the deletion leaves in the project's folder only `layer/deleted.json` and the tombstones. A device that applies it deletes in the merge the project's items saved before `at`, with their pins and search index rows, and its current state lines written before `at` (SPEC-028). Then the sync starts the project's retention, which deletes the raw log entries and injection log lines written before `at` under the curation lock, as it deletes those past the retention period (SPEC-009); until they are gone, the curator leaves those entries out of its requests (SPEC-015). What is saved after `at` stays. It does not change that device's memory configuration. Kept for good; a later deletion moves `at` on, and a merge keeps the later `at`. Synced.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
@@ -497,13 +497,13 @@ Besides these records, the hooks and the memory skill read the project list (SPE
 | SPEC-006 | Leave folders or kinds of entries out | TBL-002 | TBL-002 |
 | SPEC-007 | Keep the raw log readable after a crash | TBL-007 | TBL-007, TBL-004 |
 | SPEC-008 | Never block the session | none | TBL-004, TBL-005 |
-| SPEC-009 | Delete raw log entries past the retention period | TBL-002, TBL-007, TBL-009, TBL-011 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
+| SPEC-009 | Delete raw log entries past the retention period | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
 | SPEC-010 | Start curation when a trigger is met | TBL-002, TBL-008, TBL-009 | TBL-009 and TBL-008 when they are made again |
 | SPEC-011 | Curate and sync often on a temporary device | TBL-002 | TBL-002, through the user's environment setup |
 | SPEC-012 | Run one curation per project at a time | TBL-009, TBL-016, TBL-017 | TBL-009 |
 | SPEC-013 | Run the curator in the background | TBL-002 | TBL-004 |
 | SPEC-014 | Ask the curator model | TBL-002 | TBL-003 |
-| SPEC-015 | Keep each request under 100,000 input tokens | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-020, TBL-022 | TBL-009, TBL-003 |
+| SPEC-015 | Keep each request under 100,000 input tokens | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022 | TBL-009, TBL-003 |
 | SPEC-016 | Apply the proposed changes | TBL-007, TBL-012 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
 | SPEC-017 | Update the current state with provenance | TBL-013, TBL-012 | TBL-013, TBL-009 |
 | SPEC-018 | Handle a failed curation | TBL-009 | TBL-009, TBL-010, TBL-003, TBL-004 |

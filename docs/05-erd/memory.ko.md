@@ -80,7 +80,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | TBL-014 | 고정 | CTX-003 | `projects/<project>/layer/pins.json` | 기록마다의 `item` | 항목을 잊을 때까지 계속 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-015 | 항목 목록 | CTX-003 | `projects/<project>/layer/item-list.txt` | 줄마다의 항목 ID | 바뀔 때마다 다시 만듦 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-016 | 지운 기록 | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037 | active |
-| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-037 | proposed |
+| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | proposed |
 | TBL-018 | 동기화 저장소 표지 | CTX-004 | 동기화 저장소의 `corthex-memory-sync.json` | 동기화 저장소마다 하나 | 동기화 저장소가 있는 동안 | 동기화 저장소 안에 있음 | SPEC-026, SPEC-027, SPEC-028 | open (D3) |
 
 검색 색인은 SQLite 파일 `projects/<project>/index.db`입니다. 절대 동기화하지 않으며(REQ-044), 기억 항목에서 언제든 다시 만들 수 있습니다(TERM-029).
@@ -378,7 +378,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 ### 프로젝트 지운 기록 (TBL-017)
 
-동기화가 켜진 채로 사용자가 프로젝트의 기억을 지울 때 만듭니다(SPEC-037). 이 기기에서는 지우고 나면 그 프로젝트 폴더에 `layer/deleted.json`과 지운 기록만 남습니다. 이것을 적용하는 기기는 그 프로젝트에서 `at` 전에 쓴 원문 기록 줄, `at` 전에 저장한 항목과 그 고정·검색 색인 줄, `at` 전에 쓴 현재 상태 줄을 지웁니다. `at` 뒤에 저장한 것은 남습니다. 그 기기의 기억 설정은 바꾸지 않습니다. 계속 둡니다. 나중에 다시 지우면 `at`을 뒤로 옮기고, 합치기는 나중의 `at`을 남깁니다. 동기화합니다.
+동기화가 켜진 채로 사용자가 프로젝트의 기억을 지울 때 만듭니다(SPEC-037). 이 기기에서는 지우고 나면 그 프로젝트 폴더에 `layer/deleted.json`과 지운 기록만 남습니다. 이것을 적용하는 기기는 합치기에서 그 프로젝트의 `at` 전에 저장한 항목과 그 고정·검색 색인 줄, `at` 전에 쓴 현재 상태 줄을 지웁니다(SPEC-028). 그다음 동기화가 그 프로젝트의 보관 기간 처리를 시작하고, 보관 기간 처리는 정리 잠금을 쥐고 `at` 전에 쓴 원문 기록 줄과 넣기 기록 줄을 보관 기간이 지난 줄처럼 지웁니다(SPEC-009). 그 줄이 지워질 때까지 정리 프로세스는 그 줄을 요청에서 뺍니다(SPEC-015). `at` 뒤에 저장한 것은 남습니다. 그 기기의 기억 설정은 바꾸지 않습니다. 계속 둡니다. 나중에 다시 지우면 `at`을 뒤로 옮기고, 합치기는 나중의 `at`을 남깁니다. 동기화합니다.
 
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
@@ -497,13 +497,13 @@ Windows에서는 다른 프로세스가 옛 파일을 열고 있는 동안 옮�
 | SPEC-006 | 폴더나 줄 종류 빼기 | TBL-002 | TBL-002 |
 | SPEC-007 | 멈춘 뒤에도 원문 기록을 읽을 수 있게 하기 | TBL-007 | TBL-007, TBL-004 |
 | SPEC-008 | 세션을 막지 않기 | 없음 | TBL-004, TBL-005 |
-| SPEC-009 | 보관 기간이 지난 원문 기록 줄 지우기 | TBL-002, TBL-007, TBL-009, TBL-011 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
+| SPEC-009 | 보관 기간이 지난 원문 기록 줄 지우기 | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
 | SPEC-010 | 정리 시작 조건을 만족하면 정리 시작하기 | TBL-002, TBL-008, TBL-009 | 다시 만들 때 TBL-009와 TBL-008 |
 | SPEC-011 | 임시 기기에서 자주 정리하고 동기화하기 | TBL-002 | 사용자의 환경 설정을 거쳐 TBL-002 |
 | SPEC-012 | 프로젝트마다 정리를 하나만 돌리기 | TBL-009, TBL-016, TBL-017 | TBL-009 |
 | SPEC-013 | 정리 프로세스를 뒤에서 돌리기 | TBL-002 | TBL-004 |
 | SPEC-014 | 정리 모델에 묻기 | TBL-002 | TBL-003 |
-| SPEC-015 | 요청마다 입력 100,000토큰 아래로 지키기 | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-020, TBL-022 | TBL-009, TBL-003 |
+| SPEC-015 | 요청마다 입력 100,000토큰 아래로 지키기 | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022 | TBL-009, TBL-003 |
 | SPEC-016 | 제안된 변경 적용하기 | TBL-007, TBL-012 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
 | SPEC-017 | 출처와 함께 현재 상태 고치기 | TBL-013, TBL-012 | TBL-013, TBL-009 |
 | SPEC-018 | 실패한 정리 다루기 | TBL-009 | TBL-009, TBL-010, TBL-003, TBL-004 |
