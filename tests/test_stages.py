@@ -32,6 +32,15 @@ ID_KINDS = [
 PROJECT_FIELDS = {"name", "title", "team", "language", "records", "repos", "ids", "stages"}
 STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip"}
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
+# Sticky colours a Miro board accepts by name.
+MIRO_COLOURS = {
+    "black", "blue", "cyan", "dark_blue", "dark_green", "gray", "green", "light_blue",
+    "light_green", "light_pink", "light_yellow", "orange", "pink", "red", "violet", "yellow",
+}
+LEGEND = [
+    "Domain event", "External system", "Command", "Hotspot",
+    "Actor", "Aggregate", "Policy", "Read model",
+]
 
 
 def section(text, heading):
@@ -108,6 +117,17 @@ class StageContractTest(unittest.TestCase):
                 # Changes stay proposed only where the human view is the truth.
                 at = [text.index(rule) for rule in rules[3:]]
                 self.assertEqual(at, sorted(at))
+
+    def test_event_storming_legend(self):
+        board = read_text(SKILLS / "corthex-discover" / "references" / "event-storming-board.md")
+        rows = [line.split("|")[1:-1] for line in section(board, "## Legend").splitlines() if line.startswith("| ")]
+        colours = {row[0].strip(): row[2].strip().strip("`") for row in rows[2:]}
+        self.assertEqual(list(colours), LEGEND)
+        for element, colour in colours.items():
+            with self.subTest(element=element):
+                self.assertIn(colour, MIRO_COLOURS)
+        # One colour per kind, so the kind of a sticky can be read from its colour.
+        self.assertEqual(len(set(colours.values())), len(colours))
 
     def test_entry_skill_routes_every_stage(self):
         entry = read_text(SKILLS / "corthex" / "SKILL.md")

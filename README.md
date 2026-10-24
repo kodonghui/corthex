@@ -59,7 +59,7 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 | Skill | Stages | Use it to |
 | --- | --- | --- |
 | `corthex` | entry | set up your profile, register a project, see where a project stands and what comes next |
-| `corthex-discover` | 01 | turn a domain workshop into bounded contexts and a glossary |
+| `corthex-discover` | 01 | run event storming with you on a board such as Miro, step by step, and write the domain design: contexts, context map and glossary |
 | `corthex-define` | 02–04 | write requirements, user flows and the functional spec |
 | `corthex-contract` | 05–06 | keep the database schema and the API contract in line with the spec |
 | `corthex-screen` | 07–09 | sitemap, screen states, mockups and design tokens |

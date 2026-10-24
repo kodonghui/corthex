@@ -118,7 +118,7 @@ The `corthex-memory` plugin adds a short version at the start of each session wi
 
 Every stage fills six slots: inputs, outputs, human view, sync, human checkpoints and trace IDs. Each stage's text source stays in the product repository. The human view (Notion, Miro, an ERD tool, Figma and so on) can differ from team to team, and the project's settings say which side is the truth for each stage.
 
-The AI reaches a human view through an MCP server, a connector or an API when the tool has one. A tool with only import and export depends on a person's exports, so the AI says how old its copy is. For the ERD, CORTHEX suggests ERD Editor to new projects, because it keeps the diagram in the repository and has an MCP server.
+The AI reaches a human view through an MCP server, a connector or an API when the tool has one. A tool with only import and export depends on a person's exports, so the AI says how old its copy is. For the ERD, CORTHEX suggests ERD Editor to new projects, because it keeps the diagram in the repository and has an MCP server. For domain discovery, the AI and the user run event storming on a Miro board through Miro's MCP server, one frame per step. By default the AI drafts each step and people correct it on the board, and the result goes into one domain design document.
 
 - The contract, the stage keys and the trace ID rules: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md).
 - Each stage's slots, steps, checks and output template: `references/<stage>.md` in the stage skill, such as [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md).
