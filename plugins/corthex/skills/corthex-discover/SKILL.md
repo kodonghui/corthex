@@ -23,7 +23,7 @@ This skill covers one stage. Its contract, steps, checks and output template are
 4. **Checks.** Run the stage's checks. Report what passed, what failed and what you could not check.
 5. **Sync.** Bring the human view and the source into line in the direction `truth` gives. When `truth` is `human`, refresh the source from the human view and do not edit the source directly.
 6. **Checkpoint.** Stop at the stage's human checkpoint and ask. Silence, a read receipt or an edit is not approval.
-7. **Record.** Record decisions and the next action with `corthex-record`.
+7. **Record.** Record decisions and the next action with `corthex-record`. If the `corthex-hub` skill is installed, also record the stage's state there.
 
 ## Notes for this stage
 

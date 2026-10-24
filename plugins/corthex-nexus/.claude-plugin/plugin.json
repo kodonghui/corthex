@@ -1,0 +1,15 @@
+{
+  "name": "corthex-nexus",
+  "displayName": "CORTHEX Nexus",
+  "version": "0.1.0",
+  "description": "One page with the 13 stages, checks and trace links of all your CORTHEX projects, built from local files. It can also send project snapshots to a NEXUS server you run yourself.",
+  "author": {
+    "name": "kodonghui",
+    "url": "https://github.com/kodonghui"
+  },
+  "homepage": "https://github.com/kodonghui/corthex",
+  "repository": "https://github.com/kodonghui/corthex",
+  "license": "Apache-2.0",
+  "keywords": ["hub", "dashboard", "traceability", "projects", "stages", "nexus"],
+  "dependencies": ["corthex"]
+}

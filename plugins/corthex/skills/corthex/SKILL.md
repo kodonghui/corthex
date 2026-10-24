@@ -58,3 +58,5 @@ Every stage follows one six-slot contract: inputs, outputs, human view, sync, hu
 ## 5. Answer "where are we?"
 
 Read the project's `stages` settings and the artifacts they point to. For each stage, report one of done, in progress, not started or skipped, the last human checkpoint with its date, and the next action. A file that exists is not a finished stage: a stage is done when its checkpoint was passed and recorded.
+
+If the `corthex-hub` skill is installed, it keeps these states for every project and shows them on one page with the trace links between stages; read and record the states there.

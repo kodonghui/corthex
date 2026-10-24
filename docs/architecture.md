@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: 0.1.0. The core plugin, `corthex`, exists, and so does the first part of `corthex-memory`: the session start context. The rest of `corthex-memory` and `corthex-nexus` are planned (see [Roadmap](#roadmap)).
+Status: 0.1.0. The core plugin, `corthex`, exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub). The rest of both is planned (see [Roadmap](#roadmap)).
 
 ## Goals
 
@@ -32,12 +32,20 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
 │   │       └── corthex-record/          minutes, decisions, progress
-│   └── corthex-memory/                  session start context, with a hook
+│   ├── corthex-memory/                  session start context, with a hook
+│   │   ├── .claude-plugin/plugin.json   manifest for Claude Code
+│   │   ├── .codex-plugin/plugin.json    manifest for Codex; no root plugin.json
+│   │   ├── hooks/hooks.json             one SessionStart hook, read by both hosts
+│   │   ├── scripts/session_start.py     builds the context, Python standard library only
+│   │   ├── context/principles.md        short form of the working principles
+│   │   └── LICENSE, NOTICE
+│   └── corthex-nexus/                   project hub, a skill with a script
 │       ├── .claude-plugin/plugin.json   manifest for Claude Code
-│       ├── .codex-plugin/plugin.json    manifest for Codex; no root plugin.json
-│       ├── hooks/hooks.json             one SessionStart hook, read by both hosts
-│       ├── scripts/session_start.py     builds the context, Python standard library only
-│       ├── context/principles.md        short form of the working principles
+│       ├── plugin.json                  Agent Plugins 1.0 manifest, read by Codex
+│       ├── skills/corthex-hub/
+│       │   ├── scripts/hub.py           snapshots, checks, page and push, Python standard library only
+│       │   ├── assets/hub.html          page template that loads nothing from the network
+│       │   └── references/              what the hub reads and checks, and its file formats
 │       └── LICENSE, NOTICE
 ├── tests/                               checks, Python standard library only
 └── docs/
@@ -47,7 +55,7 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 
 Claude Code reads a plugin's manifest from `.claude-plugin/plugin.json`. Codex and the other Agent Plugins clients read `plugin.json` at the plugin root, and Codex takes its own settings from `extensions.com.openai` in that file. Agent Plugins 1.0 does not list Claude Code among its compatible clients, so the plugin keeps both files. They share one `skills/` folder.
 
-A plugin with hooks is the exception. Codex CLI 0.164.0 does not run a plugin's hooks when the plugin has a root `plugin.json`, even with `.codex-plugin/plugin.json` beside it ([openai/codex#39895](https://github.com/openai/codex/issues/39895), reproduced on 2026-10-23). Without a root `plugin.json`, Codex reads `.codex-plugin/plugin.json` and finds `hooks/hooks.json` on its own. So `corthex-memory` has `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, and no root `plugin.json`. It therefore does not go to other Agent Plugins clients or to OpenAI's directory, which does not take plugins with hooks anyway.
+A plugin with hooks is the exception. Codex CLI 0.164.0 does not run a plugin's hooks when the plugin has a root `plugin.json`, even with `.codex-plugin/plugin.json` beside it ([openai/codex#39895](https://github.com/openai/codex/issues/39895), reproduced on 2026-10-23). Without a root `plugin.json`, Codex reads `.codex-plugin/plugin.json` and finds `hooks/hooks.json` on its own. So `corthex-memory` has `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json`, and no root `plugin.json`. It therefore does not go to other Agent Plugins clients or to OpenAI's directory, which does not take plugins with hooks anyway. `corthex-nexus` has no hooks, so it keeps both files like the core plugin.
 
 `tests/test_manifests.py` keeps the manifests in line:
 
@@ -65,7 +73,7 @@ A plugin with hooks is the exception. Codex CLI 0.164.0 does not run a plugin's 
 
 Both files list the same plugins under the same marketplace name, so the install id is `corthex@corthex` in both hosts.
 
-The memory plugin installs the same way, as `corthex-memory@corthex`. It declares `corthex` as a dependency, so Claude Code installs both; in Codex, add both.
+The optional plugins install the same way, as `corthex-memory@corthex` and `corthex-nexus@corthex`. Each declares `corthex` as a dependency, so Claude Code installs it too; in Codex, add `corthex` first.
 
 ## Why the core plugin is skills only
 
@@ -85,6 +93,8 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-build` | 10 WBS, 11 development, 12 QA |
 | `corthex-present` | 13 presentation |
 | `corthex-record` | minutes, decisions and progress, at any stage |
+
+`corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).
 
 - **Eight skills, not fourteen.** Hosts show every skill's description in each session, and Codex caps that first list at 2% of the context window (8,000 characters when the window is unknown). Grouping keeps the list short. The details of each stage sit in `references/` and are read only when needed.
 - **Names start with `corthex-`** so they stay distinct when a skill is used outside the plugin. Inside the plugin, both hosts show them as `corthex:<skill>`.
@@ -144,6 +154,18 @@ It reads only those files, writes nothing and makes no network calls. If anythin
 
   Forking in Codex and macOS are not tested yet. The hook needs `python3` or `python` on the PATH of the shell that runs it.
 
+## Project hub
+
+`corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server.
+
+- **Snapshot.** For each project in `~/.corthex/projects.json`, the script reads the stage sources that `.corthex/project.json` names, also in the project's other repositories, and saves what they define and link: trace IDs with their titles and fields, the file and line of each, the links between them, and the checks. A project is read only under the name it is registered with: when its `.corthex/project.json` gives another name, or an unregistered folder gives a registered project's name, the script reads nothing and says why, so a repository's settings cannot save or send its items under another project's name. It reads text only and never runs project code: Git comes from an absolute folder in PATH, never from the current folder, and runs without the repository's fsmonitor hook, clean filters or optional locks, and without looking inside submodules, so reading a repository's state starts none of its programs and rewrites nothing. When a tracked file uses a clean filter, such as Git LFS, the snapshot does not say whether the working tree has changes. It skips files whose names, or whose folders' names, look like secrets, also when a link leads to them. The forms it reads and the checks are in [reading.md](../plugins/corthex-nexus/skills/corthex-hub/references/reading.md).
+- **Progress.** A stage's state, last checkpoint and next action come only from what was recorded with `hub.py status`, because a file that exists is not a finished stage. `done` is refused without a checkpoint and its date. Findings of a review are recorded the same way.
+- **Page.** `hub.py build` writes `~/.corthex/hub/index.html`: for each project the 13 stages with their states and counts, the checks, each stage's settings and items, a trace view for every ID (what it comes from and what it leads to), and search. The data is inside the page, its Content Security Policy blocks every request, and it shows text only as text, so it works from the disk and offline. It follows the profile's language, Korean or English, and the system's light or dark mode. A saved snapshot of a project that is no longer in `~/.corthex/projects.json` stays on the disk but is left off the page.
+- **What leaves the machine.** Nothing, unless the user runs `hub.py push`. A snapshot holds IDs, titles, fields, checks, file locations relative to their repositories and commit IDs. It holds no other file contents and no local paths, secrets and email addresses in titles become `[redacted]`, and a link that holds one is left out. The formats are in [snapshot.md](../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md).
+- **Push.** `hub.py push` sends the snapshots of the projects listed in the profile's `nexus.push` to `nexus.url`, over HTTPS, with a Cloudflare Access service token from environment variables. It does not follow redirects, so a refused token is reported instead of sent on. The server is not part of 0.1.0 (see [Roadmap](#roadmap)).
+
+Checked so far: `tests/test_hub.py` builds a project from the stage skills' own output templates and checks every item, link and finding the hub reads from them, then each source form, the status file, the page and the push client against a local stand-in server. It passes on Linux with Python 3.8 and 3.13. The page was opened in Chromium at 1440 and 320 pixels wide, in light and dark mode, with no script errors, no sideways scrolling and no network requests. A real project spread over three repositories, with requirements exported from Notion, was read without changing it. Windows and macOS have not been run yet.
+
 ## Versions and releases
 
 - Versions are semantic. The version appears in both manifests and in every skill's `metadata.version`, and the tests keep them equal.
@@ -154,7 +176,7 @@ It reads only those files, writes nothing and makes no network calls. If anythin
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, links and translations of the docs, no secrets or private text |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
 CI runs the repository checks on Linux, Windows and macOS, and the Claude Code validation on Linux, for every pull request and every push to `main`.
@@ -164,7 +186,7 @@ CI runs the repository checks on Linux, Windows and macOS, and the Claude Code v
 Planned, not in 0.1.0. Both need components the core plugin leaves out.
 
 - `corthex-memory`, later versions: hooks that collect conversation records, summarize them into each project's current state and bring back what matters. The current state then joins the session start context.
-- `corthex-nexus` (optional): an MCP server with app screens for a hub of all projects and for editing sitemaps and flows, run by the user on their own domain.
+- `corthex-nexus`, later versions: a NEXUS server that the user runs on their own domain, behind Cloudflare Access, so the hub can be opened from any device. It receives the snapshots that `hub.py push` sends and serves the same page; the first version keeps them in Cloudflare D1. After that, editors for sitemaps and user flows, and an MCP server over the same data.
 
 ## Sources
 
@@ -174,4 +196,5 @@ Checked on 2026-10-23.
 - OpenAI: [Codex plugins](https://developers.openai.com/codex/plugins/build), [Submit your Claude Code plugin to OpenAI](https://developers.openai.com/plugins/guides/submit-claude-plugin), [Build skills](https://learn.chatgpt.com/docs/build-skills)
 - Agent Plugins: [Plugin manifest](https://agent-plugins.org/plugin-authors/manifest), [Client extensions](https://agent-plugins.org/plugin-authors/client-extensions), [Compatible clients](https://agent-plugins.org/compatible-clients)
 - Hooks: [Claude Code hooks reference](https://code.claude.com/docs/en/hooks), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [openai/codex#39895](https://github.com/openai/codex/issues/39895)
+- Cloudflare Access: [Authenticate agents](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/), [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
 - [Agent Skills specification](https://agentskills.io/specification)
