@@ -27,6 +27,7 @@ This skill covers one stage. Its contract, ways of working, steps, checks and ou
 
 ## Notes for this stage
 
+- Start from the user's purpose in their own words, not from what is already built. Existing code and documents are material for the steps, not the goal.
 - Run the steps in order, one frame per step, and stop where the chosen way of working says. By default the AI drafts each step on the board, people correct it there, and the AI stops after steps 1-b, 7 and 9.
 - A board is a picture of a conversation. Turn it into text, but keep its hotspots as questions, not as decisions.
 - Use the glossary's words in every later stage. When a later stage needs a new term, add it here first.

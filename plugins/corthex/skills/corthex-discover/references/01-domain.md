@@ -25,7 +25,7 @@ Mistakes in early steps carry into later ones and are harder to see at the end, 
 
 Each step adds one layer to the board. Start each step in a copy of the previous step's frame, placed below it, so the board keeps every step.
 
-- **Step 0 · Prepare.** Agree on the scope (what is in and what is out), the inputs, the parts of the product if there are several, and the way of working. Open the board in `link`, or ask before creating one. Put the legend and a scope note on the board.
+- **Step 0 · Prepare.** Start from the user's purpose, not from what is already built. Ask what the product is for, who it is for and what they want from it, and put the answer on the board in their own words, with your restatement beside it. Only then read the existing code and documents, as material for the later steps. Agree on the scope (what is in and what is out), the inputs, the parts of the product if there are several, and the way of working. Open the board in `link`, or ask before creating one. Put the legend and a scope note on the board, with the open questions numbered and a recommended answer for each; checkpoint 1 asks them.
 - **Step 1-a · Events.** Collect domain events: things that happened and that the business cares about, in the past tense, such as "Order placed". Each one changes data; leave out reads, searches and signing in. When people write events too, the AI puts the events it finds in the inputs in a separate strip of AI proposals, and people move the ones they accept out of it.
 - **Step 1-b · Timeline.** Order the events from left to right in time, one lane per flow. Merge events that mean the same thing under one name, and keep the other names for the glossary's Avoid column. Stack outcomes that depend on a condition, such as "Payment taken" and "Payment failed", one above the other. **Checkpoint 1: the timeline.**
 - **Step 2 · External systems.** Add each system outside the product that sends or receives an event, next to that event.
@@ -40,22 +40,32 @@ Each step adds one layer to the board. Start each step in a copy of the previous
 
 ## Starting from an existing document
 
-When the stage already has a domain document, written without a board, use it as the AI's draft: in each step, draw what the document says in that step's frame, and stop where the chosen way of working says. In a workshop, people still go first, and the AI uses the document for its checks and questions. Put each context's CTX ID in its name on the board, such as "CTX-001 Ordering", so the board and the document keep the same IDs. What changes on the board updates the document under its existing IDs; an item that goes away is marked as removed, never renumbered. At each checkpoint, list what the board leaves out of the document and why, such as reads and sign-ins that are not events, so the user sees everything that was dropped.
+When the stage already has a domain document, written without a board, still begin Step 0 with the user's words, and compare the document with them before you use it. Where the document serves that purpose, use it as the AI's draft: in each step, draw what the document says in that step's frame, and stop where the chosen way of working says. Where it describes what is already built rather than what the user wants, mark the difference as a hotspot. In a workshop, people still go first, and the AI uses the document for its checks and questions. Put each context's CTX ID in its name on the board, such as "CTX-001 Ordering", so the board and the document keep the same IDs. What changes on the board updates the document under its existing IDs; an item that goes away is marked as removed, never renumbered. At each checkpoint, list what the board leaves out of the document and why, such as reads and sign-ins that are not events, so the user sees everything that was dropped.
+
+## When the board drifts from the purpose
+
+If the user asks whether you and they mean the same thing, or the board no longer matches their words, stop before the next step and withdraw any checkpoint question still open. Put the user's words beside the board and say plainly where the two differ and why, such as a Step 0 that started from what is built. If the purpose was wrong, ask the user to say it again in their own words, and start over from Step 0 in a new column beside the old one. Keep the old frames as material, and never delete them. Instead of updating the document at each checkpoint, leave it as it is until the new column passes its last checkpoint, then rewrite it once: the IDs that carry over keep their numbers, and the rest are marked as removed.
 
 ## Checkpoints
 
-At each checkpoint, stop and send the user a short note: what you put on the board since the last checkpoint, a link to each frame concerned, and the three to five things that most need a look, such as hotspots and guesses. The user answers on the board or in the conversation. Read the board again before you go on: a change on the board is an answer, but silence is not approval.
+At each checkpoint, stop and send the user a short note: what you put on the board since the last checkpoint, a link to each frame concerned, and the three to five things that most need a look, such as hotspots and guesses. Number the questions and give a recommended answer for each, so that the user can answer "as recommended" or name only the numbers to change. The user answers on the board or in the conversation. Read the board again before you go on: a change on the board is an answer, but silence is not approval.
+
+- An answer that lets you go on without approving the content, such as "I don't follow it, but go ahead", lets you continue with your recommendations. Record it as permission to continue, not as approval, keep your guesses marked as guesses, and bring them back at the next checkpoint.
+- When the user says they do not follow the board, explain with examples from their own product before you go on, and add what you explained to the frame's term memo ([event-storming-board.md](event-storming-board.md)).
+- Record each answer with `corthex-record`: the user's words, the time and what it settles. On the board, turn each hotspot the answer settles into an answered hotspot, with the answer and where it came from, and mark the checkpoint passed, with its date. An answered hotspot stays on the board, so the board shows what was decided.
 
 ## Board and document
 
 - Read the board before every step and before every checkpoint. People may have changed it since your last read.
 - At each checkpoint, bring the document up to date with the board and set `synced_at` to the time you read the board. Give IDs only to what people agreed on at a checkpoint.
+- IDs are unique in the whole project, across all parts of the product. Before numbering, search the project's documents for the IDs already used, such as with `grep -rhoE "(CTX|TERM)-[0-9]+" docs/`, and continue after the highest.
 - With `truth: source`, the document holds once the last checkpoint is passed. Make a later change in the document first, then on the board, and say what changed in a comment on the board.
 - A project that keeps working on the board sets `truth: human`. Then refresh the document from the board, and do not edit the document directly.
 - When the board and the document differ, list the differences and ask before changing either side.
 
 ## Checks
 
+- The board holds the user's purpose in their own words, and the document's service overview agrees with it.
 - Every event is in the past tense, changes data and has its place on the timeline.
 - Every command is in the imperative, causes at least one event and has a row in its context's table.
 - Every aggregate belongs to exactly one context, and every event to the context of its aggregate.
