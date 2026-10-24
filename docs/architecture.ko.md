@@ -118,7 +118,7 @@ Claude Code는 플러그인 루트의 `CLAUDE.md`를 맥락으로 읽지 않고,
 
 모든 단계는 여섯 칸을 채웁니다: 입력, 산출물, 사람 화면, 동기화, 사람 확인 지점, 추적 ID. 각 단계의 텍스트 원본은 제품 저장소에 두고, 사람이 보는 화면(Notion, Miro, ERD 도구, Figma 등)은 팀마다 다를 수 있습니다. 어느 쪽이 정본인지는 단계마다 프로젝트 설정이 정합니다.
 
-AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화면을 읽고 고칩니다. 가져오기와 내보내기만 되는 도구는 사람이 내보낸 파일에 기대므로, AI는 자기 사본이 언제 것인지 밝힙니다. ERD는 다이어그램을 저장소에 두고 MCP 서버가 있는 ERD Editor를 새 프로젝트에 권합니다.
+AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화면을 읽고 고칩니다. 가져오기와 내보내기만 되는 도구는 사람이 내보낸 파일에 기대므로, AI는 자기 사본이 언제 것인지 밝힙니다. ERD는 다이어그램을 저장소에 두고 MCP 서버가 있는 ERD Editor를 새 프로젝트에 권합니다. 도메인 탐색은 Miro의 MCP 서버를 통해 Miro 보드에서 AI와 사용자가 이벤트 스토밍을 단계마다 프레임 하나씩 진행합니다. 기본은 AI가 단계마다 초안을 그리고 사람이 보드에서 고치는 방식이며, 결과는 도메인 설계서 한 파일로 남깁니다.
 
 - 계약, 단계 키, 추적 ID 규칙: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md)
 - 각 단계의 여섯 칸, 진행 순서, 점검, 산출물 틀: 단계 스킬의 `references/<단계>.md`. 예: [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md)

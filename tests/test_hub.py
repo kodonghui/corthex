@@ -25,8 +25,7 @@ FENCE = re.compile(r"^(`{3,})[\w-]*\s*$")
 
 # Where each stage skill's output template is written: (path, skill, reference, block).
 TEMPLATES = (
-    ("docs/01-domain/contexts.md", "corthex-discover", "01-domain", 0),
-    ("docs/01-domain/glossary.md", "corthex-discover", "01-domain", 1),
+    ("docs/01-domain/domain.md", "corthex-discover", "01-domain", 0),
     ("docs/02-prd/requirements.md", "corthex-define", "02-prd", 0),
     ("docs/03-user-flow/FL-001.md", "corthex-define", "03-user-flow", 0),
     ("docs/04-functional-spec/spec.md", "corthex-define", "04-functional-spec", 0),
@@ -168,7 +167,9 @@ class TemplateTest(HubCase):
     def test_every_template_defines_its_items(self):
         expected = {
             "CTX-001": ("context", "01-domain", "Ordering"),
+            "CTX-002": ("context", "01-domain", "Payment"),
             "TERM-001": ("term", "01-domain", "Order"),
+            "TERM-002": ("term", "01-domain", "Payment"),
             "REQ-001": ("requirement", "02-prd", None),
             "REQ-002": ("requirement", "02-prd", None),
             "REQ-003": ("requirement", "02-prd", None),
@@ -198,7 +199,10 @@ class TemplateTest(HubCase):
     def test_links_follow_the_templates(self):
         items = self.items(self.snapshot())
         expected = {
+            "CTX-001": {"CTX-002"},
+            "CTX-002": {"CTX-001"},
             "TERM-001": {"CTX-001"},
+            "TERM-002": {"CTX-002"},
             "FL-001": {"REQ-001", "REQ-002", "REQ-004"},
             "SPEC-001": {"REQ-001", "REQ-002", "FL-001"},
             "TBL-001": {"CTX-001", "SPEC-001", "SPEC-002"},
@@ -226,6 +230,7 @@ class TemplateTest(HubCase):
         self.assertEqual(self.refs(snapshot, "screen-without-states"), ["SCR-001"])
         self.assertEqual(snapshot["summary"]["checks"], {"error": 0, "warn": 6, "info": 1})
         stages = snapshot["stages"]
+        self.assertEqual(stages["01-domain"]["copied"]["newest"], "2026-01-12T10:00+09:00", "the board's read time")
         self.assertTrue(stages["02-prd"]["default_source"])
         self.assertEqual((stages["02-prd"]["files"], stages["02-prd"]["items"]), (1, 3))
         self.assertEqual(stages["08-screen-states"]["items"], 1)

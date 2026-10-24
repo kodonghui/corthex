@@ -10,7 +10,7 @@
     "spec": { "prefix": ["ORDER", "PAY"], "digits": 3 }
   },
   "stages": {
-    "01-domain": { "human": "miro", "link": "<link to the board>", "source": "design:domain/", "truth": "human" },
+    "01-domain": { "human": "miro", "link": "<link to the board>", "source": "design:domain/", "truth": "human", "note": "The team keeps working on the event storming board, so the board is the truth. The AI drafts each step and the team corrects it there." },
     "02-prd": { "human": "notion", "link": "<link to the database>", "source": "design:prd/", "truth": "human" },
     "03-user-flow": { "human": "notion", "source": "design:user-flow/", "truth": "human" },
     "04-functional-spec": { "human": "notion", "source": "design:functional-spec/", "truth": "human" },
