@@ -40,7 +40,7 @@ Each step adds one layer to the board. Start each step in a copy of the previous
 
 ## Starting from an existing document
 
-When the stage already has a domain document, written without a board, draw it on the board as the draft of steps 1 to 9, one frame per step, and go through the checkpoints as usual. Put each context's CTX ID in its name on the board, such as "CTX-001 Ordering", so the board and the document keep the same IDs. What changes on the board updates the document under its existing IDs; an item that goes away is marked as removed, never renumbered.
+When the stage already has a domain document, written without a board, use it as the AI's draft: in each step, draw what the document says in that step's frame, and stop where the chosen way of working says. In a workshop, people still go first, and the AI uses the document for its checks and questions. Put each context's CTX ID in its name on the board, such as "CTX-001 Ordering", so the board and the document keep the same IDs. What changes on the board updates the document under its existing IDs; an item that goes away is marked as removed, never renumbered. At each checkpoint, list what the board leaves out of the document and why, such as reads and sign-ins that are not events, so the user sees everything that was dropped.
 
 ## Checkpoints
 
