@@ -50,11 +50,31 @@ These tools read the contract file in the repository. The ones named here are su
 - **Contract tests**, run in stage 11 against a development or staging server, never production: for example Schemathesis, `schemathesis run api/openapi.yaml --url <server>`. It generates requests from the contract and fails on status codes the contract does not list, responses that break their schema, invalid input or missing credentials the server accepts, and server errors. A mock server passes most of these checks by design, so only a real server proves the contract.
 - **Traffic check**, between the front end and a real server: `prism proxy api/openapi.yaml <server>` reports requests and responses that break the contract.
 
+## Kinds of cases
+
+Stages 04, 08 and 12 use the same kinds. For each kind that applies to an operation, the contract lists:
+
+| Kind | What the contract lists |
+| --- | --- |
+| Access | The security of the operation, 401, and 403 or a 404 that hides another user's item |
+| Input | 400 or 422, and the limits of each field |
+| Target | 404, and 400 for an ID in the wrong format where the project decides so |
+| State changes | 409, with an error code for each reason a change is refused |
+| Repeats | How a repeated request is recognized, such as by an idempotency key, and what it gets back |
+| Concurrency | 409 for a change based on an outdated version |
+| Limits | 429, and the error codes of use and cost limits |
+| Outside services | 502, 503 or 504, or the fallback response the spec decides |
+| Data exposure | Response schemas that hold only what the screens and clients need |
+| Empty and streamed answers | 204 and empty lists, and for a stream its events and how it ends |
+| Screen states | Nothing more; stage 08 leads each response to a state |
+| AI answers | The responses of the AI call entry, such as `ai_unavailable` or `ai_limit_reached` |
+
 ## Checks
 
 - Every operation has an API ID and at least one SPEC ID.
 - Every SPEC row that needs the server has an operation.
 - Every operation accounts for each response in the table, and every response has an example that matches its schema.
+- Every kind of case that applies to an operation has its responses.
 - Every error response uses the error shape, and every error code in an example is in the list with the same status.
 - Every request field has the limits of its column.
 - Security is defined for every operation, and every operation that needs a signed-in caller has a 401 response.

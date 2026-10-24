@@ -12,15 +12,34 @@
 ## Steps
 
 1. Walk each flow step by step and write the behaviour the system needs at each step.
-2. For every input, write the exceptions: empty, invalid, too long, duplicate, not allowed, failed on the server.
+2. For every input, write the exceptions: empty, invalid, too long, duplicate, not allowed, failed on the server. Then go through the kinds of cases below and write what the behaviour does in each one that applies.
 3. Write acceptance criteria as Given, When, Then.
 4. Report behaviour that no requirement asks for; it is either a missing requirement or scope creep.
 5. For a behaviour that calls an AI model, write its AI call entry (see AI calls below).
 
+## Kinds of cases
+
+Stages 06, 08 and 12 use the same kinds, so that every case written here gets a response, a screen state and a test.
+
+| Kind | What the spec writes |
+| --- | --- |
+| Access | Who may do it, and what every other caller gets, such as someone signed out or another user |
+| Input | The limits of each input, and what a value outside them gets |
+| Target | What happens when the item does not exist, its ID is malformed or it was deleted |
+| State changes | The changes each state allows, what a change it does not allow gets, and what the same state again does |
+| Repeats | That a repeated request, such as after a lost response or a double click, leaves one result |
+| Concurrency | Which change wins when two arrive at once, or that the second is refused |
+| Limits | The request, use and cost limits, and what a refused request does and does not do |
+| Outside services | What happens when a service it calls fails, is slow or has no key |
+| Data exposure | What the result must never carry, such as personal data or internal details |
+| Empty and streamed answers | What an empty result is, and what an interrupted stream leaves behind |
+| Screen states | What the user must be told in each outcome; stage 08 decides how it looks |
+| AI answers | The AI call entry, with the requests in scope, out of scope and forbidden |
+
 ## Checks
 
 - Each SPEC row links at least one REQ, and each functional Must REQ has at least one SPEC row. Non-functional requirements are checked in QA (stage 12) instead.
-- Each row has acceptance criteria and its exceptions.
+- Each row has acceptance criteria and its exceptions, and its exceptions cover each kind of case that applies to it.
 - Names match the glossary.
 - Every behaviour that calls an AI model has an AI call entry.
 

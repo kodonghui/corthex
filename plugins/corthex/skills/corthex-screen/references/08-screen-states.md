@@ -46,12 +46,32 @@ By default the screen shows the message of the error code in the API contract's 
 3. List the actions, each with its result and its failure.
 4. Describe each state: what the user sees and what they can do, and which responses lead to it, such as `API-002#404`, starting from the defaults above.
 
+## Kinds of cases
+
+Stages 04, 06 and 12 use the same kinds. For each kind that reaches the screen, the definition says what the user sees:
+
+| Kind | What the screen shows |
+| --- | --- |
+| Access | permission: a sign-in prompt, or why not and a way back |
+| Input | error: the message by the input, and the input kept |
+| Target | error: that the item no longer exists, and a link to its list |
+| State changes | stale or error: what changed and what the user can do now |
+| Repeats | The action disabled while it runs, and one result shown |
+| Concurrency | stale: reload, then try again |
+| Limits | error, or a state of its own: the limit and when it resets |
+| Outside services | error: a short message and a retry, with the rest of the screen still working |
+| Data exposure | Nothing the user may not see, on the screen or in the data it loads |
+| Empty and streamed answers | empty, and what a cut stream leaves on the screen |
+| Screen states | Every state of the screen, at the narrowest and the widest width |
+| AI answers | The answer in its format, and the fixed answer to a forbidden request |
+
 ## Checks
 
 - Every piece of data names its API operation.
 - Every response of every operation the screen calls leads to a described state.
 - Every action has a result and a failure.
 - Every applicable state is described; long text and narrow screens are considered.
+- Every kind of case that reaches the screen has what the user sees.
 - Every described state has a wireframe.
 
 ## Wireframes
