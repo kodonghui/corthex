@@ -6,10 +6,10 @@
   "records": { "kind": "notion" },
   "stages": {
     "01-domain": {
-      "human": "github",
+      "human": "miro",
       "source": "docs/01-domain/",
       "truth": "source",
-      "note": "Contexts and glossary, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24), NEXUS in nexus.md (draft of 2026-10-24). Translations beside them, such as memory.ko.md, are not read as sources."
+      "note": "Contexts and glossary, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, written as text), NEXUS in nexus.md (2026-10-24, from an event storming board). The maintainer chose on 2026-10-24 to try event storming for NEXUS on one private Miro board: the AI drafted each step, the maintainer answered at the checkpoints, and checkpoints 1 to 3 passed the same day. The board's link is in the project's records. Translations beside them, such as memory.ko.md, are not read as sources."
     },
     "02-prd": {
       "human": "notion",
