@@ -121,7 +121,7 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-101 | Temporary device | A device whose files go when its session ends, such as the container of a cloud session | CTX-001, CTX-002, CTX-004 | cloud device |
 | TERM-102 | Deciding quote | The first quote of an item, on which it rests; the deciding quote of a user decision is in the user's own words | CTX-002 | evidence |
 | TERM-103 | Notice | A line of the start summary about something that needs the user, such as stopped curation or a missing memory key | CTX-003 | alert, warning |
-| TERM-104 | Injection log | The record of which items were injected with which prompt, with their scores and without their text | CTX-003 | |
+| TERM-104 | Injection log | The record of which items were injected with which prompt or start summary, with recall's scores and without their text | CTX-003 | |
 | TERM-105 | Failure log | The record of failures of recording, recall, curation and sync, without conversation text or keys | CTX-005 | error log |
 | TERM-106 | Hook timings | How long each hook of the memory plugin ran, kept for the memory status | CTX-005 | |
 | TERM-107 | Project tombstone | A record that a project's memory was deleted, so that sync does not bring it back; proposed with SPEC-037 | CTX-004, CTX-005 | |
