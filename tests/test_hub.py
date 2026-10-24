@@ -180,6 +180,7 @@ class TemplateTest(HubCase):
             "SCR-002": ("screen", "07-sitemap", "Order detail"),
             "TASK-001": ("task", "10-wbs", "Create order endpoint"),
             "TC-001": ("test", "12-qa", "Order with a failing payment"),
+            "TC-002": ("test", "12-qa", "Open another account's order"),
             "BUG-001": ("bug", "12-qa", "Cancel button stays enabled after payment"),
             "SCENE-001": ("scene", "13-presentation", "Ordering takes three taps"),
         }
@@ -204,7 +205,8 @@ class TemplateTest(HubCase):
             "API-001": {"SPEC-001"},
             "SCR-001": {"FL-001", "FL-002"},
             "TASK-001": {"SPEC-001", "API-001", "TBL-001"},
-            "TC-001": {"FL-001", "SPEC-001"},
+            "TC-001": {"FL-001", "SPEC-001", "API-001"},
+            "TC-002": {"FL-002", "API-002", "SCR-002"},
             "BUG-001": {"TC-004", "SCR-002", "SPEC-005"},
             "SCENE-001": {"FL-001"},
         }
@@ -527,9 +529,12 @@ class FormsTest(HubCase):
         self.write(self.repo / "sitemap.yaml", "- id: SCR-001\n  name: Home\n- id: SCR-002\n  name: Cart\n")
         self.write(self.repo / "screens/SCR-001.md", "# SCR-001 Home\n\n| State | Shows |\n| --- | --- |\n| SCR-001#empty | A hint |\n")
         self.write(self.repo / "screens/SCR-009.md", "# SCR-009 Settings\n")
+        self.write(self.repo / "screens/responses.md", "| Response | Shows |\n| --- | --- |\n| API-001#default | A retry button |\n")
+        self.write(self.repo / "api/openapi.yaml", "paths:\n  /home:\n    get:\n      x-corthex:\n        id: API-001\n")
         snapshot = self.snapshot()
         items = self.items(snapshot)
         self.assertEqual(items["SCR-001"]["states"], ["empty"])
+        self.assertNotIn("states", items["API-001"], "a response is not a screen state")
         self.assertEqual(self.refs(snapshot, "screen-not-in-sitemap"), ["SCR-009"])
         self.assertEqual(self.refs(snapshot, "screen-without-states"), ["SCR-002"])
 

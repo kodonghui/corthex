@@ -122,7 +122,9 @@ The AI reaches a human view through an MCP server, a connector or an API when th
 
 - The contract, the stage keys and the trace ID rules: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md).
 - Each stage's slots, steps, checks and output template: `references/<stage>.md` in the stage skill, such as [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md).
-- `tests/test_stages.py` checks that every stage fills all six slots, that each stage skill links its stages, that all stage skills share one procedure, and that the procedure and the contract keep the rules for a human view the AI cannot reach.
+- `tests/test_stages.py` checks that every stage fills all six slots, that each stage skill links its stages, that all stage skills share one procedure, that the procedure and the contract keep the rules for a human view the AI cannot reach, and that stages 06, 08, 11 and 12 account for every response, keep the error codes in one list, lead each response to a screen state and a test case, and keep tests off production.
+
+Stages 06, 08, 11 and 12 work from the API contract, written before the code. Each operation lists every response it can return, such as 200, 401 or 422, with an example, or says why it cannot return one, and every error has one shape (Problem Details, RFC 9457) with a code from one list. The front end builds against a mock server made from the contract, and each response leads to a screen state. Contract tests check the back end against the contract on a development or staging server. QA writes a test case for each response and each screen state, named like `API-001#401` and `SCR-002#permission`.
 
 ## Profile and projects
 

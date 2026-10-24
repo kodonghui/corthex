@@ -19,6 +19,7 @@
 
 - Every Must SPEC row has tasks.
 - Every task has one owner and a done condition someone else can check.
+- A task that touches an API operation is done only when every response the operation lists has a passing test, not only its success.
 - The dependencies have no cycles.
 
 ## Output template
@@ -26,5 +27,5 @@
 ```markdown
 | ID | Task | From | Touches | Depends on | Owner | Estimate | Done when |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-001 | Create order endpoint | SPEC-001 | API-001, TBL-001 | none | backend | 1 day | Contract tests for API-001 pass |
+| TASK-001 | Create order endpoint | SPEC-001 | API-001, TBL-001 | none | backend | 1 day | Contract tests pass and every response API-001 lists has a passing test |
 ```

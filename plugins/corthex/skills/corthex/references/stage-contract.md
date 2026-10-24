@@ -38,6 +38,7 @@ The principle behind the split: the human view can change from team to team, but
 - A project can set other prefixes, several prefixes for one kind (such as one per bounded context) and another number of digits in `.corthex/project.json` under `ids`, with these keys: `context`, `term`, `requirement`, `flow`, `spec`, `table`, `api`, `screen`, `task`, `test`, `bug`, `decision`, `scene`. See [project.md](project.md).
 - Never reuse or renumber an ID. Mark a removed item as removed, with the date, and keep its ID.
 - Each item names the IDs it comes from, such as `SPEC-014 ← REQ-003, FL-002`.
+- A screen state or an API response is written after its ID with `#`: `SCR-002#empty`, `API-001#401`. Test cases name the responses and states they check.
 
 ## Source of truth
 
