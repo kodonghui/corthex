@@ -2,9 +2,9 @@
 
 [한국어](memory.ko.md)
 
-Stage 01 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draft of 2026-10-24, not yet agreed at the stage's checkpoint. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for the `corthex-memory` plugin. Status: written on 2026-10-24. The maintainer checked the requirements built on it the same day (stage 02); later stages add their changes here with the date. When this file and its Korean translation differ, this file is the source.
 
-This file holds both the contexts and the glossary, so that `.corthex/project.json` can point the stage at one file and the translation beside it is not read as a second source.
+This file holds both the contexts and the glossary of CORTHEX-MEMORY. Other parts of the project get their own files in this folder, and the translations beside them are not read as sources.
 
 Sources read:
 

@@ -2,7 +2,7 @@
 
 [한국어](memory.ko.md)
 
-Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draft of 2026-10-24, waiting for the maintainer's scope check (the stage's first checkpoint). When this file and its Korean translation differ, this file is the source.
+Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: the maintainer checked the scope on 2026-10-24, without changes (the stage's first checkpoint). D1 to D4 have no answer yet, so the later stages assume the recommendations; another answer changes the requirements whose status names it. When this file and its Korean translation differ, this file is the source.
 
 Inputs: the contexts and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md) (CTX-001 to CTX-005, TERM-001 to TERM-046). Words in this file have the meanings given there.
 
