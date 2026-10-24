@@ -24,6 +24,7 @@ Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json
 Look for `.corthex/project.json` from the current directory up to the repository root. The fields are in [references/project.md](references/project.md).
 
 - If there is none and the work is project work, offer to register the project: create `.corthex/project.json` in the product repository and add one entry to `~/.corthex/projects.json`, the list of this user's projects on this machine.
+- When you register a project or set up a stage, propose each stage's default human view from [references/stage-contract.md](references/stage-contract.md). When the user picks another tool, record that as a decision and say it in the stage's `note`.
 - If the user has several projects and the request does not say which one, ask once.
 - Some sources may sit in other repositories, named under `repos`. Find their local checkouts in the project's entry in `~/.corthex/projects.json`, and ask when one is missing.
 - Project settings override profile defaults for that project only.

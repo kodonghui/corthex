@@ -12,16 +12,16 @@
       "note": "Contexts and glossary, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24), NEXUS in nexus.md (draft of 2026-10-24). Translations beside them, such as memory.ko.md, are not read as sources."
     },
     "02-prd": {
-      "human": "github",
+      "human": "notion",
       "source": "docs/02-prd/",
       "truth": "source",
-      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day), NEXUS in nexus.md (draft of 2026-10-24, for the scope check). Translations beside them are not read as sources."
+      "note": "Requirements, one file per part of the project: CORTHEX-MEMORY in memory.md (2026-10-24, scope checked the same day), NEXUS in nexus.md (draft of 2026-10-24, for the scope check). Translations beside them are not read as sources. Korean copies, with the tables as databases, are reviewed in the project's Notion records, as the maintainer asked on 2026-10-24; the copies follow these files."
     },
     "03-user-flow": {
-      "human": "github",
+      "human": "notion",
       "source": "docs/03-user-flow/",
       "truth": "source",
-      "note": "User flows, one Mermaid file per flow, in one folder per part of the project: CORTHEX-MEMORY in memory/ (draft of 2026-10-24, reviewed together with the functional spec). The README there lists the flows; translations beside them are not read as sources."
+      "note": "User flows, one Mermaid file per flow, in one folder per part of the project: CORTHEX-MEMORY in memory/ (draft of 2026-10-24, reviewed together with the functional spec). The README there lists the flows; translations beside them are not read as sources. Korean copies of the flows, with their diagrams, are in the project's Notion records (2026-10-24)."
     }
   }
 }

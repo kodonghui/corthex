@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The functional spec (SPEC), the API contract (API) and the screen definitions (SCR) |
 | Outputs | `wbs.md`, by default `docs/10-wbs/wbs.md`, or issues in the tracker: one TASK per small, testable slice, such as one create, read, update or delete operation of one SPEC row, with its dependencies, owner and estimate |
-| Human view | A board such as GitHub Projects or a shared database, as set in `human` |
+| Human view | By default a GitHub Projects board, or a Notion database, as set in `human`. See [task-board.md](task-board.md) |
 | Sync | When the tracker is the truth, the file is a refreshed list. Every task links back to its SPEC IDs |
 | Human checkpoints | The plan for the next iteration is agreed |
 | Trace IDs | TASK-001… |

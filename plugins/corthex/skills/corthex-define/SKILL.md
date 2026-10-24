@@ -9,7 +9,7 @@ metadata:
 
 # Defining the product
 
-This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand.
+This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to connect a Notion database, sync it with the source and work through its comments is in [references/notion-database.md](references/notion-database.md).
 
 | Key | Stage | Contract |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 
 ## How a stage runs
 
-1. **Settings.** Read the stage's entry under `stages` in `.corthex/project.json`: `human` (where people look), `source` (the text in the repository) and `truth` (`source` or `human`, the side that wins when they differ). If there is no project file, use the `corthex` skill first.
+1. **Settings.** Read the stage's entry under `stages` in `.corthex/project.json`: `human` (where people look), `source` (the text in the repository) and `truth` (`source` or `human`, the side that wins when they differ). If there is no project file, use the `corthex` skill first. If the stage has no entry yet, propose the default human view that the stage's reference file names; when the user picks another, record the choice as a decision and write the entry with a `note`.
 2. **Inputs.** Read the inputs in the stage contract, with their trace IDs. Name any missing input and ask whether to go on without it.
 3. **Outputs.** Write the outputs to `source` with the stage's trace IDs. Never reuse or renumber an ID; mark removed items as removed.
 4. **Checks.** Run the stage's checks. Report what passed, what failed and what you could not check.
@@ -30,4 +30,4 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 ## Notes for these stages
 
 - The three stages feed each other: each flow step names the requirements it serves, and each spec row names its requirements and flows. A requirement no flow or spec row uses is a gap to report.
-- In a team project the functional spec is often kept in a shared database. Then `truth` is `human` and the repository holds a refreshed, read-only copy.
+- By default people review these stages in Notion databases. In a team project the database is often the truth: then `truth` is `human` and the repository holds a refreshed, read-only copy that later stages read.

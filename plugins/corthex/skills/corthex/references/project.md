@@ -21,7 +21,7 @@ Each entry in `stages` is keyed by a stage key (`01-domain` to `13-presentation`
 
 | Field | Meaning |
 | --- | --- |
-| `human` | Where people look at and edit this stage, such as `notion`, `miro`, `erd-editor`, `erdcloud`, `figma`, `swagger-ui` or `github` |
+| `human` | Where people look at and edit this stage, such as `notion`, `miro`, `erd-editor`, `erdcloud`, `figma`, `swagger-ui` or `github`. Propose the stage's default from the table of default human views in [stage-contract.md](stage-contract.md), and when the user picks another, record the choice as a decision and say it in `note` |
 | `link` | Optional. Link to the human view, such as the URL of the shared database, or the path of a file in the repository |
 | `source` | Path of the text source, a file or a folder, relative to the repository root with forward slashes. Put an alias from `repos` and a colon in front for another repository, such as `design:docs/prd/`. In a folder, translations beside their originals are not read as sources (see [stage-contract.md](stage-contract.md)). Leave it out while the stage has no text copy |
 | `truth` | Which side wins when the two differ: `source` (the text) or `human` (the tool named in `human`) |
