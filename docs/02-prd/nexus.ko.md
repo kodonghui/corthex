@@ -4,7 +4,7 @@
 
 CORTHEX 자신의 프로젝트에서 NEXUS(`corthex-nexus` 플러그인과 NEXUS 서버)의 02단계입니다. 상태: 2026-10-24 초안이며, 관리자가 범위를 확인할 차례입니다(이 단계의 첫 확인 지점). 상태가 `built`인 줄은 지금 도는 1차, 곧 `corthex-nexus` 0.1.0과 2026-10-24에 배포한 서버를 적은 것이고, 관리자가 바꾸지 않으면 뒤 단계도 그대로 둡니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
 
-입력: [docs/01-domain/nexus.ko.md](../01-domain/nexus.ko.md)의 맥락과 용어집(CTX-006~CTX-011, TERM-047~TERM-097), 그리고 [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 함께 쓰는 용어. 이 파일의 말은 거기서 정한 뜻으로 씁니다.
+입력: [docs/01-domain/nexus.ko.md](../01-domain/nexus.ko.md)의 맥락과 용어집(CTX-006\~CTX-011, TERM-047\~TERM-097), 그리고 [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 함께 쓰는 용어. 이 파일의 말은 거기서 정한 뜻으로 씁니다.
 
 ## 목표
 
