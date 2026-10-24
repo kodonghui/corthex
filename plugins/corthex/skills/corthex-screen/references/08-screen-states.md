@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The sitemap (SCR), the functional spec (SPEC) and the API contract (API) |
 | Outputs | One screen definition per screen in the stage's `source` folder, by default `docs/08-screens/SCR-001.md`: its purpose, the data it shows and the API it comes from, its states, the state each API response leads to, its actions and its rules |
-| Human view | Grayscale wireframes, as set in `human` |
+| Human view | By default grayscale wireframes drawn from the screen definitions, as set in `human`. See Wireframes below |
 | Sync | The definition is written or updated before the screen's code changes |
 | Human checkpoints | The screen definition is approved before implementation |
 | Trace IDs | SCR IDs, with states written as `SCR-001#empty` |
@@ -52,6 +52,16 @@ By default the screen shows the message of the error code in the API contract's 
 - Every response of every operation the screen calls leads to a described state.
 - Every action has a result and a failure.
 - Every applicable state is described; long text and narrow screens are considered.
+- Every described state has a wireframe.
+
+## Wireframes
+
+Wireframes show structure and states, not looks, so the review stays on what each screen does.
+
+- Draw them from the screen definitions, one frame per state, labelled with the state's ID, such as `SCR-002#empty`. Use greys, the system font and placeholder text only; design tokens come in stage 09.
+- Show each frame at the narrowest and the widest width the project supports, such as 360 and 1280 pixels.
+- Put all the frames on one page, by default `docs/08-screens/wireframes.html`, and draw it again in the same change as the definitions. Where the host can publish a page, such as an artifact in Claude Code, publish it and put its link in `link`.
+- A team that sketches in a design tool, such as Figma, names it in `human`; the definitions stay the source.
 
 ## Output template
 

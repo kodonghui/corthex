@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | Tasks (TASK), the functional spec (SPEC), the API contract (API), the schema (TBL) and the screen definitions (SCR) |
 | Outputs | Code and tests on a branch, in a pull request whose title or description names the TASK and SPEC IDs |
-| Human view | Pull request review on the code host, such as GitHub |
+| Human view | Pull request review on the code host, by default GitHub |
 | Sync | The pull request moves the task's status. Merged counts as done only after the review and the checks pass |
 | Human checkpoints | Review approval and the merge, under the repository's own rules |
 | Trace IDs | No new IDs; pull requests and commits name TASK and SPEC IDs |

@@ -273,5 +273,100 @@ class ContractFirstTest(unittest.TestCase):
                 self.assertRegex(self.reference(key), r"development or staging server[^.]*, never (on )?production")
 
 
+class DefaultHumanViewTest(unittest.TestCase):
+    """Each stage proposes a default human view, and another choice is recorded as a decision."""
+
+    CLAUDE_ADD = re.compile(r"`claude mcp add (?:--scope \w+ )?--transport (http|stdio) ([a-z0-9-]+) (?:-- )?([^`]+)`")
+    CODEX_ADD = re.compile(r"`codex mcp add ([a-z0-9-]+) (--url |-- )([^`]+)`")
+    # Fields the Design Tokens resolver schema (2025.10) allows.
+    RESOLVER_KEYS = {"$schema", "name", "version", "description", "sets", "modifiers", "resolutionOrder", "$defs"}
+    SET_KEYS = {"description", "sources", "$extensions"}
+    MODIFIER_KEYS = {"description", "contexts", "default", "$extensions"}
+
+    def contract(self):
+        return read_text(SKILLS / "corthex" / "references" / "stage-contract.md")
+
+    def reference(self, key):
+        return read_text(SKILLS / dict(STAGES)[key] / "references" / (key + ".md"))
+
+    def test_every_stage_has_a_default_human_view(self):
+        contract = self.contract()
+        names = {row[0].strip("`"): row[1] for row in table(section(contract, "## Stages"))}
+        rows = table(section(contract, "## Default human views"))
+        self.assertEqual([row[0] for row in rows], ["%s %s" % (key[:2], names[key]) for key, _ in STAGES])
+        for row in rows:
+            with self.subTest(stage=row[0]):
+                self.assertEqual(len(row), 4)
+                self.assertTrue(all(row), "every cell is filled")
+                self.assertTrue(set(re.findall(r"`(\w+)`", row[3])) & TRUTH, "names a truth")
+
+    def test_another_choice_is_recorded_as_a_decision(self):
+        project = read_text(SKILLS / "corthex" / "references" / "project.md")
+        texts = {
+            "stage-contract.md": section(self.contract(), "## Default human views"),
+            "project.md": next(line for line in project.splitlines() if line.startswith("| `human` |")),
+            "corthex": read_text(SKILLS / "corthex" / "SKILL.md"),
+        }
+        for skill in STAGE_SKILLS:
+            steps = section(read_text(SKILLS / skill / "SKILL.md"), "## How a stage runs")
+            texts[skill] = next(line for line in steps.splitlines() if line.startswith("1. **Settings.**"))
+        for name, text in texts.items():
+            with self.subTest(text=name):
+                for rule in ("propose", "default human view", "as a decision", "`note`"):
+                    self.assertIn(rule, text.lower())
+
+    def test_stage_references_name_their_default(self):
+        guides = {
+            "01-domain": "event-storming-board.md", "02-prd": "notion-database.md", "03-user-flow": "notion-database.md",
+            "04-functional-spec": "notion-database.md", "09-mockup": "design-tools.md", "10-wbs": "task-board.md",
+        }
+        for key, skill in STAGES:
+            with self.subTest(stage=key):
+                view = next(line for line in self.reference(key).splitlines() if line.startswith("| Human view |"))
+                self.assertIn("default", view)
+                if key in guides:
+                    self.assertIn("(%s)" % guides[key], view)
+                    self.assertTrue((SKILLS / skill / "references" / guides[key]).is_file())
+
+    def test_each_mcp_server_is_added_one_way(self):
+        added = {}
+        for path in sorted(SKILLS.glob("*/**/*.md")):
+            text = read_text(path)
+            claude = [(name, kind, target) for kind, name, target in self.CLAUDE_ADD.findall(text)]
+            codex = [(name, "http" if flag == "--url " else "stdio", target) for name, flag, target in self.CODEX_ADD.findall(text)]
+            with self.subTest(file=path.relative_to(SKILLS).as_posix()):
+                self.assertEqual(text.count("`claude mcp add"), len(claude), "every Claude Code command parses")
+                self.assertEqual(text.count("`codex mcp add"), len(codex), "every Codex command parses")
+                self.assertEqual({entry[0] for entry in claude}, {entry[0] for entry in codex}, "added for both hosts")
+                for name, kind, target in claude + codex:
+                    self.assertEqual(target.startswith("https://"), kind == "http", name)
+                    self.assertEqual(added.setdefault(name, (kind, target)), (kind, target), name)
+        self.assertLessEqual({"notion", "figma", "erd-editor"}, set(added))
+
+    def test_the_resolver_example_follows_the_schema(self):
+        text = self.reference("09-mockup")
+        modes = section(text, "## Modes")
+        block = modes[modes.index("```json\n") + len("```json\n"):]
+        resolver = json.loads(block[:block.index("```")])
+        self.assertLessEqual(set(resolver), self.RESOLVER_KEYS)
+        self.assertEqual(resolver["version"], "2025.10")
+        self.assertTrue(resolver["$schema"].endswith("/2025.10/resolver.json"))
+        for name, entry in resolver["sets"].items():
+            with self.subTest(set=name):
+                self.assertLessEqual(set(entry), self.SET_KEYS)
+                self.assertTrue(entry["sources"])
+        for name, entry in resolver["modifiers"].items():
+            with self.subTest(modifier=name):
+                self.assertLessEqual(set(entry), self.MODIFIER_KEYS)
+                self.assertGreaterEqual(len(entry["contexts"]), 2)
+                self.assertIn(entry["default"], entry["contexts"])
+        defined = ["#/sets/" + name for name in resolver["sets"]] + ["#/modifiers/" + name for name in resolver["modifiers"]]
+        self.assertEqual(sorted(item["$ref"] for item in resolver["resolutionOrder"]), sorted(defined))
+        # The resolver sits beside the stage's default token file.
+        self.assertIn("`design/tokens.resolver.json`", modes)
+        self.assertIn("`design/base.tokens.json`", next(line for line in text.splitlines() if line.startswith("| Outputs |")))
+        self.assertIn({"$ref": "base.tokens.json"}, resolver["sets"]["base"]["sources"])
+
+
 if __name__ == "__main__":
     unittest.main()

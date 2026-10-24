@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The functional spec (SPEC), the schema (TBL), and the sitemap (SCR) when screens exist |
 | Outputs | `openapi.yaml`, by default `api/openapi.yaml`: an OpenAPI contract in which each operation carries an API ID and the SPEC IDs it implements and lists every response it can return, each with an example, and which lists the API's error codes |
-| Human view | A contract viewer such as Swagger UI, as set in `human` |
+| Human view | A contract viewer, by default Swagger UI, as set in `human` |
 | Sync | Contract first: change the contract, then the code. The contract file is the source; a document generated from the code is for reference. The front end builds against a mock server made from the contract, contract tests check the back end against it, and test cases come from its responses |
 | Human checkpoints | Contract review before implementation, response by response, and every breaking change |
 | Trace IDs | API-001…, with a response written as `API-001#401` |
@@ -34,7 +34,7 @@ Every operation accounts for each response in this table: it lists the response,
 | 409 | The request can clash with the current state, such as a duplicate or an outdated version |
 | `default` | Always, for any other error, with the error shape |
 
-Add 429 where the project limits request rates, and any other code a SPEC row needs.
+Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says.
 
 ## Errors
 

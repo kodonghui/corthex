@@ -52,6 +52,28 @@ The principle behind the split: the human view can change from team to team, but
 - A translation sits beside its original, with a language tag before the extension: `requirements.ko.md` beside `requirements.md`, or `spec.pt-BR.md` beside `spec.md`. The original is the source. Tools that read a folder source skip a translation that defines only its original's IDs, so they are not defined twice; a file with an ID of its own, such as `spec.ui.md`, is read like any other.
 - Keep the original's IDs in the translation and change the original first. Where the two differ, the original holds.
 
+## Default human views
+
+When a project is registered, or a stage is set up for the first time, propose the human view in this table. Each one keeps the stage's text source in the repository, and the AI can reach it through an MCP server, a command-line tool or the files themselves. When the user or the team picks another tool, record the choice as a decision, with the user's words and the date, and say it in the stage's `note`. A team that already works in a tool keeps it unless the team decides to move.
+
+| Stage | Default human view | How the AI reaches it | Default `truth` |
+| --- | --- | --- | --- |
+| 01 Domain discovery | An event storming board in Miro | Miro's MCP server | `source` once the last checkpoint is passed |
+| 02 PRD | A Notion database, one row per requirement | Notion's MCP server | `human` in a team project, otherwise `source` |
+| 03 User flow | A Notion database, one row per flow with its Mermaid diagram; a Miro board for a workshop | Notion's or Miro's MCP server | `source` |
+| 04 Functional spec | A Notion database, one row per SPEC | Notion's MCP server | `human` in a team project, otherwise `source` |
+| 05 ERD | ERD Editor, with the diagram in the repository | ERD Editor's MCP server | `human` |
+| 06 API | Swagger UI, or another viewer of the contract file | The contract file | `source` |
+| 07 Sitemap | A board, a list and slides, drawn from the YAML | The AI draws them from the file | `source` |
+| 08 Screen states | Grayscale wireframes, drawn from the screen definitions | The AI draws them from the files | `source` |
+| 09 Mockup | Figma or Claude Design | Figma's MCP server; Claude Design in Claude Code | `source` for the tokens |
+| 10 WBS | GitHub Projects, or a Notion database | `gh project`, or Notion's MCP server | `human` |
+| 11 Development | Pull requests | `gh` or the GitHub MCP server | `source` |
+| 12 QA | The test plan, the test report and the bug tracker | The files; `gh` for issues | `source` |
+| 13 Presentation | Slides built from the scene table | The AI builds them | `source` |
+
+Each stage's reference file says how to work with its default tool.
+
 ## Human views the AI cannot reach
 
 At the start of a stage, check whether this session can reach the human view through an MCP server, a connector or an API. Some tools offer none and only import and export files. For such a tool:
