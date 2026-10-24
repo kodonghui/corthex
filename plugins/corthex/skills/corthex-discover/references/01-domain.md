@@ -35,7 +35,7 @@ Each step adds one layer to the board. Start each step in a copy of the previous
 - **Step 6 · Aggregates.** Add, above each group of events, the thing that receives the commands and keeps the rules, such as "Order". Where nothing fits, add a hotspot.
 - **Step 7 · Bounded contexts.** Group the aggregates, with their commands and events, into contexts by responsibility and by language: where one word means two things, there are two contexts. Draw each boundary and name it. Each context is a candidate package or service; say whether it is core, supporting or generic. **Checkpoint 2: the contexts.** Then give each agreed context a CTX ID.
 - **Step 8 · Policies, read models and the context map.** Add policies, written as `When <event>, <command>`, between an event and the command it triggers, and read models, the information an actor looks at before a command. A policy that crosses a boundary is a dependency between two contexts. Draw the context map: a solid arrow for a synchronous call, a dashed arrow for an asynchronous event, and on each arrow the data it carries.
-- **Step 9 · Context tables.** For each context, fill one table: commands (API candidates), domain events, read models, aggregates, hotspots (risks), links to other contexts, policies and external systems. **Checkpoint 3: the tables and the context map.**
+- **Step 9 · Context tables.** For each context, fill one table with a row per command, each an API candidate: who or what gives it (an actor, a policy or another context), the read model it needs, the aggregate that takes it and the events it causes. Under the table, list the external systems, the links to other contexts and the hotspots (risks). The rows keep in text the links that the board shows by position. **Checkpoint 3: the tables and the context map.**
 - **Document.** Write or update the domain design document from the board, with the template below, and link the frames of steps 7 to 9. Keep each open hotspot as an open question, and name those that need an answer before the requirements are written, for stage 02.
 
 ## Starting from an existing document
@@ -57,7 +57,7 @@ At each checkpoint, stop and send the user a short note: what you put on the boa
 ## Checks
 
 - Every event is in the past tense, changes data and has its place on the timeline.
-- Every command is in the imperative and causes at least one event.
+- Every command is in the imperative, causes at least one event and has a row in its context's table.
 - Every aggregate belongs to exactly one context, and every event to the context of its aggregate.
 - Every policy names the event that triggers it and the command it gives. A policy that crosses a boundary appears in the context map with its direction, its kind (call or event) and its data.
 - A circle of synchronous calls between contexts is a hotspot.
@@ -84,7 +84,7 @@ Status: steps 1 to 9 done, checkpoints 1 to 3 passed on 2026-01-12.
 Acme shop sells goods online and delivers them.
 
 - Customer: places and cancels orders, and pays
-- Store staff: prepare and ship orders
+- Store staff: prepare and ship orders, and refund payments
 - Payment provider (external system): takes payments
 
 ## 2. Event storming
@@ -106,28 +106,27 @@ Acme shop sells goods online and delivers them.
 
 Purpose: customers place and cancel orders.
 
-- Commands: Place order, Cancel order
-- Events: Order placed, Order cancelled
-- Read models: Cart summary
-- Aggregates: Order
-- Policies: When a payment fails, cancel the order
+| Given by | Read model | Command | Aggregate | Events |
+| --- | --- | --- | --- | --- |
+| Customer | Cart summary | Place order | Order | Order placed |
+| Customer, Store staff | | Cancel order | Order | Order cancelled |
+| Policy: when Payment failed (CTX-002) | | Cancel order | Order | Order cancelled |
+
 - External systems: none
 - Links: calls Payment to take a payment; follows Payment failed
-- Actors: Customer, Store staff
 - Hotspots: Can staff cancel a paid order?
 
 ### CTX-002 Payment
 
 Purpose: take and refund payments through the payment provider.
 
-- Commands: Take payment, Refund payment
-- Events: Payment taken, Payment failed, Payment refunded
-- Read models: none
-- Aggregates: Payment
-- Policies: none
+| Given by | Read model | Command | Aggregate | Events |
+| --- | --- | --- | --- | --- |
+| Ordering (CTX-001), while placing an order | | Take payment | Payment | Payment taken, or Payment failed |
+| Store staff | | Refund payment | Payment | Payment refunded |
+
 - External systems: Payment provider
 - Links: called by Ordering; tells Ordering when a payment fails
-- Actors: Customer
 - Hotspots: none
 
 ## 5. Dependencies between contexts
