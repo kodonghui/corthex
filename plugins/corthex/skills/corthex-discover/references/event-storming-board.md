@@ -10,6 +10,7 @@ How the board of stage 01 is laid out, and how the AI reads and writes it. The s
 | External system | sticky | `pink` | next to the event it sends or receives |
 | Command | sticky, imperative | `blue` | left of the event it causes |
 | Hotspot | sticky | `red` | next to the sticky it concerns |
+| Answered hotspot | sticky starting with a check mark (✓), with the answer and where it came from | `green` | where the hotspot was |
 | Actor | small sticky | `light_yellow` | below the command it gives |
 | Aggregate | large sticky | `yellow` | above the events it owns |
 | Policy | sticky, `When <event>, <command>` | `violet` | between the event and the command it triggers |
@@ -20,10 +21,13 @@ A bounded context is a boundary drawn around its aggregates, commands and events
 ## Layout
 
 - One board per project. A project with several parts gives each part a column of its own, side by side.
-- At the top of each column, a legend frame and a scope note: what is in, what is out, the inputs and the way of working.
+- At the top of each column, a legend frame and a scope note: the user's purpose in their own words, what is in, what is out, the inputs and the way of working.
 - One frame per step, titled with the step, such as "Step 1-b Timeline". Each step starts as a copy of the previous step's frame, placed below it. The earlier frames stay as they were, so the board shows how the model grew.
 - In draft and correct, the AI makes the copy, so the copy's items are the AI's and it may tidy and merge them there.
-- Inside a frame, time runs from left to right, with one lane per flow.
+- Inside a frame, time runs from left to right, with one lane per flow. Each lane starts with a one-line story, in plain words, of what happens in it.
+- Each frame has a short term memo that explains, in plain words, the terms it uses for the first time, such as "aggregate" or a name from the product. People who are new to event storming or to the product read the board through these.
+- A checkpoint is a box at the bottom of its frame, with the numbered questions and the recommended answers. When the user answers, write the answer and the date in it and mark it passed.
+- When the work starts over from Step 0, the new column goes beside the old one, and the old frames stay as material.
 - Step 8 adds the context map: one box per context, with arrows between them. Step 9 adds one table per context.
 
 ## Context map
@@ -45,6 +49,14 @@ Miro's official MCP server lets the AI read and write boards.
 - Ask questions as comments on the sticky concerned. Before the next step, read the replies, carry each answer into the document, and resolve the comment.
 - Never delete what people made. The AI can delete only items it created, and only after the user agrees to the list of items. Leave locked items alone.
 - Link a frame or an item with the board's link followed by `?moveToWidget=<item id>`, in the conversation and in the document.
+
+What held on Miro's canvas tools in October 2026:
+
+- Add items to an existing frame only inside that frame's own group, the one that carries the frame's ID and its frame rectangle. Items written outside it land loose on the board, and a later update did not move them into the frame.
+- One create call can hold a whole step's frame with about a hundred items.
+- A table's width and height cannot be set. Create the table, read its rendered size, then move or scale it with its `data-scale`.
+- A shape without a fill reads back as transparent, so a context boundary drawn after the stickies does not hide them.
+- Write line breaks in a text area as `<br/>`; `<br>` is refused.
 
 ## Other boards and photos
 

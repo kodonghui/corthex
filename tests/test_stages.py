@@ -38,7 +38,7 @@ MIRO_COLOURS = {
     "light_green", "light_pink", "light_yellow", "orange", "pink", "red", "violet", "yellow",
 }
 LEGEND = [
-    "Domain event", "External system", "Command", "Hotspot",
+    "Domain event", "External system", "Command", "Hotspot", "Answered hotspot",
     "Actor", "Aggregate", "Policy", "Read model",
 ]
 # Kinds of cases that stages 04, 06, 08 and 12 go through, in order.
