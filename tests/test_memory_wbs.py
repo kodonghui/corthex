@@ -58,6 +58,34 @@ def listed(cell):
     return [] if cell == "none" else [item.strip() for item in cell.split(",")]
 
 
+def criteria_counts():
+    """{SPEC: the number of its acceptance criteria}, from the functional spec."""
+    counts = {}
+    for rows in tables(read_text(DOCS / "04-functional-spec" / "memory.md")):
+        if rows[0][:2] == ["ID", "Behaviour"]:
+            column = rows[0].index("Acceptance criteria")
+            for row in rows[1:]:
+                counts[row[0]] = len(re.findall(r"(?:^|\. )Given ", row[column]))
+    return counts
+
+
+def claimed(text, counts):
+    """[(SPEC, [numbers of its acceptance criteria])] in the order that text names them."""
+    found = []
+    for spec, words in CLAIM.findall(text):
+        count = counts[spec]
+        numbers = []
+        for word in re.findall(r"(?:first|last) two|\w+", words):
+            if word == "first two":
+                numbers += [1, 2]
+            elif word == "last two":
+                numbers += [count - 1, count]
+            elif word != "and":
+                numbers.append(ORDINALS.index(word) + 1)
+        found.append((spec, numbers or list(range(1, count + 1))))
+    return found
+
+
 def tested_by(cell):
     """[(task, codes, or None for all of the row)] of a Tested by cell."""
     found = []
@@ -150,32 +178,18 @@ class WorkBreakdownTest(unittest.TestCase):
                 self.assertEqual(TESTED in task["Done when"], touches)
 
     def test_every_acceptance_criterion_is_named(self):
-        criteria = {}
-        for rows in tables(read_text(DOCS / "04-functional-spec" / "memory.md")):
-            if rows[0][:2] == ["ID", "Behaviour"]:
-                column = rows[0].index("Acceptance criteria")
-                for row in rows[1:]:
-                    criteria[row[0]] = len(re.findall(r"(?:^|\. )Given ", row[column]))
+        criteria = criteria_counts()
         self.assertEqual(len(criteria), 39)
         named = {spec: set() for spec in criteria}
         for key, task in self.current.items():
             with self.subTest(task=key):
                 text = task["Done when"]
-                claims = CLAIM.findall(text)
+                claims = claimed(text, criteria)
                 self.assertEqual([spec for spec, _ in claims], re.findall(r"SPEC-\d{3}", text), "name a behaviour as SPEC-NNN's")
-                for spec, words in claims:
+                for spec, numbers in claims:
                     self.assertIn(spec, listed(task["From"]))
-                    count = criteria[spec]
-                    numbers = []
-                    for word in re.findall(r"(?:first|last) two|\w+", words):
-                        if word == "first two":
-                            numbers += [1, 2]
-                        elif word == "last two":
-                            numbers += [count - 1, count]
-                        elif word != "and":
-                            numbers.append(ORDINALS.index(word) + 1)
-                    self.assertTrue(all(1 <= number <= count for number in numbers), spec + words)
-                    named[spec] |= set(numbers or range(1, count + 1))
+                    self.assertTrue(all(1 <= number <= criteria[spec] for number in numbers), spec)
+                    named[spec] |= set(numbers)
         for spec, count in criteria.items():
             with self.subTest(spec=spec):
                 self.assertEqual(named[spec], set(range(1, count + 1)))

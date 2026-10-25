@@ -46,6 +46,12 @@
       "source": "docs/10-wbs/",
       "truth": "source",
       "note": "Work breakdown, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-25; the plan of C1 is checked together with the functional spec, the memory store and the interfaces before C1 is built). The human view is a Korean copy in the project's Notion records, with the tasks as a database of one row per task and a board by status, one of the stage's two defaults. The truth is the file rather than the board, unlike the stage's default (human) and like the other stages of this project, as proposed on 2026-10-25 for the maintainer's check: a task's status changes in the file first, in the pull request that finishes the task, and the board follows. Translations beside them are not read as sources."
+    },
+    "12-qa": {
+      "human": "notion",
+      "source": "docs/12-qa/",
+      "truth": "source",
+      "note": "Test plan, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-25), in place of the stage's default name test-plan.md, with a Task column that names the task of stage 10 whose pull request writes each case. The memory plugin has no screens, so host agents in Claude Code and Codex walk its flows in place of browser agents; their run reports go in docs/12-qa/runs/, and bugs are issues of this repository, as by default. A case's last result changes in the file first, in the pull request that ran it. Translations beside them are not read as sources. A Korean copy, with the cases as a database, goes in the project's Notion records, as for the other stages, and follows these files."
     }
   }
 }
