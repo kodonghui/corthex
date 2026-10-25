@@ -418,9 +418,9 @@ Every other change of a file, and every rewrite of a JSON Lines file, goes throu
 3. Move the new file over the old one, which replaces it at once.
 4. Delete `<name>.bak`.
 
-A raw log or injection log rewrite builds the new file without the lock, then holds the file's lock for its last read and the move, copying into the new file, unchanged, the lines appended since its first read (SPEC-007). That carries appends over but not another rewrite's changes, so the rewrites of one file run one after another: each holds the project's curated layer lock from its first read to the move. Forgets and tombstones hold it anyway, and retention takes it for each raw log or injection log file that it rewrites or deletes. Files that the code can make again from others (the markers, notices, the item list and the search index) skip the flush to disk and the backup.
+A raw log or injection log rewrite builds the new file without the lock, then holds the file's lock for its last read and the move, copying into the new file, unchanged, the lines appended since its first read (SPEC-007). That carries appends over but not another rewrite's changes, so the rewrites of one file run one after another: each holds the project's curated layer lock from its first read to the move. Forgets and tombstones hold it anyway, and retention takes it for each raw log or injection log file that it rewrites or deletes. When retention would keep no line of a file, it holds the file's lock for a last read and the deletion, and if that read finds lines appended since its first read, it keeps them: it moves a new file holding only those lines over the old one instead of deleting it (SPEC-009). Files that the code can make again from others (the markers, notices, the item list and the search index) skip the flush to disk and the backup.
 
-On Windows a move fails while another process holds the old file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once.
+On Windows a move or a deletion fails while another process holds the file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once.
 
 ### Restoring
 
@@ -436,7 +436,7 @@ On Windows a move fails while another process holds the old file open. The code 
 | Curation lock | `projects/<project>/curation.lock` | A whole curator run, retention of the project, or a resume (SPEC-012) | at least every minute | 10 minutes |
 | Sync lock | `sync/sync.lock` | One sync | every minute | 10 minutes |
 | Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin or merge in the project, retention's rewrite or deletion of one raw log or injection log file, or the deletion of its memory | every 30 seconds | 2 minutes |
-| Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, or the last read and the move of a rewrite; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
+| Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, the last read and the move of a rewrite, or retention's last read and deletion of a file; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
 | Log locks | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | One append | not refreshed | 10 seconds |
 
 - A lock is a file made with an exclusive create, which fails while the file is there. It holds the holder's process ID, the device ID, the time and a random token. The holder refreshes it by touching its modified time; the lock is stale once that time is older than the table allows.
@@ -626,7 +626,7 @@ The store library comes first in C1: IDs and JSON form, appending, rewriting and
 ### Stage 12: QA
 
 - Each record checked against its field table, and the same content giving the same bytes.
-- A stop at each step of a rewrite (after the new file, after the backup, after the move), on Linux, macOS and Windows, with a reader restoring afterwards; and on Windows, a move while a reader holds the old file open.
-- Locks: two processes taking a stale lock over at once, a holder paused past its limit, retention and a forget rewriting one raw log file at once, and hooks appending while retention, forgets and tombstones rewrite (SPEC-007).
+- A stop at each step of a rewrite (after the new file, after the backup, after the move), on Linux, macOS and Windows, with a reader restoring afterwards; and on Windows, a move or a deletion while a reader holds the file open.
+- Locks: two processes taking a stale lock over at once, a holder paused past its limit, retention and a forget rewriting one raw log file at once, hooks appending while retention, forgets and tombstones rewrite, and a hook appending to a file that retention is about to delete (SPEC-007, SPEC-009).
 - [memory-index.sql](memory-index.sql) run on an empty file gives the same tables as the code's own; an index of another version is built again.
 - After a sync, the sync remote holds only the files of TBL-012 to TBL-018, and no file of the memory store holds a test key.
