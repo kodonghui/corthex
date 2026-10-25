@@ -40,6 +40,12 @@
       "source": "docs/06-api/",
       "truth": "source",
       "note": "Interfaces, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-25, checked together with the functional spec and the memory store), with its JSON Schemas and their examples beside it. Not OpenAPI in Swagger UI, the stage's default: the memory plugin has no HTTP API, and its interfaces are hooks, a background process, the memory skill's commands and calls to the model APIs and Git. Translations beside them are not read as sources. A Korean copy, with the tables as databases, goes in the project's Notion records and follows these files."
+    },
+    "10-wbs": {
+      "human": "notion",
+      "source": "docs/10-wbs/",
+      "truth": "source",
+      "note": "Work breakdown, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-25; the plan of C1 is checked together with the functional spec, the memory store and the interfaces before C1 is built). The human view is a Korean copy in the project's Notion records, with the tasks as a database of one row per task and a board by status, one of the stage's two defaults. The truth is the file rather than the board, unlike the stage's default (human) and like the other stages of this project, as proposed on 2026-10-25 for the maintainer's check: a task's status changes in the file first, in the pull request that finishes the task, and the board follows. Translations beside them are not read as sources."
     }
   }
 }
