@@ -11,6 +11,16 @@ SKILL_KEYS = {"name", "description", "license", "compatibility", "metadata", "al
 KEBAB = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
+# YAML rejects an unquoted value, or reads it as something else, when it starts
+# with an indicator, contains ": " or " #", ends with ":", or looks like a
+# number, boolean or null. Such values must be quoted.
+INDICATORS = ",[]{}#&*!|>'\"%@`"
+PLAIN_BREAK = re.compile(r":(?:\s|$)|\s#")
+NOT_A_STRING = re.compile(
+    r"~|null|true|false|yes|no|on|off|[-+]?(?:\d[\d_]*(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?",
+    re.IGNORECASE,
+)
+
 
 def load_json(path):
     with open(path, encoding="utf-8") as handle:
@@ -30,10 +40,21 @@ def skill_files():
     return sorted(PLUGINS.glob("*/skills/*/SKILL.md"))
 
 
+def _plain_ok(value):
+    """Whether YAML reads this unquoted value as the same string."""
+    if not value:
+        return True
+    if value[0] in INDICATORS or (value[0] in "-?:" and not value[1:2].strip()):
+        return False
+    return not PLAIN_BREAK.search(value) and not NOT_A_STRING.fullmatch(value)
+
+
 def _scalar(value):
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
+    if not _plain_ok(value):
+        raise ValueError("quote this frontmatter value, YAML does not read it as written: %r" % value)
     return value
 
 
