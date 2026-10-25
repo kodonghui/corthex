@@ -232,6 +232,8 @@ One file per host session, named `<host>-<key>`: the host, `claude-code` or `cod
 
 Turns: a prompt starts a turn, and its `turn` is its own `seq`. A final answer joins the turn of the last prompt or final answer before it in the file when that entry is the turn's prompt, or when it is a final answer and the host reports that the agent went on after another hook (SPEC-003); any other final answer starts a turn of its own, as when prompts are left out. Boundaries belong to no turn.
 
+Retention goes by each entry's own time, so it can delete a file's last entries while it keeps an earlier entry whose time is in the future (SPEC-009). The next append would then take again a `seq` that a deleted entry had, and the curation record may count that `seq` as processed. So before such a rewrite, retention lowers the file's count in the curation record to the highest `seq` that it keeps (TBL-009), and the next entry counts as unprocessed; a stop between the two only has those entries curated again.
+
 Forgetting: a forget, or a tombstone applied on this device, replaces each character of a quoted range with U+FFFD, so that the text keeps its length and the positions of the entry's other quotes stay valid, and adds the range to `forgotten`. A quoted range that overlaps a quote of an item that stays on this device is kept whole, so that item's provenance holds (SPEC-035). Once a later forget or tombstone leaves no such item, it replaces that range too, which it finds in the earlier item's tombstone. Requests to the curator show each forgotten range as `[forgotten]`, so no quote can hold it.
 
 ### Unprocessed turn markers (TBL-008)
@@ -248,7 +250,7 @@ After applying, the curator, under each raw log file's lock, replaces that file'
 
 ### Curation record (TBL-009)
 
-The memory skill makes it, empty, before it first enables the project, so a missing one is lost, not new. Written only by the holder of the project's curation lock: the curator, retention, which removes the raw log files it deletes, and the memory skill when the user resumes curation (SPEC-033). The curator writes it under the curated layer lock as well, after the changes that it counts, so that a stop between the two curates those turns again instead of losing them; consolidation then merges what was curated twice.
+The memory skill makes it, empty, before it first enables the project, so a missing one is lost, not new. Written only by the holder of the project's curation lock: the curator; retention, which removes the raw log files it deletes and lowers the count of a file whose last entries it deletes (TBL-007); and the memory skill when the user resumes curation (SPEC-033). The curator writes it under the curated layer lock as well, after the changes that it counts, so that a stop between the two curates those turns again instead of losing them; consolidation then merges what was curated twice.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
@@ -276,7 +278,7 @@ One file per notice that the start summary shows once (SPEC-022): `curation-fail
 
 ### Injection log (TBL-011)
 
-One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt that recall runs for (SPEC-023), also when nothing is injected, so that recall can tell which items the session's last three prompts injected. Appended by the session's hooks under the lock of the session's raw log file. Lines are deleted by their own time once past the retention period. No text of items or prompts.
+One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. Appended by the session's hooks under the lock of the session's raw log file. Lines are deleted by their own time once past the retention period. No text of items or prompts.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
@@ -284,7 +286,7 @@ One file per host session, named as its raw log file, also in a left-out folder,
 | `session` | text | The host's session ID |
 | `where` | `start` or `prompt` | |
 | `prompt` | optional entry ID | The prompt's raw log entry, when the prompt was recorded |
-| `items` | list of item IDs | At a start, the pinned items shown; for a prompt, the items injected, best first |
+| `items` | list of item IDs | At a start, the pinned items shown; for a prompt, the items injected, best first, or none |
 | `scores` | optional list of numbers | For a prompt, recall's score of each item, in the same order |
 
 ### Memory items (TBL-012)
@@ -628,5 +630,7 @@ The store library comes first in C1: IDs and JSON form, appending, rewriting and
 - Each record checked against its field table, and the same content giving the same bytes.
 - A stop at each step of a rewrite (after the new file, after the backup, after the move), on Linux, macOS and Windows, with a reader restoring afterwards; and on Windows, a move or a deletion while a reader holds the file open.
 - Locks: two processes taking a stale lock over at once, a holder paused past its limit, retention and a forget rewriting one raw log file at once, hooks appending while retention, forgets and tombstones rewrite, and a hook appending to a file that retention is about to delete (SPEC-007, SPEC-009).
+- Retention deleting a file's last entries while it keeps a future-dated one, then an append: the new entry is curated (SPEC-009).
+- An item injected, then three prompts that recall skips: the next prompt can inject the item again (SPEC-023).
 - [memory-index.sql](memory-index.sql) run on an empty file gives the same tables as the code's own; an index of another version is built again.
 - After a sync, the sync remote holds only the files of TBL-012 to TBL-018, and no file of the memory store holds a test key.
