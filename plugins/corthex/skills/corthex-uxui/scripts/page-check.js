@@ -11,9 +11,9 @@
  * What it measures
  *   Korean line breaks: missing keep-all or break-all, words split at a line end, orphans
  *   Overflow: text outside its box or clipped, the page scrolling sideways
- *   Contrast: text, field values and placeholders 4.5:1, large text 3:1, through any opacity
+ *   Contrast: text, field values and placeholders 4.5:1, large text (at the size drawn) 3:1, through any opacity
  *             (text over images, gradients or other boxes is flagged for a check by hand)
- *   Target size: 24×24 px (WCAG 2.5.8, with the spacing and in-sentence link exceptions)
+ *   Target size: 24×24 px (WCAG 2.5.8, with the spacing, in-sentence link and browser-sized control exceptions)
  *   Basic accessibility: img alt, field labels, html lang
  *   Motion: transition: all, properties that trigger layout, prefers-reduced-motion rules
  */
@@ -80,6 +80,28 @@
     let box = p.parentElement;
     while (box && css(box).display === "contents") box = box.parentElement;
     return shown(box, false);
+  }
+  // How the boxes around an element draw it: the scale (transforms, the scale property and zoom; turning does not scale)
+  // and whether it is turned. No transform applies to an inline box or to one with display: contents.
+  const drawnCache = new Map();
+  function drawn(el) {
+    if (!el) return { k: 1, turned: false };
+    let d = drawnCache.get(el);
+    if (d) return d;
+    const s = css(el);
+    d = Object.assign({}, drawn(el.parentElement));
+    d.k *= parseFloat(s.zoom) || 1;
+    if (s.display !== "inline" && s.display !== "contents") {
+      if (s.transform !== "none") {
+        const m = new DOMMatrix(s.transform);
+        d.k *= Math.sqrt(Math.abs(m.a * m.d - m.b * m.c));
+        if (Math.abs(m.b) > 1e-6 || Math.abs(m.c) > 1e-6) d.turned = true;
+      }
+      if (s.scale && s.scale !== "none") { const [x, y = x] = s.scale.split(" ").map(parseFloat); d.k *= Math.sqrt(Math.abs(x * y)); }
+      if (s.rotate && s.rotate !== "none") d.turned = true;
+    }
+    drawnCache.set(el, d);
+    return d;
   }
   // Character ranges are built from code points (invisible characters or escapes in the source can change when copied or passed through tools).
   const charClass = (ranges, prefix) => new RegExp("[" + (prefix || "") + ranges.map(([a, b]) => String.fromCharCode(a) + (b ? "-" + String.fromCharCode(b) : "")).join("") + "]");
@@ -224,6 +246,8 @@
     const clips = /hidden|clip/.test(bs.overflowX);
     const ellipsis = bs.textOverflow === "ellipsis";
     const noSplit = NO_SPLIT.has(block.localName) || !!block.closest("pre");
+    const turned = drawn(block).turned; // the line and box measures below assume level boxes
+    const across = !turned && !/^(vertical|sideways)/.test(bs.writingMode); // lines are found in horizontal text only
     let prev = null, opp = false, hard = false, lines = 1, line = "", allText = "", maxOut = 0;
     const ext = { top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity }; // where the text lies
     for (const node of nodes) {
@@ -237,7 +261,7 @@
         if (++charsUsed > o.maxChars) { truncated = true; break outer; }
         const r = rectOf(node, i, len);
         if (r) {
-          if (prev && r.top >= prev.r.bottom - 1) {
+          if (prev && across && r.top >= prev.r.bottom - 1) {
             lines++;
             line = "";
             if (!opp && !hard && !noSplit && isWord(prev.ch) && isWord(ch)) {
@@ -246,7 +270,7 @@
               else if (LATIN_DIGIT.test(prev.ch) && LATIN_DIGIT.test(ch)) add("warn", "latin-split", "Latin or digit run split at a line end: " + ctxt, block, { at: ctxt });
             }
           }
-          if (!scrolls && !(clips && ellipsis)) maxOut = Math.max(maxOut, r.right - right, left - r.left);
+          if (!scrolls && !(clips && ellipsis) && !turned) maxOut = Math.max(maxOut, r.right - right, left - r.left);
           ext.top = Math.min(ext.top, r.top);
           ext.bottom = Math.max(ext.bottom, r.bottom);
           ext.left = Math.min(ext.left, r.left);
@@ -309,6 +333,10 @@
   // ---------- 3. Contrast ----------
   let underOpacity = 0;
   const imageTags = new Set(["img", "video", "canvas", "svg", "picture", "iframe"]);
+  // The canvas under the page is white, or dark when the page asks for a dark colour scheme (#121212 in Chromium).
+  let scheme = css(document.documentElement).colorScheme || "";
+  if (scheme === "normal") { const m = document.querySelector("meta[name=color-scheme]"); scheme = m ? m.content : ""; }
+  const canvas = /\bdark\b/.test(scheme) && (!/\blight\b/.test(scheme) || matchMedia("(prefers-color-scheme: dark)").matches) ? [18, 18, 18, 1] : [255, 255, 255, 1];
   // The colours of the text and of the background beside it, painted as the browser paints them up the ancestors:
   // each box paints its background under its content, and its opacity fades the whole box, background included.
   function composite(el, colorStr) {
@@ -325,7 +353,6 @@
       const a = parseFloat(s.opacity);
       if (a < 1) { faded = true; text = text.map((v) => v * a); back = back.map((v) => v * a); }
     }
-    const canvas = [255, 255, 255, 1];
     return { text: over(text, canvas), base: over(back, canvas), faded, image: false };
   }
   // Whether something other than the text's ancestors is painted behind it, at one spot: an image, or a box from elsewhere
@@ -349,11 +376,12 @@
   }
   const checkContrast = (el, colorStr, label) => {
     const s = css(el);
-    const size = parseFloat(s.fontSize);
+    const k = drawn(el).k;
+    const size = parseFloat(s.fontSize) * k; // large text is large as drawn, after any transform or zoom
     const weight = parseInt(s.fontWeight, 10) || (s.fontWeight === "bold" ? 700 : 400);
     const large = size >= 24 || (size >= 18.66 && weight >= 700);
     const need = large ? 3 : 4.5;
-    const font = Math.round(size * 10) / 10 + "px " + weight;
+    const font = Math.round(size * 10) / 10 + "px " + weight + (Math.abs(k - 1) > 0.01 ? " (" + s.fontSize + " drawn at " + Math.round(k * 100) / 100 + "×)" : "");
     const bd = composite(el, colorStr);
     if (bd.image || behindOther(el)) {
       add("warn", "contrast-image", label + "Text over an image, a gradient or another box: check by hand at the worst spot", el, { need, font });
@@ -403,7 +431,8 @@
       const blk = blockOf(t);
       if (oneLine(blk.textContent).length > oneLine(t.textContent).length + 3) continue; // exception: a link inside a sentence
     }
-    if (t.localName === "input" && /^(checkbox|radio)$/.test(t.type) && s.appearance !== "none") continue; // exception: size set by the browser
+    // exception: a checkbox or radio button at the size the browser gives it (13×13 px in Chromium), not one the page sized
+    if (t.localName === "input" && /^(checkbox|radio)$/.test(t.type) && s.appearance !== "none" && Math.round(b.r.width) === 13 && Math.round(b.r.height) === 13) continue;
     const c = center(b.r);
     const clash = boxes.some((o2) => {
       if (o2 === b || o2.t.contains(t) || t.contains(o2.t)) return false;
@@ -472,6 +501,7 @@
     issues,
     notMeasured: [
       "Keyboard focus visibility and order (press Tab yourself)",
+      "Line breaks in vertical or turned text, and overflow in turned text",
       "Contrast of text over images, gradients or other boxes (the places flagged contrast-image)",
       "3:1 contrast of control borders and state indicators (WCAG 1.4.11)",
       "The order and names a screen reader reads",

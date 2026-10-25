@@ -11,13 +11,13 @@ Measure each width on its own: the widths the project supports come first; other
 
 | Check | Pass | How |
 | --- | --- | --- |
-| Korean line breaks | Korean blocks have `word-break: keep-all` and `overflow-wrap: break-word`; no `break-all`; no word split at a line end | page-check: `hangul-keepall`, `hangul-breakall`, `hangul-split` |
-| Overflow and clipping | No text outside its box, and none cut off without an ellipsis | page-check: `text-overflow`, `text-clipped` |
+| Korean line breaks | Korean blocks have `word-break: keep-all` and `overflow-wrap: break-word`; no `break-all`; no word split at a line end | page-check: `hangul-keepall`, `hangul-breakall`, `hangul-split`; vertical or turned text by hand |
+| Overflow and clipping | No text outside its box, and none cut off without an ellipsis | page-check: `text-overflow`, `text-clipped`; turned text by hand |
 | Sideways scrolling | None; readable at 320 without scrolling sideways (WCAG 1.4.10) | page-check: `page-overflow`, which names the likely causes |
 | Orphans | No heading, button or short text ends with one short word on its last line | page-check: `orphan` (headings warn; body text is only counted) |
-| Text contrast | Text 4.5:1; large text (24 px, or 18.7 px bold) 3:1 | page-check: `contrast`. Text over images, gradients or other boxes (`contrast-image`): measure the worst spot by hand |
+| Text contrast | Text 4.5:1; large text (24 px, or 18.7 px bold, at the size drawn) 3:1 | page-check: `contrast`. Text over images, gradients or other boxes (`contrast-image`): measure the worst spot by hand |
 | Contrast of controls and states | Field borders, check marks, focus indicators and essential graphics 3:1 against their neighbours (1.4.11) | By hand: pick both colours and compute the ratio the same way |
-| Target size | 24×24 px floor (with the spacing and in-sentence link exceptions); aim for 44 pt on iOS and 48 dp on Android | page-check: `target-size`, `target-goal` |
+| Target size | 24×24 px floor (with the spacing, in-sentence link and browser-sized control exceptions); aim for 44 pt on iOS and 48 dp on Android | page-check: `target-size`, `target-goal` |
 | Keyboard | Every control works with Tab; focus is visible (2.4.7), never hidden by something else (2.4.11), and follows the visual order | By hand, with Tab and Shift+Tab |
 | States | Default, hover, pressed, focus, disabled, loading, selected and error, plus the screen's empty, loading and error states | By hand, against the list |
 | Forms | Every field has a label; errors say in text what is wrong and how to fix it (3.3.1, 3.3.3); a placeholder is not a label | page-check: `label`; the wording by hand |
