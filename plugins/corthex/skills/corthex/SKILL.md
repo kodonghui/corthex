@@ -53,6 +53,7 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 | 10 WBS · 11 Development · 12 QA | `corthex-build` |
 | 13 Presentation | `corthex-present` |
 | Meetings, decisions and progress records, at any stage | `corthex-record` |
+| The craft of screens, motion and video, with its checks: in stages 08, 09 and 13, or on its own | `corthex-uxui` |
 
 Every stage follows one six-slot contract: inputs, outputs, human view, sync, human checkpoints and trace IDs. See [references/stage-contract.md](references/stage-contract.md). A project may skip stages or start in the middle; say which inputs are then missing.
 

@@ -32,3 +32,4 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 - Write or update the screen definition before changing a screen's code.
 - More candidates are not better by default. Many generated designs make choosing slow and expensive, so the mockup stage starts with two candidates per screen and fixes one direction early.
 - A passing design check is not a screen review. Say which widths and states you actually looked at.
+- For the craft inside a screen, use the `corthex-uxui` skill: names and numbers for parts, spacing, type and motion, and the checks on a real render (line breaks, including Korean, contrast and target size). The project's tokens and screen definitions win over its numbers.

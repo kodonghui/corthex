@@ -66,6 +66,7 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 | `corthex-build` | 10–12 | work breakdown, development and QA |
 | `corthex-present` | 13 | script, scene table and slides for the presentation |
 | `corthex-record` | any | minutes, decision log and progress records |
+| `corthex-uxui` | 08, 09, 13, or on its own | turn design words into named parts and numbers for screens, motion and video, and measure line breaks, contrast, target size, flashes and loudness before showing the result |
 | `corthex-hub` | all, in `corthex-nexus` | see every project's stages, checks and trace links on one page, and record each stage's progress |
 
 ## Profile and projects
@@ -82,6 +83,7 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 - Claude Code reads `.claude-plugin/marketplace.json` and each plugin's `.claude-plugin/plugin.json`.
 - Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and the core plugin's root `plugin.json`. `corthex-memory` has hooks, so it has `.codex-plugin/plugin.json` instead and works in Claude Code and Codex only. `corthex-nexus` has no hooks and keeps a root `plugin.json`.
 - The skills follow the [Agent Skills](https://agentskills.io) format and are shared by both, so each skill can also be used on its own.
+- `corthex-uxui` has two optional check scripts, which only read. `page-check.js` runs inside the page under test, pasted into the browser's console or passed to a browser automation tool such as Playwright; `media-check.py` needs Python 3.8 or later and FFmpeg.
 
 ## Development
 

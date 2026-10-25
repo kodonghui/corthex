@@ -31,7 +31,10 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │       │   ├── references/          원칙, 프로필, 프로젝트, 단계 계약
 │   │       │   └── assets/              profile.json과 project.json 예시
 │   │       ├── corthex-discover/ …      단계 스킬, 단계마다 참고 문서 하나
-│   │       └── corthex-record/          회의록, 결정, 진행 기록
+│   │       ├── corthex-record/          회의록, 결정, 진행 기록
+│   │       └── corthex-uxui/            화면·모션·영상을 만드는 법
+│   │           ├── references/          용어, 값, 영상, 점검과 그 출처
+│   │           └── scripts/             읽기만 하는 점검 둘: 페이지 안의 page-check.js, FFmpeg를 쓰는 media-check.py
 │   ├── corthex-memory/                  세션 시작 문맥, 훅이 있음
 │   │   ├── .claude-plugin/plugin.json   Claude Code용 매니페스트
 │   │   ├── .codex-plugin/plugin.json    Codex용 매니페스트, 루트 plugin.json은 없음
@@ -84,7 +87,7 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 
 스킬만 담은 플러그인은 고치지 않고 그대로 Claude Code, Codex, OpenAI 플러그인 디렉터리, 다른 Agent Plugins 클라이언트에 갑니다. OpenAI 디렉터리는 훅이 든 플러그인을 받지 않고, Codex는 Claude Code의 `userConfig`를 실행하지 않습니다. 스킬 하나를 따로 쓸 수도 있습니다. 예를 들어 claude.ai에 올려 쓸 수 있습니다.
 
-그래서 핵심 플러그인에는 훅, 명령, 에이전트, MCP 서버, 사용자 설정을 넣지 않습니다. 이런 것이 필요한 기능은 별도 플러그인으로 만들고, `tests/test_manifests.py`가 이 규칙을 검사합니다.
+그래서 핵심 플러그인에는 훅, 명령, 에이전트, MCP 서버, 사용자 설정을 넣지 않습니다. 이런 것이 필요한 기능은 별도 플러그인으로 만들고, `tests/test_manifests.py`가 이 규칙을 검사합니다. 스킬이 자기 `scripts/` 폴더에 스크립트를 두는 것은 Agent Skills 형식이 허용하는 일입니다. `corthex-uxui`에는 읽기만 하는 점검 둘이 있고, 에이전트가 다른 명령처럼 실행합니다.
 
 ## 스킬
 
@@ -98,15 +101,16 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 | `corthex-build` | 10 WBS, 11 개발, 12 QA |
 | `corthex-present` | 13 발표 |
 | `corthex-record` | 회의록, 결정, 진행 기록. 어느 단계에서나 |
+| `corthex-uxui` | 화면·모션·영상을 만드는 법과 그 점검. 08·09·13단계에서, 또는 단독으로 |
 
 `corthex-nexus`는 스킬 `corthex-hub` 하나를 더합니다([프로젝트 허브](#프로젝트-허브) 참고).
 
-- **14개가 아니라 8개입니다.** 도구는 세션마다 모든 스킬의 설명을 보여 주고, Codex는 이 첫 목록을 문맥 창의 2%(창 크기를 모르면 8,000자)로 제한합니다. 묶어서 목록을 짧게 유지합니다. 단계별 내용은 `references/`에 두고 필요할 때만 읽습니다.
+- **단계마다 하나씩이 아니라 9개입니다.** 도구는 세션마다 모든 스킬의 설명을 보여 주고, Codex는 이 첫 목록을 문맥 창의 2%(창 크기를 모르면 8,000자)로 제한합니다. 묶어서 목록을 짧게 유지합니다. 단계별 내용은 `references/`에 두고 필요할 때만 읽습니다. `corthex-uxui`는 단계 스킬에 넣지 않고 따로 둡니다. 08·09·13단계에 쓰이면서 CORTHEX 프로젝트 밖의 화면·영상 작업에도 쓰이는데, 그런 작업에서 도구가 찾아 쓰려면 자기 설명이 있어야 하기 때문입니다.
 - **이름은 `corthex-`로 시작합니다.** 스킬을 플러그인 밖에서 따로 써도 이름이 겹치지 않게 하려는 것입니다. 플러그인 안에서는 두 도구 모두 `corthex:<스킬>`로 보여 줍니다.
 - **앞머리는 어디서나 쓸 수 있게 씁니다.** Agent Skills 형식의 항목(`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`)만 씁니다. claude.ai 업로드와 Skills API가 특정 도구 전용 항목을 거부하기 때문입니다. 본문은 500줄 아래로 두고, 링크는 스킬 자기 폴더 안에서 한 단계까지만 겁니다.
 - **스킬 본문은 영어입니다.** 답변 언어는 사용자 프로필을 따릅니다.
 
-0.1.0을 로컬에 설치해 잰 값: `claude plugin details`(Claude Code 2.1.309)는 스킬 설명 8개가 늘 차지하는 양을 약 1,000토큰으로 보고하고, Codex CLI 0.164.0에서는 스킬 목록 가운데 약 3,200자를 씁니다.
+0.1.0을 로컬에 설치해 잰 값: `claude plugin details`(Claude Code 2.1.309)는 스킬 설명 8개가 늘 차지하는 양을 약 1,000토큰으로 보고했고, Codex CLI 0.164.0에서는 스킬 목록 가운데 약 3,200자를 썼습니다. `corthex-uxui`를 더한 9개는 Claude Code 2.1.310에서 약 1,240토큰이고, 같은 판에서 8개는 약 1,050토큰입니다. 이 스킬의 설명은 Codex 목록에 약 580자를 더하며, Codex에서는 다시 재지 않았습니다.
 
 ## 일하는 원칙
 
@@ -191,11 +195,11 @@ AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화�
 
 | 검사 | 명령 | 범위 |
 | --- | --- | --- |
-| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, Node 22.13 이상이 있을 때 `hub.py`와 NEXUS 서버, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
+| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, `corthex-uxui`의 스크립트(FFmpeg가 있으면 만든 영상으로), Node 22.13 이상이 있을 때 `hub.py`와 NEXUS 서버, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
 | 서버 검사 | `node --test nexus/test/*.test.js` | NEXUS Worker: Access 확인, 스냅샷 검사, 저장, 페이지와 보안 헤더 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 
-CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다. `corthex-memory`나 Windows 훅 검사를 바꾸는 풀 리퀘스트는 Windows에서 Claude Code와 Codex로 기억 훅도 돌립니다. Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다.
+CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다. Linux와 Windows에는 FFmpeg를 설치해 미디어 점검을 만든 영상으로 돌리고, macOS에서는 그 검사를 건너뜁니다. `corthex-memory`나 Windows 훅 검사를 바꾸는 풀 리퀘스트는 Windows에서 Claude Code와 Codex로 기억 훅도 돌립니다. Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다.
 
 ## 앞으로
 
