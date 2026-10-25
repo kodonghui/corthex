@@ -28,6 +28,12 @@
       "source": "docs/04-functional-spec/",
       "truth": "source",
       "note": "Functional spec, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-24, checked together with the user flows). Translations beside them are not read as sources. A Korean copy, with the tables as databases, is in the project's Notion records (2026-10-24); the copy follows these files."
+    },
+    "05-erd": {
+      "human": "notion",
+      "source": "docs/05-erd/",
+      "truth": "source",
+      "note": "Memory store, one file per part of the project: CORTHEX-MEMORY in memory.md (draft of 2026-10-24, checked together with the functional spec), with the search index's SQLite tables in memory-index.sql. Not ERD Editor, the stage's default: the memory store is files, and only its search index is SQL. Translations beside them are not read as sources. A Korean copy, with the tables as databases, is in the project's Notion records (2026-10-24); the copy follows these files."
     }
   }
 }
