@@ -1,0 +1,645 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Result of a memory command, format 1",
+  "description": "The JSON object that every command of the memory skill prints. See memory.md, Commands of the memory skill.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["command", "outcome", "code", "say", "data"],
+  "properties": {
+    "command": {
+      "description": "The command's name; none when the command is missing or unknown, with the code usage.",
+      "enum": ["on", "off", "status", "resume", "list", "search", "open", "pin", "unpin", "forget", "delete-project", "purge", "leave-out", "retention", "sync", "setup", "repair", "none"]
+    },
+    "outcome": {"enum": ["done", "confirm", "nothing", "refused", "failed"]},
+    "code": {
+      "enum": [
+        "ok", "usage", "no-store", "store-newer", "store-damaged", "configuration-invalid", "no-project-list",
+        "not-in-project", "not-enabled", "no-consent", "confirm-stale", "item-not-found", "item-not-current",
+        "pin-no-room", "folder-outside", "files-left", "lock-busy", "git-missing", "credentials-in-address",
+        "public", "other-files", "unreachable", "not-checked", "newer-format", "internal"
+      ]
+    },
+    "say": {"description": "One or two sentences in English, which the agent tells the user in the user's language.", "type": "string", "minLength": 1, "maxLength": 600},
+    "data": {"description": "What the command found or changed; its fields depend on the command and the code.", "type": "object"},
+    "confirm": {"description": "With the outcome confirm only: the code that the same command takes with --confirm after the user's yes.", "type": "string", "pattern": "^[0-9a-hjkmnp-tv-z]{8}$"}
+  },
+  "allOf": [
+    {"$ref": "#/$defs/confirm-when-asked"},
+    {"$ref": "#/$defs/outcome-of-each-code"},
+    {"$ref": "#/$defs/data-of-each-command"}
+  ],
+  "$defs": {
+    "confirm-when-asked": {
+      "if": {"properties": {"outcome": {"const": "confirm"}}},
+      "then": {"required": ["confirm"]},
+      "else": {"not": {"required": ["confirm"]}}
+    },
+    "outcome-of-each-code": {
+      "anyOf": [
+        {"properties": {"code": {"const": "ok"}, "outcome": {"enum": ["done", "confirm", "nothing"]}}},
+        {"properties": {"code": {"enum": ["no-store", "not-enabled"]}, "outcome": {"enum": ["refused", "nothing"]}}},
+        {"properties": {"code": {"enum": ["confirm-stale", "not-checked"]}, "outcome": {"const": "confirm"}}},
+        {"properties": {"code": {"enum": ["files-left", "lock-busy", "unreachable", "internal"]}, "outcome": {"const": "failed"}}},
+        {
+          "properties": {
+            "code": {
+              "enum": [
+                "usage", "store-newer", "store-damaged", "configuration-invalid", "no-project-list", "not-in-project",
+                "no-consent", "item-not-found", "item-not-current", "pin-no-room", "folder-outside", "git-missing",
+                "credentials-in-address", "public", "other-files", "newer-format"
+              ]
+            },
+            "outcome": {"const": "refused"}
+          }
+        }
+      ]
+    },
+    "data-of-each-command": {
+      "if": {"properties": {"code": {"$ref": "#/$defs/any-command-codes"}}},
+      "then": {"properties": {"data": {"$ref": "#/$defs/data-any"}}},
+      "else": {
+        "anyOf": [
+          {"properties": {"command": {"const": "on"}, "code": {"enum": ["ok", "confirm-stale"]}, "data": {"$ref": "#/$defs/data-on"}}},
+          {"properties": {"command": {"const": "off"}, "code": {"const": "ok"}, "data": {"$ref": "#/$defs/data-off"}}},
+          {"properties": {"command": {"const": "status"}, "code": {"const": "ok"}, "data": {"$ref": "#/$defs/data-status"}}},
+          {"properties": {"command": {"const": "resume"}, "code": {"enum": ["ok", "confirm-stale"]}, "data": {"$ref": "#/$defs/data-resume"}}},
+          {"properties": {"command": {"const": "list"}, "code": {"const": "ok"}, "data": {"$ref": "#/$defs/data-list"}}},
+          {"properties": {"command": {"const": "search"}, "code": {"const": "ok"}, "data": {"$ref": "#/$defs/data-search"}}},
+          {"properties": {"command": {"const": "open"}, "code": {"enum": ["ok", "item-not-found"]}, "data": {"$ref": "#/$defs/data-open"}}},
+          {"properties": {"command": {"const": "pin"}, "code": {"enum": ["ok", "item-not-found", "item-not-current", "pin-no-room"]}, "data": {"$ref": "#/$defs/data-pin"}}},
+          {"properties": {"command": {"const": "unpin"}, "code": {"enum": ["ok", "item-not-found"]}, "data": {"$ref": "#/$defs/data-pin"}}},
+          {"properties": {"command": {"const": "forget"}, "code": {"enum": ["ok", "confirm-stale", "item-not-found"]}, "data": {"$ref": "#/$defs/data-forget"}}},
+          {"properties": {"command": {"const": "delete-project"}, "code": {"enum": ["ok", "confirm-stale", "files-left"]}, "data": {"$ref": "#/$defs/data-delete-project"}}},
+          {"properties": {"command": {"const": "purge"}, "code": {"enum": ["ok", "confirm-stale", "files-left"]}, "data": {"$ref": "#/$defs/data-purge"}}},
+          {"properties": {"command": {"const": "leave-out"}, "code": {"enum": ["ok", "folder-outside"]}, "data": {"$ref": "#/$defs/data-leave-out"}}},
+          {"properties": {"command": {"const": "retention"}, "code": {"enum": ["ok", "confirm-stale"]}, "data": {"$ref": "#/$defs/data-retention"}}},
+          {"properties": {"command": {"const": "sync"}, "code": {"enum": ["ok", "confirm-stale", "git-missing", "credentials-in-address", "public", "other-files", "unreachable", "not-checked", "newer-format"]}, "data": {"$ref": "#/$defs/data-sync"}}},
+          {"properties": {"command": {"const": "setup"}, "code": {"enum": ["ok", "no-consent"]}, "data": {"$ref": "#/$defs/data-setup"}}},
+          {"properties": {"command": {"const": "repair"}, "code": {"enum": ["ok", "confirm-stale"]}, "data": {"$ref": "#/$defs/data-repair"}}}
+        ]
+      }
+    },
+    "any-command-codes": {
+      "description": "The codes that a command can have whatever it is, whose data is data-any.",
+      "enum": [
+        "usage", "no-store", "store-newer", "store-damaged", "configuration-invalid", "no-project-list",
+        "not-in-project", "not-enabled", "lock-busy", "internal"
+      ]
+    },
+
+    "time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "count": {"type": "integer", "minimum": 0},
+    "project-name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,59}$"},
+    "model": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"},
+    "device-id": {"type": "string", "pattern": "^d_[0-9a-hjkmnp-tv-z]{12}$"},
+    "entry-id": {"type": "string", "pattern": "^e_[0-9a-hjkmnp-tv-z]{12}$"},
+    "item-id": {"type": "string", "pattern": "^i_[0-9a-hjkmnp-tv-z]{12}$"},
+    "line-id": {"type": "string", "pattern": "^s_[0-9a-hjkmnp-tv-z]{12}$"},
+    "log": {"description": "A raw log file name.", "type": "string", "pattern": "^(claude-code|codex)-[0-9a-f]{16}$"},
+    "argument": {"description": "An argument as given, such as an item ID.", "type": "string", "minLength": 1, "maxLength": 200},
+    "error": {"description": "A code of the error lists, a provider's error type or an exception's class name; never an error's text.", "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.-]{0,99}$"},
+    "kind": {"enum": ["decision", "preference", "lesson", "reference", "fact"]},
+    "status": {"enum": ["current", "superseded", "withdrawn"]},
+    "speaker": {"enum": ["user", "agent"]},
+    "part": {"enum": ["goal", "decisions", "progress", "blockers", "next"]},
+    "key-state": {"enum": ["present", "missing", "rejected"]},
+    "on-off": {"enum": ["on", "off"]},
+    "range": {"description": "A start and an end in an entry's text, as TBL-007 counts them.", "type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/count"}},
+    "keys": {
+      "description": "Whether each memory key is in the environment, and whether its API rejected it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anthropic", "openai"],
+      "properties": {
+        "anthropic": {"$ref": "#/$defs/key-state"},
+        "openai": {"$ref": "#/$defs/key-state"}
+      }
+    },
+    "left-out": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["folders", "kinds"],
+      "properties": {
+        "folders": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 400}},
+        "kinds": {"type": "array", "uniqueItems": true, "items": {"enum": ["prompt", "answer", "boundary"]}}
+      }
+    },
+    "list-line": {
+      "description": "A line of the item list (TBL-015).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "kind", "speaker", "date", "title"],
+      "properties": {
+        "item": {"$ref": "#/$defs/item-id"},
+        "kind": {"$ref": "#/$defs/kind"},
+        "speaker": {"$ref": "#/$defs/speaker"},
+        "date": {"$ref": "#/$defs/date"},
+        "title": {"type": "string"}
+      }
+    },
+    "matches": {"description": "With item-not-found: the closest lines of the item list.", "type": "array", "maxItems": 5, "items": {"$ref": "#/$defs/list-line"}},
+
+    "data-any": {
+      "description": "The data of a result whose code is one of any-command-codes.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "field": {"description": "With configuration-invalid: the first field that fails, as a path such as retention.days.", "type": "string", "minLength": 1, "maxLength": 200},
+        "clash": {"description": "With not-in-project: the projects that each hold the folder.", "type": "array", "items": {"$ref": "#/$defs/project-name"}},
+        "error": {"description": "With internal: the class of the error.", "$ref": "#/$defs/error"}
+      }
+    },
+    "data-on": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "consent": {
+          "description": "When it asks: the consent text that the user says yes to.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "text"],
+          "properties": {
+            "version": {"type": "integer", "minimum": 1},
+            "text": {"type": "string", "minLength": 1}
+          }
+        },
+        "keys": {"$ref": "#/$defs/keys"},
+        "retention_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "left_out": {"$ref": "#/$defs/left-out"}
+      }
+    },
+    "data-off": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"}
+      }
+    },
+    "data-status": {
+      "description": "The memory status (SPEC-033): no conversation text and no key.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store", "configuration", "consent", "keys", "temporary", "test_servers", "projects", "sync", "waits"],
+      "properties": {
+        "store": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "device", "release", "folder", "writable"],
+          "properties": {
+            "format": {"type": "integer", "minimum": 1},
+            "device": {"$ref": "#/$defs/device-id"},
+            "release": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"},
+            "folder": {"description": "The memory store's folder, with the home folder written as ~.", "type": "string", "minLength": 1, "maxLength": 1000},
+            "writable": {"type": "boolean"}
+          }
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["valid"],
+          "properties": {
+            "valid": {"type": "boolean"},
+            "field": {"description": "When it is not valid: the first field that fails.", "type": "string", "minLength": 1, "maxLength": 200}
+          }
+        },
+        "consent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["needed"],
+          "properties": {
+            "needed": {"description": "The consent version that the release needs.", "type": "integer", "minimum": 1},
+            "given": {"description": "The version the user consented to, if any.", "type": "integer", "minimum": 1},
+            "at": {"$ref": "#/$defs/time"}
+          }
+        },
+        "keys": {"$ref": "#/$defs/keys"},
+        "temporary": {"type": "boolean"},
+        "test_servers": {"description": "The APIs for which a test server is set.", "type": "array", "uniqueItems": true, "items": {"enum": ["anthropic", "openai"]}},
+        "projects": {"type": "array", "items": {"$ref": "#/$defs/project-status"}},
+        "usage": {
+          "description": "This month's usage, from the usage log.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["month", "models", "cost"],
+          "properties": {
+            "month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+            "models": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["model", "calls", "input", "output", "cost"],
+                "properties": {
+                  "model": {"$ref": "#/$defs/model"},
+                  "calls": {"$ref": "#/$defs/count"},
+                  "input": {"$ref": "#/$defs/count"},
+                  "output": {"$ref": "#/$defs/count"},
+                  "cost": {"type": "number", "minimum": 0}
+                }
+              }
+            },
+            "cost": {"description": "In US dollars, by the price lists named in the usage lines.", "type": "number", "minimum": 0},
+            "unpriced": {"description": "Models that the price list does not name; their calls count 0.", "type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/model"}}
+          }
+        },
+        "failures": {"description": "The most recent lines of the failure log, newest first.", "type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/failure"}},
+        "hooks": {"description": "The hook timings of the last 7 days, one entry per hook and host that ran.", "type": "array", "items": {"$ref": "#/$defs/hook-timing"}},
+        "sync": {"$ref": "#/$defs/sync-status"},
+        "waits": {"description": "What waits for consent or a key.", "type": "array", "uniqueItems": true, "items": {"enum": ["consent", "anthropic-key", "openai-key"]}},
+        "unreadable": {"description": "The parts left out because their files cannot be read.", "type": "array", "uniqueItems": true, "items": {"enum": ["usage", "failures", "hooks", "sync"]}}
+      }
+    },
+    "project-status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "enabled", "unprocessed", "items", "pins"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "enabled": {"type": "boolean"},
+        "since": {"$ref": "#/$defs/time"},
+        "curation": {
+          "description": "The last curation attempt.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "result"],
+          "properties": {
+            "at": {"$ref": "#/$defs/time"},
+            "result": {"enum": ["ok", "failed", "stale"]},
+            "error": {"$ref": "#/$defs/error"},
+            "failed_in_row": {"$ref": "#/$defs/count"}
+          }
+        },
+        "unprocessed": {"description": "Unprocessed turns.", "$ref": "#/$defs/count"},
+        "oldest": {"description": "When the oldest unprocessed turn was written.", "$ref": "#/$defs/time"},
+        "stopped": {
+          "description": "The fault guard's stop (SPEC-018).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "by", "errors"],
+          "properties": {
+            "at": {"$ref": "#/$defs/time"},
+            "by": {"enum": ["curate", "consolidate"]},
+            "errors": {"type": "array", "items": {"$ref": "#/$defs/error"}}
+          }
+        },
+        "consolidation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["failures"],
+          "properties": {
+            "last": {"$ref": "#/$defs/time"},
+            "due": {"$ref": "#/$defs/time"},
+            "failures": {"$ref": "#/$defs/count"}
+          }
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["current", "superseded", "withdrawn"],
+          "properties": {
+            "current": {"$ref": "#/$defs/count"},
+            "superseded": {"$ref": "#/$defs/count"},
+            "withdrawn": {"$ref": "#/$defs/count"}
+          }
+        },
+        "pins": {"description": "The pinned items, in the order they were pinned.", "type": "array", "items": {"$ref": "#/$defs/item-id"}}
+      }
+    },
+    "failure": {
+      "description": "A line of the failure log (TBL-004).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "step", "error"],
+      "properties": {
+        "at": {"$ref": "#/$defs/time"},
+        "step": {"enum": ["record", "recall", "summary", "trigger", "curate", "consolidate", "embed", "sync", "retention", "index", "restore", "skill"]},
+        "hook": {"enum": ["start", "prompt", "end-of-turn", "end"]},
+        "host": {"enum": ["claude-code", "codex"]},
+        "project": {"$ref": "#/$defs/project-name"},
+        "error": {"$ref": "#/$defs/error"},
+        "log": {"$ref": "#/$defs/log"},
+        "count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "hook-timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hook", "host", "runs", "median_ms", "p95_ms", "last", "outcomes"],
+      "properties": {
+        "hook": {"enum": ["start", "prompt", "end-of-turn", "end"]},
+        "host": {"enum": ["claude-code", "codex"]},
+        "runs": {"type": "integer", "minimum": 1},
+        "median_ms": {"$ref": "#/$defs/count"},
+        "p95_ms": {"$ref": "#/$defs/count"},
+        "last": {"description": "When the hook last ran in the host.", "$ref": "#/$defs/time"},
+        "outcomes": {
+          "description": "Runs by outcome; no-answer counts the turns that ended without a final answer, and lock-busy the entries skipped.",
+          "type": "object",
+          "propertyNames": {"enum": ["ok", "left-out", "no-answer", "lock-busy", "deadline", "error"]},
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "sync-status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"$ref": "#/$defs/on-off"},
+        "address": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "branch": {"type": "string", "minLength": 1, "maxLength": 100},
+        "last_ok": {"$ref": "#/$defs/time"},
+        "last_try": {"$ref": "#/$defs/time"},
+        "checked": {"$ref": "#/$defs/time"},
+        "checked_by": {"enum": ["github", "gitlab", "bitbucket", "user"]},
+        "stopped": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "reason"],
+          "properties": {
+            "at": {"$ref": "#/$defs/time"},
+            "reason": {"enum": ["public", "other-files"]}
+          }
+        },
+        "failed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["at", "error"],
+          "properties": {
+            "at": {"$ref": "#/$defs/time"},
+            "error": {"$ref": "#/$defs/error"}
+          }
+        },
+        "clashes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["project", "item"],
+            "properties": {
+              "project": {"$ref": "#/$defs/project-name"},
+              "item": {"$ref": "#/$defs/item-id"}
+            }
+          }
+        }
+      }
+    },
+    "data-resume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "failures": {
+          "description": "The failed attempts that the stop came from.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["at", "kind", "error"],
+            "properties": {
+              "at": {"$ref": "#/$defs/time"},
+              "kind": {"enum": ["curate", "consolidate"]},
+              "error": {"$ref": "#/$defs/error"}
+            }
+          }
+        },
+        "unprocessed": {"$ref": "#/$defs/count"}
+      }
+    },
+    "data-list": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "items", "more"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "items": {"description": "Lines of the item list, newest first.", "type": "array", "items": {"$ref": "#/$defs/list-line"}},
+        "more": {"description": "The number of lines left out by --limit.", "$ref": "#/$defs/count"}
+      }
+    },
+    "data-search": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "by", "results"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "by": {"description": "words, or both for words and meaning.", "enum": ["words", "both"]},
+        "reason": {"description": "Why it searched by words only.", "enum": ["asked", "no-consent", "no-key", "index-not-ready", "embedding-failed"]},
+        "results": {
+          "description": "Items of every status, best first.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item", "kind", "status", "speaker", "date", "title"],
+            "properties": {
+              "item": {"$ref": "#/$defs/item-id"},
+              "kind": {"$ref": "#/$defs/kind"},
+              "status": {"$ref": "#/$defs/status"},
+              "speaker": {"$ref": "#/$defs/speaker"},
+              "date": {"$ref": "#/$defs/date"},
+              "title": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "data-open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "items": {"type": "array", "items": {"$ref": "#/$defs/open-item"}},
+        "missing": {"description": "With item-not-found: the arguments that name no item of the project.", "type": "array", "items": {"$ref": "#/$defs/argument"}},
+        "matches": {"$ref": "#/$defs/matches"}
+      }
+    },
+    "open-item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "kind", "status", "title", "text", "saved", "quotes"],
+      "properties": {
+        "item": {"$ref": "#/$defs/item-id"},
+        "kind": {"$ref": "#/$defs/kind"},
+        "status": {"$ref": "#/$defs/status"},
+        "superseded_by": {"$ref": "#/$defs/item-id"},
+        "merges": {"type": "array", "items": {"$ref": "#/$defs/item-id"}},
+        "title": {"type": "string"},
+        "text": {"type": "string"},
+        "saved": {"$ref": "#/$defs/time"},
+        "quotes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/open-quote"}}
+      }
+    },
+    "open-quote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry", "log", "device", "speaker", "said", "words", "held"],
+      "properties": {
+        "entry": {"$ref": "#/$defs/entry-id"},
+        "log": {"$ref": "#/$defs/log"},
+        "device": {"$ref": "#/$defs/device-id"},
+        "speaker": {"$ref": "#/$defs/speaker"},
+        "said": {"$ref": "#/$defs/time"},
+        "words": {"type": "string"},
+        "held": {"description": "here: this device's raw log holds the entry; deleted: this device wrote it and it is gone; elsewhere: another device wrote it.", "enum": ["here", "deleted", "elsewhere"]},
+        "before": {"description": "With --around: the entry's text before the quote.", "type": "string"},
+        "after": {"description": "With --around: the entry's text after the quote.", "type": "string"}
+      }
+    },
+    "data-pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "item"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "item": {"$ref": "#/$defs/argument"},
+        "pins": {"description": "The pinned items afterwards, or with pin-no-room the pinned items now.", "type": "array", "items": {"$ref": "#/$defs/item-id"}},
+        "current": {"description": "With item-not-current: the item that superseded it.", "$ref": "#/$defs/item-id"},
+        "matches": {"$ref": "#/$defs/matches"}
+      }
+    },
+    "data-forget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "item"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "item": {"$ref": "#/$defs/argument"},
+        "with": {"description": "The items named with --with.", "type": "array", "items": {"$ref": "#/$defs/argument"}},
+        "also": {"description": "Other items that quote the same raw text and stay unless named with --with.", "type": "array", "items": {"$ref": "#/$defs/item-id"}},
+        "state_lines": {
+          "description": "The current state lines that go.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["line", "part", "text"],
+            "properties": {
+              "line": {"$ref": "#/$defs/line-id"},
+              "part": {"$ref": "#/$defs/part"},
+              "text": {"type": "string"}
+            }
+          }
+        },
+        "pinned": {"description": "The items forgotten that are pinned.", "type": "array", "items": {"$ref": "#/$defs/item-id"}},
+        "raw": {
+          "description": "This device's raw log entries whose quoted text is replaced, and the ranges kept whole for an item that stays.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entry", "log", "forgotten", "kept"],
+            "properties": {
+              "entry": {"$ref": "#/$defs/entry-id"},
+              "log": {"$ref": "#/$defs/log"},
+              "forgotten": {"type": "array", "items": {"$ref": "#/$defs/range"}},
+              "kept": {"type": "array", "items": {"$ref": "#/$defs/range"}}
+            }
+          }
+        },
+        "outside": {"description": "What memory cannot remove.", "type": "array", "uniqueItems": true, "items": {"enum": ["host-transcript", "providers", "devices-without-sync"]}},
+        "missing": {"description": "With item-not-found: the arguments that name no item of the project.", "type": "array", "items": {"$ref": "#/$defs/argument"}},
+        "matches": {"$ref": "#/$defs/matches"}
+      }
+    },
+    "data-delete-project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "deleted", "sync"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "deleted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["items", "entries", "pins"],
+          "properties": {
+            "items": {"$ref": "#/$defs/count"},
+            "entries": {"$ref": "#/$defs/count"},
+            "pins": {"$ref": "#/$defs/count"}
+          }
+        },
+        "sync": {"description": "on: a project tombstone goes to the sync remote.", "$ref": "#/$defs/on-off"},
+        "left": {"description": "With files-left: the files that could not be deleted, relative to the memory store.", "type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1000}}
+      }
+    },
+    "data-purge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["folder", "projects", "deleted", "sync"],
+      "properties": {
+        "folder": {"description": "The memory store's folder, with the home folder written as ~.", "type": "string", "minLength": 1, "maxLength": 1000},
+        "projects": {"type": "array", "items": {"$ref": "#/$defs/project-name"}},
+        "deleted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["items", "entries", "usage"],
+          "properties": {
+            "items": {"$ref": "#/$defs/count"},
+            "entries": {"$ref": "#/$defs/count"},
+            "usage": {"description": "Lines of the usage log.", "$ref": "#/$defs/count"}
+          }
+        },
+        "sync": {"description": "on: the sync remote and the other devices keep their copies.", "$ref": "#/$defs/on-off"},
+        "left": {"description": "With files-left: the files that could not be deleted, relative to the memory store.", "type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1000}}
+      }
+    },
+    "data-leave-out": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "folders", "kinds"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "folders": {"description": "The folders left out, afterwards.", "type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 400}},
+        "kinds": {"description": "The kinds of entries left out, afterwards.", "type": "array", "uniqueItems": true, "items": {"enum": ["prompt", "answer", "boundary"]}},
+        "outside": {"description": "With folder-outside: the folders given that are outside the project.", "type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1000}}
+      }
+    },
+    "data-retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["days", "was"],
+      "properties": {
+        "days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "was": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "entries": {"description": "When it asks: the entries that the next session start deletes.", "$ref": "#/$defs/count"}
+      }
+    },
+    "data-sync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"$ref": "#/$defs/on-off"},
+        "address": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "branch": {"type": "string", "minLength": 1, "maxLength": 100},
+        "checked_by": {"enum": ["github", "gitlab", "bitbucket", "user"]},
+        "pulled": {"description": "With now: the items that the merge added or changed.", "$ref": "#/$defs/count"},
+        "pushed": {"description": "With now: whether it pushed.", "type": "boolean"},
+        "other": {"description": "With other-files: up to 20 paths in the sync branch that are not memory's.", "type": "array", "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 1000}}
+      }
+    },
+    "data-setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project"],
+      "properties": {
+        "project": {"$ref": "#/$defs/project-name"},
+        "at": {"description": "The project's folder on the temporary device.", "type": "string", "minLength": 1, "maxLength": 1000},
+        "script": {"description": "The setup script: POSIX shell, holding no key.", "type": "string", "minLength": 1}
+      }
+    },
+    "data-repair": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "device": {"description": "Once done, the new device ID; with nothing to repair, the store record's.", "$ref": "#/$defs/device-id"}
+      }
+    }
+  }
+}

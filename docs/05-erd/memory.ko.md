@@ -123,18 +123,18 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 ### 기억 설정 (TBL-002)
 
-기억 스킬만 기억 폴더 잠금을 잡고 씁니다. 임시 기기에서는 사용자의 환경 설정이 첫 세션 전에 써 둘 수도 있습니다(SPEC-011). 절대 동기화하지 않고, 키를 담지 않습니다. 아래 기본값은 기능 명세에서 왔으며 06단계가 확정합니다. 빠진 필드는 기본값을 씁니다.
+기억 스킬만 기억 폴더 잠금을 잡고 씁니다. 임시 기기에서는 사용자의 환경 설정이 첫 세션 전에 써 둘 수도 있습니다(SPEC-011). 절대 동기화하지 않고, 키를 담지 않습니다. 아래 기본값은 기능 명세에서 왔고 06단계가 확정했습니다. 빠진 필드는 기본값을 씁니다. 필드의 범위와 패턴은 06단계의 [설정 스키마](../06-api/memory-configuration.schema.json)를 따릅니다.
 
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
 | `consent` | (선택) 객체: `at`(시각), `version`(정수) | 사용자의 동의와 그 문구의 판(SPEC-030). 이번 판이 요구하는 판의 동의가 없으면 아무것도 기록하거나 보내지 않습니다. |
-| `projects` | 객체: 프로젝트 이름 → `enabled`(true나 false), `since`(시각), `left_out`(`folders`: 프로젝트 폴더를 기준으로 한 폴더; `kinds`: `prompt`, `answer`, `boundary` 가운데 몇 개) | 기억을 켠 프로젝트, 마지막으로 켠 때, 기록에서 뺀 것(SPEC-006, SPEC-030, SPEC-036) |
+| `projects` | 객체: 프로젝트 이름 → `enabled`(true나 false), `since`(시각), 선택인 `left_out`(`folders`: 프로젝트 폴더를 기준으로 한 폴더; `kinds`: `prompt`, `answer`, `boundary` 가운데 몇 개) | 기억을 켠 프로젝트, 마지막으로 켠 때, 기록에서 뺀 것(SPEC-006, SPEC-030, SPEC-036) |
 | `retention` | 객체: `days`(1 이상의 정수, 기본값 30) | 보관 기간(SPEC-009) |
 | `triggers` | 객체: `turns`(기본값 10), `minutes`(기본값 30) | 턴이 끝날 때의 정리 시작 조건(SPEC-010) |
 | `temporary` | (선택) true나 false | 기기가 임시 기기인지. 빠지면 코드가 도구에 묻습니다(SPEC-011) |
-| `models` | 객체: `curator`(기본값 `claude-haiku-5-5`), `effort`(기본값 `xhigh`), `embedding`(기본값 `text-embedding-3-small`), `dims`(06단계가 정하는 줄인 벡터 길이) | 모델(SPEC-014, SPEC-023) |
+| `models` | 객체: `curator`(기본값 `claude-haiku-5-5`), `effort`(기본값 `xhigh`), `embedding`(기본값 `text-embedding-3-small`), `dims`(줄인 벡터 길이, 기본값 512) | 모델(SPEC-014, SPEC-023) |
 | `recall` | 객체: `threshold`(숫자, 선택), `skip`(기본값 8) | 넣는 기준점(12단계가 정하기 전에는 값이 없음)과, 불러오기를 돌리는 프롬프트의 가장 짧은 길이(글자 수)(SPEC-023) |
-| `prices` | 객체: `taken`(날짜), `from`(공급자 가격 페이지의 주소), `models`(모델 → `input`, `output`, 선택인 `cache_write`, `cache_read`. 단위는 100만 토큰당 미국 달러. 프롬프트 길이에 따라 바뀌는 가격은 선택인 `above`에 `tokens`, `input`, `output`으로 적음) | 가격표(SPEC-032) |
+| `prices` | 객체: `taken`(날짜), `from`(공급자마다 가격 페이지 주소 하나씩), `models`(모델 → `input`, `output`, 선택인 `cache_write`, `cache_read`. 단위는 100만 토큰당 미국 달러. 프롬프트 길이에 따라 바뀌는 가격은 선택인 `above`에 `tokens`, `input`, `output`으로 적음) | 가격표(SPEC-032) |
 | `sync` | (선택) 객체: `address`, `branch`(기본값 `main`) | 동기화 저장소. 이것이 있는 동안 동기화가 켜져 있습니다(SPEC-026) |
 
 이것을 잃었고 백업도 되돌릴 수 없으면, 그 기기에서 기억은 꺼집니다. 동의도 켠 프로젝트도 없으므로, 사용자가 기억을 다시 켤 때까지 아무것도 기록하거나 보내지 않으며, 기억 상태가 그렇다고 알립니다.
