@@ -75,6 +75,20 @@ def blinking(path, seconds, period, lit, dark=BLACK, box=None):
                    check=True, capture_output=True, timeout=120)
 
 
+def patches(path, together):
+    """Two side-by-side patches of 4x8 cells, each flashing five times a second for one second: together, or one after the other.
+
+    The clip is 480x270 at 30 fps, so a cell of the default 48-cell grid is 10x10 pixels and a patch is a sixth of the field.
+    """
+    flash = "lt(mod(N,6),3)"
+    first = "lt(N,30)*" + flash
+    second = first if together else "gte(N,30)*lt(N,60)*" + flash
+    on = "(lt(X,40)*%s+gte(X,40)*%s)*lt(X,80)*lt(Y,80)" % (first, second)
+    graph = "color=c=black:s=480x270:r=30:d=2.5,format=gbrp,geq=" + ":".join("%s='255*%s'" % (plane, on) for plane in "rgb")
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", graph, "-c:v", "ffv1", str(path)],
+                   check=True, capture_output=True, timeout=120)
+
+
 class ScriptTextTest(unittest.TestCase):
     def test_media_check_parses_as_python_3_8(self):
         ast.parse(read_text(MEDIA), feature_version=(3, 8))
@@ -144,6 +158,8 @@ class MediaCheckTest(unittest.TestCase):
         blinking(cls.base / "slow.mkv", 6, 15, WHITE)              # 2 a second, for six seconds
         blinking(cls.base / "red.mkv", 2, 6, RED, dark=GREY)       # 5 a second, red only: both states as bright
         blinking(cls.base / "spot.mkv", 2, 6, WHITE, box=16)       # 5 a second, over 16x16 pixels
+        patches(cls.base / "turns.mkv", together=False)            # two sixths of the field, one after the other
+        patches(cls.base / "pair.mkv", together=True)              # the same two at once: a third of the field
         subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=3:sample_rate=48000",
                         "-af", "volume=-20dB", "-c:a", "pcm_s16le", str(cls.base / "quiet.wav")],
                        check=True, capture_output=True, timeout=120)
@@ -182,6 +198,16 @@ class MediaCheckTest(unittest.TestCase):
         self.assertEqual(report["flash"]["result"], "pass-area")
         self.assertLess(report["flash"]["maxArea"], 0.25)
         self.assertIn(("warn", "flash-area"), checks)
+
+    def test_areas_add_up_only_while_they_flash_together(self):
+        code, report, checks = self.measure("turns.mkv")
+        self.assertEqual((code, report["flash"]["result"]), (0, "pass-area"))
+        self.assertAlmostEqual(report["flash"]["maxArea"], 1 / 6, places=2)
+        self.assertIn(("warn", "flash-area"), checks)
+        code, report, checks = self.measure("pair.mkv")
+        self.assertEqual((code, report["flash"]["result"]), (1, "fail"))
+        self.assertAlmostEqual(report["flash"]["maxArea"], 1 / 3, places=2)
+        self.assertIn(("error", "flash"), checks)
 
     def test_loudness_is_judged_against_the_target(self):
         code, report, checks = self.measure("quiet.wav")

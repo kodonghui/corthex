@@ -248,7 +248,7 @@ def video_pass(ffmpeg, path, info, opts):
     g_tr = [0] * N; g_a = [0.0] * N; g_e = [0.0] * N; g_c = [False] * N
     r_tr = [0] * N; r_a = [None] * N; r_e = [None] * N; r_ap = [0.0] * N; r_ep = [0.0] * N; r_c = [False] * N
     gq = [None] * N; rq = [None] * N
-    g_fail = [-1e9] * N; r_fail = [-1e9] * N; x_flag = [-1e9] * N
+    x_flag = [-1e9] * N
     best = {"gen": (0, None, None), "red": (0, None, None)}
     area_max, area_at = 0.0, None
     fail_t, ext_t = [], []
@@ -279,6 +279,10 @@ def video_pass(ffmpeg, path, info, opts):
             if k < 5:
                 bins[k] += 1
         return min(bins) >= 4
+
+    def flashing(c, need, idx):
+        # The cell made `need` or more general or red transitions in the second up to frame idx
+        return any(q is not None and len(q) >= need and q[-need] > idx - win1 for q in (gq[c], rq[c]))
 
     def window_max(mask):
         S = [[0] * (W + 1) for _ in range(H + 1)]
@@ -354,7 +358,7 @@ def video_pass(ffmpeg, path, info, opts):
                     if n1 // 2 > best["gen"][0]:
                         best["gen"] = (n1 // 2, i, c)
                     if n1 >= FAIL_TRANSITIONS:
-                        g_fail[c] = i; flag_area = True
+                        flag_area = True
                     if n5 >= EXT_TRANSITIONS and sustained(gq[c], i):
                         x_flag[c] = i; flag_ext = True
                 # Red flash: the rise and fall of the red ratio, plus the u'v' distance
@@ -393,7 +397,7 @@ def video_pass(ffmpeg, path, info, opts):
                     if n1 // 2 > best["red"][0]:
                         best["red"] = (n1 // 2, i, c)
                     if n1 >= FAIL_TRANSITIONS:
-                        r_fail[c] = i; flag_area = True
+                        flag_area = True
                     if n5 >= EXT_TRANSITIONS and sustained(rq[c], i):
                         x_flag[c] = i; flag_ext = True
             row_sum[y] = rs
@@ -424,15 +428,16 @@ def video_pass(ffmpeg, path, info, opts):
                 n1, _ = record(whole_q, i)
                 if n1 // 2 > whole_best[0]:
                     whole_best = (n1 // 2, i)
+        # Only cells that flash in the same second add up: a patch that has stopped flashing counts no more
         if flag_area:
-            mask = [1 if (i - g_fail[c] < win1 or i - r_fail[c] < win1) else 0 for c in range(N)]
+            mask = [1 if flashing(c, FAIL_TRANSITIONS, i) else 0 for c in range(N)]
             frac_ = window_max(mask)
             if frac_ > area_max:
                 area_max, area_at = frac_, i
             if frac_ > AREA_LIMIT:
                 fail_t.append(i)
         if flag_ext:
-            mask = [1 if i - x_flag[c] < win1 else 0 for c in range(N)]
+            mask = [1 if i - x_flag[c] < win1 and flashing(c, EXT_TRANSITIONS // 5, i) else 0 for c in range(N)]
             if window_max(mask) > AREA_LIMIT:
                 ext_t.append(i)
         prev = buf

@@ -88,6 +88,27 @@
     }
     return document.body;
   }
+  // The box around a block that cuts its text off at the top or bottom: overflow hidden or clip, with the text partly
+  // inside it. Text wholly outside is hidden on purpose (a closed panel), and what a scrolling box holds can be reached.
+  function clipperOf(block, top, bottom) {
+    let escaping = false; // inside an absolutely positioned box, until its containing block
+    for (let e = block; bottom > top;) {
+      const s = css(e);
+      if (/auto|scroll/.test(s.overflowY) || s.position === "fixed") return null;
+      if (s.position === "absolute") escaping = true;
+      e = e.parentElement;
+      if (!e || e === document.body || e === document.documentElement) return null;
+      const p = css(e);
+      if (escaping && p.position === "static" && p.transform === "none") continue; // it does not clip that box
+      escaping = false;
+      if (/hidden|clip/.test(p.overflowY) && p.getPropertyValue("-webkit-line-clamp") === "none") {
+        const r = e.getBoundingClientRect();
+        const inTop = r.top + parseFloat(p.borderTopWidth), inBottom = r.bottom - parseFloat(p.borderBottomWidth);
+        if (top < inBottom && bottom > inTop && (bottom > inBottom + 2 || top < inTop - 2)) return e;
+      }
+    }
+    return null;
+  }
 
   // Colour: a computed value may not be rgb() (oklch, color()), so a canvas turns it into sRGB.
   const cv = document.createElement("canvas");
@@ -116,12 +137,13 @@
   // ---------- 1. Walking the text: Korean line breaks and overflow ----------
   const groups = new Map(); // block → [text nodes]
   const parents = new Set();
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+  const textFilter = {
     acceptNode(n) {
       if (n.nodeType === 1) return SKIP.has(n.localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
       return NodeFilter.FILTER_ACCEPT;
     },
-  });
+  };
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, textFilter);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const p = n.parentElement;
     if (!p) continue;
@@ -136,17 +158,12 @@
     if (!groups.has(b)) groups.set(b, []);
     groups.get(b).push(n);
   }
-  // <br> and <wbr> are breaks made on purpose
-  const marks = new Set(document.body.querySelectorAll("br, wbr"));
-  const markAfter = new Map(); // text node → whether a <br> came before it
-  for (const m of marks) {
-    let nx = m.nextSibling;
-    while (nx && nx.nodeType === 3 && !nx.data.trim()) nx = nx.nextSibling;
-    if (nx && nx.nodeType === 3) markAfter.set(nx, true);
-    else if (nx && nx.nodeType === 1) {
-      const tw = document.createTreeWalker(nx, NodeFilter.SHOW_TEXT);
-      for (let t = tw.nextNode(); t; t = tw.nextNode()) if (t.data.trim()) { markAfter.set(t, true); break; }
-    }
+  // <br> and <wbr> are breaks made on purpose: the next text after each one may start a line, wherever that text sits
+  const markAfter = new Set();
+  const after = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, textFilter);
+  for (const m of document.body.querySelectorAll("br, wbr")) {
+    after.currentNode = m;
+    for (let t = after.nextNode(); t; t = after.nextNode()) if (t.data.trim()) { markAfter.add(t); break; }
   }
 
   // keep-all and break-all: read from the style of each text node's parent.
@@ -183,9 +200,9 @@
     const clips = /hidden|clip/.test(bs.overflowX);
     const ellipsis = bs.textOverflow === "ellipsis";
     const noSplit = NO_SPLIT.has(block.localName) || !!block.closest("pre");
-    let prev = null, opp = false, hard = false, lines = 1, line = "", allText = "", maxOut = 0;
+    let prev = null, opp = false, hard = false, lines = 1, line = "", allText = "", maxOut = 0, textTop = Infinity, textBottom = -Infinity;
     for (const node of nodes) {
-      if (markAfter.get(node)) hard = true;
+      if (markAfter.has(node)) hard = true;
       const text = node.data;
       for (let i = 0; i < text.length;) {
         const cp = text.codePointAt(i);
@@ -205,6 +222,8 @@
             }
           }
           if (!scrolls && !(clips && ellipsis)) maxOut = Math.max(maxOut, r.right - right, left - r.left);
+          textTop = Math.min(textTop, r.top);
+          textBottom = Math.max(textBottom, r.bottom);
           if (r.right > vw + 1) pageOut.set(block, Math.max(pageOut.get(block) || 0, r.right - vw));
           prev = { ch, r, tail: (allText + ch).slice(-6) };
           opp = false;
@@ -221,6 +240,9 @@
     }
     if (/hidden|clip/.test(bs.overflowY) && block.scrollHeight > block.clientHeight + 2 && bs.getPropertyValue("-webkit-line-clamp") === "none") {
       add("error", "text-clipped", "Text clipped vertically (fixed height, overflow hidden)", block);
+    } else {
+      const cut = clipperOf(block, textTop, textBottom);
+      if (cut) add("error", "text-clipped", "Text cut off by a box around it (fixed height, overflow hidden): " + where(cut), block);
     }
     // Orphan: text of more than one line whose last line holds one short word. A warning for heading-like text; body text is only counted
     const last = line.trim().split(/\s+/).filter(Boolean);
