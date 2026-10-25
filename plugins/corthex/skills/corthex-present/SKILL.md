@@ -29,3 +29,4 @@ This skill covers one stage. Its contract, steps, checks and output template are
 
 - Every claim on a slide comes from a record, a test result or a demo the audience can see. Mark plans as plans.
 - Pick one way to make the demo video and keep to it; switching tools late costs more than it saves.
+- For a video built as HTML and rendered to MP4, and for what each slide should draw, use the `corthex-uxui` skill. It adds motion, transitions and sound to this stage's scene table, keeps the SCENE IDs, and measures flashes and loudness before anyone is shown the video.

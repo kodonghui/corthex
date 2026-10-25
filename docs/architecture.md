@@ -31,7 +31,10 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   ├── references/          principles, profile, project, stage contract
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
-│   │       └── corthex-record/          minutes, decisions, progress
+│   │       ├── corthex-record/          minutes, decisions, progress
+│   │       └── corthex-uxui/            craft for screens, motion and video
+│   │           ├── references/          names, values, video, checks and their sources
+│   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
 │   ├── corthex-memory/                  session start context, with a hook
 │   │   ├── .claude-plugin/plugin.json   manifest for Claude Code
 │   │   ├── .codex-plugin/plugin.json    manifest for Codex; no root plugin.json
@@ -84,7 +87,7 @@ The optional plugins install the same way, as `corthex-memory@corthex` and `cort
 
 A plugin that holds only skills goes unchanged to Claude Code, Codex, OpenAI's plugin directory and other Agent Plugins clients. OpenAI's directory does not accept plugins with hooks, and Codex does not run Claude Code's `userConfig`. Each skill can also be used on its own, for example uploaded to claude.ai.
 
-So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule.
+So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule. A skill may still carry scripts in its own `scripts/` folder, as the Agent Skills format allows: `corthex-uxui` has two read-only checks there, which the agent runs like any other command.
 
 ## Skills
 
@@ -98,15 +101,16 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-build` | 10 WBS, 11 development, 12 QA |
 | `corthex-present` | 13 presentation |
 | `corthex-record` | minutes, decisions and progress, at any stage |
+| `corthex-uxui` | the craft of screens, motion and video, with its checks: in 08, 09 and 13, or on its own |
 
 `corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).
 
-- **Eight skills, not fourteen.** Hosts show every skill's description in each session, and Codex caps that first list at 2% of the context window (8,000 characters when the window is unknown). Grouping keeps the list short. The details of each stage sit in `references/` and are read only when needed.
+- **Nine skills, not one per stage.** Hosts show every skill's description in each session, and Codex caps that first list at 2% of the context window (8,000 characters when the window is unknown). Grouping keeps the list short. The details of each stage sit in `references/` and are read only when needed. `corthex-uxui` is a skill of its own rather than part of a stage skill: its craft and checks serve stages 08, 09 and 13, and also screen and video work outside a CORTHEX project, which only a description of its own lets the host find.
 - **Names start with `corthex-`** so they stay distinct when a skill is used outside the plugin. Inside the plugin, both hosts show them as `corthex:<skill>`.
 - **Frontmatter is portable.** Skills use only the fields of the Agent Skills format (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`), because claude.ai uploads and the Skills API reject host-specific fields. Bodies stay under 500 lines, and links stay inside the skill's own folder, one level deep.
 - **Skill text is English.** Replies follow the language in the user's profile.
 
-Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reports about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries take about 3,200 characters of the skill list.
+Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again.
 
 ## Working principles
 
@@ -191,11 +195,11 @@ For the server, `nexus/test/` checks the Worker over an in-memory SQLite stand-i
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the NEXUS server with `hub.py` when Node 22.13 or later is installed, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the `corthex-uxui` scripts (on made-up clips when FFmpeg is installed), the NEXUS server with `hub.py` when Node 22.13 or later is installed, links and translations of the docs, no secrets or private text |
 | Server checks | `node --test nexus/test/*.test.js` | the NEXUS Worker: the Access check, snapshot checks, storage, the page and its security headers |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
-CI runs the repository and server checks on Linux, Windows and macOS, and the Claude Code validation and a Wrangler build of the server on Linux, for every pull request and every push to `main`. A pull request that changes `corthex-memory` or the Windows hook check also runs the memory hook in Claude Code and Codex on Windows, with Git Bash, with PowerShell 7 only and with Windows PowerShell 5.1 only, against a local stand-in for the model API.
+CI runs the repository and server checks on Linux, Windows and macOS, and the Claude Code validation and a Wrangler build of the server on Linux, for every pull request and every push to `main`. It installs FFmpeg on Linux and Windows so the media check runs on made-up clips there; on macOS those tests are skipped. A pull request that changes `corthex-memory` or the Windows hook check also runs the memory hook in Claude Code and Codex on Windows, with Git Bash, with PowerShell 7 only and with Windows PowerShell 5.1 only, against a local stand-in for the model API.
 
 ## Roadmap
 

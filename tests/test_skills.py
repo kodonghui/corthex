@@ -6,7 +6,7 @@ from _common import KEBAB, PLUGINS, SKILL_KEYS, load_json, local_links, read_tex
 
 CORE_SKILLS = {
     "corthex", "corthex-discover", "corthex-define", "corthex-contract",
-    "corthex-screen", "corthex-build", "corthex-present", "corthex-record",
+    "corthex-screen", "corthex-build", "corthex-present", "corthex-record", "corthex-uxui",
 }
 MAX_DESCRIPTION = 1024
 MAX_BODY_LINES = 500

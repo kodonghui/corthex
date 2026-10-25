@@ -66,6 +66,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 | `corthex-build` | 10–12 | 작업 분해, 개발, QA |
 | `corthex-present` | 13 | 발표 대본, 장면표, 슬라이드 |
 | `corthex-record` | 상시 | 회의록, 결정 로그, 진행 기록 |
+| `corthex-uxui` | 08·09·13 또는 단독 | 화면·모션·영상의 막연한 디자인 표현을 부품 이름과 숫자로 바꾸고, 결과를 보이기 전에 줄바꿈·대비·터치 크기·번쩍임·음량을 잴 때 |
 | `corthex-hub` | 전체, `corthex-nexus`에 있음 | 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지로 보고, 단계마다 진행 상태를 기록할 때 |
 
 ## 프로필과 프로젝트
@@ -82,6 +83,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 - Claude Code는 `.claude-plugin/marketplace.json`과 각 플러그인의 `.claude-plugin/plugin.json`을 읽습니다.
 - Codex와 다른 [Agent Plugins](https://agent-plugins.org) 클라이언트는 `.agents/plugins/marketplace.json`과 핵심 플러그인 루트의 `plugin.json`을 읽습니다. `corthex-memory`는 훅이 있어 그 대신 `.codex-plugin/plugin.json`을 두고, Claude Code와 Codex에서만 씁니다. `corthex-nexus`는 훅이 없어 루트 `plugin.json`을 둡니다.
 - 스킬은 [Agent Skills](https://agentskills.io) 형식이라 두 도구가 함께 쓰고, 스킬 하나만 따로 쓸 수도 있습니다.
+- `corthex-uxui`에는 필요할 때 쓰는 점검 스크립트 둘이 있고, 둘 다 읽기만 합니다. `page-check.js`는 점검할 페이지 안에서 돌며, 브라우저 콘솔에 붙여 넣거나 Playwright 같은 브라우저 자동화 도구에 넘겨 씁니다. `media-check.py`는 Python 3.8 이상과 FFmpeg가 필요합니다.
 
 ## 개발
 

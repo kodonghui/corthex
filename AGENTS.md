@@ -6,7 +6,8 @@ This repository is a plugin marketplace for Claude Code and Codex. Read [docs/ar
 
 - The core plugin, `plugins/corthex`, holds skills only: no hooks, commands, agents, MCP servers or user settings. Anything that needs them is a separate plugin.
 - A plugin with hooks has `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` and no root `plugin.json`, because Codex skips a plugin's hooks when a root `plugin.json` exists.
-- Scripts use the Python standard library only, run on Python 3.8 or later on Windows, macOS and Linux, and write only under `~/.corthex/` or where the user says. Hook scripts also keep their output under the hosts' limits, and add nothing and exit 0 when they fail.
+- Scripts use the Python standard library only, run on Python 3.8 or later on Windows, macOS and Linux, and write only under `~/.corthex/` or where the user says. A script may call a program the user installed, such as Git or FFmpeg; it takes the program from a path the user gave or from an absolute folder on PATH, never from the current folder, and says what is missing when it cannot run without it. Hook scripts also keep their output under the hosts' limits, and add nothing and exit 0 when they fail.
+- A check that runs inside a web page, such as `corthex-uxui`'s `page-check.js`, is one plain JavaScript file with no dependencies. It reads the page and sends and changes nothing, and `tests/test_uxui.py` keeps it that way.
 - Nothing leaves the user's machine unless they ask: a script uses the network only in a command made for sending, to an address the user set, for projects the user listed.
 - Skills follow the Agent Skills format: only the portable frontmatter fields, the name equal to the folder name, a body under 500 lines, and links that stay inside the skill's folder.
 - Skill text is English. README and docs come in pairs, `<name>.md` and `<name>.ko.md`, and a change to one is made to both.
