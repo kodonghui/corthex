@@ -1,6 +1,6 @@
 ---
 name: corthex-present
-description: CORTHEX stage 13, the presentation. Use when preparing a project demo or final presentation: turning project records into a script, the script into a scene table (SCENE IDs) with screens, narration and timing, and the scene table into slides or a demo video plan.
+description: "CORTHEX stage 13, the presentation. Use when preparing a project demo or final presentation: turning project records into a script, the script into a scene table (SCENE IDs) with screens, narration and timing, and the scene table into slides or a demo video plan."
 license: Apache-2.0
 metadata:
   author: kodonghui

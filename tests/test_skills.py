@@ -36,6 +36,19 @@ class SkillFormatTest(unittest.TestCase):
                 self.assertEqual(fields["metadata"].get("author"), manifest["author"]["name"])
                 self.assertLessEqual(len(body.splitlines()), MAX_BODY_LINES)
 
+    def test_frontmatter_quotes_what_yaml_reads_differently(self):
+        for value in ("a: b", "ends:", "a #b", "[a]", "- a", "*a", "1.0", "true", "null"):
+            for line in ("description: %s\n", "metadata:\n  version: %s\n"):
+                with self.subTest(value=value, line=line):
+                    with self.assertRaises(ValueError):
+                        split_frontmatter("---\n" + line % value + "---\n")
+        fields, _ = split_frontmatter(
+            '---\ndescription: "a: b"\nlicense: a:b, http://x.y\nmetadata:\n  version: "1.0"\n---\n'
+        )
+        self.assertEqual(fields["description"], "a: b")
+        self.assertEqual(fields["license"], "a:b, http://x.y")
+        self.assertEqual(fields["metadata"]["version"], "1.0")
+
     def test_names_are_unique(self):
         names = [path.parent.name for path in skill_files()]
         self.assertEqual(len(names), len(set(names)))
