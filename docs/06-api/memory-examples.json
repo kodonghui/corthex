@@ -1,0 +1,775 @@
+{
+  "description": "Named examples for the schemas beside this file, by schema. Each valid example fits its schema and each invalid one does not; the repository's tests check both, and stage 12 uses them as fixtures.",
+  "configuration": {
+    "schema": "memory-configuration.schema.json",
+    "valid": {
+      "defaults": {},
+      "with-sync": {
+        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["private-notes"], "kinds": []}
+          }
+        },
+        "retention": {"days": 30},
+        "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
+      },
+      "temporary": {
+        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
+        "projects": {"corthex": {"enabled": true, "since": "2026-10-25T09:12:03.004Z"}},
+        "temporary": true,
+        "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
+      },
+      "tuned": {
+        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["vendor", "docs/private"], "kinds": ["boundary"]}
+          },
+          "corthex-docs": {"enabled": false, "since": "2026-10-20T08:00:00.000Z"}
+        },
+        "retention": {"days": 90},
+        "triggers": {"turns": 5, "minutes": 60},
+        "models": {"effort": "high", "dims": 1536},
+        "recall": {"threshold": 0.35, "skip": 12}
+      },
+      "own-prices": {
+        "prices": {
+          "taken": "2026-11-02",
+          "from": ["https://platform.claude.com/docs/en/about-claude/pricing"],
+          "models": {
+            "claude-haiku-5-5": {"input": 0.1, "output": 0.5},
+            "text-embedding-3-small": {"input": 0.02, "output": 0}
+          }
+        }
+      }
+    },
+    "invalid": {
+      "unknown-field": {"retention": {"days": 30, "weeks": 2}},
+      "retention-too-long": {"retention": {"days": 4000}},
+      "dims-too-small": {"models": {"dims": 32}},
+      "effort": {"models": {"effort": "extreme"}},
+      "consent-without-version": {"consent": {"at": "2026-10-25T09:12:03.004Z"}},
+      "time-without-milliseconds": {"consent": {"at": "2026-10-25T09:12:03Z", "version": 1}},
+      "project-name": {"projects": {"Corthex": {"enabled": true, "since": "2026-10-25T09:12:03.004Z"}}},
+      "folder-up": {
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["../notes"], "kinds": []}
+          }
+        }
+      },
+      "folder-absolute": {
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["/etc"], "kinds": []}
+          }
+        }
+      },
+      "folder-backslash": {
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["docs\\private"], "kinds": []}
+          }
+        }
+      },
+      "folder-line-break": {
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": ["docs\n"], "kinds": []}
+          }
+        }
+      },
+      "kind": {
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z",
+            "left_out": {"folders": [], "kinds": ["tool"]}
+          }
+        }
+      },
+      "branch-dash": {"sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "-main"}},
+      "sync-without-address": {"sync": {"branch": "main"}},
+      "price-without-output": {
+        "prices": {
+          "taken": "2026-11-02",
+          "from": ["https://platform.claude.com/docs/en/about-claude/pricing"],
+          "models": {"claude-haiku-5-5": {"input": 0.1}}
+        }
+      },
+      "price-page-http": {
+        "prices": {
+          "taken": "2026-11-02",
+          "from": ["http://platform.claude.com/docs/en/about-claude/pricing"],
+          "models": {"claude-haiku-5-5": {"input": 0.1, "output": 0.5}}
+        }
+      },
+      "threshold-text": {"recall": {"threshold": "0.3"}},
+      "temporary-text": {"temporary": "yes"}
+    }
+  },
+  "curate": {
+    "schema": "memory-curate.schema.json",
+    "valid": {
+      "add-a-decision": {
+        "changes": [
+          {
+            "action": "add",
+            "targets": [],
+            "kind": "decision",
+            "quotes": [
+              {"entry": "e_5h2j8n3p0r6t", "words": "Let's keep the four hooks in one script."},
+              {"entry": "e_8m1k4r7t2w5y", "words": "one script now serves the four hooks"}
+            ],
+            "title": "One script serves the four hooks",
+            "text": "The memory plugin's four hooks run one script, with the hook's name as its argument."
+          }
+        ],
+        "state": {
+          "goal": [],
+          "decisions": [
+            {
+              "keeps": "s_4n8q2v6x0z3b",
+              "text": "Raw logs stay on the device.",
+              "cites": ["i_7f3k2m9q4x1v"],
+              "changes": []
+            },
+            {"keeps": "", "text": "One script serves the four hooks.", "cites": [], "changes": [1]}
+          ],
+          "progress": [
+            {"keeps": "", "text": "The hook script is written.", "cites": ["e_8m1k4r7t2w5y"], "changes": [1]}
+          ],
+          "blockers": [],
+          "next": [{"keeps": "", "text": "Test the four hooks on Windows.", "cites": ["e_8m1k4r7t2w5y"], "changes": []}]
+        }
+      },
+      "replace-a-preference": {
+        "changes": [
+          {
+            "action": "replace",
+            "targets": ["i_5c8e1h4j7m0p"],
+            "kind": "preference",
+            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "Answer me in Korean from now on."}],
+            "title": "Answers in Korean",
+            "text": "The user wants the agent's answers in Korean."
+          }
+        ],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "in-korean": {
+        "changes": [
+          {
+            "action": "add",
+            "targets": [],
+            "kind": "lesson",
+            "quotes": [{"entry": "e_3d6g9k2n5q8t", "words": "노션 표는 모두 데이터베이스로 만들어 주세요."}],
+            "title": "노션의 표는 데이터베이스로 만든다",
+            "text": "노션 사본의 표는 모두 인라인 데이터베이스로 만든다."
+          }
+        ],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "nothing": {"changes": [], "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}}
+    },
+    "invalid": {
+      "unknown-action": {
+        "changes": [
+          {
+            "action": "delete",
+            "targets": ["i_5c8e1h4j7m0p"],
+            "kind": "fact",
+            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "title": "x",
+            "text": "x"
+          }
+        ],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "no-quote": {
+        "changes": [{"action": "add", "targets": [], "kind": "fact", "quotes": [], "title": "x", "text": "x"}],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "reasoning-field": {
+        "changes": [
+          {
+            "action": "add",
+            "targets": [],
+            "kind": "fact",
+            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "title": "x",
+            "text": "x",
+            "reason": "x"
+          }
+        ],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "id-in-capitals": {
+        "changes": [
+          {
+            "action": "withdraw",
+            "targets": ["I_5C8E1H4J7M0P"],
+            "kind": "fact",
+            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "title": "x",
+            "text": "x"
+          }
+        ],
+        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+      },
+      "line-citing-a-line": {
+        "changes": [],
+        "state": {
+          "goal": [{"keeps": "", "text": "x", "cites": ["s_4n8q2v6x0z3b"], "changes": []}],
+          "decisions": [],
+          "progress": [],
+          "blockers": [],
+          "next": []
+        }
+      },
+      "missing-state": {"changes": []}
+    }
+  },
+  "merge": {
+    "schema": "memory-merge.schema.json",
+    "valid": {
+      "two-into-one": {
+        "merges": [
+          {
+            "items": ["i_3r6t9w2y5a8d", "i_5c8e1h4j7m0p"],
+            "quotes": [{"item": "i_5c8e1h4j7m0p", "number": 1}, {"item": "i_3r6t9w2y5a8d", "number": 1}],
+            "title": "Answers in Korean",
+            "text": "The user wants the agent's answers in Korean."
+          }
+        ]
+      },
+      "none": {"merges": []}
+    },
+    "invalid": {
+      "no-items": {
+        "merges": [{"items": [], "quotes": [{"item": "i_5c8e1h4j7m0p", "number": 1}], "title": "x", "text": "x"}]
+      },
+      "quote-by-words": {
+        "merges": [
+          {"items": ["i_5c8e1h4j7m0p"], "quotes": [{"item": "i_5c8e1h4j7m0p", "words": "x"}], "title": "x", "text": "x"}
+        ]
+      }
+    }
+  },
+  "state": {
+    "schema": "memory-state.schema.json",
+    "valid": {
+      "shorter": {
+        "state": {
+          "goal": [
+            {
+              "keeps": "s_6p9s2v5y8b1e",
+              "text": "Ship corthex-memory 0.2.0.",
+              "cites": ["i_2b8d0w5n6c3r"],
+              "changes": []
+            }
+          ],
+          "decisions": [
+            {
+              "keeps": "s_4n8q2v6x0z3b",
+              "text": "Raw logs stay on the device.",
+              "cites": ["i_7f3k2m9q4x1v"],
+              "changes": []
+            }
+          ],
+          "progress": [],
+          "blockers": [],
+          "next": [{"keeps": "", "text": "Write the hook script.", "cites": ["e_8m1k4r7t2w5y"], "changes": []}]
+        }
+      }
+    },
+    "invalid": {
+      "missing-part": {"state": {"goal": [], "decisions": [], "progress": [], "blockers": []}},
+      "line-without-changes": {
+        "state": {
+          "goal": [{"keeps": "", "text": "x", "cites": ["i_2b8d0w5n6c3r"]}],
+          "decisions": [],
+          "progress": [],
+          "blockers": [],
+          "next": []
+        }
+      }
+    }
+  },
+  "result": {
+    "schema": "memory-result.schema.json",
+    "valid": {
+      "on-asks": {
+        "command": "on",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Memory needs the user's consent first. Show the consent text and ask.",
+        "data": {
+          "project": "corthex",
+          "consent": {
+            "version": 1,
+            "text": "CORTHEX memory, consent version 1.\n\n- When memory is on for a project, this device records your prompts and the agent's final answers in sessions that work in that project's folders, after removing secrets and the text you mark with <private>. Tool calls, tool results and files are not recorded.\n- To curate memory, the recorded turns, the project's current state and its item list are sent to Anthropic with the key in CORTHEX_MEMORY_ANTHROPIC_API_KEY, to the model in the memory configuration, by default Claude Haiku 5.5.\n- To recall and to search, your prompts, search requests and memory items are sent to OpenAI with the key in CORTHEX_MEMORY_OPENAI_API_KEY, to make embeddings, by default with text-embedding-3-small.\n- The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a private Git repository of yours.\n- Recordings are deleted after 30 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.\n- Anthropic's and OpenAI's terms for their APIs govern what they do with the data they receive. The plugin sets no spending limit; its usage is in the memory status and in each provider's console."
+          }
+        },
+        "confirm": "k3v9q2m7"
+      },
+      "on-done": {
+        "command": "on",
+        "outcome": "done",
+        "code": "ok",
+        "say": "Memory is on for corthex. Curation waits for CORTHEX_MEMORY_ANTHROPIC_API_KEY, which the environment does not have.",
+        "data": {
+          "project": "corthex",
+          "keys": {"anthropic": "missing", "openai": "present"},
+          "retention_days": 30,
+          "left_out": {"folders": [], "kinds": []}
+        }
+      },
+      "on-clash": {
+        "command": "on",
+        "outcome": "refused",
+        "code": "not-in-project",
+        "say": "This folder belongs to two projects, corthex and corthex-docs, so memory cannot tell which one. The corthex skill can fix the project list.",
+        "data": {"clash": ["corthex", "corthex-docs"]}
+      },
+      "off-already": {
+        "command": "off",
+        "outcome": "nothing",
+        "code": "not-enabled",
+        "say": "Memory is already off for corthex.",
+        "data": {"project": "corthex"}
+      },
+      "status": {
+        "command": "status",
+        "outcome": "done",
+        "code": "ok",
+        "say": "Memory is on for corthex. Curation stopped after three failed attempts in a row, each with the key rejected; resume can start it again.",
+        "data": {
+          "store": {
+            "format": 1,
+            "device": "d_0a3c6f9h2k5n",
+            "release": "0.2.0",
+            "folder": "~/.corthex/corthex-memory",
+            "writable": true
+          },
+          "configuration": {"valid": true},
+          "consent": {"needed": 1, "given": 1, "at": "2026-10-25T09:12:03.004Z"},
+          "keys": {"anthropic": "rejected", "openai": "present"},
+          "temporary": false,
+          "test_servers": [],
+          "projects": [
+            {
+              "project": "corthex",
+              "enabled": true,
+              "since": "2026-10-25T09:12:03.004Z",
+              "curation": {
+                "at": "2026-10-25T11:40:12.511Z",
+                "result": "failed",
+                "error": "authentication_error",
+                "failed_in_row": 3
+              },
+              "unprocessed": 14,
+              "oldest": "2026-10-25T10:02:44.130Z",
+              "stopped": {"at": "2026-10-25T11:40:12.590Z", "by": "curate", "errors": ["authentication_error"]},
+              "consolidation": {"due": "2026-11-01T09:12:03.004Z", "failures": 0},
+              "items": {"current": 12, "superseded": 2, "withdrawn": 0},
+              "pins": ["i_7f3k2m9q4x1v"]
+            }
+          ],
+          "usage": {
+            "month": "2026-10",
+            "models": [
+              {"model": "claude-haiku-5-5", "calls": 9, "input": 61230, "output": 18044, "cost": 0.015145},
+              {"model": "text-embedding-3-small", "calls": 31, "input": 2410, "output": 0, "cost": 4.8e-05}
+            ],
+            "cost": 0.015193
+          },
+          "failures": [
+            {"at": "2026-10-25T11:40:12.511Z", "step": "curate", "project": "corthex", "error": "authentication_error"}
+          ],
+          "hooks": [
+            {
+              "hook": "start",
+              "host": "claude-code",
+              "runs": 6,
+              "median_ms": 48,
+              "p95_ms": 95,
+              "last": "2026-10-25T11:31:00.250Z",
+              "outcomes": {"ok": 6}
+            },
+            {
+              "hook": "prompt",
+              "host": "claude-code",
+              "runs": 40,
+              "median_ms": 212,
+              "p95_ms": 431,
+              "last": "2026-10-25T11:52:30.007Z",
+              "outcomes": {"ok": 39, "left-out": 1}
+            },
+            {
+              "hook": "end-of-turn",
+              "host": "claude-code",
+              "runs": 38,
+              "median_ms": 9,
+              "p95_ms": 31,
+              "last": "2026-10-25T11:53:02.441Z",
+              "outcomes": {"ok": 37, "no-answer": 1}
+            }
+          ],
+          "sync": {"state": "off"},
+          "waits": []
+        }
+      },
+      "status-no-store": {
+        "command": "status",
+        "outcome": "nothing",
+        "code": "no-store",
+        "say": "Memory has never been turned on on this device. The on command turns it on for a project.",
+        "data": {}
+      },
+      "resume-asks": {
+        "command": "resume",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Curation of corthex stopped after three failed attempts, each with the key rejected. Resume once the key works again.",
+        "data": {
+          "project": "corthex",
+          "failures": [
+            {"at": "2026-10-25T11:40:12.511Z", "kind": "curate", "error": "authentication_error"},
+            {"at": "2026-10-25T11:10:40.032Z", "kind": "curate", "error": "authentication_error"},
+            {"at": "2026-10-25T10:41:05.977Z", "kind": "curate", "error": "authentication_error"}
+          ],
+          "unprocessed": 14
+        },
+        "confirm": "t5x8b2e6"
+      },
+      "list": {
+        "command": "list",
+        "outcome": "done",
+        "code": "ok",
+        "say": "3 current items, newest first.",
+        "data": {
+          "project": "corthex",
+          "items": [
+            {
+              "item": "i_9k1m4t7v2q8x",
+              "kind": "decision",
+              "speaker": "user",
+              "date": "2026-10-25",
+              "title": "Curation runs in one detached background process"
+            },
+            {
+              "item": "i_7f3k2m9q4x1v",
+              "kind": "decision",
+              "speaker": "user",
+              "date": "2026-10-24",
+              "title": "Keep raw logs on the device"
+            },
+            {
+              "item": "i_2b8d0w5n6c3r",
+              "kind": "fact",
+              "speaker": "agent",
+              "date": "2026-10-24",
+              "title": "Release 0.2.0 adds recording and the start summary"
+            }
+          ],
+          "more": 0
+        }
+      },
+      "search-by-words": {
+        "command": "search",
+        "outcome": "done",
+        "code": "ok",
+        "say": "Searched by words only, since CORTHEX_MEMORY_OPENAI_API_KEY is missing; 2 items found.",
+        "data": {
+          "project": "corthex",
+          "by": "words",
+          "reason": "no-key",
+          "results": [
+            {
+              "item": "i_7f3k2m9q4x1v",
+              "kind": "decision",
+              "status": "current",
+              "speaker": "user",
+              "date": "2026-10-24",
+              "title": "Keep raw logs on the device"
+            },
+            {
+              "item": "i_3r6t9w2y5a8d",
+              "kind": "decision",
+              "status": "superseded",
+              "speaker": "user",
+              "date": "2026-10-23",
+              "title": "Sync the raw logs too"
+            }
+          ]
+        }
+      },
+      "open-around": {
+        "command": "open",
+        "outcome": "done",
+        "code": "ok",
+        "say": "1 item, with its quote and the words around it.",
+        "data": {
+          "project": "corthex",
+          "items": [
+            {
+              "item": "i_7f3k2m9q4x1v",
+              "kind": "decision",
+              "status": "current",
+              "title": "Keep raw logs on the device",
+              "text": "Raw logs never leave the device; only the curated layer is synced.",
+              "saved": "2026-10-24T13:20:41.808Z",
+              "quotes": [
+                {
+                  "entry": "e_1a4d7g0j3m6q",
+                  "log": "claude-code-3f9a0c41d2e87b65",
+                  "device": "d_0a3c6f9h2k5n",
+                  "speaker": "user",
+                  "said": "2026-10-24T13:01:09.120Z",
+                  "words": "keep the raw logs on this machine",
+                  "held": "here",
+                  "before": "Let's ",
+                  "after": ", and sync only what the curator keeps."
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "pin-no-room": {
+        "command": "pin",
+        "outcome": "refused",
+        "code": "pin-no-room",
+        "say": "The start summary has no room for another pinned item. Unpin one of these first.",
+        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x", "pins": ["i_7f3k2m9q4x1v", "i_2b8d0w5n6c3r"]}
+      },
+      "pin-not-found": {
+        "command": "pin",
+        "outcome": "refused",
+        "code": "item-not-found",
+        "say": "No item i_7f3k2m9q4x1w in corthex. The closest is i_7f3k2m9q4x1v.",
+        "data": {
+          "project": "corthex",
+          "item": "i_7f3k2m9q4x1w",
+          "matches": [
+            {
+              "item": "i_7f3k2m9q4x1v",
+              "kind": "decision",
+              "speaker": "user",
+              "date": "2026-10-24",
+              "title": "Keep raw logs on the device"
+            }
+          ]
+        }
+      },
+      "pin-superseded": {
+        "command": "pin",
+        "outcome": "refused",
+        "code": "item-not-current",
+        "say": "i_3r6t9w2y5a8d was superseded by i_7f3k2m9q4x1v, which can be pinned instead.",
+        "data": {"project": "corthex", "item": "i_3r6t9w2y5a8d", "current": "i_7f3k2m9q4x1v"}
+      },
+      "forget-asks": {
+        "command": "forget",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Forgetting i_7f3k2m9q4x1v also removes one current state line and its pin. Its quoted words stay in the raw log, since i_5c8e1h4j7m0p quotes them too; name that item with --with to forget it as well.",
+        "data": {
+          "project": "corthex",
+          "item": "i_7f3k2m9q4x1v",
+          "with": [],
+          "also": ["i_5c8e1h4j7m0p"],
+          "state_lines": [{"line": "s_4n8q2v6x0z3b", "part": "decisions", "text": "Raw logs stay on the device."}],
+          "pinned": ["i_7f3k2m9q4x1v"],
+          "raw": [
+            {"entry": "e_1a4d7g0j3m6q", "log": "claude-code-3f9a0c41d2e87b65", "forgotten": [], "kept": [[6, 39]]}
+          ],
+          "outside": ["host-transcript", "providers", "devices-without-sync"]
+        },
+        "confirm": "7m2q9v3k"
+      },
+      "delete-project-asks": {
+        "command": "delete-project",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin. Sync is off, so other devices keep theirs.",
+        "data": {"project": "corthex", "deleted": {"items": 14, "entries": 212, "pins": 1}, "sync": "off"},
+        "confirm": "a8d3k0m5"
+      },
+      "purge-files-left": {
+        "command": "purge",
+        "outcome": "failed",
+        "code": "files-left",
+        "say": "The memory store is deleted except one file that another program holds. Close that program and delete the folder by hand.",
+        "data": {
+          "folder": "~/.corthex/corthex-memory",
+          "projects": ["corthex"],
+          "deleted": {"items": 14, "entries": 212, "usage": 40},
+          "sync": "off",
+          "left": ["projects/corthex/index.db"]
+        }
+      },
+      "leave-out-done": {
+        "command": "leave-out",
+        "outcome": "done",
+        "code": "ok",
+        "say": "vendor is now left out of recording for corthex.",
+        "data": {"project": "corthex", "folders": ["private-notes", "vendor"], "kinds": []}
+      },
+      "leave-out-outside": {
+        "command": "leave-out",
+        "outcome": "refused",
+        "code": "folder-outside",
+        "say": "../notes is outside the project corthex.",
+        "data": {"project": "corthex", "folders": ["private-notes"], "kinds": [], "outside": ["../notes"]}
+      },
+      "retention-asks": {
+        "command": "retention",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "A retention period of 7 days deletes 180 raw log entries at the next session start.",
+        "data": {"days": 7, "was": 30, "entries": 180},
+        "confirm": "q4w8z1c6"
+      },
+      "sync-public": {
+        "command": "sync",
+        "outcome": "refused",
+        "code": "public",
+        "say": "The repository can be read without credentials, so sync stays off. Make the repository private first.",
+        "data": {
+          "state": "off",
+          "address": "https://github.com/<owner>/<memory-repository>.git",
+          "branch": "main",
+          "checked_by": "github"
+        }
+      },
+      "sync-not-checked": {
+        "command": "sync",
+        "outcome": "confirm",
+        "code": "not-checked",
+        "say": "Memory cannot check whether this repository is private. Turn sync on only if it is.",
+        "data": {"state": "off", "address": "/srv/git/memory.git", "branch": "main"},
+        "confirm": "m6p1t9x4"
+      },
+      "sync-now": {
+        "command": "sync",
+        "outcome": "done",
+        "code": "ok",
+        "say": "Synced: 3 items came from other devices, and this device's memory was pushed.",
+        "data": {
+          "state": "on",
+          "address": "https://github.com/<owner>/<memory-repository>.git",
+          "branch": "main",
+          "checked_by": "github",
+          "pulled": 3,
+          "pushed": true
+        }
+      },
+      "setup": {
+        "command": "setup",
+        "outcome": "done",
+        "code": "ok",
+        "say": "Put this script in the environment's setup, and the two memory keys in its secret settings.",
+        "data": {
+          "project": "corthex",
+          "at": "/workspace/corthex",
+          "script": "#!/bin/sh\nset -eu\npython3 - <<'CORTHEX_MEMORY_SETUP'\n# Writes the project list, the store record, the memory configuration and the project's folder where they are missing.\nCORTHEX_MEMORY_SETUP\n"
+        }
+      },
+      "repair-asks": {
+        "command": "repair",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "The store record is damaged and no backup can be restored. Repair writes a new one, with a new device ID; nothing else changes.",
+        "data": {},
+        "confirm": "c2f7j0n4"
+      },
+      "configuration-invalid": {
+        "command": "list",
+        "outcome": "refused",
+        "code": "configuration-invalid",
+        "say": "The memory configuration is not valid at retention.days, so memory is off on this device. The retention command can set it again.",
+        "data": {"field": "retention.days"}
+      },
+      "unknown-command": {
+        "command": "none",
+        "outcome": "refused",
+        "code": "usage",
+        "say": "Unknown command remember. The commands are on, off, status, resume, list, search, open, pin, unpin, forget, delete-project, purge, leave-out, retention, sync, setup and repair.",
+        "data": {}
+      },
+      "internal": {
+        "command": "status",
+        "outcome": "failed",
+        "code": "internal",
+        "say": "Memory hit an unexpected error; the failure log names it.",
+        "data": {"error": "KeyError"}
+      }
+    },
+    "invalid": {
+      "confirm-without-code": {
+        "command": "purge",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "x",
+        "data": {
+          "folder": "~/.corthex/corthex-memory",
+          "projects": [],
+          "deleted": {"items": 0, "entries": 0, "usage": 0},
+          "sync": "off"
+        }
+      },
+      "code-on-done": {
+        "command": "off",
+        "outcome": "done",
+        "code": "ok",
+        "say": "x",
+        "data": {"project": "corthex"},
+        "confirm": "k3v9q2m7"
+      },
+      "wrong-outcome": {
+        "command": "pin",
+        "outcome": "failed",
+        "code": "pin-no-room",
+        "say": "x",
+        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x", "pins": []}
+      },
+      "data-of-another-command": {
+        "command": "list",
+        "outcome": "done",
+        "code": "ok",
+        "say": "x",
+        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x"}
+      },
+      "code-of-another-command": {
+        "command": "list",
+        "outcome": "refused",
+        "code": "pin-no-room",
+        "say": "x",
+        "data": {"project": "corthex", "items": [], "more": 0}
+      },
+      "unknown-code": {"command": "status", "outcome": "failed", "code": "oops", "say": "x", "data": {}},
+      "empty-say": {"command": "off", "outcome": "done", "code": "ok", "say": "", "data": {"project": "corthex"}},
+      "key-in-data": {
+        "command": "on",
+        "outcome": "done",
+        "code": "ok",
+        "say": "x",
+        "data": {"project": "corthex", "key": "x"}
+      }
+    }
+  }
+}

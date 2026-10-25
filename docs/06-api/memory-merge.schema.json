@@ -1,0 +1,32 @@
+{
+  "description": "An answer to a merge request: merges of items of the request's group that say the same thing.",
+  "type": "object",
+  "properties": {
+    "merges": {"type": "array", "items": {"$ref": "#/$defs/merge"}}
+  },
+  "required": ["merges"],
+  "additionalProperties": false,
+  "$defs": {
+    "item-id": {"type": "string", "pattern": "^i_[0-9a-hjkmnp-tv-z]{12}$"},
+    "merge": {
+      "type": "object",
+      "properties": {
+        "items": {"description": "The items of the request that this merge replaces.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/item-id"}},
+        "quotes": {"description": "The merged item's quotes, named by item and number, the deciding quote first.", "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/quote"}},
+        "title": {"description": "One line.", "type": "string"},
+        "text": {"type": "string"}
+      },
+      "required": ["items", "quotes", "title", "text"],
+      "additionalProperties": false
+    },
+    "quote": {
+      "type": "object",
+      "properties": {
+        "item": {"$ref": "#/$defs/item-id"},
+        "number": {"description": "The quote's n in the request.", "type": "integer"}
+      },
+      "required": ["item", "number"],
+      "additionalProperties": false
+    }
+  }
+}

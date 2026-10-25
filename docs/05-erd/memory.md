@@ -123,18 +123,18 @@ If it is lost and no backup can be restored while other files are there, nothing
 
 ### Memory configuration (TBL-002)
 
-Written only by the memory skill, under the store lock, and on a temporary device by the user's environment setup before the first session (SPEC-011). Never synced, and never holds a key. The defaults below come from the functional spec; stage 06 confirms them, and a field left out takes its default.
+Written only by the memory skill, under the store lock, and on a temporary device by the user's environment setup before the first session (SPEC-011). Never synced, and never holds a key. The defaults below come from the functional spec, and stage 06 confirmed them; a field left out takes its default. The ranges and patterns of the fields are those of stage 06's [configuration schema](../06-api/memory-configuration.schema.json).
 
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `consent` | optional object: `at` (time), `version` (integer) | The user's consent and the version of its text (SPEC-030). Without consent at the version the release needs, nothing is recorded or sent. |
-| `projects` | object: project name → `enabled` (true or false), `since` (time), `left_out` (`folders`: folders relative to the project's folder; `kinds`: any of `prompt`, `answer`, `boundary`) | The projects that memory was turned on for, when it was last turned on, and what is left out of recording (SPEC-006, SPEC-030, SPEC-036) |
+| `projects` | object: project name → `enabled` (true or false), `since` (time), optional `left_out` (`folders`: folders relative to the project's folder; `kinds`: any of `prompt`, `answer`, `boundary`) | The projects that memory was turned on for, when it was last turned on, and what is left out of recording (SPEC-006, SPEC-030, SPEC-036) |
 | `retention` | object: `days`, integer of 1 or more, default 30 | The retention period (SPEC-009) |
 | `triggers` | object: `turns`, default 10; `minutes`, default 30 | The curation triggers at the end of a turn (SPEC-010) |
 | `temporary` | optional true or false | Whether the device is a temporary device; left out, the code asks the host (SPEC-011) |
-| `models` | object: `curator`, default `claude-haiku-5-5`; `effort`, default `xhigh`; `embedding`, default `text-embedding-3-small`; `dims`, the shortened vector length that stage 06 fixes | The models (SPEC-014, SPEC-023) |
+| `models` | object: `curator`, default `claude-haiku-5-5`; `effort`, default `xhigh`; `embedding`, default `text-embedding-3-small`; `dims`, the shortened vector length, default 512 | The models (SPEC-014, SPEC-023) |
 | `recall` | object: `threshold`, optional number; `skip`, default 8 | The recall threshold, which has no value until stage 12 sets it, and the shortest prompt, in characters, that recall runs for (SPEC-023) |
-| `prices` | object: `taken` (date), `from` (the address of the provider's price page), `models` (model → `input`, `output` and optional `cache_write`, `cache_read`, in US dollars per million tokens, and optional `above` with `tokens`, `input` and `output` for prices that change with the prompt's length) | The price list (SPEC-032) |
+| `prices` | object: `taken` (date), `from` (the addresses of the providers' price pages, one each), `models` (model → `input`, `output` and optional `cache_write`, `cache_read`, in US dollars per million tokens, and optional `above` with `tokens`, `input` and `output` for prices that change with the prompt's length) | The price list (SPEC-032) |
 | `sync` | optional object: `address`, `branch`, default `main` | The sync remote; sync is on while this is there (SPEC-026) |
 
 If it is lost and no backup can be restored, memory is off on the device: there is no consent and no enabled project, so nothing is recorded or sent until the user turns memory on again, and the memory status says so.
