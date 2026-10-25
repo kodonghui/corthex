@@ -11,7 +11,8 @@
  * What it measures
  *   Korean line breaks: missing keep-all or break-all, words split at a line end, orphans
  *   Overflow: text outside its box or clipped, the page scrolling sideways
- *   Contrast: text 4.5:1, large text 3:1 (text over images or gradients is flagged for a check by hand)
+ *   Contrast: text, field values and placeholders 4.5:1, large text 3:1, through any opacity
+ *             (text over images or gradients is flagged for a check by hand)
  *   Target size: 24×24 px (WCAG 2.5.8, with the spacing and in-sentence link exceptions)
  *   Basic accessibility: img alt, field labels, html lang
  *   Motion: transition: all, properties that trigger layout, prefers-reduced-motion rules
@@ -46,7 +47,8 @@
     if (!s) { s = getComputedStyle(el); styleCache.set(el, s); }
     return s;
   };
-  const snippet = (t) => (t || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const oneLine = (t) => (t || "").replace(/\s+/g, " ").trim();
+  const snippet = (t) => oneLine(t).slice(0, 40);
   function where(el) {
     const parts = [];
     for (let e = el, d = 0; e && e.nodeType === 1 && d < 4; e = e.parentElement, d++) {
@@ -103,10 +105,9 @@
     colorCache.set(str, c);
     return c;
   }
-  const over = (top, bottom) => {
-    const a = top[3];
-    return [0, 1, 2].map((i) => top[i] * a + bottom[i] * (1 - a)).concat(1);
-  };
+  // Premultiplied colours ([r·a, g·a, b·a, a]) make painting one colour over another, and fading by opacity, plain arithmetic.
+  const pre = (c) => [c[0] * c[3], c[1] * c[3], c[2] * c[3], c[3]];
+  const over = (top, bottom) => top.map((v, i) => v + bottom[i] * (1 - top[3]));
   const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
   const lum = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
   const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
@@ -118,14 +119,20 @@
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode(n) {
       if (n.nodeType === 1) return SKIP.has(n.localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
-      return n.data.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      return NodeFilter.FILTER_ACCEPT;
     },
   });
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const p = n.parentElement;
-    if (!p || !shown(p)) continue;
-    parents.add(p);
+    if (!p) continue;
     const b = blockOf(p);
+    if (!n.data.trim()) {
+      // A space between two elements, as in <span>a</span> <span>b</span>, is still a place where the line may break.
+      if (groups.has(b) && shown(p)) groups.get(b).push(n);
+      continue;
+    }
+    if (!shown(p)) continue;
+    parents.add(p);
     if (!groups.has(b)) groups.set(b, []);
     groups.get(b).push(n);
   }
@@ -247,24 +254,25 @@
   }
 
   // ---------- 3. Contrast ----------
-  let approxOpacity = 0;
+  let underOpacity = 0;
   const imageTags = new Set(["img", "video", "canvas", "svg", "picture", "iframe"]);
-  function backdrop(el) {
-    const layers = [];
-    let opacity = 1;
-    let image = false;
+  // The colours of the text and of the background beside it, painted as the browser paints them up the ancestors:
+  // each box paints its background under its content, and its opacity fades the whole box, background included.
+  function composite(el, colorStr) {
+    let text = pre(rgba(colorStr)), back = [0, 0, 0, 0], faded = false;
     for (let e = el; e; e = e.parentElement) {
       const s = css(e);
-      opacity *= parseFloat(s.opacity);
-      if (s.backgroundImage && s.backgroundImage !== "none") { image = true; break; }
-      const c = rgba(s.backgroundColor);
-      if (c[3] > 0) layers.push(c);
-      if (c[3] >= 1) break;
+      if (back[3] < 0.999) { // once the backdrop is opaque, the backgrounds behind it no longer show
+        if (s.backgroundImage && s.backgroundImage !== "none") return { image: true };
+        const b = pre(rgba(s.backgroundColor));
+        text = over(text, b);
+        back = over(back, b);
+      }
+      const a = parseFloat(s.opacity);
+      if (a < 1) { faded = true; text = text.map((v) => v * a); back = back.map((v) => v * a); }
     }
-    let base = [255, 255, 255, 1];
-    if (layers.length && layers[layers.length - 1][3] >= 1) base = layers.pop();
-    for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
-    return { base, opacity, image };
+    const canvas = [255, 255, 255, 1];
+    return { text: over(text, canvas), base: over(back, canvas), faded, image: false };
   }
   function behindIsImage(el) {
     const r = el.getBoundingClientRect();
@@ -272,7 +280,7 @@
     if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
     for (const e of document.elementsFromPoint(x, y)) {
       if (e === el || el.contains(e)) continue;
-      if (e.contains(el)) return false; // from an ancestor on, backdrop() takes over
+      if (e.contains(el)) return false; // from an ancestor on, composite() takes over
       if (imageTags.has(e.localName)) return true;
       const s = css(e);
       if (s.backgroundImage !== "none") return true;
@@ -286,28 +294,34 @@
     const weight = parseInt(s.fontWeight, 10) || (s.fontWeight === "bold" ? 700 : 400);
     const large = size >= 24 || (size >= 18.66 && weight >= 700);
     const need = large ? 3 : 4.5;
-    const bd = backdrop(el);
-    let fg = rgba(colorStr);
-    if (bd.opacity < 1) { fg = [fg[0], fg[1], fg[2], fg[3] * bd.opacity]; approxOpacity++; }
-    const text = over(fg, bd.base);
-    const r = ratio(text, bd.base);
-    const detail = { ratio: Math.round(r * 100) / 100, need, fg: hex(text), bg: hex(bd.base), font: Math.round(size * 10) / 10 + "px " + weight };
+    const font = Math.round(size * 10) / 10 + "px " + weight;
+    const bd = composite(el, colorStr);
     if (bd.image || behindIsImage(el)) {
-      add("warn", "contrast-image", label + "Text over an image or gradient: check by hand at the worst spot", el, detail);
-    } else if (r < need) {
-      add("error", "contrast", label + "Contrast " + detail.ratio + ":1 < " + need + ":1 (text " + detail.fg + " / background " + detail.bg + ", " + detail.font + ")", el, detail);
+      add("warn", "contrast-image", label + "Text over an image or gradient: check by hand at the worst spot", el, { need, font });
+      return;
     }
+    if (bd.faded) underOpacity++;
+    const r = ratio(bd.text, bd.base);
+    const detail = { ratio: Math.round(r * 100) / 100, need, fg: hex(bd.text), bg: hex(bd.base), font };
+    if (r < need) add("error", "contrast", label + "Contrast " + detail.ratio + ":1 < " + need + ":1 (text " + detail.fg + " / background " + detail.bg + ", " + font + ")", el, detail);
   };
   for (const p of parents) {
     if (p.closest(":disabled, [aria-disabled='true'], [inert]")) continue; // disabled controls are exempt
     if (!p.closest("a, button, label, [role]") && [...p.childNodes].every((c) => c.nodeType !== 3 || !c.data.trim())) continue;
     checkContrast(p, css(p).color, "");
   }
-  for (const f of document.querySelectorAll("input[placeholder], textarea[placeholder]")) {
-    if (!shown(f) || f.value || f.disabled) continue;
-    let ph;
-    try { ph = getComputedStyle(f, "::placeholder").color; } catch (e) { ph = null; }
-    if (ph) checkContrast(f, ph, "Placeholder: ");
+  // A field's value and its placeholder are not text nodes, so they are measured here. The value itself never goes into the report.
+  const FIELDS = "input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=image]), textarea, select";
+  for (const f of document.querySelectorAll(FIELDS)) {
+    if (!shown(f) || f.closest(":disabled, [aria-disabled='true'], [inert]")) continue;
+    const value = f.localName === "select" ? (f.selectedOptions[0] ? f.selectedOptions[0].text : "") : f.value;
+    if (value.trim()) {
+      checkContrast(f, css(f).color, "Field value: ");
+    } else if (f.placeholder) {
+      let ph;
+      try { ph = getComputedStyle(f, "::placeholder").color; } catch (e) { ph = null; }
+      if (ph) checkContrast(f, ph, "Placeholder: ");
+    }
   }
 
   // ---------- 4. Target size ----------
@@ -324,7 +338,7 @@
     const s = css(t);
     if ((t.localName === "a" || t.getAttribute("role") === "link") && s.display === "inline") {
       const blk = blockOf(t);
-      if (snippet(blk.textContent).length > snippet(t.textContent).length + 3) continue; // exception: a link inside a sentence
+      if (oneLine(blk.textContent).length > oneLine(t.textContent).length + 3) continue; // exception: a link inside a sentence
     }
     if (t.localName === "input" && /^(checkbox|radio)$/.test(t.type) && s.appearance !== "none") continue; // exception: size set by the browser
     const c = center(b.r);
@@ -381,7 +395,7 @@
   }
 
   // ---------- Report ----------
-  if (approxOpacity) add("info", "contrast-opacity", "Contrast approximated for " + approxOpacity + " texts under opacity", null);
+  if (underOpacity) add("info", "contrast-opacity", "Contrast of " + underOpacity + " texts under opacity worked out from their ancestors only (anything else showing through is not counted)", null);
   const report = {
     tool: "corthex-uxui page-check",
     version: "1.0",
