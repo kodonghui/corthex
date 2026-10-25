@@ -64,13 +64,22 @@
     }
     return parts.join(" > ");
   }
-  function shown(el) {
+  function shown(el, visibility = true) {
     if (!el || !el.isConnected) return false;
-    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: visibility })) return false;
     const s = css(el);
-    if (s.display === "none" || s.visibility === "hidden" || s.visibility === "collapse") return false;
+    if (s.display === "none" || (visibility && (s.visibility === "hidden" || s.visibility === "collapse"))) return false;
     const r = el.getBoundingClientRect();
     return r.width > 1 && r.height > 1; // leaves out 1 px text meant only for screen readers
+  }
+  // The text of an element with display: contents has no box of that element: it shows when the element is not
+  // hidden and the nearest box around it shows (whatever that box's own visibility, which the element may override).
+  function textShown(p) {
+    if (css(p).display !== "contents") return shown(p);
+    if (/hidden|collapse/.test(css(p).visibility)) return false;
+    let box = p.parentElement;
+    while (box && css(box).display === "contents") box = box.parentElement;
+    return shown(box, false);
   }
   // Character ranges are built from code points (invisible characters or escapes in the source can change when copied or passed through tools).
   const charClass = (ranges, prefix) => new RegExp("[" + (prefix || "") + ranges.map(([a, b]) => String.fromCharCode(a) + (b ? "-" + String.fromCharCode(b) : "")).join("") + "]");
@@ -172,10 +181,10 @@
     const b = blockOf(p);
     if (!n.data.trim()) {
       // A space between two elements, as in <span>a</span> <span>b</span>, is still a place where the line may break.
-      if (groups.has(b) && shown(p)) groups.get(b).push(n);
+      if (groups.has(b) && textShown(p)) groups.get(b).push(n);
       continue;
     }
-    if (!shown(p)) continue;
+    if (!textShown(p)) continue;
     if (breakNext) { markAfter.add(n); breakNext = false; }
     parents.add(p);
     if (!groups.has(b)) groups.set(b, []);
@@ -306,6 +315,7 @@
     let text = pre(rgba(colorStr)), back = [0, 0, 0, 0], faded = false;
     for (let e = el; e; e = e.parentElement) {
       const s = css(e);
+      if (s.display === "contents") continue; // no box: it paints no background, and its opacity does nothing
       if (back[3] < 0.999) { // once the backdrop is opaque, the backgrounds behind it no longer show
         if (s.backgroundImage && s.backgroundImage !== "none") return { image: true };
         const b = pre(rgba(s.backgroundColor));
@@ -321,8 +331,10 @@
   // Whether something other than the text's ancestors is painted behind it, at one spot: an image, or a box from elsewhere
   // in the page with a background (a layer placed under the text). What is painted above the text does not count.
   function behindOther(el) {
-    if (rgba(css(el).backgroundColor)[3] >= 1) return false; // its own opaque background hides whatever lies below
-    const r = el.getBoundingClientRect();
+    const own = css(el).display !== "contents"; // without a box of its own, its text is measured where the text lies
+    if (own && rgba(css(el).backgroundColor)[3] >= 1) return false; // its own opaque background hides whatever lies below
+    if (!own) range.selectNodeContents(el);
+    const r = own ? el.getBoundingClientRect() : range.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + Math.min(r.height / 2, 12);
     if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
     const stack = document.elementsFromPoint(x, y);
@@ -366,8 +378,12 @@
       checkContrast(f, css(f).color, "Field value: ");
     } else if (f.placeholder) {
       let ph;
-      try { ph = getComputedStyle(f, "::placeholder").color; } catch (e) { ph = null; }
-      if (ph) checkContrast(f, ph, "Placeholder: ");
+      try { ph = getComputedStyle(f, "::placeholder"); } catch (e) { ph = null; }
+      if (ph && ph.color) {
+        // The placeholder's own opacity fades its text, not the field behind it
+        const c = rgba(ph.color), a = parseFloat(ph.opacity);
+        checkContrast(f, a < 1 ? "rgba(" + c.slice(0, 3).join(",") + "," + c[3] * a + ")" : ph.color, "Placeholder: ");
+      }
     }
   }
 
