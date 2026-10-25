@@ -1,0 +1,3 @@
+# Every text file checks out with LF line endings on every system, so a copy
+# installed on Windows reads the same as the one the checks ran on.
+* text=auto eol=lf
