@@ -6,7 +6,7 @@ synced_at: 2026-10-24T22:44+09:00
 
 [한국어](nexus.ko.md)
 
-Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
 
 This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, and the terms added with the board from TERM-109, after the ones that memory took up to TERM-108. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
 
@@ -143,7 +143,7 @@ Purpose: draw a project's pictures, the DDD board, the ERD and the sitemap, from
 - Aggregate rules: one project space for each project, bound to its repository. One picture for each document version, always equal to it; the stage sources are the truth of every picture.
 - External systems: Git repository. The stage sources come through the hub of phase 1.
 - Links: the hub sends the snapshot (event); tells Cross-checking that a picture was drawn or redrawn (event); Editing asks for the picture to edit and its document version (call).
-- Hotspots: 1 repositories per space (answered); 2 how the stage sources reach NEXUS (open, stage 02); 3 positions (answered: they stay in NEXUS).
+- Hotspots: 1 repositories per space (answered); 2 how the stage sources reach NEXUS (answered in stage 02: the hub on a device pushes them); 3 positions (answered: they stay in NEXUS).
 
 ### CTX-013 Cross-checking
 
@@ -156,7 +156,7 @@ Purpose: pair the items of the pictures by ID to find discrepancies, and see whe
 - Aggregate rules: only one discrepancy is open for each pair; it is resolved when a new cross-check no longer finds it.
 - External systems: none.
 - Links: follows Picture drawn and Picture redrawn of Pictures (event); Stage progress asks for the open discrepancies (call).
-- Hotspots: 4 pairs to compare (open, stage 02).
+- Hotspots: 4 pairs to compare (answered in stage 02: by glossary term).
 
 ### CTX-014 Discussion
 
@@ -174,7 +174,7 @@ Purpose: the user and the agent exchange comments and proposals over the picture
 - Aggregate rules: a comment is attached to an item's trace ID in a picture, not to a position, so it follows the item when the picture is redrawn; it closes when a decision is attached or it is answered. The agent makes a proposal, and only the user accepts or dismisses it; an accepted proposal waits to be reflected.
 - External systems: Git repository, the stage sources that decisions go into; Session, for long talks, where the agent writes down what was decided.
 - Links: tells Editing that a proposal was accepted (event); Stage progress asks for the open comments (call).
-- Hotspots: 5 comments on a phone, 6 when the agent reads and 7 where decisions go (answered); 13 where the agent reads its to-do (open, stage 02).
+- Hotspots: 5 comments on a phone, 6 when the agent reads and 7 where decisions go (answered); 13 where the agent reads its to-do (answered in stage 02: through the hub).
 
 ### CTX-010 Editing
 
@@ -188,7 +188,7 @@ Purpose: the user edits pictures on a PC, and the agent reflects the edits in th
 - Aggregate rules: an edit is bound to the document version that its picture was drawn from, and a newer version makes it a conflict. It closes once it is in the stage sources, and so does an accepted proposal.
 - External systems: Git repository, where the agent opens a pull request. The open-source editor is embedded in NEXUS.
 - Links: asks Pictures for the picture to edit and its document version (call); follows Proposal accepted of Discussion (event); Stage progress asks for the pending reflections (call).
-- Hotspots: 8 which editor (open, stage 02); 9 conflicts and 10 writing to Git (answered).
+- Hotspots: 8 which editor (answered in stage 02: Excalidraw and ERD Editor); 9 conflicts and 10 writing to Git (answered).
 
 ### CTX-007 Stage progress
 
@@ -203,7 +203,7 @@ Purpose: gather and show what is left in a stage, so that the user passes its ch
 - External systems: Git repository, where the agent writes the stage state.
 - Links: asks Cross-checking, Discussion and Editing what is left (three calls).
 - Hotspots: 11 what remains (answered: it is shown together, and the user decides).
-- Built in phase 1: `hub.py status` records a stage's state, its last checkpoint, its next action and review findings, in a status file on each device and outside every repository. A stage's state comes only from what was recorded, never from the files that exist; `done` needs a checkpoint and its date, and an AI recommendation, a read receipt or an edit time is not a checkpoint. On the board the agent writes the stage state to the Git repository; stage 02 settles how this meets the status file.
+- Built in phase 1: `hub.py status` records a stage's state, its last checkpoint, its next action and review findings, in a status file on each device and outside every repository. A stage's state comes only from what was recorded, never from the files that exist; `done` needs a checkpoint and its date, and an AI recommendation, a read receipt or an edit time is not a checkpoint. On the board the agent writes the stage state to the Git repository; stage 02 decided that the stage records move into the project's repository, and that the hub reads a status file only while a project has none (D12).
 
 ### CTX-015 Tool links
 
@@ -227,7 +227,7 @@ Purpose: turn the stage sources of each registered project into a snapshot of it
 - Commands: Build snapshot
 - Policies: Read only the projects in the project list, each only under its registered name. Read text only: never run a project's code, Git hooks or Git filters, and never write to a repository. An ID is defined only in the stage that creates its kind; anywhere else it is a mention. Skip files that look like secrets, and translations that define only their original's IDs. Keep file contents and local paths out of the snapshot, and redact secrets and email addresses. A check finds structure, not meaning: it is a lead, not a verdict. Never renumber an ID to clear a check.
 - Actors: User, Agent, Hub
-- Open questions: How the snapshot reaches Pictures is hotspot 2. From the draft: should the hub read a stage whose truth is a human view, such as a Notion database, from that tool, or only from a text copy as now? Should it read results that are not stage sources, such as test runs for `12-qa` or the state of tasks for `10-wbs`?
+- Open questions: How the snapshot reaches Pictures was hotspot 2, which stage 02 answered (D8). From the draft: should the hub read a stage whose truth is a human view, such as a Notion database, from that tool, or only from a text copy as now? Should it read results that are not stage sources, such as test runs for `12-qa` or the state of tasks for `10-wbs`?
 
 ### CTX-008 Overview
 
@@ -247,7 +247,7 @@ Purpose: put the hub on an address of the user's own, so that it opens on any de
 - Commands: Preview push, Push snapshots, Remove project, Sign in
 - Policies: Nothing leaves a device until the user pushes. Push only the projects in the push list, and ask before the first push of each project. Read the service token only from the environment, and never write or show it. Follow no redirects, so that a refused token is reported instead of sent on. The server answers only requests that Cloudflare Access checked, at the address the user set and nowhere else. It keeps only the newest snapshot of each project and nothing but snapshots. It has no AI and no rights on any repository. Remove a project only with the user's go-ahead.
 - Actors: User, Agent, Hub, NEXUS server, Cloudflare Access, Viewer
-- Open questions: Whether a push follows each change on its own is part of hotspot 2. From the draft: should the server keep earlier snapshots, so that the page can show changes over time? Team members come later (checkpoint 1); how would Cloudflare Access tell their projects apart?
+- Open questions: Whether a push follows each change on its own was part of hotspot 2: under D8 of stage 02 the agent pushes after each merge of stage work and each checkpoint. From the draft: should the server keep earlier snapshots, so that the page can show changes over time? Team members come later (checkpoint 1); how would Cloudflare Access tell their projects apart?
 
 ## 5. Dependencies between contexts
 
@@ -256,7 +256,7 @@ On the board a solid arrow is a call (sync) and a dashed one an event (async), a
 | From | To | Kind | Why | Data |
 | --- | --- | --- | --- | --- |
 | Hub (CTX-006) | Git repository | call (sync) | Read the stage sources | stage sources |
-| Hub (CTX-006, CTX-009) | CTX-012 | event (async) | Draw from the new snapshot; how it arrives is hotspot 2 | snapshot |
+| Hub (CTX-006, CTX-009) | CTX-012 | event (async) | Draw from the new snapshot, which the hub on a device pushes (hotspot 2, D8 of stage 02) | snapshot |
 | CTX-012 | CTX-013 | event (async) | Cross-check what was drawn | Picture drawn, Picture redrawn |
 | CTX-014 | CTX-010 | event (async) | Edit the picture as proposed | Proposal accepted |
 | CTX-010 | CTX-012 | call (sync) | Edit the picture that the user sees | the picture and its document version |
@@ -268,25 +268,25 @@ On the board a solid arrow is a call (sync) and a dashed one an event (async), a
 
 ## 6. Hotspots
 
-The answers to eight hotspots are the AI's recommendations, approved at checkpoint 2. Number 13 was added at step 8.
+The answers to eight hotspots are the AI's recommendations, approved at checkpoint 2. Number 13 was added at step 8. Stage 02 answered numbers 2, 4, 8 and 13 with its decisions D8, D10, D11 and D9, which the maintainer approved at its scope check on 2026-10-25.
 
 | Hotspot | Context | State | Answer or next step |
 | --- | --- | --- | --- |
 | 1. Repositories per space: what about a project with two repositories? | CTX-012 | answered | One repository per project space at first |
-| 2. How the stage sources reach NEXUS once they are merged | CTX-012 | open | Stage 02 decides. For now, the hub on a device sends snapshots |
+| 2. How the stage sources reach NEXUS once they are merged | CTX-012 | answered | The hub on a device pushes snapshots that carry what the pictures show (stage 02, D8) |
 | 3. Positions: the layout is automatic; should moved positions reach the stage sources? | CTX-012 | answered | Positions stay in NEXUS; only the content goes to the stage sources |
-| 4. Pairs to compare: which items of the DDD board and the ERD, and of the DDD board and the sitemap? | CTX-013 | open | Stage 02 decides |
+| 4. Pairs to compare: which items of the DDD board and the ERD, and of the DDD board and the sitemap? | CTX-013 | answered | By glossary term: each aggregate with its ERD tables, and each read model with its sitemap screens (stage 02, D10) |
 | 5. Comments on a phone | CTX-014 | answered | Comments work on a phone too; only editing pictures needs a PC |
 | 6. When the agent reads new comments | CTX-014 | answered | At the start of its work, open comments first; anything urgent goes in the conversation |
 | 7. Where decisions go | CTX-014 | answered | As the current rules say: specs in Git, the user's choices in the records |
-| 8. Which open-source editor, such as Excalidraw, ERD Editor or draw.io | CTX-010 | open | Stage 02 chooses |
+| 8. Which open-source editor, such as Excalidraw, ERD Editor or draw.io | CTX-010 | answered | Excalidraw for the DDD board and the sitemap, and ERD Editor for the ERD (stage 02, D11) |
 | 9. Conflicts: what if the stage source changes during an edit? | CTX-010 | answered | The edit is shown again over the new picture, and the user chooses |
 | 10. Writing to Git: does NEXUS write to Git itself? | CTX-010 | answered | No: the agent opens a pull request at its next work |
 | 11. What remains: can a stage pass with open discrepancies or comments? | CTX-007 | answered | They are shown together, and the user decides |
 | 12. Reading the state of Notion and Jira: with what permissions? | CTX-015 | open | Decided when the links are built, in phase ③ |
-| 13. Where the agent reads its to-do: the hub on a device, an API of the server or another way? | CTX-014, CTX-007 | open | Stage 02 decides |
+| 13. Where the agent reads its to-do: the hub on a device, an API of the server or another way? | CTX-014, CTX-007 | answered | Through the hub, which reads it from the server's API with the service token (stage 02, D9) |
 
-Stage 02 also settles, beyond the hotspots:
+Stage 02 also took up, beyond the hotspots:
 
 - Where NEXUS keeps spaces, pictures, comments, proposals and edits, and how the agent and the hub reach them, together with hotspots 2 and 13.
 - How the stage state that the agent writes to Git meets the status file of phase 1 (CTX-007).
@@ -346,15 +346,15 @@ Stage 02 also settles, beyond the hotspots:
 | TERM-110 | Document version | The stage sources at one commit in Git. A picture is drawn for one document version, and an edit is bound to the version that its picture was drawn from | CTX-012, CTX-010 | revision (TERM-081 counts snapshots), board revision |
 | TERM-111 | Picture view | A picture with its comments, proposals and discrepancies on it: what the user looks at before commenting, accepting or dismissing a proposal and editing | CTX-012, CTX-014, CTX-010 | canvas |
 | TERM-112 | Discrepancy | A place where two pictures of a project disagree when their items are paired by ID, such as an ERD table with no matching aggregate on the DDD board. Only one is open for each pair, and it is resolved when a new cross-check no longer finds it. Unlike a check (TERM-063), it has a state and can be discussed | CTX-013, CTX-007 | mismatch, conflict (TERM-091), error |
-| TERM-113 | Pair | The two things that a cross-check compares, such as an aggregate on the DDD board and a table in the ERD; which pairs are compared is hotspot 4 | CTX-013 | match |
+| TERM-113 | Pair | The two things that a cross-check compares, such as an aggregate on the DDD board and a table in the ERD; which pairs are compared first is decision D10 of stage 02 (hotspot 4) | CTX-013 | match |
 | TERM-114 | Comment | A note that the user or the agent attaches to an item in a picture by its trace ID, so that it follows the item when the picture is redrawn. It closes when a decision is attached or it is answered. Comments work on a phone too | CTX-014, CTX-007 | review finding (TERM-070) |
 | TERM-115 | Decision | What the user settles about a comment, which the agent writes down as the user said: specs into the stage sources in Git, the user's choices into the records | CTX-014 | approval, user decision (TERM-020, a memory item) |
 | TERM-116 | Edit | A change to a picture, made by the user on a PC with the open-source editor or by an accepted proposal. It is bound to the document version that its picture was drawn from, and it closes once it is reflected | CTX-010 | change, patch |
 | TERM-117 | Pending reflection | An edit, or an accepted proposal, that is not yet reflected in the stage sources | CTX-010, CTX-007 | draft, unsaved change |
-| TERM-118 | Open-source editor | An existing editor that NEXUS embeds for editing pictures, such as Excalidraw, ERD Editor or draw.io; which one is hotspot 8. NEXUS does not build an editor from scratch | CTX-010 | canvas |
+| TERM-118 | Open-source editor | An existing editor that NEXUS embeds for editing pictures, such as Excalidraw, ERD Editor or draw.io; stage 02 chose Excalidraw and ERD Editor (D11, hotspot 8). NEXUS does not build an editor from scratch | CTX-010 | canvas |
 | TERM-119 | Stage record | What Stage progress keeps for one stage: its state, its checkpoints and its next action. Only the user passes a checkpoint, and the agent writes the stage state to Git | CTX-007 | status file (TERM-071, where phase 1 keeps it) |
 | TERM-120 | Stage overview | What is left in a stage before its checkpoint: its open discrepancies, comments and pending reflections, shown together so that the user decides | CTX-007 | dashboard, stage state (TERM-067) |
-| TERM-121 | Agent to-do | What the agent reads when it starts its work: open comments and discrepancies, and pending reflections; where it reads them is hotspot 13 | CTX-007, CTX-014, CTX-010 | next action (TERM-069), task (TASK is the trace ID of `10-wbs`), inbox |
+| TERM-121 | Agent to-do | What the agent reads when it starts its work: open comments and discrepancies, and pending reflections; it reads them through the hub (D9 of stage 02, hotspot 13) | CTX-007, CTX-014, CTX-010 | next action (TERM-069), task (TASK is the trace ID of `10-wbs`), inbox |
 | TERM-122 | Tool link | A link from an item in a picture to a record in Notion or a work item in Jira, which shows only its state; each tool stays the source. A candidate for phase ③ | CTX-015 | link alone (TERM-062), sync, import |
 | TERM-123 | Work item | A unit of work in a tracker such as Jira | CTX-015 | task (TASK is the trace ID of `10-wbs`), ticket |
 
