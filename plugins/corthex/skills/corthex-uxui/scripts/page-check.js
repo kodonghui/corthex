@@ -12,7 +12,7 @@
  *   Korean line breaks: missing keep-all or break-all, words split at a line end, orphans
  *   Overflow: text outside its box or clipped, the page scrolling sideways
  *   Contrast: text, field values and placeholders 4.5:1, large text 3:1, through any opacity
- *             (text over images or gradients is flagged for a check by hand)
+ *             (text over images, gradients or other boxes is flagged for a check by hand)
  *   Target size: 24×24 px (WCAG 2.5.8, with the spacing and in-sentence link exceptions)
  *   Basic accessibility: img alt, field labels, html lang
  *   Motion: transition: all, properties that trigger layout, prefers-reduced-motion rules
@@ -88,26 +88,40 @@
     }
     return document.body;
   }
-  // The box around a block that cuts its text off at the top or bottom: overflow hidden or clip, with the text partly
+  // The edges inside a box's border (with pad, inside its padding too), in the units of getBoundingClientRect(r): a
+  // transform such as scale() changes those units but not the computed widths, so the widths are scaled to match.
+  function inner(e, r, pad) {
+    const s = css(e);
+    const kx = e.offsetWidth ? r.width / e.offsetWidth : 1, ky = e.offsetHeight ? r.height / e.offsetHeight : 1;
+    const w = (side) => parseFloat(s["border" + side + "Width"]) + (pad ? parseFloat(s["padding" + side]) : 0);
+    return { left: r.left + w("Left") * kx, right: r.right - w("Right") * kx, top: r.top + w("Top") * ky, bottom: r.bottom - w("Bottom") * ky };
+  }
+  // The box around a block that cuts its text off (t: where the text lies): overflow hidden or clip, with the text partly
   // inside it. Text wholly outside is hidden on purpose (a closed panel), and what a scrolling box holds can be reached.
-  function clipperOf(block, top, bottom) {
+  function clipperOf(block, t) {
+    if (!(t.bottom > t.top && t.right > t.left)) return null;
     let escaping = false; // inside an absolutely positioned box, until its containing block
-    for (let e = block; bottom > top;) {
+    let x = true, y = true; // whether a box further out may still cut the text at the sides, and at the top or bottom
+    for (let e = block; ;) {
       const s = css(e);
-      if (/auto|scroll/.test(s.overflowY) || s.position === "fixed") return null;
+      if (s.position === "fixed") return null;
+      if (/auto|scroll/.test(s.overflowX)) x = false;
+      if (/auto|scroll/.test(s.overflowY)) y = false;
+      if (!x && !y) return null;
       if (s.position === "absolute") escaping = true;
       e = e.parentElement;
       if (!e || e === document.body || e === document.documentElement) return null;
       const p = css(e);
       if (escaping && p.position === "static" && p.transform === "none") continue; // it does not clip that box
       escaping = false;
-      if (/hidden|clip/.test(p.overflowY) && p.getPropertyValue("-webkit-line-clamp") === "none") {
-        const r = e.getBoundingClientRect();
-        const inTop = r.top + parseFloat(p.borderTopWidth), inBottom = r.bottom - parseFloat(p.borderBottomWidth);
-        if (top < inBottom && bottom > inTop && (bottom > inBottom + 2 || top < inTop - 2)) return e;
+      const cutX = x && /hidden|clip/.test(p.overflowX);
+      const cutY = y && /hidden|clip/.test(p.overflowY) && p.getPropertyValue("-webkit-line-clamp") === "none";
+      if (cutX || cutY) {
+        const b = inner(e, e.getBoundingClientRect(), false);
+        const partly = t.top < b.bottom && t.bottom > b.top && t.left < b.right && t.right > b.left;
+        if (partly && ((cutX && (t.right > b.right + 2 || t.left < b.left - 2)) || (cutY && (t.bottom > b.bottom + 2 || t.top < b.top - 2)))) return e;
       }
     }
-    return null;
   }
 
   // Colour: a computed value may not be rgb() (oklch, color()), so a canvas turns it into sRGB.
@@ -137,14 +151,22 @@
   // ---------- 1. Walking the text: Korean line breaks and overflow ----------
   const groups = new Map(); // block → [text nodes]
   const parents = new Set();
-  const textFilter = {
-    acceptNode(n) {
-      if (n.nodeType === 1) return SKIP.has(n.localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
-      return NodeFilter.FILTER_ACCEPT;
-    },
-  };
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, textFilter);
+  // A line may start after any box that is not plain inline text: a block, an inline-block, an image, a field, a <br>
+  // or a <wbr>. The first text after the end of each one is marked, wherever that text sits.
+  const BOXES = new Set(["img", "svg", "video", "canvas", "iframe", "object", "embed", "input", "textarea", "select", "audio", "math", "br", "wbr"]);
+  const markAfter = new Set();
+  const within = []; // the boxes the walk is inside
+  let breakNext = false;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (SKIP.has(n.parentNode.localName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+  });
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    while (within.length && !within[within.length - 1].contains(n)) { within.pop(); breakNext = true; }
+    if (n.nodeType === 1) {
+      const d = css(n).display;
+      if (d !== "none" && d !== "contents" && (d !== "inline" || BOXES.has(n.localName))) { within.push(n); breakNext = true; }
+      continue;
+    }
     const p = n.parentElement;
     if (!p) continue;
     const b = blockOf(p);
@@ -154,16 +176,10 @@
       continue;
     }
     if (!shown(p)) continue;
+    if (breakNext) { markAfter.add(n); breakNext = false; }
     parents.add(p);
     if (!groups.has(b)) groups.set(b, []);
     groups.get(b).push(n);
-  }
-  // <br> and <wbr> are breaks made on purpose: the next text after each one may start a line, wherever that text sits
-  const markAfter = new Set();
-  const after = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, textFilter);
-  for (const m of document.body.querySelectorAll("br, wbr")) {
-    after.currentNode = m;
-    for (let t = after.nextNode(); t; t = after.nextNode()) if (t.data.trim()) { markAfter.add(t); break; }
   }
 
   // keep-all and break-all: read from the style of each text node's parent.
@@ -194,13 +210,13 @@
   outer: for (const [block, nodes] of groups) {
     const bs = css(block);
     const br = block.getBoundingClientRect();
-    const left = br.left + parseFloat(bs.paddingLeft) + parseFloat(bs.borderLeftWidth);
-    const right = br.right - parseFloat(bs.paddingRight) - parseFloat(bs.borderRightWidth);
+    const { left, right } = inner(block, br, true);
     const scrolls = /auto|scroll/.test(bs.overflowX);
     const clips = /hidden|clip/.test(bs.overflowX);
     const ellipsis = bs.textOverflow === "ellipsis";
     const noSplit = NO_SPLIT.has(block.localName) || !!block.closest("pre");
-    let prev = null, opp = false, hard = false, lines = 1, line = "", allText = "", maxOut = 0, textTop = Infinity, textBottom = -Infinity;
+    let prev = null, opp = false, hard = false, lines = 1, line = "", allText = "", maxOut = 0;
+    const ext = { top: Infinity, bottom: -Infinity, left: Infinity, right: -Infinity }; // where the text lies
     for (const node of nodes) {
       if (markAfter.has(node)) hard = true;
       const text = node.data;
@@ -222,8 +238,10 @@
             }
           }
           if (!scrolls && !(clips && ellipsis)) maxOut = Math.max(maxOut, r.right - right, left - r.left);
-          textTop = Math.min(textTop, r.top);
-          textBottom = Math.max(textBottom, r.bottom);
+          ext.top = Math.min(ext.top, r.top);
+          ext.bottom = Math.max(ext.bottom, r.bottom);
+          ext.left = Math.min(ext.left, r.left);
+          ext.right = Math.max(ext.right, r.right);
           if (r.right > vw + 1) pageOut.set(block, Math.max(pageOut.get(block) || 0, r.right - vw));
           prev = { ch, r, tail: (allText + ch).slice(-6) };
           opp = false;
@@ -241,8 +259,12 @@
     if (/hidden|clip/.test(bs.overflowY) && block.scrollHeight > block.clientHeight + 2 && bs.getPropertyValue("-webkit-line-clamp") === "none") {
       add("error", "text-clipped", "Text clipped vertically (fixed height, overflow hidden)", block);
     } else {
-      const cut = clipperOf(block, textTop, textBottom);
-      if (cut) add("error", "text-clipped", "Text cut off by a box around it (fixed height, overflow hidden): " + where(cut), block);
+      // What the block hides itself (behind an ellipsis or a line clamp) is not cut again by the boxes around it
+      const own = inner(block, br, false);
+      if (clips) { ext.left = Math.max(ext.left, own.left); ext.right = Math.min(ext.right, own.right); }
+      if (/hidden|clip/.test(bs.overflowY)) { ext.top = Math.max(ext.top, own.top); ext.bottom = Math.min(ext.bottom, own.bottom); }
+      const cut = clipperOf(block, ext);
+      if (cut) add("error", "text-clipped", "Text cut off by a box around it (overflow hidden): " + where(cut), block);
     }
     // Orphan: text of more than one line whose last line holds one short word. A warning for heading-like text; body text is only counted
     const last = line.trim().split(/\s+/).filter(Boolean);
@@ -296,17 +318,20 @@
     const canvas = [255, 255, 255, 1];
     return { text: over(text, canvas), base: over(back, canvas), faded, image: false };
   }
-  function behindIsImage(el) {
+  // Whether something other than the text's ancestors is painted behind it, at one spot: an image, or a box from elsewhere
+  // in the page with a background (a layer placed under the text). What is painted above the text does not count.
+  function behindOther(el) {
+    if (rgba(css(el).backgroundColor)[3] >= 1) return false; // its own opaque background hides whatever lies below
     const r = el.getBoundingClientRect();
     const x = r.left + r.width / 2, y = r.top + Math.min(r.height / 2, 12);
     if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return false;
-    for (const e of document.elementsFromPoint(x, y)) {
-      if (e === el || el.contains(e)) continue;
+    const stack = document.elementsFromPoint(x, y);
+    for (const e of stack.slice(stack.indexOf(el) + 1)) { // the whole stack when the text's box is not hit (pointer-events: none)
+      if (el.contains(e)) continue;
       if (e.contains(el)) return false; // from an ancestor on, composite() takes over
       if (imageTags.has(e.localName)) return true;
       const s = css(e);
-      if (s.backgroundImage !== "none") return true;
-      if (rgba(s.backgroundColor)[3] >= 1) return false;
+      if (s.backgroundImage !== "none" || rgba(s.backgroundColor)[3] > 0) return true;
     }
     return false;
   }
@@ -318,8 +343,8 @@
     const need = large ? 3 : 4.5;
     const font = Math.round(size * 10) / 10 + "px " + weight;
     const bd = composite(el, colorStr);
-    if (bd.image || behindIsImage(el)) {
-      add("warn", "contrast-image", label + "Text over an image or gradient: check by hand at the worst spot", el, { need, font });
+    if (bd.image || behindOther(el)) {
+      add("warn", "contrast-image", label + "Text over an image, a gradient or another box: check by hand at the worst spot", el, { need, font });
       return;
     }
     if (bd.faded) underOpacity++;
@@ -431,7 +456,7 @@
     issues,
     notMeasured: [
       "Keyboard focus visibility and order (press Tab yourself)",
-      "Contrast of text over images or gradients (the places flagged contrast-image)",
+      "Contrast of text over images, gradients or other boxes (the places flagged contrast-image)",
       "3:1 contrast of control borders and state indicators (WCAG 1.4.11)",
       "The order and names a screen reader reads",
       "The real screen with reduced motion turned on",

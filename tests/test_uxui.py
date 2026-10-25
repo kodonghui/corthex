@@ -40,9 +40,9 @@ def load_media_check():
 
 
 def emitted(text):
-    """The check names a script reports: the quoted names in the second argument of each add() call."""
+    """The check names a script reports: the quoted names in the second argument of each add() call (not a method such as set.add)."""
     names = set()
-    for argument in re.findall(r"\badd\(\s*[^,]+,\s*([^,]+),", text):
+    for argument in re.findall(r"(?<![\w.])add\(\s*[^,]+,\s*([^,]+),", text):
         names.update(re.findall(r'"([a-z][a-z-]*)"', argument))
     return names
 
@@ -216,6 +216,10 @@ class MediaCheckTest(unittest.TestCase):
         self.assertLess(report["loudness"]["integrated"], -30)
         code, report, checks = self.measure("quiet.wav", "--target", "none")
         self.assertEqual((code, checks), (0, set()))
+
+    def test_a_size_or_fps_asked_for_fails_without_video(self):
+        code, report, checks = self.measure("quiet.wav", "--target", "none", "--expect-size", "1920x1080", "--expect-fps", "30")
+        self.assertEqual((code, checks), (1, {("error", "size"), ("error", "fps")}))
 
     def test_it_reads_local_files_only(self):
         result = media_check("http://127.0.0.1:9/clip.mp4", "--json")

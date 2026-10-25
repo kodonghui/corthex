@@ -509,16 +509,18 @@ def check_file(path, opts, ffmpeg, ffprobe):
     rep = {"tool": "corthex-uxui media-check", "version": VERSION, "file": path, "info": info,
            "loudness": None, "flash": None, "checks": checks}
 
-    # File
+    # File: a size or fps that was asked for fails when there is no video at all
+    if opts.expect_size:
+        m = re.match(r"^(\d+)[x×X*](\d+)$", opts.expect_size.strip())
+        if not m:
+            raise MeasureError("Write --expect-size like 1920x1080")
+        if not v:
+            add("error", "size", "No video stream, expected %s" % opts.expect_size)
+        elif (v["width"], v["height"]) != (int(m.group(1)), int(m.group(2))):
+            add("error", "size", "Resolution %sx%s, expected %s" % (v["width"], v["height"], opts.expect_size))
+    if opts.expect_fps and (not v or not v["fps"] or abs(v["fps"] - opts.expect_fps) > 0.01):
+        add("error", "fps", "fps %s, expected %s" % (fmt_num(v["fps"]) if v else "none (no video stream)", fmt_num(opts.expect_fps)))
     if v:
-        if opts.expect_size:
-            m = re.match(r"^(\d+)[x×X*](\d+)$", opts.expect_size.strip())
-            if not m:
-                raise MeasureError("Write --expect-size like 1920x1080")
-            if (v["width"], v["height"]) != (int(m.group(1)), int(m.group(2))):
-                add("error", "size", "Resolution %sx%s, expected %s" % (v["width"], v["height"], opts.expect_size))
-        if opts.expect_fps and (not v["fps"] or abs(v["fps"] - opts.expect_fps) > 0.01):
-            add("error", "fps", "fps %s, expected %s" % (fmt_num(v["fps"]), fmt_num(opts.expect_fps)))
         if v["fps"] and v["avgFps"] and abs(v["fps"] - v["avgFps"]) / v["fps"] > 0.01:
             add("warn", "vfr", "Uneven frame timing (stated %s, average %s fps). For a rendered video, fix one fps" % (fmt_num(v["fps"]), fmt_num(v["avgFps"])))
         if v["codec"] in ("h264", "hevc") and v["pixFmt"] not in ("yuv420p", "yuvj420p", "yuv420p10le"):
