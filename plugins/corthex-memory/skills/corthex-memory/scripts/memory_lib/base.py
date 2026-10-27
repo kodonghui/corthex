@@ -85,7 +85,8 @@ def private_directory(path):
         missing.append(cursor)
         cursor = cursor.parent
     for directory in reversed(missing):
-        directory.mkdir(mode=0o700, exist_ok=True)
+        # Python 3.13's Windows 0700 disables inheritance; use its default there.
+        directory.mkdir(mode=0o777 if os.name == "nt" else 0o700, exist_ok=True)
         if os.name != "nt":
             directory.chmod(0o700)
     if not path.is_dir():

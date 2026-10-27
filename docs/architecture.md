@@ -179,6 +179,8 @@ C1 starts with the shared library in `plugins/corthex-memory/skills/corthex-memo
 
 `tests/test_memory_files.py` covers TC-001–005 with temporary homes and stores, generated IDs and made-up text: table ordering and byte equality, paths and permissions, damaged/cut lines, killed appenders, process stops after each replacement step, restoration, and a target held open by another process on Windows. It reads no real memory store or host settings.
 
+Windows directories use the default creation mode to inherit their parent's permissions. Python 3.13 gives `mkdir(0700)` a protected ACL, so the library requests 0700 only on POSIX; the Windows test reads the temporary child's ACL control flag to check inheritance ([Python's mkdir contract](https://docs.python.org/3.13/library/os.html#os.mkdir)).
+
 ## Project hub
 
 `corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The NEXUS server in `nexus/` is optional and puts the same page on the user's own address.

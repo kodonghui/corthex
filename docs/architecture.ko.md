@@ -179,6 +179,8 @@ C1은 `plugins/corthex-memory/skills/corthex-memory/scripts/memory_lib/`의 공�
 
 `tests/test_memory_files.py`는 임시 홈·저장소와 만들어 낸 ID·문장으로 TC-001–005를 검사합니다. 표의 순서와 바이트 일치, 경로와 권한, 손상되거나 잘린 줄, 강제로 끝낸 추가 프로세스, 교체 단계마다 멈춘 프로세스, 복원, Windows의 다른 프로세스가 열어 둔 파일을 다룹니다. 실제 기억 저장소나 호스트 설정은 읽지 않습니다.
 
+Windows 폴더는 기본 생성 모드로 부모의 권한을 상속합니다. Python 3.13은 `mkdir(0700)`에 상속을 막은 ACL을 주므로 라이브러리는 POSIX에서만 0700을 요청합니다. Windows 시험은 임시 자식 폴더의 ACL 제어 플래그를 읽어 상속을 확인합니다([Python의 mkdir 계약](https://docs.python.org/3.13/library/os.html#os.mkdir)).
+
 ## 프로젝트 허브
 
 `corthex-nexus` 0.1.0에는 스킬 `corthex-hub` 하나와 스크립트 `scripts/hub.py` 하나가 있습니다. 프로젝트마다 이미 있는 파일로 모든 프로젝트를 한 페이지에 모으고, 서버는 쓰지 않습니다. `nexus/`의 NEXUS 서버는 선택이고, 같은 페이지를 사용자의 주소에 올립니다.

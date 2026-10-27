@@ -171,6 +171,25 @@ class MemoryFilesTest(unittest.TestCase):
         for name in names:
             self.assertEqual(base.project_folder_name(name), name + "_")
             base.private_directory(self.folder / base.project_folder_name(name))
+        if os.name == "nt":
+            # Inspect only our temporary child's DACL, without exposing any SID.
+            # Python 3.13's special mkdir(0700) creates a protected DACL instead.
+            import ctypes
+            from ctypes import wintypes
+            security = ctypes.WinDLL("advapi32", use_last_error=True)
+            security.GetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p,
+                                                  wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+            security.GetSecurityDescriptorControl.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.WORD),
+                                                              ctypes.POINTER(wintypes.DWORD)]
+            needed = wintypes.DWORD()
+            child = str(self.folder / "con_")
+            security.GetFileSecurityW(child, 4, None, 0, ctypes.byref(needed))
+            self.assertGreater(needed.value, 0)
+            descriptor = ctypes.create_string_buffer(needed.value)
+            self.assertTrue(security.GetFileSecurityW(child, 4, descriptor, needed.value, ctypes.byref(needed)))
+            control, revision = wintypes.WORD(), wintypes.DWORD()
+            self.assertTrue(security.GetSecurityDescriptorControl(descriptor, ctypes.byref(control), ctypes.byref(revision)))
+            self.assertEqual(control.value & 0x1000, 0, "the child must inherit its parent DACL")
         for name in ("sample", "con-1", "com10", "lpt10", "a--b", "x-"):
             self.assertEqual(base.project_folder_name(name), name)
         for name in ("", "CON", "../sample", "a/b", "a_b", "-x", "x" * 61, "x\n"):
