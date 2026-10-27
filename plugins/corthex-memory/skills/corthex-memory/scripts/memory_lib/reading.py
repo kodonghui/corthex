@@ -3,6 +3,9 @@
 The caller supplies the absolute monotonic deadline of its stage 06 operation;
 there is no extra recovery timeout. Healthy reads take no lease. This adapter
 does not create directories, choose a device identity or map command errors.
+Recovery raises LockOrderError if the caller holds a later lock. Hooks attempt
+recovery with no other lease held. Release uses its separate one-second retry
+and reports cleanup failures without replacing the read result.
 """
 
 import time
@@ -25,7 +28,7 @@ def _recover(reader, path, lock, deadline, report, **options):
         return reader(path, report=report, holding_lock=True, check=check,
                       deadline=deadline, **options)
     finally:
-        lock.release(deadline=deadline)
+        lock.release(report=report)
 
 
 def read_record(path, parse, lock, deadline, report=None):

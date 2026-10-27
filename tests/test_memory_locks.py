@@ -75,9 +75,9 @@ def holder(connection, path, device, heartbeat=False):
 
 
 def forked_holder(connection, inherited, path, device):
-    try:
-        inherited.release()
-    except locks.LostLock:
+    notices = []
+    inherited.release(lambda *notice: notices.append(notice))
+    if notices == [("LostLock", None)]:
         with locks.Lock(path, "store", device).held(time.monotonic() + 2):
             connection.send(True)
     else:
@@ -86,13 +86,16 @@ def forked_holder(connection, inherited, path, device):
 
 def forked_checks(connection, inherited):
     answers = []
-    for method in (inherited.check, inherited.refresh, inherited.release):
+    for method in (inherited.check, inherited.refresh):
         try:
             method()
         except locks.LostLock:
             answers.append("lost-lock")
         else:
             answers.append("unexpected-owner")
+    notices = []
+    inherited.release(lambda *notice: notices.append(notice))
+    answers.append("lost-lock" if notices == [("LostLock", None)] else "unexpected-owner")
     connection.send(answers)
 
 
