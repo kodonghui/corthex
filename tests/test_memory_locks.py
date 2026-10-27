@@ -25,11 +25,22 @@ def racer(connection, barrier, folder, device):
         barrier.wait(20)
         lock = locks.Lock(Path(folder) / (str(number) + ".lock"), "raw", device)
         acquired = False
-        try:
-            lock.acquire(time.monotonic() + 2, wait=False)
-            acquired = True
-        except locks.LockBusy:
-            pass
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                lock.acquire(deadline, wait=False)
+                acquired = True
+                break
+            except locks.LockBusy:
+                try:
+                    current = locks._snapshot(lock.path)
+                except PermissionError:
+                    current = None
+                # A fresh lease means the other racer won; a sharing failure
+                # with the old stale lease still present calls for another try.
+                if current and (time.time_ns() - current.mtime) / 1e9 <= 10:
+                    break
+            time.sleep(0.001)
         barrier.wait(20)
         owned = False
         if acquired:
@@ -126,23 +137,28 @@ class MemoryLocksTest(unittest.TestCase):
         barrier = self.context.Barrier(3)
         connections = [self.start(racer, barrier, str(self.folder), self.device)[0] for _ in range(2)]
         for number in range(100):
-            with self.subTest(round=number):
-                path = self.folder / (str(number) + ".lock")
-                self.seed(path)
-                barrier.wait(20)
-                barrier.wait(20)
-                answers = [self.receive(c) for c in connections]
-                self.assertEqual(sum(a[0] for a in answers), 1)
-                self.assertEqual(sum(a[1] for a in answers), 1)
-                winner = next(a for a in answers if a[1])
-                record = json.loads(path.read_text(encoding="utf-8"))
-                self.assertEqual(record["pid"], winner[2])
-                self.assertRegex(record["token"], r"^[0-9a-f]{32}$")
+            path = self.folder / (str(number) + ".lock")
+            self.seed(path)
+            barrier.wait(20)
+            barrier.wait(20)
+            answers = [self.receive(c) for c in connections]
+            acquired, owned = sum(a[0] for a in answers), sum(a[1] for a in answers)
+            try:
+                with self.subTest(round=number, acquired=acquired, owned=owned):
+                    self.assertEqual(acquired, 1)
+                    self.assertEqual(owned, 1)
+                    winner = next(a for a in answers if a[1])
+                    record = json.loads(path.read_text(encoding="utf-8"))
+                    self.assertEqual(record["pid"], winner[2])
+                    self.assertRegex(record["token"], r"^[0-9a-f]{32}$")
+            finally:
                 for connection in connections:
                     connection.send("release")
                 for connection in connections:
                     self.assertTrue(self.receive(connection))
-                self.assertFalse(path.exists())
+            if acquired != 1 or owned != 1:
+                return
+            self.assertFalse(path.exists())
         for process in self.processes:
             process.join(10)
             self.assertEqual(process.exitcode, 0)
@@ -227,6 +243,25 @@ class MemoryLocksTest(unittest.TestCase):
             self.assertEqual(path.stat().st_mtime_ns, before)
             replacement.check()
 
+    def test_tc007_a_late_old_heartbeat_failure_cannot_poison_a_reused_lock(self):
+        lock = self.new_lock(kind="store")
+        with mock.patch.object(lock, "_start_heartbeat"):
+            lock.acquire(time.monotonic() + 2)
+            old_stop = lock._stop
+            def delayed_failure():
+                # Model completion of an old refresh after release and reuse.
+                lock.release()
+                lock.acquire(time.monotonic() + 2)
+                raise OSError("made-up old refresh failure")
+            try:
+                with mock.patch.object(old_stop, "wait", side_effect=[False, True]):
+                    with mock.patch.object(lock, "refresh", side_effect=delayed_failure):
+                        lock._heartbeat(old_stop)
+                lock.check()
+                self.assertFalse(lock._stop.is_set())
+            finally:
+                lock.release()
+
     def test_tc008_busy_deadline_and_nonblocking_attempt(self):
         path = self.folder / "sample.lock"
         connection, process = self.start(holder, str(path), self.device)
@@ -244,6 +279,29 @@ class MemoryLocksTest(unittest.TestCase):
         self.assertEqual(self.receive(connection), "changed")
         process.join(10)
         self.assertEqual(process.exitcode, 0)
+
+    def test_tc008_transient_sharing_failure_retries_only_in_waiting_mode(self):
+        path = self.folder / "sample.lock"
+        def busy_once(original):
+            attempted = []
+            def operation(*args, **kwargs):
+                if not attempted:
+                    attempted.append(True)
+                    raise PermissionError("made-up sharing failure")
+                return original(*args, **kwargs)
+            return operation
+        lock = self.new_lock()
+        for owner, name in ((locks.os, "rename"), (locks, "_snapshot"), (lock, "_create")):
+            with self.subTest(operation=name):
+                self.seed(path)
+                original = getattr(owner, name)
+                with mock.patch.object(owner, name, side_effect=busy_once(original)):
+                    with self.assertRaises(locks.LockBusy):
+                        lock.acquire(time.monotonic() + 2, wait=False)
+                self.assertTrue(path.exists())
+                with mock.patch.object(owner, name, side_effect=busy_once(original)):
+                    with lock.held(time.monotonic() + 2):
+                        lock.check()
 
     def test_tc008_process_wide_order_and_context_release(self):
         held = []

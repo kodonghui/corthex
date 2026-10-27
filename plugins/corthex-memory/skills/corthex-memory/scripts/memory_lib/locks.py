@@ -132,7 +132,7 @@ class Lock:
         self.policy, self.device = POLICIES[kind], device
         self.pid, self.token = os.getpid(), None
         self._stop, self._mutex = threading.Event(), threading.RLock()
-        self._thread, self._lost = None, False
+        self._thread = None
 
     def _reserve(self):
         global _registry_pid
@@ -191,6 +191,18 @@ class Lock:
             self._thread = threading.Thread(target=self._heartbeat, args=(self._stop,), daemon=True)
             self._thread.start()
 
+    def _attempt(self, deadline, force):
+        if self._create():
+            return True
+        previous = _snapshot(self.path)
+        if previous and (force or (time.time_ns() - previous.mtime) / 1e9 > self.policy.stale):
+            detached = self._detach(previous, stale=True, force=force, deadline=deadline)
+            if detached is False:
+                raise LockBusy()
+            if detached and time.monotonic() < deadline:
+                return self._create()
+        return False
+
     def acquire(self, deadline, wait=True, force=False):
         """Acquire by an absolute monotonic deadline; force is for purge/delete.
 
@@ -200,21 +212,17 @@ class Lock:
         if not math.isfinite(deadline):
             raise ValueError("a finite deadline is required")
         self._reserve()
-        self.token, self._lost = secrets.token_hex(16), False
+        self.token = secrets.token_hex(16)
         self._stop, self._thread = threading.Event(), None
         try:
             while time.monotonic() < deadline:
-                if self._create():
+                try:
+                    acquired = self._attempt(deadline, force)
+                except PermissionError:
+                    acquired = False
+                if acquired:
                     self._start_heartbeat()
                     return self
-                previous = _snapshot(self.path)
-                if previous and (force or (time.time_ns() - previous.mtime) / 1e9 > self.policy.stale):
-                    detached = self._detach(previous, stale=True, force=force, deadline=deadline)
-                    if detached is False:
-                        raise LockBusy()
-                    if detached and time.monotonic() < deadline and self._create():
-                        self._start_heartbeat()
-                        return self
                 if not wait:
                     break
                 time.sleep(max(0, min(0.005, deadline - time.monotonic())))
@@ -228,7 +236,7 @@ class Lock:
         """Raise lost-lock before a change if this process no longer owns it."""
         with self._mutex:
             current = _snapshot(self.path)
-            if self.pid != os.getpid() or self._lost or not self.token or not current or current.token != self.token:
+            if self.pid != os.getpid() or self._stop.is_set() or not self.token or not current or current.token != self.token:
                 raise LostLock()
         return True
 
@@ -253,7 +261,6 @@ class Lock:
             try:
                 self.refresh()
             except (OSError, ValueError, LostLock):
-                self._lost = True
                 stop.set()
 
     def release(self, deadline=None):
@@ -266,11 +273,14 @@ class Lock:
         try:
             with self._mutex:
                 while self.token:
-                    current = _snapshot(self.path)
-                    if not current or current.token != self.token:
-                        break
-                    if self._detach(current, stale=False, deadline=deadline) is not None:
-                        break
+                    try:
+                        current = _snapshot(self.path)
+                        if not current or current.token != self.token:
+                            break
+                        if self._detach(current, stale=False, deadline=deadline) is not None:
+                            break
+                    except PermissionError:
+                        pass
                     left = deadline - time.monotonic()
                     if left <= 0:
                         raise LockBusy()
