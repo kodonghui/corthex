@@ -101,7 +101,7 @@ class MemoryFilesTest(unittest.TestCase):
             "TBL-001": {"format": 1, "device": base.new_id("d"), "made": AT, "release": "0.2.0"},
             "TBL-002": examples["configuration"]["valid"]["tuned"],
             "TBL-004": {"at": AT, "step": "record", "hook": "prompt", "host": "codex",
-                        "project": "sample", "error": "damaged-line", "log": "codex-made-up", "count": 2},
+                        "project": "sample", "error": "damaged-line", "log": "codex-0123456789abcdef", "count": 2},
             "TBL-005": {"at": AT, "hook": "prompt", "host": "codex", "ms": 1, "outcome": "ok"},
             "TBL-007": {"id": base.new_id("e"), "seq": 1, "turn": 1, "at": AT, "host": "codex",
                         "session": "made-up", "kind": "prompt", "speaker": "user", "text": "가나다 🙂\nnext"},
@@ -131,7 +131,7 @@ class MemoryFilesTest(unittest.TestCase):
                 self.assertNotIn(b"\r", encoded)
                 self.assertFalse(encoded.startswith(b"\xef\xbb\xbf"))
         self.assertIn("가나다 🙂".encode("utf-8"), base.json_bytes(records["TBL-007"], "TBL-007"))
-        marker = self.folder / "20261027T091203Z.codex-made-up.1"
+        marker = self.folder / "20261027T091203Z.codex-0123456789abcdef.1"
         files.replace_bytes(marker, b"", rebuildable=True)
         self.assertEqual(marker.read_bytes(), b"")
 
