@@ -140,7 +140,7 @@ def write_json(path, record, table, rebuildable=False, check=None):
     replace_bytes(path, json_bytes(record, table), rebuildable, check=check)
 
 
-def append_jsonl(path, record, table, report=None, check=None):
+def append_jsonl(path, record, table, report=None, check=None, deadline=None):
     """Append an already-redacted object with exactly one unbuffered write.
 
     Caller holds the file lock through recovery, the size/last-byte read, write
@@ -148,12 +148,13 @@ def append_jsonl(path, record, table, report=None, check=None):
     before opening for append. A short write truncates to the prior fstat size
     before failing; this is correct only while that caller keeps the record
     lock. No fsync: bytes are handed to the OS, as the append contract requires.
+    Optional check fences shared mutations; deadline caps recovery/open retries.
     """
     data = json_bytes(record, table, compact=True)
     path = Path(path)
     if not path.exists() and path.with_name(path.name + ".bak").exists():
-        read_jsonl(path, report, holding_lock=True, check=check)
-    fd = _checked(check, lambda: private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND))
+        read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
+    fd = _retry(lambda: _checked(check, lambda: private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND)), deadline)
     try:
         size = os.fstat(fd).st_size
         if size:

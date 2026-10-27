@@ -412,6 +412,72 @@ class MemoryStoreTest(StoreCase):
                     self.assertNotIn(name + ".bak", accessed)
                     self.assertEqual(self.snapshot(), before)
 
+    def test_tc011_configuration_recovery_rechecks_gate_after_acquiring_lease(self):
+        path = self.root / "configuration.json"
+        backup = path.with_name(path.name+".bak")
+        for header, expected in (({"format":2},store.StoreUnavailable),
+                                 (dict(self.header,migrating={}),store.StoreUnavailable),
+                                 (dict(self.header,device=base.new_id("d")),locks.LostLock)):
+            with self.subTest(header=header.get("format"),exception=expected.__name__):
+                if path.exists(): path.unlink()
+                (self.root/"store.json").write_bytes(base.json_bytes(self.header,"TBL-001"))
+                backup.write_bytes(b"{}\n")
+                acquired, late_reads, notices = [], [], []
+                acquire, read = locks.Lock.acquire, Path.read_bytes
+                def changed(lease,*args,**kwargs):
+                    result = acquire(lease,*args,**kwargs)
+                    (self.root/"store.json").write_bytes(base.json_bytes(header,"TBL-001"))
+                    acquired.append(True)
+                    return result
+                def observed(target):
+                    if acquired and target in (path,backup): late_reads.append(target.name)
+                    return read(target)
+                with mock.patch.object(locks.Lock,"acquire",changed), mock.patch.object(Path,"read_bytes",observed):
+                    with self.assertRaises(expected):
+                        self.memory.configuration(lambda *n:notices.append(n),deadline=time.monotonic()+2)
+                self.assertEqual(late_reads,[])
+                self.assertFalse(path.exists())
+                self.assertEqual(backup.read_bytes(),b"{}\n")
+                self.assertEqual(notices,[])
+
+    def test_tc011_changed_device_in_header_backup_is_not_restored_under_old_lease(self):
+        path = self.root/"configuration.json"
+        backup = path.with_name(path.name+".bak")
+        backup.write_bytes(b"{}\n")
+        header_path = self.root/"store.json"
+        header_backup = header_path.with_name("store.json.bak")
+        replacement = base.json_bytes(dict(self.header,device=base.new_id("d")),"TBL-001")
+        acquire = locks.Lock.acquire
+        def changed(lease,*args,**kwargs):
+            result = acquire(lease,*args,**kwargs)
+            header_path.unlink()
+            header_backup.write_bytes(replacement)
+            return result
+        with mock.patch.object(locks.Lock,"acquire",changed):
+            with self.assertRaises(locks.LostLock):
+                self.memory.configuration(deadline=time.monotonic()+2)
+        self.assertFalse(header_path.exists())
+        self.assertFalse(path.exists())
+        self.assertEqual(header_backup.read_bytes(),replacement)
+        self.assertEqual(backup.read_bytes(),b"{}\n")
+
+    def test_tc011_header_recovery_rechecks_backup_device_after_waiting(self):
+        path = self.root/"store.json"
+        backup = path.with_name("store.json.bak")
+        path.unlink()
+        backup.write_bytes(base.json_bytes(self.header,"TBL-001"))
+        replacement = base.json_bytes(dict(self.header,device=base.new_id("d")),"TBL-001")
+        acquire = locks.Lock.acquire
+        def changed(lease,*args,**kwargs):
+            result = acquire(lease,*args,**kwargs)
+            backup.write_bytes(replacement)
+            return result
+        with mock.patch.object(locks.Lock,"acquire",changed):
+            with self.assertRaises(locks.LostLock):
+                self.memory.record(deadline=time.monotonic()+2)
+        self.assertFalse(path.exists())
+        self.assertEqual(backup.read_bytes(),replacement)
+
     def test_tc011_restore_needed_runtime_failure_has_a_safe_store_result(self):
         path = self.root / "store.json"
         path.write_bytes(b"{")

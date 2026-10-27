@@ -195,6 +195,8 @@ Diagnostic store reads and any recovery finish before the log lease. Under that 
 
 Configuration patterns use engine-independent character classes, with printable ASCII price-page URLs; a Node ECMA-u parity test checks the same boundary values as Python. TC-011/012/014 retain passing library evidence but remain not run until their hook/status entry-point tasks execute them. The failure logger also accepts the worker code string lost-lock; additional model/sync codes remain later work.
 
+Recovery readers optionally revalidate caller state after acquisition and before moves. Configuration recovery checks the store gate and lease device before any locked configuration read; a changed device in a header backup is rejected before restoration. Daily diagnostic append/recovery/open retries receive the original absolute deadline, including Windows backup sharing failures.
+
 ## Project hub
 
 `corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The NEXUS server in `nexus/` is optional and puts the same page on the user's own address.
