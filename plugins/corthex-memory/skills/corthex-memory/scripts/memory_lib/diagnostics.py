@@ -98,7 +98,7 @@ class Diagnostics:
                         raise locks.LostLock()
                 guard()
                 path = folder / (name + "-" + record["at"][:10] + ".jsonl")
-                files.append_jsonl(path, record, table, check=guard)
+                files.append_jsonl(path, record, table, check=guard, deadline=deadline)
             return True
         except (OSError, RuntimeError, ValueError, TypeError, OverflowError):
             # The caller's hook stays quiet and continues even if logging fails.
