@@ -17,9 +17,9 @@ Inputs: the user flows in [docs/03-user-flow/memory/](../03-user-flow/memory/REA
 - `Expected`: the outcome and its effect on the memory store: the code of stage 06, or what is shown or printed, and what changed, or that nothing did. Unless a case says otherwise, every hook exits with 0 and leaves the host session as it was, and no code, error text or key reaches the conversation.
 - `Last result`: `not run`, or the result with where it ran and the commit, such as `pass on Linux, macOS and Windows in CI (commit abc1234)`; a performance result also gives its percentile and its load. `superseded (D3, 2026-10-27)` is a design status for historical C3 cases and never a passing or blocked execution result. A pass against a test server shows that memory handles the answer it was given, not that the provider gives it.
 
-Reserved case IDs: TC-319.
+Reserved case numbers: 319.
 
-TC-319 belongs to TASK-008, prepared separately; it is not counted until its row is included.
+Case number 319 belongs to TASK-008, prepared separately; it is not counted until its row is included.
 
 ## Where the cases run
 
