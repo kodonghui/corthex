@@ -3,6 +3,8 @@
 import copy
 import json
 import os
+import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -241,6 +243,43 @@ class MemoryStoreTest(StoreCase):
             else:
                 self.assert_invalid(doc)
 
+    def test_tc010_unicode_pattern_edges_agree_with_the_schema(self):
+        for folder in ("x\u2028/../y", "x\u2029/.."):
+            document = {"projects": {"sample": {"enabled":True,"since":AT,"left_out":{"folders":[folder]}}}}
+            self.assertTrue(fits(self.schema,document))
+            self.assert_invalid(document,"projects.*.left_out.folders[0]")
+        for char in ("\ufeff", "\u001c", "\u0085"):
+            document = copy.deepcopy(self.examples["valid"]["own-prices"])
+            document["prices"]["from"] = ["https://a"+char+"b"]
+            self.assertTrue(fits(self.schema,document))
+            self.assert_invalid(document,"prices.from[0]")
+        document["prices"]["from"] = ["https://example.invalid/%E2%80%A8"]
+        self.assertFalse(fits(self.schema,document))
+        configuration.prepare(document)
+
+    def test_tc010_every_pattern_agrees_with_node_ecma_u_for_boundary_values(self):
+        executable = next((Path(folder) / ("node.exe" if os.name == "nt" else "node")
+                           for folder in os.get_exec_path() if Path(folder).is_absolute()
+                           and (Path(folder) / ("node.exe" if os.name == "nt" else "node")).is_file()), None)
+        if executable is None:
+            self.skipTest("Node.js is not installed in an absolute PATH folder")
+        patterns = []
+        def visit(value):
+            if isinstance(value,dict):
+                if "pattern" in value: patterns.append(value["pattern"])
+                for child in value.values(): visit(child)
+            elif isinstance(value,list):
+                for child in value: visit(child)
+        visit(self.schema)
+        values = ["x\u2028/../y","x\u2029/..","https://a\ufeffb","https://a\u001cb","https://a\u0085b",
+                  "folder/sub","a/../b","sample","main","https://example.invalid/%E2%80%A8"]
+        expected = [[bool(re.search(pattern.replace("$",r"\Z"),value)) for value in values] for pattern in patterns]
+        program = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>b+=x);process.stdin.on("end",()=>{const d=JSON.parse(b);process.stdout.write(JSON.stringify(d.patterns.map(p=>d.values.map(v=>new RegExp(p,"u").test(v)))))});'
+        result = subprocess.run([str(executable),"-e",program],input=json.dumps({"patterns":patterns,"values":values}),
+                                capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),expected)
+
     def test_tc010_array_limits_uniqueness_and_price_requirements(self):
         document = copy.deepcopy(self.examples["valid"]["tuned"])
         left = document["projects"]["corthex"]["left_out"]
@@ -326,7 +365,9 @@ class MemoryStoreTest(StoreCase):
                 path.write_bytes(broken)
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
-            self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
+            with mock.patch.object(store.locks,"Lock",wraps=locks.Lock) as lease:
+                self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
+            self.assertEqual(lease.call_args[0][2],self.header["device"])
             self.assertEqual(notices, [("restored", None)])
             self.assertFalse(backup.exists())
         path.write_bytes(b"{")
@@ -370,6 +411,72 @@ class MemoryStoreTest(StoreCase):
                             self.memory.configuration(deadline=time.monotonic() + 2)
                     self.assertNotIn(name + ".bak", accessed)
                     self.assertEqual(self.snapshot(), before)
+
+    def test_tc011_configuration_recovery_rechecks_gate_after_acquiring_lease(self):
+        path = self.root / "configuration.json"
+        backup = path.with_name(path.name+".bak")
+        for header, expected in (({"format":2},store.StoreUnavailable),
+                                 (dict(self.header,migrating={}),store.StoreUnavailable),
+                                 (dict(self.header,device=base.new_id("d")),locks.LostLock)):
+            with self.subTest(header=header.get("format"),exception=expected.__name__):
+                if path.exists(): path.unlink()
+                (self.root/"store.json").write_bytes(base.json_bytes(self.header,"TBL-001"))
+                backup.write_bytes(b"{}\n")
+                acquired, late_reads, notices = [], [], []
+                acquire, read = locks.Lock.acquire, Path.read_bytes
+                def changed(lease,*args,**kwargs):
+                    result = acquire(lease,*args,**kwargs)
+                    (self.root/"store.json").write_bytes(base.json_bytes(header,"TBL-001"))
+                    acquired.append(True)
+                    return result
+                def observed(target):
+                    if acquired and target in (path,backup): late_reads.append(target.name)
+                    return read(target)
+                with mock.patch.object(locks.Lock,"acquire",changed), mock.patch.object(Path,"read_bytes",observed):
+                    with self.assertRaises(expected):
+                        self.memory.configuration(lambda *n:notices.append(n),deadline=time.monotonic()+2)
+                self.assertEqual(late_reads,[])
+                self.assertFalse(path.exists())
+                self.assertEqual(backup.read_bytes(),b"{}\n")
+                self.assertEqual(notices,[])
+
+    def test_tc011_changed_device_in_header_backup_is_not_restored_under_old_lease(self):
+        path = self.root/"configuration.json"
+        backup = path.with_name(path.name+".bak")
+        backup.write_bytes(b"{}\n")
+        header_path = self.root/"store.json"
+        header_backup = header_path.with_name("store.json.bak")
+        replacement = base.json_bytes(dict(self.header,device=base.new_id("d")),"TBL-001")
+        acquire = locks.Lock.acquire
+        def changed(lease,*args,**kwargs):
+            result = acquire(lease,*args,**kwargs)
+            header_path.unlink()
+            header_backup.write_bytes(replacement)
+            return result
+        with mock.patch.object(locks.Lock,"acquire",changed):
+            with self.assertRaises(locks.LostLock):
+                self.memory.configuration(deadline=time.monotonic()+2)
+        self.assertFalse(header_path.exists())
+        self.assertFalse(path.exists())
+        self.assertEqual(header_backup.read_bytes(),replacement)
+        self.assertEqual(backup.read_bytes(),b"{}\n")
+
+    def test_tc011_header_recovery_rechecks_backup_device_after_waiting(self):
+        path = self.root/"store.json"
+        backup = path.with_name("store.json.bak")
+        path.unlink()
+        backup.write_bytes(base.json_bytes(self.header,"TBL-001"))
+        replacement = base.json_bytes(dict(self.header,device=base.new_id("d")),"TBL-001")
+        acquire = locks.Lock.acquire
+        def changed(lease,*args,**kwargs):
+            result = acquire(lease,*args,**kwargs)
+            backup.write_bytes(replacement)
+            return result
+        with mock.patch.object(locks.Lock,"acquire",changed):
+            with self.assertRaises(locks.LostLock):
+                self.memory.record(deadline=time.monotonic()+2)
+        self.assertFalse(path.exists())
+        self.assertEqual(backup.read_bytes(),replacement)
 
     def test_tc011_restore_needed_runtime_failure_has_a_safe_store_result(self):
         path = self.root / "store.json"

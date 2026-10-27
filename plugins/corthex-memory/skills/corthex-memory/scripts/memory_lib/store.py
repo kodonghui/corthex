@@ -90,7 +90,9 @@ class MemoryStore:
             return files.read_record(path, parse, report, holding_lock=True, check=check, deadline=deadline)
         if device is not None:
             lock = locks.Lock(self.folder / "store.lock", "store", device)
-            return reading.read_record(path, parse, lock, deadline, report)
+            def gate():
+                self.record(report, deadline=deadline, holding_lock=lock)
+            return reading.read_record(path, parse, lock, deadline, report, check=gate)
         try:
             return files.read_record(path, parse, report, deadline=deadline)
         except files.RestoreNeeded:
@@ -104,7 +106,9 @@ class MemoryStore:
                 # Another reader may already have restored the same backup.
                 return files.read_record(path, parse, report, deadline=deadline)
             lock = locks.Lock(self.folder / "store.lock", "store", header["device"])
-            return reading.read_record(path, parse, lock, deadline, report)
+            def gate():
+                self.record(report, deadline=deadline, holding_lock=lock)
+            return reading.read_record(path, parse, lock, deadline, report, check=gate)
 
     def record(self, report=None, *, deadline, holding_lock=None):
         """Read the gate; recovery borrows the caller's operation deadline.
@@ -116,8 +120,14 @@ class MemoryStore:
         self._deadline(deadline)
         if not self.folder.exists():
             raise StoreUnavailable("no-store")
+        def parse(data):
+            value = _record(data)
+            if holding_lock is not None and value["device"] != holding_lock.device:
+                # Policy refusal must precede restoration, including a backup.
+                raise locks.LostLock()
+            return value
         try:
-            return self._read_record(self.folder / "store.json", _record, deadline,
+            return self._read_record(self.folder / "store.json", parse, deadline,
                                      report, holding_lock=holding_lock)
         except (FileNotFoundError, ValueError, UnicodeError, files.RestoreNeeded):
             raise StoreUnavailable("store-damaged") from None

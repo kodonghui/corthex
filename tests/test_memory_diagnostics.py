@@ -266,6 +266,22 @@ class MemoryDiagnosticsTest(StoreCase):
             parent.close()
         self.assertEqual(process.exitcode, 0)
 
+    def test_tc014_missing_daily_log_backup_sharing_retries_use_the_caller_deadline(self):
+        path = self.root/"logs/failures-2026-10-27.jsonl"
+        backup = path.with_name(path.name+".bak")
+        backup.write_bytes(b'{"error":"deadline"}\n')
+        before = backup.read_bytes()
+        read = Path.read_bytes
+        def sharing(target):
+            if target == backup: raise PermissionError("made-up backup sharing")
+            return read(target)
+        started = time.monotonic()
+        with mock.patch.object(files,"_WINDOWS",True), mock.patch.object(Path,"read_bytes",sharing):
+            self.assertFalse(self.logger.failure("deadline","record",started+0.05,when=self.when))
+        self.assertLess(time.monotonic()-started,0.3)
+        self.assertFalse(path.exists())
+        self.assertEqual(backup.read_bytes(),before)
+
     def test_tc014_deadline_or_device_change_before_append_is_fenced(self):
         original = files.append_jsonl
         def delayed(*args, **kwargs):
@@ -289,30 +305,37 @@ class MemoryDiagnosticsTest(StoreCase):
         path.with_name("store.json.bak").write_bytes(base.json_bytes(self.header, "TBL-001"))
         original, reads = self.memory.record, []
         def before_lock(*args, **kwargs):
-            self.assertFalse(locks._active, "store recovery was attempted under another lease")
-            reads.append(True)
+            holding = kwargs.get("holding_lock")
+            self.assertEqual(set(locks._active), {holding} if holding is not None else set(),
+                             "store recovery was attempted under another lease")
+            if holding is not None:
+                self.assertEqual(holding.path, self.root / "store.lock")
+            reads.append(holding is not None)
             return original(*args, **kwargs)
         with mock.patch.object(self.memory, "record", before_lock):
             self.assertTrue(self.logger.failure("deadline", "record", time.monotonic() + 2,
                                                 when=self.when))
-        self.assertTrue(reads)
+        self.assertIn(False, reads)
+        self.assertIn(True, reads)
         self.assertEqual(files.read_json(path), self.header)
         self.assertFalse(path.with_name("store.json.bak").exists())
         self.assertEqual([row["error"] for row in self.failures()], ["deadline"])
 
     def test_tc013_lease_class_names_and_instances_use_their_fixed_codes(self):
         values = (("LockBusy", "lock-busy"), (locks.LockBusy(), "lock-busy"),
-                  ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"))
+                  ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"), ("lost-lock", "lost-lock"))
         for value, expected in values:
             self.assertEqual(diagnostics.error_kind(value), expected)
             self.assertTrue(self.logger.failure(value, "record", time.monotonic() + 2,
                                                 when=self.when))
         self.assertEqual([row["error"] for row in self.failures()],
-                         ["lock-busy", "lock-busy", "lost-lock", "lost-lock"])
+                         ["lock-busy", "lock-busy", "lost-lock", "lost-lock", "lost-lock"])
         self.assertEqual(diagnostics.error_kind("PermissionError"), "PermissionError")
         self.assertEqual(diagnostics.error_kind(ValueError("made-up")), "ValueError")
         self.assertIsNone(diagnostics.error_kind("LostLock made-up private text"))
         self.assertIsNone(diagnostics.error_kind("unknown-class"))
+        self.assertIsNone(diagnostics.error_kind("refusal"))
+        self.assertIsNone(diagnostics.error_kind("stale"))
 
     def test_tc014_timing_release_failure_is_logged_without_discarding_the_timing(self):
         rename = locks.os.rename
