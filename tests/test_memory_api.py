@@ -2,6 +2,7 @@
 contract that docs/06-api/memory.md states about them."""
 
 import json
+import math
 import re
 import unittest
 
@@ -30,8 +31,10 @@ TYPES = {
     "object": lambda value: isinstance(value, dict),
     "array": lambda value: isinstance(value, list),
     "string": lambda value: isinstance(value, str),
-    "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
-    "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+    "integer": lambda value: (isinstance(value, int) and not isinstance(value, bool) or
+                              isinstance(value, float) and math.isfinite(value) and value.is_integer()),
+    "number": lambda value: (isinstance(value, int) and not isinstance(value, bool) or
+                             isinstance(value, float) and math.isfinite(value)),
     "boolean": lambda value: isinstance(value, bool),
     "null": lambda value: value is None,
 }

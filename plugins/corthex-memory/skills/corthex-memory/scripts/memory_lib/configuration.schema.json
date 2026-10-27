@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CORTHEX memory configuration, format 1",
+  "description": "configuration.json in the memory store (TBL-002). Every process that reads it checks it against this schema, and one field that fails turns memory off on the device. A field left out takes its default. See memory.md, Memory configuration.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "consent": {
+      "description": "The user's consent and the version of its text (SPEC-030). Left out: nothing is recorded or sent.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "version"],
+      "properties": {
+        "at": {"$ref": "#/$defs/time"},
+        "version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "projects": {
+      "description": "The projects that memory was turned on for, by their names in the project list (SPEC-006, SPEC-030, SPEC-036).",
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/project-name"},
+      "additionalProperties": {"$ref": "#/$defs/project"}
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "days": {"description": "The retention period (SPEC-009).", "type": "integer", "minimum": 1, "maximum": 3650, "default": 100}
+      }
+    },
+    "triggers": {
+      "description": "The curation triggers at the end of a turn (SPEC-010).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "turns": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 10},
+        "minutes": {"type": "integer", "minimum": 1, "maximum": 1440, "default": 30}
+      }
+    },
+    "temporary": {
+      "description": "Whether the device is a temporary device (SPEC-011). Left out: it is when CLAUDE_CODE_REMOTE is true.",
+      "type": "boolean"
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "curator": {"$ref": "#/$defs/model", "default": "claude-haiku-5-5"},
+        "effort": {"enum": ["low", "medium", "high", "xhigh", "max"], "default": "xhigh"},
+        "embedding": {"$ref": "#/$defs/model", "default": "text-embedding-3-small"},
+        "dims": {"description": "The length of the vectors that the embedding model is asked for.", "type": "integer", "minimum": 64, "maximum": 3072, "default": 512}
+      }
+    },
+    "recall": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": {"description": "The recall threshold. Left out: recall injects nothing, until stage 12 sets it.", "type": "number", "minimum": 0, "maximum": 2},
+        "skip": {"description": "The shortest prompt, in characters, that recall runs for.", "type": "integer", "minimum": 0, "maximum": 1000, "default": 8}
+      }
+    },
+    "prices": {
+      "description": "The price list (SPEC-032), in US dollars per million tokens. The default is the first price list, taken on 2026-10-25.",
+      "$ref": "#/$defs/prices",
+      "default": {
+        "taken": "2026-10-25",
+        "from": [
+          "https://platform.claude.com/docs/en/about-claude/pricing",
+          "https://developers.openai.com/api/docs/models/text-embedding-3-small"
+        ],
+        "models": {
+          "claude-haiku-5-5": {"input": 0.1, "output": 0.5, "cache_write": 0.125, "cache_read": 0.01, "above": {"tokens": 100000, "input": 0.5, "output": 2.5}},
+          "text-embedding-3-small": {"input": 0.02, "output": 0}
+        }
+      }
+    },
+    "sync": {
+      "description": "Historical Git sync configuration; superseded (D3, 2026-10-27). The HTTPS server sync design will be specified separately before C3.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address"],
+      "properties": {
+        "address": {"type": "string", "minLength": 1, "maxLength": 2000, "pattern": "^[^\\u0000-\\u001f\\u007f]+$"},
+        "branch": {"type": "string", "pattern": "^[A-Za-z0-9._/][A-Za-z0-9._/-]{0,99}$", "default": "main"}
+      }
+    }
+  },
+  "$defs": {
+    "time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "project-name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,59}$"},
+    "model": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$"},
+    "folder": {
+      "description": "A folder relative to the project's folder, with / between names. No name is empty, . or .., or holds a backslash, a colon or a control character.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400,
+      "pattern": "^(?!(?:.*/)?\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001f]+(?:/[^/\\\\:\\u0000-\\u001f]+)*$"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "since"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "since": {"description": "When memory was last turned on for the project.", "$ref": "#/$defs/time"},
+        "left_out": {
+          "description": "What is left out of recording (SPEC-006).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "folders": {"type": "array", "maxItems": 50, "uniqueItems": true, "items": {"$ref": "#/$defs/folder"}, "default": []},
+            "kinds": {"type": "array", "uniqueItems": true, "items": {"enum": ["prompt", "answer", "boundary"]}, "default": []}
+          }
+        }
+      }
+    },
+    "dollars": {"type": "number", "minimum": 0, "maximum": 1000},
+    "price": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output"],
+      "properties": {
+        "input": {"$ref": "#/$defs/dollars"},
+        "output": {"$ref": "#/$defs/dollars"},
+        "cache_write": {"$ref": "#/$defs/dollars"},
+        "cache_read": {"$ref": "#/$defs/dollars"},
+        "above": {
+          "description": "Prices for a request whose input tokens, cache reads and writes included, are more than tokens.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tokens", "input", "output"],
+          "properties": {
+            "tokens": {"type": "integer", "minimum": 1},
+            "input": {"$ref": "#/$defs/dollars"},
+            "output": {"$ref": "#/$defs/dollars"}
+          }
+        }
+      }
+    },
+    "prices": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taken", "from", "models"],
+      "properties": {
+        "taken": {"description": "When the prices were read from the price pages.", "$ref": "#/$defs/date"},
+        "from": {"description": "The price pages, one address each.", "type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "maxLength": 2000, "pattern": "^https://[^\\s]+$"}},
+        "models": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/model"}, "additionalProperties": {"$ref": "#/$defs/price"}}
+      }
+    }
+  }
+}

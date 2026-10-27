@@ -28,9 +28,15 @@ def _retry(operation):
             time.sleep(min(0.02, left))
 
 
-def _unlink(path):
+def _checked(check, operation):
+    if check is not None:
+        check()
+    return operation()
+
+
+def _unlink(path, check=None):
     try:
-        _retry(lambda: path.unlink())
+        _retry(lambda: _checked(check, path.unlink))
     except FileNotFoundError:
         pass
 
@@ -52,60 +58,61 @@ def _temporary(path, data, durable):
         raise
 
 
-def _backup(path, backup):
-    _unlink(backup)
+def _backup(path, backup, check=None):
+    _unlink(backup, check)
     try:
-        os.link(str(path), str(backup))
+        _checked(check, lambda: os.link(str(path), str(backup)))
     except OSError:
         # A copied backup becomes visible only after it is complete and durable.
-        temporary = _temporary(backup, path.read_bytes(), True)
+        temporary = _checked(check, lambda: _temporary(backup, path.read_bytes(), True))
         try:
-            _retry(lambda: os.replace(str(temporary), str(backup)))
+            _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(backup))))
         finally:
             _unlink(temporary)
     if os.name != "nt":
-        backup.chmod(0o600)
+        _checked(check, lambda: backup.chmod(0o600))
 
 
-def replace_bytes(path, data, rebuildable=False):
+def replace_bytes(path, data, rebuildable=False, check=None):
     """Replace using a same-directory temporary, then backup, move, cleanup.
 
     A failed replacement preserves the old target and its backup. A process
     stopped after the move leaves the new target and the old backup whole.
-    Rebuildable files omit fsync and the backup, as stage 05 specifies.
+    Rebuildable files omit fsync and the backup, as stage 05 specifies. An
+    optional caller guard fences shared mutations, including every move retry.
     """
     path = Path(path)
-    temporary = _temporary(path, data, not rebuildable)
+    temporary = _checked(check, lambda: _temporary(path, data, not rebuildable))
     backup = path.with_name(path.name + ".bak")
     try:
         if not rebuildable and path.exists():
-            _backup(path, backup)
-        _retry(lambda: os.replace(str(temporary), str(path)))
+            _backup(path, backup, check=check)
+        _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(path))))
         if not rebuildable:
-            _unlink(backup)
+            _unlink(backup, check)
     finally:
         _unlink(temporary)
 
 
-def write_json(path, record, table, rebuildable=False):
-    replace_bytes(path, json_bytes(record, table), rebuildable)
+def write_json(path, record, table, rebuildable=False, check=None):
+    replace_bytes(path, json_bytes(record, table), rebuildable, check=check)
 
 
-def append_jsonl(path, record, table):
+def append_jsonl(path, record, table, check=None):
     """Append an already-redacted object with exactly one unbuffered write.
 
     Caller holds the file lock through the last-byte read and this write. No
     fsync: bytes are handed to the OS, as the append contract requires.
     """
     data = json_bytes(record, table, compact=True)
-    fd = private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND)
+    fd = _checked(check, lambda: private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND))
     try:
         size = os.lseek(fd, 0, os.SEEK_END)
         if size:
             os.lseek(fd, -1, os.SEEK_END)
             if os.read(fd, 1) != b"\n":
                 data = b"\n" + data
-        if os.write(fd, data) != len(data):
+        if _checked(check, lambda: os.write(fd, data)) != len(data):
             raise OSError("short append")
     finally:
         os.close(fd)
