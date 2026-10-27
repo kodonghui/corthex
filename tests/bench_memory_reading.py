@@ -19,11 +19,12 @@ def measure(samples):
         connection, process = case.start(holder, str(lease.path), case.device)
         assert case.receive(connection)
         for _ in range(samples):
-            started = time.monotonic()
+            deadline = time.monotonic() + 0.05
+            started = time.perf_counter()
             try:
-                reading.read_json(path, lease, started + 0.05)
+                reading.read_json(path, lease, deadline)
             except locks.LockBusy:
-                times.append((time.monotonic() - started) * 1000)
+                times.append((time.perf_counter() - started) * 1000)
             else:
                 raise AssertionError("foreign lease was acquired")
             assert not path.exists() and backup.read_bytes() == b'{"seq":1}\n'
@@ -34,7 +35,7 @@ def measure(samples):
     finally:
         case.doCleanups()
     return {"schema": 1, "os": platform.system(), "python": platform.python_version(),
-            "samples": len(times), "deadline_ms": 50,
+            "samples": len(times), "deadline_ms": 50, "clock": "perf_counter",
             "median_ms": round(statistics.median(times), 3), "max_ms": round(max(times), 3)}
 
 
