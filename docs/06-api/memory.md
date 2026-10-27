@@ -2,11 +2,13 @@
 
 [한국어](memory.ko.md)
 
-Stage 06 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draft of 2026-10-25. The maintainer checks it together with the functional spec and the memory store before C1 is built; after that check the interfaces are frozen for the release, and a later breaking change needs the maintainer's decision. When this file and its Korean translation differ, this file is the source.
+Stage 06 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec and the memory store before C1 is built; after that check the interfaces are frozen for the release, and a later breaking change needs the maintainer's decision. When this file and its Korean translation differ, this file is the source.
 
-Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039) and the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022), above all their notes for stage 06; the requirements in [docs/02-prd/memory.md](../02-prd/memory.md); and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. Like them, this file assumes the recommendations of decisions D1 to D4: the interfaces whose status says `open (D2)` or `open (D3)` change with another answer, and the `proposed` one waits for the requirement that the functional spec proposes.
+Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039) and the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022), above all their notes for stage 06; the requirements in [docs/02-prd/memory.md](../02-prd/memory.md); and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
-The memory plugin has no HTTP API of its own. Its interfaces are the hooks that the hosts run, a background process, the commands of the memory skill, and its calls to two model APIs and to Git. So this stage's contract is this file and the JSON Schemas beside it, instead of the stage's default, an `api/openapi.yaml` read in Swagger UI; `.corthex/project.json` records the choice. The stage's rules apply where they fit: each interface has an API ID and names the behaviours it serves, it lists every outcome it can have, with examples, and the error codes are listed once.
+> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration, examples and consent text; their C1/C2 parts remain confirmed.
+
+The local memory plugin has no HTTP API of its own; D3 adds an HTTPS sync gateway on the user-operated server, whose contract is deferred until before C3. Its interfaces are the hooks that the hosts run, a background process, the commands of the memory skill, and its calls to two model APIs and to Git. So this stage's contract is this file and the JSON Schemas beside it, instead of the stage's default, an `api/openapi.yaml` read in Swagger UI; `.corthex/project.json` records the choice. The stage's rules apply where they fit: each interface has an API ID and names the behaviours it serves, it lists every outcome it can have, with examples, and the error codes are listed once.
 
 ## How to read this file
 
@@ -46,12 +48,12 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | API-007 | Merge a group | model call | SPEC-019, SPEC-018, SPEC-020, SPEC-032 | active |
 | API-008 | Shorten the current state | model call | SPEC-019, SPEC-017, SPEC-018, SPEC-032 | active |
 | API-009 | Count tokens | model call | SPEC-015, SPEC-019, SPEC-032 | active |
-| API-010 | Embed a prompt | model call | SPEC-023, SPEC-032 | open (D2) |
+| API-010 | Embed a prompt | model call | SPEC-023, SPEC-032 | active |
 | API-011 | Embed items | model call | SPEC-016, SPEC-019, SPEC-027, SPEC-032 | active |
 | API-012 | Embed a search request | model call | SPEC-025, SPEC-032 | active |
-| API-013 | Check that the sync remote is private | Git | SPEC-026 | open (D3) |
-| API-014 | Pull and merge | Git | SPEC-027, SPEC-028, SPEC-029 | open (D3) |
-| API-015 | Push | Git | SPEC-027, SPEC-028 | open (D3) |
+| API-013 | Check that the sync remote is private | Git | SPEC-026 | superseded (D3, 2026-10-27) |
+| API-014 | Pull and merge | Git | SPEC-027, SPEC-028, SPEC-029 | superseded (D3, 2026-10-27) |
+| API-015 | Push | Git | SPEC-027, SPEC-028 | superseded (D3, 2026-10-27) |
 | API-016 | `on` | command | SPEC-030, SPEC-001, SPEC-031 | active |
 | API-017 | `off` | command | SPEC-036 | active |
 | API-018 | `status` | command | SPEC-033, SPEC-022, SPEC-031, SPEC-039 | active |
@@ -62,11 +64,11 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | API-023 | `pin` | command | SPEC-034 | active |
 | API-024 | `unpin` | command | SPEC-034 | active |
 | API-025 | `forget` | command | SPEC-035, SPEC-029 | active |
-| API-026 | `delete-project` | command | SPEC-037 | proposed |
+| API-026 | `delete-project` | command | SPEC-037 | active |
 | API-027 | `purge` | command | SPEC-038 | active |
 | API-028 | `leave-out` | command | SPEC-006 | active |
 | API-029 | `retention` | command | SPEC-009 | active |
-| API-030 | `sync` | command | SPEC-026, SPEC-027 | open (D3) |
+| API-030 | `sync` | command | SPEC-026, SPEC-027 | superseded (D3, 2026-10-27) |
 | API-031 | `setup` | command | SPEC-011 | active |
 | API-032 | `repair` | command | SPEC-033, SPEC-039 | active |
 
@@ -239,7 +241,7 @@ Outcomes: `ok`; `left-out`, when the folder or the boundaries are left out, in w
 7. Appends an injection log line, also when it injects nothing (TBL-011).
 8. Appends its hook timing line.
 
-Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. Recall, and with it API-010, is `open (D2)`, as SPEC-023 is.
+Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. Recall, including API-010 and SPEC-023, is active under D2 confirmed on 2026-10-27.
 
 ### End-of-turn hook (API-003)
 
@@ -302,7 +304,7 @@ The memory configuration (TBL-002) is `configuration.json` in the memory store, 
 | --- | --- | --- | --- |
 | `consent` | `at` (time) and `version` (integer of 1 or more) | none: nothing is recorded or sent | SPEC-030 |
 | `projects` | project name → `enabled` (true or false), `since` (time), optional `left_out` with `folders` (up to 50 folders) and `kinds` (`prompt`, `answer`, `boundary`) | none | SPEC-006, SPEC-030, SPEC-036 |
-| `retention.days` | 1 to 3,650 | 30 | SPEC-009 |
+| `retention.days` | 1 to 3,650 | 100 | SPEC-009 |
 | `triggers.turns` | 1 to 1,000 | 10 | SPEC-010 |
 | `triggers.minutes` | 1 to 1,440 | 30 | SPEC-010 |
 | `temporary` | true or false | left out: the device is temporary when `CLAUDE_CODE_REMOTE` is `true` | SPEC-011 |
@@ -329,7 +331,7 @@ Example, with consent, one enabled project and sync on:
   "projects": {
     "corthex": {"enabled": true, "since": "2026-10-25T09:12:03.004Z", "left_out": {"folders": ["private-notes"], "kinds": []}}
   },
-  "retention": {"days": 30},
+  "retention": {"days": 100},
   "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
 }
 ```
@@ -450,7 +452,7 @@ CORTHEX memory, consent version 1.
 - To curate memory, the recorded turns, the project's current state and its item list are sent to Anthropic with the key in CORTHEX_MEMORY_ANTHROPIC_API_KEY, to the model in the memory configuration, by default Claude Haiku 5.5.
 - To recall and to search, your prompts, search requests and memory items are sent to OpenAI with the key in CORTHEX_MEMORY_OPENAI_API_KEY, to make embeddings, by default with text-embedding-3-small.
 - The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a private Git repository of yours.
-- Recordings are deleted after 30 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.
+- Recordings are deleted after 100 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.
 - Anthropic's and OpenAI's terms for their APIs govern what they do with the data they receive. The plugin sets no spending limit; its usage is in the memory status and in each provider's console.
 ```
 
@@ -724,6 +726,8 @@ An item's words come from its kind, title, text and the words of its quotes. For
 
 ## Git sync
 
+D3 design status: `superseded (D3, 2026-10-27)`. This section and the `sync` configuration, result codes and examples describe the earlier Git contract only. The server gateway contract will be specified separately before C3.
+
 Sync runs the device's own `git` (SPEC-026). Each Git command has 120 seconds, `GIT_TERMINAL_PROMPT=0` so that nothing waits for a password, `LC_ALL=C` so that its messages can be read, and, unless the user set `GIT_SSH_COMMAND`, `GIT_SSH_COMMAND="ssh -o BatchMode=yes"`. Without `git`, sync is refused with `git-missing`. A Git command that fails otherwise is `git-failed`, with its exit status, never its message, in the failure log.
 
 ### Check that the sync remote is private (API-013)
@@ -922,6 +926,8 @@ The functional spec and the memory store left these to stage 06. Each can change
 
 ## For the checkpoint
 
+Passed on 2026-10-27: the recommendations listed below, with 100-day default retention and the new D3 decision recorded in stage 02. Git-specific recommendations are superseded, and the server sync design is deferred until before C3. This confirms the plan and choices; release go/no-go decisions still follow the trials.
+
 The maintainer checks this file together with the functional spec and the memory store. Most worth a look:
 
 1. xhigh effort, while the provider advises starting at medium (choice 4); stage 12 compares.
@@ -940,7 +946,7 @@ The maintainer checks this file together with the functional spec and the memory
 From the release steps of the functional spec:
 
 - C1, recording and the start summary: API-001; API-002 and API-003 without recall and triggers; API-004; the memory worker (API-005) for retention and cleanup only; API-016, API-017, API-018, API-027, API-028, API-029 and API-032.
-- C2, curation and recall: recall in API-002, the triggers in API-003 and API-004, curation and consolidation in API-005, API-006 to API-012, API-019 to API-025, API-026 once its requirement is approved, and API-031.
+- C2, curation and recall: recall in API-002, the triggers in API-003 and API-004, curation and consolidation in API-005, API-006 to API-012, API-019 to API-025, API-026 under the approved REQ-194, and API-031.
 - C3, sync: API-013, API-014, API-015 and API-030.
 
 ### Stage 12: QA

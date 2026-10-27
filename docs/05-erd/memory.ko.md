@@ -2,15 +2,17 @@
 
 [English](memory.md)
 
-CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-24 초안입니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
+CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-27 확인했습니다. 남겨 둔 Git 동기화 설계는 D3로 대체됐습니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
 
-입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 기능 명세와 같이 이 파일도 결정 D1\~D4의 추천을 가정합니다. 상태가 `open (D3)`인 저장 단위는 다른 답이 나오면 바뀌고, `proposed`인 저장 단위는 기능 명세가 제안한 요구사항을 기다립니다.
+입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
+
+> D3 설계 상태: `superseded (D3, 2026-10-27)`. 이곳에 남겨 둔 Git 동기화 제안은 2026-10-27에 확인한 D3 결정으로 대체됐습니다. 구현하거나 실행할 계획이 아닌 과거 자료입니다. HTTPS 창구와 서버 동기화 설계는 C3 전에 따로 작성합니다. 기기의 저장소는 파일과 SQLite 검색 색인을 유지합니다. 이 표시는 여러 단계가 공유하는 행·설정·예시·동의 문구의 동기화 부분에도 적용하며, 그 C1/C2 부분은 확인된 상태입니다.
 
 ## 이 파일을 읽는 법
 
 - 기억 폴더는 보통 파일을 담은 폴더이고, 검색 색인만 프로젝트마다 SQLite 파일 하나입니다. 저장 단위(TBL) 하나는 파일 한 종류이거나 파일 안의 줄 한 종류입니다. 검색 색인의 표는 [memory-index.sql](memory-index.sql)에 있고, 프로젝트 허브는 그 ID를 거기서 읽습니다.
 - `근거` 열에는 그 저장 단위를 읽거나 쓰는 동작(SPEC)을 모두 적고, [동작마다 읽고 쓰는 자료](#동작마다-읽고-쓰는-자료)는 같은 것을 반대 방향으로 적습니다. 검색 색인의 표는 주석에 자기 근거를 적습니다.
-- 상태: `active`; 결정 D3이 열려 있는 동안 `open (D3)`; 아직 없는 요구사항이 필요한 저장 단위는 `proposed`.
+- 상태: 확인한 저장 단위는 `active`, 남겨 둔 Git 동기화 정보와 저장소 표지는 `superseded (D3, 2026-10-27)`입니다.
 - 필드 표는 필드를 쓰는 순서대로 적습니다. 선택이라고 적은 필드는 값이 없으면 빼며, 어떤 필드도 `null`로 쓰지 않습니다.
 - 기억 폴더 정보나 정리 진행 기록처럼 용어집에 없는 이름은 이 파일의 저장 단위 이름이며, 여기서 정합니다.
 
@@ -69,19 +71,19 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | TBL-003 | 사용량 기록 | CTX-005 | `logs/usage-<month>.jsonl` | 파일과 그 안의 자리 | 모두 지우기까지 | 안 함 | SPEC-014, SPEC-015, SPEC-016, SPEC-018, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-032, SPEC-033 | active |
 | TBL-004 | 실패 기록 | CTX-005 | `logs/failures-<date>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033 | active |
 | TBL-005 | 훅 소요 시간 | CTX-005 | `logs/hooks-<date>.jsonl` | 파일과 그 안의 자리 | 8일 | 안 함 | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033 | active |
-| TBL-006 | 동기화 정보 | CTX-004 | `sync/state.json` | 기억 폴더마다 하나 | 동기화가 켜진 동안 | 안 함 | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | open (D3) |
+| TBL-006 | 동기화 정보 | CTX-004 | `sync/state.json` | 기억 폴더마다 하나 | 동기화가 켜진 동안 | 안 함 | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | superseded (D3, 2026-10-27) |
 | TBL-007 | 원문 기록 | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, 또는 파일과 `seq` | 줄마다의 시각으로 보관 기간 동안 | 절대 안 함(REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037 | active |
 | TBL-008 | 정리 전 턴 표지 | CTX-002 | `projects/<project>/unprocessed/<time>.<log>.<turn>` | 파일 이름 | 그 턴을 처리하거나 지울 때까지 | 안 함 | SPEC-002, SPEC-003, SPEC-009, SPEC-010, SPEC-016, SPEC-022, SPEC-033, SPEC-037 | active |
 | TBL-009 | 정리 진행 기록 | CTX-002 | `projects/<project>/curation.json` | 프로젝트마다 하나 | 프로젝트의 기억이 있는 동안 | 안 함 | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037 | active |
 | TBL-010 | 알림 | CTX-003 | `projects/<project>/notices/<name>.json` | 파일 이름 | 시작 요약이 보여 줄 때까지 | 안 함 | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037 | active |
-| TBL-011 | 넣기 기록 | CTX-003 | `projects/<project>/injections/<log>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | proposed |
+| TBL-011 | 넣기 기록 | CTX-003 | `projects/<project>/injections/<log>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | active |
 | TBL-012 | 기억 항목 | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | 잊거나 프로젝트의 기억과 함께 지울 때까지 | 함 | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-013 | 현재 상태 | CTX-002 | `projects/<project>/layer/state.json`과 `state-removed.json` | 줄마다의 `id` | 줄은 빠질 때까지, 빠진 줄의 기록은 계속 | 함 | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-014 | 고정 | CTX-003 | `projects/<project>/layer/pins.json` | 기록마다의 `item` | 항목을 잊을 때까지 계속 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-015 | 항목 목록 | CTX-003 | `projects/<project>/layer/item-list.txt` | 줄마다의 항목 ID | 바뀔 때마다 다시 만듦 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
 | TBL-016 | 지운 기록 | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037 | active |
-| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | proposed |
-| TBL-018 | 동기화 저장소 표지 | CTX-004 | 동기화 저장소의 `corthex-memory-sync.json` | 동기화 저장소마다 하나 | 동기화 저장소가 있는 동안 | 동기화 저장소 안에 있음 | SPEC-026, SPEC-027, SPEC-028 | open (D3) |
+| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | active |
+| TBL-018 | 동기화 저장소 표지 | CTX-004 | 동기화 저장소의 `corthex-memory-sync.json` | 동기화 저장소마다 하나 | 동기화 저장소가 있는 동안 | 동기화 저장소 안에 있음 | SPEC-026, SPEC-027, SPEC-028 | superseded (D3, 2026-10-27) |
 
 검색 색인은 SQLite 파일 `projects/<project>/index.db`입니다. 절대 동기화하지 않으며(REQ-044), 기억 항목에서 언제든 다시 만들 수 있습니다(TERM-029).
 
@@ -129,7 +131,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | --- | --- | --- |
 | `consent` | (선택) 객체: `at`(시각), `version`(정수) | 사용자의 동의와 그 문구의 판(SPEC-030). 이번 판이 요구하는 판의 동의가 없으면 아무것도 기록하거나 보내지 않습니다. |
 | `projects` | 객체: 프로젝트 이름 → `enabled`(true나 false), `since`(시각), 선택인 `left_out`(`folders`: 프로젝트 폴더를 기준으로 한 폴더; `kinds`: `prompt`, `answer`, `boundary` 가운데 몇 개) | 기억을 켠 프로젝트, 마지막으로 켠 때, 기록에서 뺀 것(SPEC-006, SPEC-030, SPEC-036) |
-| `retention` | 객체: `days`(1 이상의 정수, 기본값 30) | 보관 기간(SPEC-009) |
+| `retention` | 객체: `days`(1 이상의 정수, 기본값 100) | 보관 기간(SPEC-009) |
 | `triggers` | 객체: `turns`(기본값 10), `minutes`(기본값 30) | 턴이 끝날 때의 정리 시작 조건(SPEC-010) |
 | `temporary` | (선택) true나 false | 기기가 임시 기기인지. 빠지면 코드가 도구에 묻습니다(SPEC-011) |
 | `models` | 객체: `curator`(기본값 `claude-haiku-5-5`), `effort`(기본값 `xhigh`), `embedding`(기본값 `text-embedding-3-small`), `dims`(줄인 벡터 길이, 기본값 512) | 모델(SPEC-014, SPEC-023) |
@@ -602,6 +604,8 @@ erDiagram
 10. 사람이 보는 곳: 이 단계의 기본인 ERD Editor 대신, 그림이 있는 이 파일과, 표를 데이터베이스로 만든 Notion의 한국어 사본. 검색 색인만 SQL이기 때문입니다.
 
 ## 확인할 것
+
+2026-10-27 통과: 아래 추천을 승인했고, 원문 보관 기본값 100일과 새 D3 결정은 02단계에 기록했습니다. Git 전용 추천은 대체됐으며 서버 동기화 설계는 C3 전에 따로 작성합니다. 계획과 선택을 확인한 것이며, 출시 여부는 각 시험 운영 뒤에 정합니다.
 
 관리자는 이 파일을 기능 명세와 함께 확인합니다. 특히 볼 만한 것:
 

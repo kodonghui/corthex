@@ -43,7 +43,7 @@ Purpose: give the agent the memory it needs, at session start and with each prom
 - Commands: Build start summary, Recall for prompt, Search memory
 - Policies: Only the session's project. Only current items. Inject nothing when no item passes the recall threshold. Mark injected memory as reference material, not instructions. Stay within the size limits. When recall is late or an API fails, inject nothing. Show text from repository files only in fixed formats.
 - Actors: Host, Agent, OpenAI API
-- Open questions: Decision D2 in the [requirements](../02-prd/memory.md#open-decisions): how items are chosen for each prompt.
+- Open questions: Decision D2 in the [requirements](../02-prd/memory.md#decisions-in-force): how items are chosen for each prompt.
 
 ### CTX-004 Sync
 
@@ -53,7 +53,7 @@ Purpose: share the curated layer between the user's devices.
 - Commands: Sync memory
 - Policies: Off until the user turns it on. Only the curated layer goes to a private sync remote of the user's; raw logs and the search index stay on each device. A forgotten item never comes back through sync.
 - Actors: User, Other device, Sync remote
-- Open questions: Decision D3 in the [requirements](../02-prd/memory.md#open-decisions): where the curated layer is shared.
+- Answered on 2026-10-27: D3 in the [requirements](../02-prd/memory.md#decisions-in-force) shares the curated layer through a user-operated HTTPS gateway and Postgres server with pgvector. Devices do not connect to the database directly.
 
 ### CTX-005 Control
 
@@ -63,7 +63,7 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 - Commands: Enable project, Disable project, Pin item, Unpin item, Forget item, Purge store, Show status
 - Policies: Projects start disabled. Nothing is sent to an API before consent. Keys are read only from the memory key variables or the host's secure storage, and never written anywhere. Each model call is logged with its usage. No spending cap (the maintainer's decision of 2026-10-24); a user who wants a limit sets it in the model provider's console. Removing the plugin keeps the memory store.
 - Actors: User
-- Open questions: Decision D4 in the [requirements](../02-prd/memory.md#open-decisions): how model calls are paid for.
+- Open questions: Decision D4 in the [requirements](../02-prd/memory.md#decisions-in-force): how model calls are paid for.
 
 ## Glossary
 
@@ -101,7 +101,7 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-030 | Embedding | A vector for a text from the OpenAI embeddings API, used to find items by meaning | CTX-003 | |
 | TERM-031 | Item list | A short list of a project's current items, one line each, read before any item is opened | CTX-003 | index |
 | TERM-032 | Curated layer | The current state, the items and their pins, the item list and the tombstones: what sync shares | CTX-004 | |
-| TERM-033 | Sync remote | The private place that the curated layer is synced through, such as a Git repository of the user's | CTX-004 | cloud, server |
+| TERM-033 | Sync remote | The private place that the curated layer is synced through: the user-operated Postgres server with pgvector chosen by D3 on 2026-10-27, reached by devices only through an HTTPS gateway | CTX-004 | cloud, server |
 | TERM-034 | Tombstone | A record that an item was forgotten, so that sync does not bring it back | CTX-004, CTX-005 | |
 | TERM-035 | Forget | Removing an item, its search index entries and the raw log text it quotes, and leaving a tombstone | CTX-005 | delete |
 | TERM-036 | Purge | Deleting the whole memory store | CTX-005 | reset |

@@ -2,9 +2,9 @@
 
 [한국어](FL-004-recall-for-a-prompt.ko.md)
 
-Serves: REQ-007, REQ-031, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-038, REQ-040, REQ-049, REQ-050, REQ-052
+Serves: REQ-007, REQ-031, REQ-032, REQ-033, REQ-034, REQ-035, REQ-036, REQ-037, REQ-038, REQ-040, REQ-049, REQ-050, REQ-052, REQ-196
 
-Context: CTX-003 Recall. Starts in the same prompt hook, after FL-002. The flow follows the recommendation of decision D2: embeddings and rules choose the items, and no model is asked for each prompt.
+Context: CTX-003 Recall. Starts in the same prompt hook, after FL-002. D2 was confirmed on 2026-10-27: embeddings and rules choose the items, and no model is asked for each prompt.
 
 ```mermaid
 flowchart TD
@@ -21,7 +21,8 @@ flowchart TD
   F -->|no| N
   F -->|yes| G["Take five items at most,<br/>under 600 tokens<br/>REQ-031, REQ-033"]
   G --> H["Inject them as reference material,<br/>with where to read the original<br/>REQ-038"]
-  H --> Z
+  H --> L["Log where and which item IDs, without their text<br/>REQ-196"]
+  L --> Z
 ```
 
 The whole prompt hook, FL-002 and this flow together, finishes within 1 second at the 95th percentile (REQ-034).

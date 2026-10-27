@@ -4,7 +4,7 @@
 
 Serves: REQ-015, REQ-040, REQ-042, REQ-043, REQ-044, REQ-045, REQ-046, REQ-049, REQ-050, REQ-052, REQ-054
 
-Context: CTX-004 Sync. Starts at a sync point on a device, such as a session start or the end of a curation; the functional spec fixes the sync points. The flow follows the recommendation of decision D3: the sync remote is a private Git repository of the user's.
+Context: CTX-004 Sync. Starts at a sync point on a device, such as a session start or the end of a curation; the functional spec fixes the sync points. Status: `superseded (D3, 2026-10-27)`. The Git proposal below was replaced by D3's answer on 2026-10-27; the HTTPS gateway and server sync flow will be specified separately before C3.
 
 ```mermaid
 flowchart TD

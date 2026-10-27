@@ -25,7 +25,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "days": {"description": "The retention period (SPEC-009).", "type": "integer", "minimum": 1, "maximum": 3650, "default": 30}
+        "days": {"description": "The retention period (SPEC-009).", "type": "integer", "minimum": 1, "maximum": 3650, "default": 100}
       }
     },
     "triggers": {
@@ -75,7 +75,7 @@
       }
     },
     "sync": {
-      "description": "The sync remote; sync is on while this is there (SPEC-026).",
+      "description": "Historical Git sync configuration; superseded (D3, 2026-10-27). The HTTPS server sync design will be specified separately before C3.",
       "type": "object",
       "additionalProperties": false,
       "required": ["address"],

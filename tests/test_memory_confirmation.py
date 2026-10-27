@@ -1,0 +1,118 @@
+"""Keep the confirmed MEMORY decisions consistent across the stage sources and fixtures."""
+
+import re
+import unittest
+from collections import Counter
+
+from _common import ROOT, load_json, read_text
+from test_memory_api import fits
+from test_memory_wbs import D3_SUPERSEDED, section, tables
+
+DOCS = ROOT / "docs"
+STAGES = ("02-prd", "04-functional-spec", "05-erd", "06-api", "10-wbs", "12-qa")
+
+
+def definitions(text, prefix):
+    return {row[0]: row for rows in tables(text) for row in rows[1:]
+            if re.fullmatch(prefix + r"-\d{3}", row[0])}
+
+
+class ConfirmationTest(unittest.TestCase):
+    def test_requirement_ids_priorities_and_confirmed_decisions(self):
+        text = read_text(DOCS / "02-prd/memory.md")
+        requirements = definitions(text, "REQ")
+        self.assertEqual(list(requirements), ["REQ-%03d" % n for n in list(range(1, 66)) + [194, 195, 196]])
+        for key in ("REQ-194", "REQ-195", "REQ-196"):
+            self.assertEqual(requirements[key][3], "Should")
+            self.assertEqual(requirements[key][-1], "active")
+        for key in ("REQ-031", "REQ-033", "REQ-034", "REQ-042", "REQ-046", "REQ-061"):
+            self.assertEqual(requirements[key][-1], "active")
+        decisions = section(text, "## Decisions in force")
+        for number in range(1, 5):
+            self.assertRegex(decisions, r"\| 2026-10-27 \| \*\*D%d\.\*\*" % number)
+        self.assertIn("Passed on 2026-10-27:", section(text, "## For the checkpoint"))
+        for word in ("Postgres", "pgvector", "HTTPS", "standard library", "revocable", "no direct"):
+            self.assertIn(word, requirements["REQ-042"][1])
+        self.assertEqual(requirements["REQ-044"][1], "The memory plugin shall never sync raw logs or the search index.")
+
+    def test_retention_default_range_fixtures_and_consent(self):
+        schema = load_json(DOCS / "06-api/memory-configuration.schema.json")
+        retention = schema["properties"]["retention"]["properties"]["days"]
+        self.assertEqual((retention["default"], retention["minimum"], retention["maximum"]), (100, 1, 3650))
+        for days in (1, 100, 3650):
+            self.assertEqual(fits(schema, {"retention": {"days": days}}), [])
+        for days in (0, 3651):
+            self.assertTrue(fits(schema, {"retention": {"days": days}}))
+        examples = load_json(DOCS / "06-api/memory-examples.json")
+        self.assertEqual(examples["configuration"]["valid"]["with-sync"]["retention"]["days"], 100)
+        consent = examples["result"]["valid"]["on-asks"]["data"]["consent"]
+        self.assertEqual(consent["version"], 1)
+        self.assertIn("100 days", consent["text"])
+        self.assertIn("Anthropic", consent["text"])
+        self.assertIn("OpenAI", consent["text"])
+        for stage in STAGES:
+            for suffix in (".md", ".ko.md"):
+                text = read_text(DOCS / stage / ("memory" + suffix))
+                self.assertNotRegex(text, r"\b30[- ]days?\b|30일")
+        self.assertEqual(schema["properties"]["triggers"]["properties"]["minutes"]["default"], 30)
+        self.assertEqual(schema["properties"]["models"]["properties"]["curator"]["default"], "claude-haiku-5-5")
+        self.assertEqual(schema["properties"]["models"]["properties"]["effort"]["default"], "xhigh")
+
+    def test_legacy_git_design_is_marked_without_replacing_the_contract(self):
+        for stage in STAGES[1:]:
+            for suffix in (".md", ".ko.md"):
+                text = read_text(DOCS / stage / ("memory" + suffix))
+                self.assertIn(D3_SUPERSEDED, text)
+                self.assertNotRegex(text, r"\| (?:open \(D[1-4]\)|proposed) \|")
+        specs = definitions(read_text(DOCS / "04-functional-spec/memory.md"), "SPEC")
+        for key in ("SPEC-026", "SPEC-027", "SPEC-028"):
+            self.assertEqual(specs[key][-1], D3_SUPERSEDED)
+        self.assertEqual(specs["SPEC-029"][-1], "active")
+        records = definitions(read_text(DOCS / "05-erd/memory.md"), "TBL")
+        for key in ("TBL-006", "TBL-018"):
+            self.assertEqual(records[key][-1], D3_SUPERSEDED)
+        for key in ("TBL-011", "TBL-017"):
+            self.assertEqual(records[key][-1], "active")
+        schema = load_json(DOCS / "06-api/memory-configuration.schema.json")
+        self.assertIn(D3_SUPERSEDED, schema["properties"]["sync"]["description"])
+        self.assertEqual(schema["properties"]["sync"]["required"], ["address"])
+
+    def test_new_requirements_have_spec_flow_and_case_links(self):
+        specs = definitions(read_text(DOCS / "04-functional-spec/memory.md"), "SPEC")
+        for spec, requirement in (("SPEC-011", "REQ-195"), ("SPEC-021", "REQ-196"),
+                                  ("SPEC-023", "REQ-196"), ("SPEC-037", "REQ-194")):
+            self.assertIn(requirement, specs[spec][2])
+        flows = DOCS / "03-user-flow/memory"
+        for number, requirement in ((3, "REQ-196"), (4, "REQ-196"), (5, "REQ-195"), (11, "REQ-194")):
+            path = next(path for path in flows.glob("FL-%03d-*.md" % number) if not path.name.endswith(".ko.md"))
+            self.assertIn(requirement, read_text(path).splitlines()[4])
+        cases = definitions(read_text(DOCS / "12-qa/memory.md"), "TC")
+        for case, requirement in (("TC-244", "REQ-195"), ("TC-245", "REQ-194"), ("TC-203", "REQ-196")):
+            self.assertIn(requirement, cases[case][2])
+
+    def test_checkpoint_and_project_notes_record_confirmation(self):
+        project = load_json(ROOT / ".corthex/project.json")
+        for stage in STAGES:
+            self.assertIn("2026-10-27", project["stages"][stage]["note"])
+            self.assertIn("Passed on 2026-10-27:", section(read_text(DOCS / stage / "memory.md"), "## For the checkpoint"))
+        self.assertIn("Passed on 2026-10-27:", section(read_text(DOCS / "03-user-flow/memory/README.md"), "## For the checkpoint"))
+
+    def test_requirement_and_spec_translations_keep_ids_numbers_and_status(self):
+        for stage, prefix in (("02-prd", "REQ"), ("04-functional-spec", "SPEC"), ("05-erd", "TBL")):
+            source = definitions(read_text(DOCS / stage / "memory.md"), prefix)
+            translated = definitions(read_text(DOCS / stage / "memory.ko.md"), prefix)
+            self.assertEqual(list(source), list(translated))
+            for key, row in source.items():
+                other = translated[key]
+                if len(row) >= 7:
+                    self.assertEqual(row[-1], other[-1], key)
+                if key == "SPEC-009":
+                    self.assertEqual(Counter(re.findall(r"\d+", row[4] + row[6])),
+                                     Counter(re.findall(r"\d+", other[4] + other[6])))
+                for english, korean in zip(row, other):
+                    self.assertEqual(Counter(re.findall(r"[A-Z]+-\d{3}", english)),
+                                     Counter(re.findall(r"[A-Z]+-\d{3}", korean)), key)
+
+
+if __name__ == "__main__":
+    unittest.main()
