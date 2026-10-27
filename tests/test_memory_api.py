@@ -6,6 +6,7 @@ import re
 import unittest
 
 from _common import ROOT, load_json, read_text
+from test_memory_wbs import D3_SUPERSEDED
 
 API = ROOT / "docs" / "06-api"
 DOC = API / "memory.md"
@@ -349,7 +350,8 @@ class InterfacesTest(unittest.TestCase):
                 listed = [item.strip() for item in row[3].split(",")]
                 self.assertTrue(all(re.fullmatch(r"SPEC-0[0-3][0-9]", item) for item in listed), row[3])
                 served |= set(listed)
-                self.assertRegex(row[4], r"^(active|proposed|open \(D[1-4]\))$")
+                expected = D3_SUPERSEDED if row[0] in {"API-013", "API-014", "API-015", "API-030"} else "active"
+                self.assertEqual(row[4], expected)
         self.assertEqual(served, {"SPEC-%03d" % n for n in range(1, 40)})
 
     def test_configuration_matches_the_document(self):

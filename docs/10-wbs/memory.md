@@ -2,9 +2,11 @@
 
 [한국어](memory.ko.md)
 
-Stage 10 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draft of 2026-10-25. This stage's checkpoint is the plan of the next step, C1: the maintainer checks it together with the functional spec, the memory store and the interfaces before C1 is built, and no task starts before that check. The tasks of C2 and C3 are refined, and agreed in the same way, before each of those steps starts. When this file and its Korean translation differ, this file is the source.
+Stage 10 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. This stage's checkpoint is the plan of the next step, C1: the maintainer checks it together with the functional spec, the memory store and the interfaces before C1 is built, and no task starts before that check. The tasks of C2 and C3 are refined, and agreed in the same way, before each of those steps starts. When this file and its Korean translation differ, this file is the source.
 
-Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039), the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022) and the interfaces in [docs/06-api/memory.md](../06-api/memory.md) (API-001 to API-032), above all their notes for stage 10. Those notes split the work into the release steps of the [requirements](../02-prd/memory.md): C1, recording and the start summary; C2, curation and recall; C3, sync between devices. The memory plugin has no screens, so no task names a screen (SCR): the memory skill's answers in the conversation take their place. Like those files, this one assumes the recommendations of decisions D1 to D4 and the changes to the requirements that the functional spec proposes; [Decisions the tasks wait for](#decisions-the-tasks-wait-for) names the tasks that change with another answer.
+Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039), the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022) and the interfaces in [docs/06-api/memory.md](../06-api/memory.md) (API-001 to API-032), above all their notes for stage 10. Those notes split the work into the release steps of the [requirements](../02-prd/memory.md): C1, recording and the start summary; C2, curation and recall; C3, sync between devices. The memory plugin has no screens, so no task names a screen (SCR): the memory skill's answers in the conversation take their place. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
+
+> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
 ## How to read this file
 
@@ -15,7 +17,7 @@ Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functio
 - `Owner`: `agent`, the AI agent working in the repository, which opens the pull request; or `maintainer`, for what needs the maintainer's judgement, device or accounts.
 - `Estimate`: a size, not a date. For the agent's tasks, S is up to about 300 changed lines of code and tests, M up to about 800 and L up to about 2,000; a larger task is split before it starts. For the maintainer's tasks, S takes under 30 minutes of the maintainer's time, M up to two hours, and L is spread over days, as a trial is.
 - `Done when`: what someone else checks. Unless it says otherwise, tests pass on Python 3.8 and on the newest Python, on Linux, macOS and Windows (REQ-060, REQ-061). A task that touches an interface is done only when its outcomes have passing tests; [Outcomes](#outcomes) gives each interface's outcomes and the tasks that test them.
-- `Status`: `todo`; `in progress`; `done (#N)`, with the pull request that finished it; or `removed (YYYY-MM-DD)`, for a task that a split or a change replaced. Tasks are never renumbered or deleted.
+- `Status`: `todo`; `in progress`; `done (#N)`, with the pull request that finished it; or `removed (YYYY-MM-DD)`, for a task that a split or a change replaced. `superseded (D3, 2026-10-27)` marks retained C3 design records, which must not be executed before their replacement plan is confirmed. Tasks are never renumbered or deleted.
 
 ## C1: recording and the start summary
 
@@ -79,7 +81,7 @@ Release 0.3.0: curation, consolidation, recall for each prompt, and the rest of 
 | TASK-041 | `pin`, `unpin` and `resume` (API-023, API-024, API-019), and the memory status of C2 (API-018): each project's last curation, stop, last consolidation, items by status and pins, and the usage by model with the models that have no price | SPEC-034, SPEC-033, SPEC-018 | API-018, API-019, API-023, API-024 | TASK-021, TASK-036, TASK-038 | agent | M | SPEC-034's acceptance criteria and SPEC-033's first pass; a pin that the start summary would not fit gives `pin-no-room` with the pins; its outcomes have passing tests. | todo |
 | TASK-042 | `forget` (API-025) and the tombstones it leaves: the other items that quote the same raw text, the quoted ranges filled with U+FFFD or kept whole for an item that stays, and the current state's lines and pins | SPEC-035, SPEC-029, SPEC-007, SPEC-012 | API-025, TBL-007, TBL-016 | TASK-016, TASK-033, TASK-036 | agent | M | SPEC-035's acceptance criteria and SPEC-012's fourth pass; SPEC-007's third passes with forgets and retention rewriting one file; `data.outside` names what memory cannot remove; its outcomes have passing tests. | todo |
 | TASK-043 | Temporary devices: one unprocessed turn as a trigger, and `setup` (API-031) with its setup script | SPEC-011 | API-031, TBL-002 | TASK-019, TASK-034 | agent | M | SPEC-011's third acceptance criterion passes, and a temporary device curates after every turn; the script writes each file only when it is missing, holds no key and runs with Python 3.8; its outcomes have passing tests. | todo |
-| TASK-044 | `delete-project` (API-026) without sync, once its requirement is approved | SPEC-037 | API-026 | TASK-042 | agent | M | SPEC-037's first acceptance criterion passes; the locks are taken over at once; its outcomes have passing tests. | todo |
+| TASK-044 | `delete-project` (API-026) without sync, under the approved REQ-194 | SPEC-037 | API-026 | TASK-042 | agent | M | SPEC-037's first acceptance criterion passes; the locks are taken over at once; its outcomes have passing tests. | todo |
 | TASK-045 | The memory skill for the commands of C2 | SPEC-025, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-011 | none | TASK-040, TASK-041, TASK-042, TASK-043, TASK-044 | agent | S | A test checks that the skill names each command of C2 and each code it can return; SPEC-025's first acceptance criterion holds in both hosts; before a forget, the skill shows what memory cannot remove. | todo |
 | TASK-046 | The two memory keys, as decision D4 recommends, set in the environment that the hosts start in | SPEC-031 | none | TASK-030 | maintainer | S | The memory status on the maintainer's device shows both keys as present. | todo |
 | TASK-047 | Measurements on the trial's raw logs, on the maintainer's device: both token estimates against the token count in English and in Korean, medium, high and xhigh effort on the same turns, and 512 against 1,536 numbers per vector | SPEC-014, SPEC-015, SPEC-023 | none | TASK-029, TASK-036, TASK-039, TASK-046 | agent | M | A report gives each number with its sample and its cost from the usage log, and the estimates and defaults change where the report shows they should. | todo |
@@ -91,16 +93,16 @@ Release 0.3.0: curation, consolidation, recall for each prompt, and the rest of 
 
 ## C3: sync
 
-Release 0.4.0: sync through a private Git repository of the user's, as decision D3 recommends. These tasks are split before C3 starts.
+Release 0.4.0. D3 design status: `superseded (D3, 2026-10-27)`. The six retained tasks below describe the earlier Git proposal. They must be replaced or revised with the separately confirmed server sync design before C3 starts; their IDs and trace links are retained.
 
 | ID | Task | From | Touches | Depends on | Owner | Estimate | Done when | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-052 | Git and the privacy check (API-013), and `sync on`, `off` and `now` (API-030): the device's own `git` with its limits, the address forms, a read without credentials for the three known hosts, the files of the branch, and the sync record | SPEC-026, SPEC-027 | API-013, API-030, TBL-002, TBL-006 | TASK-005, TASK-018 | agent | M | SPEC-026's first two acceptance criteria pass against local repositories and a stand-in for `git` that answers as each known host does; turning sync off deletes the sync folder; its outcomes have passing tests. | todo |
-| TASK-053 | Pull and merge (API-014): the working copy, the fetch, the tree read object by object and never checked out, the merge of two devices, tombstones and project tombstones applied, and the sync remote marker | SPEC-028, SPEC-029 | API-014, TBL-016, TBL-017, TBL-018 | TASK-042, TASK-052 | agent | L | SPEC-028's first two acceptance criteria and SPEC-029's pass between two memory stores and a local bare repository; no Git hook or filter of the remote runs; a marker of a newer format stops the merge; its outcomes have passing tests. | todo |
-| TASK-054 | Push (API-015) and the sync points of the memory worker, with temporary devices syncing after every curation, `setup` copying the curated layer, a deleted project leaving its project tombstone, and the notices of sync | SPEC-027, SPEC-028, SPEC-011, SPEC-026, SPEC-037 | API-005, API-015, API-026, API-031 | TASK-043, TASK-044, TASK-053 | agent | L | SPEC-027's acceptance criteria, SPEC-028's last two, SPEC-011's first, SPEC-026's third and SPEC-037's second pass; a push replaces the branch only where the pull found it; after a push, the working copy keeps no object that the branch no longer reaches; its outcomes have passing tests. | todo |
-| TASK-055 | A private Git repository for memory, and sync on two of the maintainer's devices | SPEC-026, SPEC-027 | none | TASK-054, TASK-059 | maintainer | M | Both devices' memory status shows sync on with its privacy check, and an item curated on one device reaches the other; the maintainer's go or no for 0.4.0 is in the project's records. | todo |
-| TASK-056 | Release 0.4.0: the versions and descriptions, then the tag `corthex-memory--v0.4.0` on the commit of main that passed the checks | SPEC-039 | none | TASK-055 | agent | S | The tag is on that commit, and the manifests, the marketplace entry and the memory skill there say 0.4.0. | todo |
-| TASK-059 | The walks of C3: host agents walk FL-012, and FL-001, FL-009 and FL-011 with sync, with two made-up devices and a local bare repository, and the flows of C1 and C2 again, by stage 12's run list | SPEC-011, SPEC-026, SPEC-027, SPEC-028, SPEC-029, SPEC-037 | none | TASK-054 | agent | M | Every row of stage 12's run list for every flow has a verdict, `works`, `fails` or `blocked`, with its evidence, in a report in `docs/12-qa/runs/` that lists the impressions apart; each `fails` is filed as an issue; the rows that work run as replays in the hook checks. | todo |
+| TASK-052 | Git and the privacy check (API-013), and `sync on`, `off` and `now` (API-030): the device's own `git` with its limits, the address forms, a read without credentials for the three known hosts, the files of the branch, and the sync record | SPEC-026, SPEC-027 | API-013, API-030, TBL-002, TBL-006 | TASK-005, TASK-018 | agent | M | SPEC-026's first two acceptance criteria pass against local repositories and a stand-in for `git` that answers as each known host does; turning sync off deletes the sync folder; its outcomes have passing tests. | superseded (D3, 2026-10-27) |
+| TASK-053 | Pull and merge (API-014): the working copy, the fetch, the tree read object by object and never checked out, the merge of two devices, tombstones and project tombstones applied, and the sync remote marker | SPEC-028, SPEC-029 | API-014, TBL-016, TBL-017, TBL-018 | TASK-042, TASK-052 | agent | L | SPEC-028's first two acceptance criteria and SPEC-029's pass between two memory stores and a local bare repository; no Git hook or filter of the remote runs; a marker of a newer format stops the merge; its outcomes have passing tests. | superseded (D3, 2026-10-27) |
+| TASK-054 | Push (API-015) and the sync points of the memory worker, with temporary devices syncing after every curation, `setup` copying the curated layer, a deleted project leaving its project tombstone, and the notices of sync | SPEC-027, SPEC-028, SPEC-011, SPEC-026, SPEC-037 | API-005, API-015, API-026, API-031 | TASK-043, TASK-044, TASK-053 | agent | L | SPEC-027's acceptance criteria, SPEC-028's last two, SPEC-011's first, SPEC-026's third and SPEC-037's second pass; a push replaces the branch only where the pull found it; after a push, the working copy keeps no object that the branch no longer reaches; its outcomes have passing tests. | superseded (D3, 2026-10-27) |
+| TASK-055 | A private Git repository for memory, and sync on two of the maintainer's devices | SPEC-026, SPEC-027 | none | TASK-054, TASK-059 | maintainer | M | Both devices' memory status shows sync on with its privacy check, and an item curated on one device reaches the other; the maintainer's go or no for 0.4.0 is in the project's records. | superseded (D3, 2026-10-27) |
+| TASK-056 | Release 0.4.0: the versions and descriptions, then the tag `corthex-memory--v0.4.0` on the commit of main that passed the checks | SPEC-039 | none | TASK-055 | agent | S | The tag is on that commit, and the manifests, the marketplace entry and the memory skill there say 0.4.0. | superseded (D3, 2026-10-27) |
+| TASK-059 | The walks of C3: host agents walk FL-012, and FL-001, FL-009 and FL-011 with sync, with two made-up devices and a local bare repository, and the flows of C1 and C2 again, by stage 12's run list | SPEC-011, SPEC-026, SPEC-027, SPEC-028, SPEC-029, SPEC-037 | none | TASK-054 | agent | M | Every row of stage 12's run list for every flow has a verdict, `works`, `fails` or `blocked`, with its evidence, in a report in `docs/12-qa/runs/` that lists the impressions apart; each `fails` is filed as an issue; the rows that work run as replays in the hook checks. | superseded (D3, 2026-10-27) |
 
 ## Outcomes
 
@@ -148,21 +150,21 @@ The codes that any command can have are tested in TASK-018 for every command, th
 
 ## Decisions the tasks wait for
 
-The plan assumes the recommendation of each open decision of the requirements and each change to the requirements that the functional spec proposes. Another answer changes these tasks:
+D1, D2, D4 and all seven requirement changes were approved on 2026-10-27. This table records those decisions and their task links. The C3 tasks tied to D3 are superseded; the separate server design must establish their replacement execution plan before C3.
 
-| Decision | Tasks |
-| --- | --- |
-| D1, how to build memory | All of them |
-| D2, how items are chosen for each prompt | TASK-039, TASK-047, TASK-048, TASK-058, and the prompt's embedding in TASK-032 |
-| D3, how devices share memory | TASK-052 to TASK-056, TASK-059 |
-| D4, how model calls are paid for | TASK-046, and the calls from TASK-032 on |
-| Notices when a step waits for consent or a memory key (REQ-029) | TASK-014, TASK-038 |
-| Hook timings in the memory status (REQ-053) | TASK-021 |
-| Raw text that another item also quotes (REQ-054) | TASK-042 |
-| A pin that moves with its item (REQ-065) | TASK-031, TASK-041 |
-| Deleting one project's memory (new requirement) | TASK-044, TASK-054 |
-| Temporary devices (new requirement) | TASK-038, TASK-043, TASK-054 |
-| An injection log (new requirement) | TASK-038, TASK-039 |
+| Decision | Tasks | Status |
+| --- | --- | --- |
+| D1, how to build memory | All of them | confirmed 2026-10-27 |
+| D2, how items are chosen for each prompt | TASK-039, TASK-047, TASK-048, TASK-058, and the prompt's embedding in TASK-032 | confirmed 2026-10-27 |
+| D3, how devices share memory | TASK-052 to TASK-056, TASK-059 | superseded (D3, 2026-10-27) |
+| D4, how model calls are paid for | TASK-046, and the calls from TASK-032 on | confirmed 2026-10-27 |
+| Notices when a step waits for consent or a memory key (REQ-029) | TASK-014, TASK-038 | confirmed 2026-10-27 |
+| Hook timings in the memory status (REQ-053) | TASK-021 | confirmed 2026-10-27 |
+| Raw text that another item also quotes (REQ-054) | TASK-042 | confirmed 2026-10-27 |
+| A pin that moves with its item (REQ-065) | TASK-031, TASK-041 | confirmed 2026-10-27 |
+| Deleting one project's memory (REQ-194) | TASK-044, TASK-054 | confirmed 2026-10-27 |
+| Temporary devices (REQ-195) | TASK-038, TASK-043, TASK-054 | confirmed 2026-10-27 |
+| An injection log (REQ-196) | TASK-038, TASK-039 | confirmed 2026-10-27 |
 
 ## Choices this stage made
 
@@ -181,6 +183,8 @@ Each can change at the checkpoint.
 6. Releases: 0.2.0 after C1, 0.3.0 after C2 and 0.4.0 after C3, each tagged after the maintainer's trial of its step.
 
 ## For the checkpoint
+
+Passed on 2026-10-27: the recommendations listed below, with 100-day default retention and the new D3 decision recorded in stage 02. Git-specific recommendations are superseded, and the server sync design is deferred until before C3. This confirms the plan and choices; release go/no-go decisions still follow the trials.
 
 The maintainer checks the plan of C1 together with the functional spec, the memory store and the interfaces. Most worth a look:
 

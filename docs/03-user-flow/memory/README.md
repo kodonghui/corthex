@@ -2,9 +2,9 @@
 
 [한국어](README.ko.md)
 
-Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: draft of 2026-10-24. As chosen on 2026-10-24 for the depth of the design, the maintainer reviews these flows together with the functional spec (stage 04). When a file here and its Korean translation differ, the English file is the source.
+Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27, with the Git sync proposal superseded by D3. As chosen on 2026-10-24 for the depth of the design, the maintainer reviews these flows together with the functional spec (stage 04). When a file here and its Korean translation differ, the English file is the source.
 
-Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. The flows assume the recommendations of decisions D1 to D4; FL-004 depends on D2 and FL-012 on D3.
+Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065 and REQ-194 to REQ-196), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. D1, D2, D4 and the flows were confirmed on 2026-10-27. The Git proposal in FL-012 is superseded by the new D3 answer; the server sync flow needs separate confirmation before C3.
 
 Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. To keep its first chart readable, FL-005 draws how one proposed change is applied as a second chart. Each flow that calls a model API, the curator model or the OpenAI embeddings API, appends the call to the usage log at that step (REQ-052): FL-004 to FL-007 and FL-012.
 
@@ -51,10 +51,14 @@ Drawing the flows raised these questions, which the requirements leave open. The
 5. Taking an item back: FL-005 marks an item withdrawn only when its own speaker takes it back (REQ-020, TERM-017). The spec decides what happens when the user corrects something the agent said.
 6. A tombstone must let the other devices find a forgotten item and the raw text it quotes, without holding that text itself (REQ-045, REQ-054).
 7. Quotes shared by items: forgetting one item must not break the provenance of another item that quotes the same raw text (REQ-017, REQ-054).
-8. Retention and stopped curation: raw turns that are not processed yet, for example while the fault guard has stopped curation, can reach the 30-day retention (REQ-009, REQ-024).
+8. Retention and stopped curation: raw turns that are not processed yet, for example while the fault guard has stopped curation, can reach the 100-day retention (REQ-009, REQ-024).
 9. Deleting one project's memory: the requirements only disable a project (REQ-058) or purge the whole store (REQ-055).
 10. Size: a single turn that does not fit in one request (REQ-022), and a consolidation with more items than one request holds.
 11. A pinned item that is superseded or withdrawn leaves the start summary (REQ-037). Should the pin move to the newer item?
 12. Hook timings: the success measures read the speed from the memory status, which REQ-053 does not list.
 13. Turning sync on: how the user chooses the sync remote, and how the plugin checks that it is private (REQ-042).
-14. Quote checks on older items: REQ-017 checks a quote against the raw log, but a raw log stays on the device that wrote it and its entries are deleted after 30 days (REQ-008, REQ-009). FL-006 lets a merged item keep the quotes of the items it merges, with their provenance, without checking them again; the spec states this rule.
+14. Quote checks on older items: REQ-017 checks a quote against the raw log, but a raw log stays on the device that wrote it and its entries are deleted after 100 days (REQ-008, REQ-009). FL-006 lets a merged item keep the quotes of the items it merges, with their provenance, without checking them again; the spec states this rule.
+
+## For the checkpoint
+
+Passed on 2026-10-27: the user flows together with the functional spec's answers, with default retention of 100 days. FL-012 has status `superseded (D3, 2026-10-27)`; its Git flowchart is retained as historical design. The HTTPS gateway and server sync flow will be specified separately before C3.

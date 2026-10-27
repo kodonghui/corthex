@@ -1,5 +1,5 @@
 {
-  "description": "Named examples for the schemas beside this file, by schema. Each valid example fits its schema and each invalid one does not; the repository's tests check both, and stage 12 uses them as fixtures.",
+  "description": "Named examples for the schemas beside this file, by schema. Each valid example fits its schema and each invalid one does not; the repository's tests check both, and stage 12 uses them as fixtures. Git sync portions are superseded (D3, 2026-10-27); the server sync design is deferred until before C3.",
   "configuration": {
     "schema": "memory-configuration.schema.json",
     "valid": {
@@ -13,7 +13,7 @@
             "left_out": {"folders": ["private-notes"], "kinds": []}
           }
         },
-        "retention": {"days": 30},
+        "retention": {"days": 100},
         "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
       },
       "temporary": {
@@ -49,7 +49,7 @@
       }
     },
     "invalid": {
-      "unknown-field": {"retention": {"days": 30, "weeks": 2}},
+      "unknown-field": {"retention": {"days": 100, "weeks": 2}},
       "retention-too-long": {"retention": {"days": 4000}},
       "dims-too-small": {"models": {"dims": 32}},
       "effort": {"models": {"effort": "extreme"}},
@@ -320,7 +320,7 @@
           "project": "corthex",
           "consent": {
             "version": 1,
-            "text": "CORTHEX memory, consent version 1.\n\n- When memory is on for a project, this device records your prompts and the agent's final answers in sessions that work in that project's folders, after removing secrets and the text you mark with <private>. Tool calls, tool results and files are not recorded.\n- To curate memory, the recorded turns, the project's current state and its item list are sent to Anthropic with the key in CORTHEX_MEMORY_ANTHROPIC_API_KEY, to the model in the memory configuration, by default Claude Haiku 5.5.\n- To recall and to search, your prompts, search requests and memory items are sent to OpenAI with the key in CORTHEX_MEMORY_OPENAI_API_KEY, to make embeddings, by default with text-embedding-3-small.\n- The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a private Git repository of yours.\n- Recordings are deleted after 30 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.\n- Anthropic's and OpenAI's terms for their APIs govern what they do with the data they receive. The plugin sets no spending limit; its usage is in the memory status and in each provider's console."
+            "text": "CORTHEX memory, consent version 1.\n\n- When memory is on for a project, this device records your prompts and the agent's final answers in sessions that work in that project's folders, after removing secrets and the text you mark with <private>. Tool calls, tool results and files are not recorded.\n- To curate memory, the recorded turns, the project's current state and its item list are sent to Anthropic with the key in CORTHEX_MEMORY_ANTHROPIC_API_KEY, to the model in the memory configuration, by default Claude Haiku 5.5.\n- To recall and to search, your prompts, search requests and memory items are sent to OpenAI with the key in CORTHEX_MEMORY_OPENAI_API_KEY, to make embeddings, by default with text-embedding-3-small.\n- The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a sync server that you run, through its HTTPS gateway.\n- Recordings are deleted after 100 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.\n- Anthropic's and OpenAI's terms for their APIs govern what they do with the data they receive. The plugin sets no spending limit; its usage is in the memory status and in each provider's console."
           }
         },
         "confirm": "k3v9q2m7"
@@ -333,7 +333,7 @@
         "data": {
           "project": "corthex",
           "keys": {"anthropic": "missing", "openai": "present"},
-          "retention_days": 30,
+          "retention_days": 100,
           "left_out": {"folders": [], "kinds": []}
         }
       },

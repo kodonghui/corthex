@@ -13,7 +13,8 @@ TRANSLATION = DOCS / "10-wbs" / "memory.ko.md"
 API = DOCS / "06-api"
 STEPS = ["C1", "C2", "C3"]
 COLUMNS = ["ID", "Task", "From", "Touches", "Depends on", "Owner", "Estimate", "Done when", "Status"]
-STATUS = re.compile(r"todo|in progress|done \(#\d+\)|removed \(\d{4}-\d{2}-\d{2}\)")
+D3_SUPERSEDED = "superseded (D3, 2026-10-27)"
+STATUS = re.compile(r"todo|in progress|done \(#\d+\)|removed \(\d{4}-\d{2}-\d{2}\)|" + re.escape(D3_SUPERSEDED))
 TESTED = "its outcomes have passing tests"
 SHARED = ["Every command", "Every model call", "The failure log of the hooks and the memory worker"]
 # What a hook adds to the outcomes of its section: its input cannot be read, or no host can be told.
@@ -109,7 +110,15 @@ class WorkBreakdownTest(unittest.TestCase):
             for row in self.steps[step][1:]:
                 self.assertNotIn(row[0], self.tasks)
                 self.tasks[row[0]] = dict(zip(COLUMNS, row), step=step)
+        # Superseded C3 rows retain their structural trace links, but are not executable work.
         self.current = {key: task for key, task in self.tasks.items() if not task["Status"].startswith("removed")}
+
+    def test_superseded_c3_is_retained_without_approving_execution(self):
+        expected = {"TASK-052", "TASK-053", "TASK-054", "TASK-055", "TASK-056", "TASK-059"}
+        found = {key for key, task in self.tasks.items() if task["Status"] == D3_SUPERSEDED}
+        self.assertEqual(found, expected)
+        self.assertEqual(found, {key for key, task in self.tasks.items() if task["step"] == "C3"})
+        self.assertIn("must not be executed", self.doc)
 
     def test_each_step_has_the_task_table(self):
         for step in STEPS:

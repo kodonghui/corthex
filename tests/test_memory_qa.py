@@ -7,7 +7,7 @@ import unittest
 from collections import Counter
 
 from _common import ROOT, read_text
-from test_memory_wbs import SHARED, STEPS, claimed, criteria_counts, ids, listed, section, tables, tested_by, ticked
+from test_memory_wbs import D3_SUPERSEDED, SHARED, STEPS, claimed, criteria_counts, ids, listed, section, tables, tested_by, ticked
 from test_memory_wbs import COLUMNS as TASK_COLUMNS
 
 DOCS = ROOT / "docs"
@@ -19,7 +19,7 @@ RUNS = ["contract", "api", "e2e", "agent", "manual", "real"]
 # The From prefixes of the codes that every command, every model call, and the hooks and the memory worker
 # in the failure log can have: the last three rows of stage 10's outcomes.
 TOKENS = dict(zip(["commands", "model-calls", "failure-log"], SHARED))
-LAST = re.compile(r"not run|removed \(\d{4}-\d{2}-\d{2}\).+|(?:pass|fail|blocked)\b.* \(commit [0-9a-f]{7,40}\).*")
+LAST = re.compile(r"not run|removed \(\d{4}-\d{2}-\d{2}\).+|(?:pass|fail|blocked)\b.* \(commit [0-9a-f]{7,40}\).*|" + re.escape(D3_SUPERSEDED))
 # A Korean particle after an ID depends on how its number ends when read aloud: 2, 4, 5 and 9 end with a
 # vowel, 1, 7 and 8 with ㄹ, and the others, 0 and the tens, hundreds and thousands, with another consonant.
 PARTICLES = {"이": "가", "은": "는", "을": "를", "과": "와", "으로": "로"}
@@ -65,6 +65,7 @@ class TestPlanTest(unittest.TestCase):
                 case = dict(zip(COLUMNS, row), step=step)
                 case.update(tasks=listed(case["Task"]), runs=listed(case["Runs as"]), tokens=listed(case["From"]))
                 self.cases[row[0]] = case
+        # Historical C3 cases still validate traceability and never count as passing cases.
         self.current = {key: case for key, case in self.cases.items() if not case["Last result"].startswith("removed")}
         wbs = read_text(DOCS / "10-wbs" / "memory.md")
         self.tasks = {}
@@ -89,6 +90,13 @@ class TestPlanTest(unittest.TestCase):
         self.assertEqual(len(found), len(set(found)))
         self.assertLessEqual(set(found), set(self.cases))
         return found
+
+    def test_c3_cases_are_superseded_not_execution_results(self):
+        found = {key for key, case in self.cases.items() if case["Last result"] == D3_SUPERSEDED}
+        self.assertEqual(found, {key for key, case in self.cases.items() if case["step"] == "C3"})
+        self.assertTrue(found)
+        self.assertFalse(any(self.cases[key]["Last result"].startswith(("pass", "fail", "blocked")) for key in found))
+        self.assertIn("not executable", section(self.doc, "## C3: "))
 
     def test_each_step_has_the_case_table(self):
         for step in STEPS:
