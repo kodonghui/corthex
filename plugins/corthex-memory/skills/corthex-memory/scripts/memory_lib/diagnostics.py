@@ -58,7 +58,7 @@ class Diagnostics:
             if (not configuration.number(deadline) or not math.isfinite(deadline) or
                     time.monotonic() >= deadline):
                 return False
-            before = self.store.record()
+            before = self.store.record(deadline=deadline)
             folder = self.store.folder / "logs"
             lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
             with lock.held(deadline):
@@ -66,7 +66,7 @@ class Diagnostics:
                     if time.monotonic() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
-                    if self.store.record()["device"] != before["device"]:
+                    if self.store.record(deadline=deadline)["device"] != before["device"]:
                         raise locks.LostLock()
                 guard()
                 path = folder / (name + "-" + record["at"][:10] + ".jsonl")

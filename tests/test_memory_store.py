@@ -75,7 +75,7 @@ class MemoryStoreTest(StoreCase):
                 self.assertEqual(fits(self.schema, document), [])
                 original = copy.deepcopy(document)
                 written = self.memory.write_configuration(document, time.monotonic() + 2)
-                read = self.memory.configuration()
+                read = self.memory.configuration(deadline=time.monotonic() + 1)
                 self.assertEqual(document, original)
                 self.assertEqual(written.document, document)
                 self.assertEqual(read.document, document)
@@ -150,7 +150,7 @@ class MemoryStoreTest(StoreCase):
         path.with_name(path.name + ".bak").write_text(json.dumps(self.examples["valid"]["tuned"]), encoding="utf-8")
         before = self.snapshot()
         with self.assertRaises(configuration.ConfigurationInvalid) as caught:
-            self.memory.configuration()
+            self.memory.configuration(deadline=time.monotonic() + 1)
         self.assertEqual(caught.exception.field, "consent.at")
         self.assertEqual(self.snapshot(), before)
 
@@ -161,12 +161,12 @@ class MemoryStoreTest(StoreCase):
                 path.write_bytes(broken)
                 path.with_name(path.name + ".bak").write_bytes(b"{}\n")
                 notices = []
-                self.assertEqual(self.memory.configuration(lambda *args: notices.append(args)).document, {})
+                self.assertEqual(self.memory.configuration(lambda *args: notices.append(args), deadline=time.monotonic() + 1).document, {})
                 self.assertEqual(notices, [("restored", None)])
                 self.assertEqual(path.read_bytes(), b"{}\n")
                 path.write_bytes(broken)
                 with self.assertRaises(configuration.ConfigurationInvalid):
-                    self.memory.configuration()
+                    self.memory.configuration(deadline=time.monotonic() + 1)
 
     def test_tc010_all_numeric_bounds_and_field_types_match_the_schema(self):
         document = configuration.prepare(self.examples["valid"]["with-sync"]).values
@@ -289,7 +289,7 @@ class MemoryStoreTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed):
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration()
+                    self.memory.configuration(deadline=time.monotonic() + 1)
             self.assertEqual(caught.exception.code, "store-newer")
             self.assertEqual(accessed, [path])
             self.assertEqual(self.snapshot(), before)
@@ -311,7 +311,7 @@ class MemoryStoreTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed):
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration()
+                    self.memory.configuration(deadline=time.monotonic() + 1)
             self.assertEqual(caught.exception.code, "store-damaged")
             self.assertEqual(accessed, ["store.json", "store.json.bak"])
             self.assertEqual(self.snapshot(), before)
@@ -326,14 +326,14 @@ class MemoryStoreTest(StoreCase):
                 path.write_bytes(broken)
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
-            self.assertEqual(self.memory.record(lambda *args: notices.append(args)), self.header)
+            self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
             self.assertEqual(notices, [("restored", None)])
             self.assertFalse(backup.exists())
         path.write_bytes(b"{")
         backup.write_bytes(b'{"format":2}')
         before = self.snapshot()
         with self.assertRaises(store.StoreUnavailable) as caught:
-            self.memory.record()
+            self.memory.record(deadline=time.monotonic() + 1)
         self.assertEqual(caught.exception.code, "store-newer")
         self.assertEqual(self.snapshot(), before)
 
@@ -343,16 +343,58 @@ class MemoryStoreTest(StoreCase):
             record = dict(self.header, **{key: value})
             (self.root / "store.json").write_text(json.dumps(record), encoding="utf-8")
             with self.assertRaises(store.StoreUnavailable) as caught:
-                self.memory.record()
+                self.memory.record(deadline=time.monotonic() + 1)
             self.assertEqual(caught.exception.code, "store-damaged")
         self.assertRegex(store.new_record("0.2.0")["device"], r"d_[0-9a-hjkmnp-tv-z]{12}\Z")
         with self.assertRaises(ValueError):
             store.new_record(1)
 
+    def test_tc011_operational_read_errors_propagate_without_restoring_or_writing(self):
+        for name in ("store.json", "configuration.json"):
+            path = self.root / name
+            data = base.json_bytes(self.header, "TBL-001") if name == "store.json" else b"{}\n"
+            path.write_bytes(data)
+            path.with_name(name + ".bak").write_bytes(data)
+            for failure in (PermissionError, OSError):
+                with self.subTest(record=name, error=failure.__name__):
+                    accessed = []
+                    before = self.snapshot()
+                    original = Path.read_bytes
+                    def read(target):
+                        accessed.append(target.name)
+                        if target == path:
+                            raise failure("made-up inaccessible record")
+                        return original(target)
+                    with mock.patch.object(Path, "read_bytes", read):
+                        with self.assertRaises(failure):
+                            self.memory.configuration(deadline=time.monotonic() + 2)
+                    self.assertNotIn(name + ".bak", accessed)
+                    self.assertEqual(self.snapshot(), before)
+
+    def test_tc011_restore_needed_runtime_failure_has_a_safe_store_result(self):
+        path = self.root / "store.json"
+        path.write_bytes(b"{")
+        path.with_name("store.json.bak").write_bytes(base.json_bytes(self.header, "TBL-001"))
+        before = self.snapshot()
+        with mock.patch.object(store.reading, "read_record", side_effect=files.RestoreNeeded()):
+            with self.assertRaises(store.StoreUnavailable) as caught:
+                self.memory.record(deadline=time.monotonic() + 1)
+        self.assertEqual(caught.exception.code, "store-damaged")
+        self.assertEqual(self.snapshot(), before)
+        path.write_bytes(base.json_bytes(self.header, "TBL-001"))
+        path = self.root / "configuration.json"
+        path.write_bytes(b"{")
+        path.with_name("configuration.json.bak").write_bytes(b"{}\n")
+        before = self.snapshot()
+        with mock.patch.object(store.reading, "read_record", side_effect=files.RestoreNeeded()):
+            with self.assertRaises(configuration.ConfigurationInvalid):
+                self.memory.configuration(deadline=time.monotonic() + 1)
+        self.assertEqual(self.snapshot(), before)
+
     def test_tc012_missing_configuration_has_no_consent_or_writes(self):
         before = self.snapshot()
         for _ in range(2):
-            result = self.memory.configuration()
+            result = self.memory.configuration(deadline=time.monotonic() + 1)
             self.assertFalse(result.consented())
             self.assertFalse(result.enabled("sample"))
             self.assertEqual(result.document, {})
@@ -360,7 +402,7 @@ class MemoryStoreTest(StoreCase):
         self.assertEqual(self.snapshot(), before)
         absent = store.MemoryStore(self.folder / "absent")
         with self.assertRaises(store.StoreUnavailable) as caught:
-            absent.configuration()
+            absent.configuration(deadline=time.monotonic() + 1)
         self.assertEqual(caught.exception.code, "no-store")
         self.assertFalse(absent.folder.exists())
 

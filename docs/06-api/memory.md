@@ -219,7 +219,7 @@ Redaction runs before recording, within the hook's deadline, and finishes once i
 ### Session start hook (API-001)
 
 1. Reads the input and tells the host. Builds the base for `cwd`, as 0.1.0 does.
-2. When the memory store does not exist, the hook prints the base and ends. When the store record is missing or cannot be read and no backup can be restored, or is of a newer format, or the memory configuration is not valid, it prints the base with one line under `## Memory` naming what is wrong ([Notices](#notices)), when the session's folder is in a project of the project list, and ends.
+2. When `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion, the hook prints the base and, only when the session's folder is in a project of the project list, adds `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.` under `## Memory`. It writes nothing and ends; the value is never shown. When the memory store does not exist, the hook prints the base and ends. When the store record is missing or cannot be read and no backup can be restored, or is of a newer format, or the memory configuration is not valid, it prints the base with one line under `## Memory` naming what is wrong ([Notices](#notices)), when the session's folder is in a project of the project list, and ends.
 3. Finds the session's project (SPEC-001). With no enabled project, it prints the base; when the folder is in a project of the project list, it then starts the memory worker for retention (step 8), since retention covers every project (SPEC-009, SPEC-036); and it ends.
 4. Appends a start boundary (SPEC-005), unless the folder or the boundaries are left out (SPEC-006).
 5. Builds the memory part (SPEC-021, SPEC-022), within 1,000 ms.
@@ -353,7 +353,7 @@ The prompt length that decides Claude Haiku 5.5's higher prices counts all input
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | the memory worker; the end-of-turn and session end hooks only check that it is there | Curation, consolidation and token counts (SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | the prompt hook, the memory worker and `search` | Embeddings |
-| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039) |
+| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039); empty is unset; after `~` expansion it must be absolute, otherwise memory is off in that process and hooks write nothing. Every command, including `status`, `purge` and `repair`, is refused with `configuration-invalid` and `data.field` `CORTHEX_MEMORY_HOME`; the refusal's `say` explains why, including for `status`. No command falls back to the default folder |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | the processes that call the APIs | A test server in place of the API: an `https://` address, or `http://` for `localhost`, `127.0.0.1` or `[::1]` only; another value is ignored. The memory status shows when one is set |
 | `CLAUDE_CODE_REMOTE` | every process | `true` makes the device temporary, unless the configuration says otherwise (SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | the hooks | Which host runs the hook |
@@ -763,7 +763,7 @@ A notice is one line of the start summary (SPEC-022). The stored ones (TBL-010) 
 
 | Notice | Shown | Text |
 | --- | --- | --- |
-| Memory cannot be read | while it lasts | `Memory could not be read: <reason>. The memory status says more.` The reason is a newer format, a missing or damaged store record, or an invalid configuration with its field; no other notice follows |
+| Memory cannot be read | while it lasts | `Memory could not be read: <reason>. The memory status says more.` The reason is a newer format, a missing or damaged store record, or an invalid configuration with its field. When `CORTHEX_MEMORY_HOME` is not absolute, the text is instead `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.` without its value; no other notice follows |
 | Stopped | while it lasts | `Curation is stopped for this project after three failed attempts in a row (<error>). The memory status can resume it.` |
 | Waits for consent | while it lasts | `Memory records nothing on this device until the user consents to version <n> of the consent text.` |
 | Waits for a key | while it lasts, per key | `Curation is waiting for CORTHEX_MEMORY_ANTHROPIC_API_KEY, which the hook's environment does not have.` For the OpenAI key: `Recall and search by meaning are waiting for CORTHEX_MEMORY_OPENAI_API_KEY, which the hook's environment does not have.` Either adds `Memory keys are read only from the environment that the host starts in, such as a shell profile or a cloud environment's secret settings.` and, when `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is set, `Claude Code's CLAUDE_CODE_SUBPROCESS_ENV_SCRUB setting can remove it from hooks.` |
@@ -821,6 +821,8 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | `worker-start` | The memory worker could not be started (SPEC-013) | The next trigger tries again |
 | `configuration-invalid` | The memory configuration fails its schema | Memory is off on the device |
 
+An invalid `CORTHEX_MEMORY_HOME` is never written to the failure log: there is no store.
+
 `store-newer` and `store-damaged` (no readable backup) are not written to the failure log; hooks and the memory worker stop before any other reads or writes, and commands return these codes.
 
 ### Model calls
@@ -871,7 +873,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `no-store` | refused, or nothing for `status` | all but `on`, `purge` and `repair` | No memory store yet; `on` makes one |
 | `store-newer` | refused | all but `purge` | The memory store is from a newer release |
 | `store-damaged` | refused | all but `purge` and `repair` | The store record is missing or damaged; `repair` writes a new one |
-| `configuration-invalid` | refused | all but `status`, `purge` and `repair`, which still work | The memory configuration fails its schema; `data.field` names the field |
+| `configuration-invalid` | refused | all but `status`, `purge` and `repair` for a schema-invalid configuration; every command for an invalid `CORTHEX_MEMORY_HOME` | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion; `data.field` names the field or environment variable. When it is `CORTHEX_MEMORY_HOME`, `status`, `purge` and `repair` are also refused: there is no store to act on, no command falls back to the default folder, and `say` explains the refusal without changing the result schema |
 | `no-project-list` | refused | the commands for a project | The project list is missing or cannot be read |
 | `not-in-project` | refused | the commands for a project | The folder is in no project, or in two (`data.clash`); the corthex skill adds projects |
 | `not-enabled` | nothing for `off`, else refused | the commands for a project | Memory is off for the project; `on` turns it on |

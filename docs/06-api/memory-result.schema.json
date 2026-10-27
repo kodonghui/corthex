@@ -146,7 +146,7 @@
       "additionalProperties": false,
       "properties": {
         "project": {"$ref": "#/$defs/project-name"},
-        "field": {"description": "With configuration-invalid: the first field that fails, as a path such as retention.days.", "type": "string", "minLength": 1, "maxLength": 200},
+        "field": {"description": "With configuration-invalid: the first field or environment variable that fails, such as retention.days or CORTHEX_MEMORY_HOME.", "type": "string", "minLength": 1, "maxLength": 200},
         "clash": {"description": "With not-in-project: the projects that each hold the folder.", "type": "array", "items": {"$ref": "#/$defs/project-name"}},
         "error": {"description": "With internal: the class of the error.", "$ref": "#/$defs/error"}
       }
@@ -204,7 +204,7 @@
           "required": ["valid"],
           "properties": {
             "valid": {"type": "boolean"},
-            "field": {"description": "When it is not valid: the first field that fails.", "type": "string", "minLength": 1, "maxLength": 200}
+            "field": {"description": "When it is not valid: the first field or environment variable that fails.", "type": "string", "minLength": 1, "maxLength": 200}
           }
         },
         "consent": {
