@@ -73,13 +73,16 @@ class Project:
 
 def entries(registry):
     try:
-        data = json_document(registry.read_bytes())
+        raw = registry.read_bytes()
+        if raw.startswith(b"\xef\xbb\xbf"):
+            raw = raw[3:]
+        data = json_document(raw)
         if not isinstance(data, dict) or not isinstance(data.get("projects"), list):
             raise ValueError("invalid project list")
     except (OSError, ValueError, UnicodeError):
         raise ProjectError("no-project-list") from None
     return [entry for entry in data["projects"] if isinstance(entry, dict)
-            and isinstance(entry.get("name"), str) and NAME.fullmatch(entry["name"])]
+            and isinstance(entry.get("name"), str)]
 
 
 def locate(cwd=None, registry=None):
@@ -120,6 +123,8 @@ def locate(cwd=None, registry=None):
             raise ProjectError("project-clash", matching)
         if matching:
             name, (primary, alias) = next(iter(matching.items()))
+            if not NAME.fullmatch(name):
+                return None
             return Project(name, primary, folder, path, alias)
     return None
 

@@ -214,7 +214,7 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The end-of-turn hook | 300 ms | The trigger check and the worker's start are skipped; the next trigger tries again |
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
-Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 200 ms for 512 KB as measured ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 210 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
 Lock release has the separate retry in stage 05 even after the hook deadline: each release can extend the hook by up to about one second, or about two seconds for a refreshed lease that also waits for its heartbeat thread.
 
@@ -464,7 +464,7 @@ A release that sends new kinds of data raises the version, and each device asks 
 
 `setup --at <folder>` (API-031) is refused with `no-consent` on a device without consent. It prints a POSIX shell script for the environment setup of a temporary device, such as a cloud environment, whose project is at `<folder>` there. The script runs an embedded Python program, standard library only, which writes each file only when it is missing:
 
-- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself;
+- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself; Memory accepts a single leading UTF-8 BOM when reading this list, and rejects duplicate JSON keys as an unreadable list.
 - the store record, with a new device ID;
 - the memory configuration, with this device's consent, the project enabled, `temporary` true and the same sync settings;
 - the project's folder and its empty curation record;
@@ -665,16 +665,16 @@ OpenAI's errors are given the same names: 400 `invalid_request_error`, 401 `auth
 
 Redaction (SPEC-004) runs in this order on each prompt and final answer before it is recorded, on each search request before it is embedded, and on each request document before it is sent:
 
-1. First replace unpaired surrogates with U+FFFD, preserving valid pairs as their Unicode scalar; normalize environment values the same way and count byte sizes in this normalized UTF-8 text. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB.
+1. First replace unpaired surrogates with U+FFFD, preserving valid pairs as their Unicode scalar; normalize environment values the same way and count byte sizes in this normalized UTF-8 text. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB. Since steps 2–5 can shorten the text, step 6 measures this point in step 1's text.
 2. Private spans: from each `<private>` to the next `</private>`, found without regard to ASCII case, or to the end of the text when none follows, become `[redacted:private]`.
 3. Private key blocks: from a line that begins `-----BEGIN` and names a private key, to its `-----END` line or to the end of the text, become `[redacted:private-key]`. The pattern is in the list below.
 4. The exact values of the two memory keys become `[redacted:memory-key]`, and the values of environment variables whose names hold `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, in any case, become `[redacted:environment]`: values of 12 characters or more, the longest first.
 5. The patterns below, in order: each match becomes `[redacted:<kind>]`, and where a pattern has a group, the group's text stays before the mark.
-6. Cut at a character boundary to 512 KB (SPEC-002). When step 1 or this step cut anything, the entry's `cut` gives the text's size before step 1.
+6. If step 1 cut the text, first discard what steps 2–5 produced after the 512 KB point in step 1's text, keeping any `[redacted:…]` mark that started before that point. Then cut at a character boundary to 512 KB (SPEC-002). When step 1 did not cut the text, only this final cut applies. When step 1 or this step cut anything, the entry's `cut` gives the normalized UTF-8 text's size before step 1's cut.
 
 ```text
 kind              Python re pattern
-private-key       -{5}BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}|\Z)
+private-key       -{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)
 anthropic-key     sk-ant-[A-Za-z0-9_-]{20,}
 openai-key        sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}
 github-token      gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}
@@ -682,7 +682,7 @@ gitlab-token      glpat-[A-Za-z0-9_-]{20,}
 slack-token       xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}
 aws-key           (?:AKIA|ASIA)[A-Z0-9]{16}
 google-key        AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}
-jwt               eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+jwt               (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 url-credentials   (?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)
 authorization     (?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+
 assigned-secret   (?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)V
@@ -693,7 +693,7 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 ```
 
 - `V` and `VS` stand for the value after the name: `V` any value, `VS` one of 8 or more characters with a letter in it, so that `max_tokens: 64000` or `token = 5` stays.
-- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded and not nested, so their time grows with the text's length. Measured on 512 KB in a Linux container with Python 3.13: about 50 ms for typical prose, 39 to 69 ms for inputs made to be slow, and 196 ms for the word `password` repeated. Windows and macOS are measured in stage 12.
+- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded or can start only once per base64url run, so their time grows with the text's length. The private-key name slots on BEGIN and END allow at most 40 characters each. A JWT starts only when the preceding character is not an ASCII letter, digit, underscore or hyphen. Stage 12 records median and maximum times for 512 KB of prose and every slow input, including repeated private-key names in BEGIN and END, repeated eyJ and dot-free base64 JSON, on each available system and Python version.
 - A test makes up a key in each known format while it runs (SPEC-004); none is written in this repository.
 - What the patterns cannot know, the user marks as private or forgets (SPEC-004, SPEC-035).
 

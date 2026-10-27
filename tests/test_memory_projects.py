@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from test_memory_store import AT, StoreCase
-from memory_lib import configuration, diagnostics, projects
+from memory_lib import configuration, diagnostics, files, projects, store
 
 
 class MemoryProjectsTest(StoreCase):
@@ -122,6 +122,9 @@ class MemoryProjectsTest(StoreCase):
             self.assertEqual((caught.exception.code, caught.exception.clash), ("no-project-list", ()))
             self.assertEqual(str(caught.exception), "no-project-list")
             self.assertTrue(logger.failure(caught.exception, "record", time.monotonic() + 2))
+            records = [line for path in sorted((self.root / "logs").glob("failures-*.jsonl"))
+                       for line in files.read_jsonl(path)]
+            self.assertEqual(records[-1]["error"], "no-project-list")
         read = Path.read_bytes
         def denied(path):
             if path == self.registry:
@@ -132,6 +135,20 @@ class MemoryProjectsTest(StoreCase):
                 projects.find(self.config, self.repo)
         self.assertEqual(caught.exception.code, "no-project-list")
 
+    def test_tc019_registry_bom_compatibility_keeps_memory_records_strict(self):
+        original = self.registry.read_bytes()
+        for prefix in (b"", b"\xef\xbb\xbf"):
+            self.registry.write_bytes(prefix + original)
+            self.assertEqual(projects.find(self.config,self.repo).name,"sample")
+        self.registry.write_bytes(b"\xef\xbb\xbf"*2 + original)
+        with self.assertRaises(projects.ProjectError):
+            projects.locate(self.repo)
+        record = self.root / "store.json"
+        record.write_bytes(b"\xef\xbb\xbf" + record.read_bytes())
+        with self.assertRaises(store.StoreUnavailable) as caught:
+            self.memory.record(deadline=time.monotonic()+2)
+        self.assertEqual(caught.exception.code,"store-damaged")
+
     def test_tc019_tied_folder_is_a_clash_even_if_one_project_is_disabled(self):
         self.register({"name": "sample", "path": str(self.repo)},
                       {"name": "other", "repos": {"same": str(self.repo)}})
@@ -141,17 +158,32 @@ class MemoryProjectsTest(StoreCase):
         self.assertEqual(caught.exception.clash, ("other", "sample"))
         logger = diagnostics.Diagnostics(self.memory)
         self.assertTrue(logger.failure(caught.exception, "record", time.monotonic() + 2))
+        records = [line for path in sorted((self.root / "logs").glob("failures-*.jsonl"))
+                   for line in files.read_jsonl(path)]
+        self.assertEqual(records[-1]["error"], "project-clash")
         # Aliases of the same project are one owner, even with the same folder.
         self.register({"name": "sample", "path": str(self.repo), "repos": {"self": str(self.repo)}})
         found = projects.find(self.config, self.repo)
         self.assertEqual((found.name, found.alias), ("sample", None))
 
     def test_tc019_registry_filters_unusable_entries_and_missing_roots(self):
-        self.register(None, {"name": "Bad", "path": str(self.repo)},
-                      {"name": "other\n", "path": str(self.repo)},
+        self.register(None, {"name": 12, "path": str(self.repo)},
+                      {"name": [], "path": str(self.repo)},
                       {"name": "other", "path": str(self.folder / "missing")},
                       {"name": "sample", "path": str(self.repo), "repos": {"missing": []}})
         self.assertEqual(projects.find(self.config, self.repo).name, "sample")
+
+    def test_tc015_invalid_deeper_name_never_falls_back_to_enabled_parent(self):
+        inner = self.repo / "inner"
+        inner.mkdir()
+        before = self.snapshot()
+        for name in ("Inner", "inner_notes", "", "x" * 61):
+            self.register({"name": "sample", "path": str(self.repo)},
+                          {"name": name, "path": str(inner)})
+            self.assertIsNone(projects.locate(inner))
+            self.assertIsNone(projects.find(self.enabled("sample"), inner))
+            self.assertEqual(projects.find(self.enabled("sample"), self.repo).name, "sample")
+            self.assertEqual(self.snapshot(), before)
 
     def test_tc020_deleted_folder_has_no_project_and_missing_cwd_uses_process_cwd(self):
         deleted = self.repo / "deleted"
