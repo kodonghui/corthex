@@ -84,6 +84,18 @@ def forked_holder(connection, inherited, path, device):
         connection.send(False)
 
 
+def forked_checks(connection, inherited):
+    answers = []
+    for method in (inherited.check, inherited.refresh, inherited.release):
+        try:
+            method()
+        except locks.LostLock:
+            answers.append("lost-lock")
+        else:
+            answers.append("unexpected-owner")
+    connection.send(answers)
+
+
 class MemoryLocksTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -389,6 +401,30 @@ class MemoryLocksTest(unittest.TestCase):
             self.assertTrue(self.receive(connection))
             process.join(10)
             self.assertEqual(process.exitcode, 0)
+            lock.check()
+
+    @unittest.skipUnless(hasattr(os, "fork"), "fork inheritance applies only on POSIX")
+    def test_tc008_inherited_mutex_held_by_another_thread_cannot_block_child(self):
+        lock = self.new_lock("inherited.lock")
+        entered, finish = threading.Event(), threading.Event()
+        def own_mutex():
+            with lock._mutex:
+                entered.set()
+                finish.wait(10)
+        with lock.held(time.monotonic() + 10):
+            thread = threading.Thread(target=own_mutex)
+            thread.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.context = multiprocessing.get_context("fork")
+                connection, process = self.start(forked_checks, lock)
+                self.assertTrue(connection.poll(2), "inherited lease blocked on its parent's mutex")
+                self.assertEqual(connection.recv(), ["lost-lock"] * 3)
+                process.join(2)
+                self.assertEqual(process.exitcode, 0)
+            finally:
+                finish.set()
+                thread.join(2)
             lock.check()
 
 if __name__ == "__main__":
