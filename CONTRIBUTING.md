@@ -21,7 +21,7 @@ Follow Conventional Commits 1.0.0: `type(scope): summary`. Use `feat`, `fix`, `d
 - Write an English imperative subject of at most 72 characters; aim for 50.
 - Explain why in the body. Mark breaking changes with `!` or a `BREAKING CHANGE:` footer.
 - Keep one change per commit, and make every commit pass the checks.
-- Address reviews with additional commits and push them without rewriting published commits.
+- Address reviews with additional commits; do not rewrite commits already submitted for review.
 
 ## Pull requests and merges
 
@@ -31,11 +31,11 @@ Merge only with a merge commit, after:
 
 - The checks pass. If Actions fails before starting a runner, record the agreed replacement checks and their results in the PR, including each OS, tool versions, pass/fail counts and skips.
 - Automated code and security reviews have completed at the latest head with no unresolved findings, and review conversations are resolved.
-- If `main` has moved, the combined tree has been checked again on the required systems and its tree ID verified.
+- If `main` has moved, the combined tree has been checked again on the required systems, and the merge commit's tree ID matches the checked tree.
 
 Protection rules may be bypassed only for an Actions outage that fails before a runner starts, after the replacement results and the reason are recorded in a PR comment.
 
-Use the merge title `Merge pull request #N: <PR title>`. The body records the change, review results and checks by OS. Keep literal `<` and `>` characters in attribution trailers.
+Use the merge title `Merge pull request #N: <PR title>`. The body records the change, review results and checks by OS. Keep `<` and `>` literal throughout the merge message, including attribution trailers; do not HTML-escape them.
 
 ## Versions and releases
 
@@ -59,4 +59,4 @@ A separate security reporting policy is planned.
 
 Agent-created commits keep that agent's co-author trailer. When the host supplies a session trailer, keep it too. Describe the agent's role in the PR's AI involvement section.
 
-Use a GitHub noreply address for the commit author. Do not put personal names, email addresses, home paths or private workspace links in commits, documents or examples. Follow [AGENTS.md](AGENTS.md) and the checks in [tests/test_public_safety.py](tests/test_public_safety.py).
+Never use a personal email address as the commit author: use your GitHub noreply address, or the no-reply identity your agent host sets. Do not put personal names, email addresses, home paths or private workspace links in commits, documents or examples. Follow [AGENTS.md](AGENTS.md) and the checks in [tests/test_public_safety.py](tests/test_public_safety.py).
