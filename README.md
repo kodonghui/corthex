@@ -87,6 +87,8 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 
 ## Development
 
+See [Contributing](CONTRIBUTING.md) for the branch, commit, PR and release rules.
+
 ```bash
 python -m unittest discover -s tests -v
 claude plugin validate --strict .

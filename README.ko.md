@@ -87,6 +87,8 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 
 ## 개발
 
+브랜치, 커밋, PR, 릴리스 규칙은 [기여 안내](CONTRIBUTING.ko.md)에 있습니다.
+
 ```bash
 python -m unittest discover -s tests -v
 claude plugin validate --strict .
