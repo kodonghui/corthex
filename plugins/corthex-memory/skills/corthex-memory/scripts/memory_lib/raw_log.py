@@ -187,12 +187,16 @@ class RawLog:
         """Record under one raw lease; report only safe metadata after release.
 
         For text, pass prepare()'s result, retaining its post-redaction deadline.
-        Boundaries use their own 50ms budget or a supplied absolute deadline.
+        Boundaries use their own 50ms budget. A supplied absolute deadline can
+        only shorten either budget, retaining a caller's earlier hook deadline.
         The diagnostic deadline belongs to the whole hook, never a new retry.
         """
         if not isinstance(kind, str) or kind not in KINDS:
             raise ValueError("invalid recording kind")
         _deadline(diagnostic_deadline)
+        caller_deadline = deadline
+        if caller_deadline is not None:
+            _deadline(caller_deadline)
         if kind in ("prompt", "answer"):
             if kind == "answer" and prepared is None:
                 return Recorded("no-answer")
@@ -206,7 +210,9 @@ class RawLog:
         elif prepared is not None:
             raise ValueError("a boundary has no text")
         else:
-            deadline = time.monotonic() + RECORD_SECONDS if deadline is None else deadline
+            deadline = time.monotonic() + RECORD_SECONDS
+        if caller_deadline is not None:
+            deadline = min(deadline, caller_deadline)
         _deadline(deadline)
         at = base.utc_time(when)
         notices, entry, outcome = [], None, "ok"

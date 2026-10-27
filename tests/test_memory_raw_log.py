@@ -430,21 +430,30 @@ class RawLogTest(StoreCase):
         connection, process = self.start(holder, str(self.log.path.with_suffix(".lock")), self.header["device"])
         self.assertTrue(self.receive(connection))
         try:
-            started = time.monotonic()
-            result = self.record()
-            elapsed = time.monotonic() - started
-            self.assertEqual(result.outcome, "lock-busy")
-            self.assertIsNone(result.entry)
-            self.assertFalse(self.log.path.exists())
-            self.assertEqual(self.markers(), [])
-            self.assertLess(elapsed, 0.35)
-            self.assertEqual([r["error"] for r in self.failures()], ["lock-busy"])
-            self.assertTrue(self.log.logger.timing("prompt","codex",int(elapsed*1000),result.outcome,time.monotonic()+1,when=WHEN))
-            self.assertEqual(files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")[0]["outcome"], "lock-busy")
+            for kind, hook in (("prompt","prompt"),("answer","end-of-turn"),("end","end")):
+                started = time.monotonic()
+                result = self.record(kind, None if kind=="end" else "made-up", deadline=started+1)
+                elapsed = time.monotonic() - started
+                self.assertEqual(result.outcome, "lock-busy")
+                self.assertIsNone(result.entry)
+                self.assertFalse(self.log.path.exists())
+                self.assertEqual(self.markers(), [])
+                self.assertLess(elapsed, 0.35)
+                self.assertTrue(self.log.logger.timing(hook,"codex",int(elapsed*1000),result.outcome,time.monotonic()+1,when=WHEN))
+            self.assertEqual([r["error"] for r in self.failures()], ["lock-busy"]*3)
+            self.assertEqual([r["outcome"] for r in files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")], ["lock-busy"]*3)
         finally:
             connection.send("check")
             self.receive(connection)
             process.join(10)
+
+    def test_tc031_caller_deadline_only_shortens_the_recording_budget(self):
+        prepared = raw_log.prepare("made-up",{})
+        result = self.log.append("prompt",prepared,deadline=time.monotonic()-1,
+                                 diagnostic_deadline=time.monotonic()+3,when=WHEN)
+        self.assertEqual((result.outcome,result.entry),("lock-busy",None))
+        self.assertFalse(self.log.path.exists())
+        self.assertEqual(self.markers(),[])
 
     def test_tc031_store_gate_blocks_raw_and_diagnostic_access(self):
         header = dict(self.header, format=2)
