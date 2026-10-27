@@ -26,7 +26,7 @@ The maintainer's records list these problems with long-running AI work. Each req
 This release, the M1 plan of the design draft in three steps: C1 capture and the start summary, C2 curation and recall, C3 sync between devices.
 
 - In: capture, curation, the start summary, per-prompt recall, search, forget, status, purge, optional sync through a user-operated HTTPS gateway and server, the usage log.
-- Out: pages or other screens; memory shared between different people; recording tool calls or tool results; NEXUS as the MEMORY sync gateway; direct database connections from devices; folders that are not in the project list.
+- Out: pages or other screens; memory shared between different people; recording tool calls or tool results; direct database connections from devices; folders that are not in the project list.
 - Projects with protected data, such as answer keys or student records, are not enabled in the first trial.
 
 ## Decisions in force
@@ -44,7 +44,16 @@ This release, the M1 plan of the design draft in three steps: C1 capture and the
 
 The maintainer's own words and where they were said are in the maintainer's records, not in this repository.
 
-## Decision rationale
+## Open decisions
+
+None of memory's decisions is open. The maintainer answered D1 to D4 on 2026-10-27: D1, D2 and D4 as recommended, and D3 as a new option. The table retains the questions and the other choices considered.
+
+| ID | Question | Recommendation | Other choices | Status |
+| --- | --- | --- | --- | --- |
+| D1 | How to build memory | M1: build `corthex-memory` as planned in this file | Adopt an existing memory plugin, which chooses its own models and runs a local server; build on NEXUS first, which needs the server before memory works; rely on the hosts' own memory, which does not cross hosts or devices | decided 2026-10-27 |
+| D2 | How items are chosen for each prompt | Embeddings and rules choose; Claude Haiku 5.5 works only in the background | Haiku 5.5 at xhigh chooses for every prompt: slower and costlier for each prompt (an estimate, not measured); no per-prompt recall: the start summary and searches only | decided 2026-10-27 |
+| D3 | How devices share memory | A private Git repository of the user's; off by default for everyone else | Each device keeps its own memory until NEXUS can sync it; no sharing; one Postgres database for all devices, which keeps conversation-derived memory in an outside database and needs its secret on every device | new option chosen 2026-10-27 (see Decisions in force); the recommended Git repository was not chosen |
+| D4 | How model calls are paid for | Two memory keys, one for Anthropic and one for OpenAI. The Anthropic key is made in the Console organization linked to the maintainer's subscription, so that its monthly API credit pays for curation | Run curation with `claude -p` on the subscription login, which uses the plan's limits rather than the API credit, needs a guard against the plugin's own hooks, and does not work for Codex-only users | decided 2026-10-27 |
 
 D1, D2 and D4 were confirmed as recommended on 2026-10-27; D3 is a new choice. D3 preserves the device store and standard-library client while sharing only the curated layer and allowing one device's access to be revoked without giving database credentials to devices. The server sync design will be specified separately before C3. The retained Git designs in later stages have the common status `superseded (D3, 2026-10-27)`.
 

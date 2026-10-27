@@ -5,7 +5,7 @@ import unittest
 from collections import Counter
 
 from _common import ROOT, load_json, read_text
-from test_memory_api import fits
+from test_memory_api import code_block, fits
 from test_memory_wbs import D3_SUPERSEDED, section, tables
 
 DOCS = ROOT / "docs"
@@ -45,11 +45,15 @@ class ConfirmationTest(unittest.TestCase):
             self.assertTrue(fits(schema, {"retention": {"days": days}}))
         examples = load_json(DOCS / "06-api/memory-examples.json")
         self.assertEqual(examples["configuration"]["valid"]["with-sync"]["retention"]["days"], 100)
+        self.assertEqual(examples["result"]["valid"]["on-done"]["data"]["retention_days"], 100)
         consent = examples["result"]["valid"]["on-asks"]["data"]["consent"]
         self.assertEqual(consent["version"], 1)
         self.assertIn("100 days", consent["text"])
         self.assertIn("Anthropic", consent["text"])
         self.assertIn("OpenAI", consent["text"])
+        self.assertIn("Sync is off until you turn it on; then only the curated memory goes to a sync server that you run, through its HTTPS gateway.", consent["text"])
+        for name, heading in (("memory.md", "### Consent text, version 1"), ("memory.ko.md", "### 동의 문구, 판 1")):
+            self.assertEqual(code_block(read_text(DOCS / "06-api" / name), heading, "text").rstrip("\n"), consent["text"])
         for stage in STAGES:
             for suffix in (".md", ".ko.md"):
                 text = read_text(DOCS / stage / ("memory" + suffix))
@@ -57,6 +61,54 @@ class ConfirmationTest(unittest.TestCase):
         self.assertEqual(schema["properties"]["triggers"]["properties"]["minutes"]["default"], 30)
         self.assertEqual(schema["properties"]["models"]["properties"]["curator"]["default"], "claude-haiku-5-5")
         self.assertEqual(schema["properties"]["models"]["properties"]["effort"]["default"], "xhigh")
+
+    def test_answered_decision_history_and_nexus_links_are_preserved(self):
+        for name, heading, link in (("memory.md", "## Open decisions", "memory.md#open-decisions"),
+                                    ("memory.ko.md", "## 열린 결정", "memory.ko.md#열린-결정")):
+            text = read_text(DOCS / "02-prd" / name)
+            history = section(text, heading)
+            (rows,) = tables(history)
+            self.assertEqual([row[0] for row in rows[1:]], ["D1", "D2", "D3", "D4"])
+            for row in rows[1:]:
+                self.assertEqual(len(row), 5)
+                self.assertIn("2026-10-27", row[-1])
+                if row[0] != "D3":
+                    self.assertEqual(row[-1], "decided 2026-10-27")
+            self.assertIn("NEXUS", rows[3][3])
+            self.assertIn("Postgres", rows[3][3])
+            self.assertIn("claude -p", rows[4][3])
+            self.assertIn(link, read_text(DOCS / "02-prd" / name.replace("memory", "nexus")))
+            scope = section(text, "## 범위" if name.endswith(".ko.md") else "## Scope")
+            outside = next(line for line in scope.splitlines() if line.startswith("- 제외:" if name.endswith(".ko.md") else "- Out:"))
+            self.assertNotIn("NEXUS", outside)
+
+    def test_bilingual_confirmation_is_at_each_reviewed_statement(self):
+        functional = read_text(DOCS / "04-functional-spec/memory.ko.md")
+        (rows,) = tables(section(functional, "## 사용자 흐름이 넘긴 질문의 답"))
+        answers = {int(re.match(r"\d+", row[0]).group()): row[1] for row in rows[1:]}
+        for point, requirement in ((4, "REQ-029"), (7, "REQ-054"), (12, "REQ-053")):
+            self.assertIn("2026-10-27", answers[point])
+            self.assertIn(requirement, answers[point])
+            self.assertNotIn("고쳐야", answers[point])
+        api = read_text(DOCS / "06-api/memory.ko.md")
+        gateway = next(line for line in api.splitlines() if line.startswith("로컬 기억 플러그인"))
+        self.assertIn("HTTPS", gateway)
+        self.assertIn("C3", gateway)
+        wbs = read_text(DOCS / "10-wbs/memory.ko.md")
+        status = next(line for line in wbs.splitlines() if line.startswith("- `상태`"))
+        self.assertIn(D3_SUPERSEDED, status)
+        self.assertIn("실행하지 않습니다", status)
+        for name in ("memory.md", "memory.ko.md"):
+            intro = section(read_text(DOCS / "10-wbs" / name), "## C3: ").split("\n\n")[1]
+            self.assertIn(D3_SUPERSEDED, intro)
+            self.assertIn("0.4.0", intro)
+        qa = read_text(DOCS / "12-qa/memory.ko.md")
+        result = next(line for line in qa.splitlines() if line.startswith("- `마지막 결과`"))
+        self.assertIn(D3_SUPERSEDED, result)
+        self.assertIn("실행 결과가 아닙니다", result)
+        coverage = section(qa, "## 커버리지").split("\n\n")[1]
+        self.assertIn(D3_SUPERSEDED, coverage)
+        self.assertIn("37", coverage)
 
     def test_legacy_git_design_is_marked_without_replacing_the_contract(self):
         for stage in STAGES[1:]:

@@ -6,7 +6,7 @@ Stage 04 of CORTHEX's own project, for the `corthex-memory` plugin. Status: conf
 
 Inputs: the requirements in [docs/02-prd/memory.md](../02-prd/memory.md) (REQ-001 to REQ-065 and REQ-194 to REQ-196), the user flows in [docs/03-user-flow/memory/](../03-user-flow/memory/README.md) (FL-001 to FL-012) and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. This stage added eleven words to the glossary (see [New words](#new-words)). The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
-> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration, examples and consent text; their C1/C2 parts remain confirmed.
+> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
 ## How to read this file
 

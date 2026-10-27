@@ -6,9 +6,9 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 
 입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039)와 [docs/05-erd/memory.ko.md](../05-erd/memory.ko.md)의 기억 폴더(TBL-001\~TBL-022), 특히 그 두 파일의 06단계를 위한 메모; [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
 
-> D3 설계 상태: `superseded (D3, 2026-10-27)`. 이곳에 남겨 둔 Git 동기화 제안은 2026-10-27에 확인한 D3 결정으로 대체됐습니다. 구현하거나 실행할 계획이 아닌 과거 자료입니다. HTTPS 창구와 서버 동기화 설계는 C3 전에 따로 작성합니다. 기기의 저장소는 파일과 SQLite 검색 색인을 유지합니다. 이 표시는 여러 단계가 공유하는 행·설정·예시·동의 문구의 동기화 부분에도 적용하며, 그 C1/C2 부분은 확인된 상태입니다.
+> D3 설계 상태: `superseded (D3, 2026-10-27)`. 이곳에 남겨 둔 Git 동기화 제안은 2026-10-27에 확인한 D3 결정으로 대체됐습니다. 구현하거나 실행할 계획이 아닌 과거 자료입니다. HTTPS 창구와 서버 동기화 설계는 C3 전에 따로 작성합니다. 기기의 저장소는 파일과 SQLite 검색 색인을 유지합니다. 이 표시는 여러 단계가 공유하는 행·설정·예시의 동기화 부분에도 적용하며, 그 C1/C2 부분은 확인된 상태입니다.
 
-기억 플러그인에는 자기 HTTP API가 없습니다. 그 인터페이스는 도구가 돌리는 훅, 뒤에서 도는 프로세스 하나, 기억 스킬의 명령, 그리고 두 모델 API와 Git 호출입니다. 그래서 이 단계의 계약은 이 단계의 기본값인 Swagger UI로 읽는 `api/openapi.yaml` 대신, 이 파일과 그 옆의 JSON 스키마입니다. 이 선택은 `.corthex/project.json`에 적혀 있습니다. 단계의 규칙은 맞는 곳에 그대로 적용합니다. 인터페이스마다 API ID가 있고 그것이 맡는 동작을 적으며, 나올 수 있는 결과를 예시와 함께 모두 적고, 오류 코드는 한 곳에만 적습니다.
+로컬 기억 플러그인에는 자기 HTTP API가 없습니다. D3는 사용자가 운영하는 서버에 HTTPS 동기화 창구를 두며, 그 계약은 C3 전에 정합니다. 그 인터페이스는 도구가 돌리는 훅, 뒤에서 도는 프로세스 하나, 기억 스킬의 명령, 그리고 두 모델 API와 Git 호출입니다. 그래서 이 단계의 계약은 이 단계의 기본값인 Swagger UI로 읽는 `api/openapi.yaml` 대신, 이 파일과 그 옆의 JSON 스키마입니다. 이 선택은 `.corthex/project.json`에 적혀 있습니다. 단계의 규칙은 맞는 곳에 그대로 적용합니다. 인터페이스마다 API ID가 있고 그것이 맡는 동작을 적으며, 나올 수 있는 결과를 예시와 함께 모두 적고, 오류 코드는 한 곳에만 적습니다.
 
 ## 이 파일을 읽는 법
 
@@ -451,7 +451,7 @@ CORTHEX memory, consent version 1.
 - When memory is on for a project, this device records your prompts and the agent's final answers in sessions that work in that project's folders, after removing secrets and the text you mark with <private>. Tool calls, tool results and files are not recorded.
 - To curate memory, the recorded turns, the project's current state and its item list are sent to Anthropic with the key in CORTHEX_MEMORY_ANTHROPIC_API_KEY, to the model in the memory configuration, by default Claude Haiku 5.5.
 - To recall and to search, your prompts, search requests and memory items are sent to OpenAI with the key in CORTHEX_MEMORY_OPENAI_API_KEY, to make embeddings, by default with text-embedding-3-small.
-- The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a private Git repository of yours.
+- The raw recordings, the search index and the logs never leave this device. Sync is off until you turn it on; then only the curated memory goes to a sync server that you run, through its HTTPS gateway.
 - Recordings are deleted after 100 days unless you set another period. You can leave folders or kinds of entries out, pin and forget items, turn memory off for a project, delete a project's memory or delete all memory.
 - Anthropic's and OpenAI's terms for their APIs govern what they do with the data they receive. The plugin sets no spending limit; its usage is in the memory status and in each provider's console.
 ```
@@ -946,7 +946,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 기능 명세의 출시 단계에서:
 
 - C1, 기록하기와 시작 요약: API-001. 불러오기와 정리 시작 조건이 없는 API-002와 API-003. API-004. 보관 기간 처리와 치우기만 하는 기억 작업 프로세스(API-005). API-016, API-017, API-018, API-027, API-028, API-029, API-032.
-- C2, 정리와 불러오기: API-002의 불러오기, API-003과 API-004의 정리 시작 조건, API-005의 정리와 통합, API-006\~API-012, API-019\~API-025, REQ-194가 승인되어 API-026, 그리고 API-031.
+- C2, 정리와 불러오기: API-002의 불러오기, API-003과 API-004의 정리 시작 조건, API-005의 정리와 통합, API-006\~API-012, API-019\~API-025, 승인된 REQ-194에 따라 API-026, 그리고 API-031.
 - C3, 동기화: API-013, API-014, API-015, API-030.
 
 ### 12단계: QA

@@ -6,7 +6,7 @@ Stage 10 of CORTHEX's own project, for the `corthex-memory` plugin. Status: conf
 
 Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039), the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022) and the interfaces in [docs/06-api/memory.md](../06-api/memory.md) (API-001 to API-032), above all their notes for stage 10. Those notes split the work into the release steps of the [requirements](../02-prd/memory.md): C1, recording and the start summary; C2, curation and recall; C3, sync between devices. The memory plugin has no screens, so no task names a screen (SCR): the memory skill's answers in the conversation take their place. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
-> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration, examples and consent text; their C1/C2 parts remain confirmed.
+> D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
 ## How to read this file
 
@@ -93,7 +93,7 @@ Release 0.3.0: curation, consolidation, recall for each prompt, and the rest of 
 
 ## C3: sync
 
-D3 design status: `superseded (D3, 2026-10-27)`. The six retained tasks below describe the earlier Git proposal. They must be replaced or revised with the separately confirmed server sync design before C3 starts; their IDs and trace links are retained.
+Release 0.4.0. D3 design status: `superseded (D3, 2026-10-27)`. The six retained tasks below describe the earlier Git proposal. They must be replaced or revised with the separately confirmed server sync design before C3 starts; their IDs and trace links are retained.
 
 | ID | Task | From | Touches | Depends on | Owner | Estimate | Done when | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
