@@ -234,13 +234,17 @@ class Lock:
 
     def check(self):
         """Raise lost-lock before a change if this process no longer owns it."""
+        if self.pid != os.getpid():
+            raise LostLock()
         with self._mutex:
             current = _snapshot(self.path)
-            if self.pid != os.getpid() or self._stop.is_set() or not self.token or not current or current.token != self.token:
+            if self._stop.is_set() or not self.token or not current or current.token != self.token:
                 raise LostLock()
         return True
 
     def refresh(self):
+        if self.pid != os.getpid():
+            raise LostLock()
         with self._mutex:
             self.check()
             try:
