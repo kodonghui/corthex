@@ -171,7 +171,7 @@ def _object(data):
     return value
 
 
-def _read(path, parse, report, holding_lock=False):
+def _read(path, parse, report, holding_lock=False, check=None):
     path = Path(path)
     try:
         return parse(_retry(path.read_bytes))
@@ -190,6 +190,8 @@ def _read(path, parse, report, holding_lock=False):
                 return parse(_retry(path.read_bytes))
             except _RESTORABLE:
                 try:
+                    if check is not None:
+                        check()
                     os.replace(str(backup), str(path))
                 except FileNotFoundError:
                     return parse(_retry(path.read_bytes))
@@ -199,13 +201,23 @@ def _read(path, parse, report, holding_lock=False):
         return _retry(restore)
 
 
-def read_json(path, report=None, holding_lock=False):
+def read_record(path, parse, report=None, holding_lock=False, check=None):
+    """Read with a pure byte parser; only a caller holding the lock may restore.
+
+    A parser rejects unparseable bytes with ValueError/UnicodeError. Policy
+    refusals use a different exception so they never restore older contents.
+    check, when supplied, fences each restoration move by current ownership.
+    """
+    return _read(path, parse, report, holding_lock, check)
+
+
+def read_json(path, report=None, holding_lock=False, check=None):
     """Read an object; restore only while the caller holds this record's lock.
 
     An unlocked reader raises RestoreNeeded for a readable backup and changes
     nothing. Only pass holding_lock=True while holding that record's write lock.
     """
-    return _read(path, _object, report, holding_lock)
+    return read_record(path, _object, report, holding_lock, check)
 
 
 def _lines(data):
@@ -222,7 +234,7 @@ def _lines(data):
     return entries, damaged
 
 
-def read_jsonl(path, report=None, holding_lock=False):
+def read_jsonl(path, report=None, holding_lock=False, check=None):
     """Keep complete object lines, skip/count bad lines without guessing.
 
     Damaged JSONL lines are not a reason to roll the file back to a backup,
@@ -231,7 +243,7 @@ def read_jsonl(path, report=None, holding_lock=False):
     Without that lock a readable backup raises RestoreNeeded without moving
     files. Permission and other I/O errors never roll back to older content.
     """
-    entries, damaged = _read(path, _lines, report, holding_lock)
+    entries, damaged = read_record(path, _lines, report, holding_lock, check)
     if damaged and report:
         report("damaged-line", damaged)
     return entries
