@@ -14,8 +14,6 @@ Two optional plugins build on it. `corthex-memory` starts each session with the 
 
 > Status: 0.1.0, an early skeleton. The stage skills are outlines that will grow with real use. `corthex-memory` so far only adds the session start context, and `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
 
-The C1 storage library is under development; backup recovery requires the file's write lock. See the [architecture notes](docs/architecture.md).
-
 ## Install
 
 ### Claude Code
