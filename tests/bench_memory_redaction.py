@@ -6,6 +6,7 @@ is exactly 512 KiB of UTF-8. Uses an explicit empty redaction environment.
 """
 
 import argparse
+import base64
 import json
 import platform
 import statistics
@@ -18,6 +19,19 @@ sys.path.insert(0, str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scri
 from memory_lib import redaction
 
 MARKER = "CORTHEX_REDACTION_BENCH="
+SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
+
+
+def slow_input(name, size):
+    if name == "jwt-base64-json":
+        return base64.b64encode(b'{"a":123}' * (size // 8 + 2)).decode("ascii")[:size]
+    marker = "-" * 5
+    prefix, seed = {
+        "pem-begin-name-repeat": (marker + "BEGIN ", "PRIVATE KEY "),
+        "pem-end-name-repeat": (marker + "BEGIN PRIVATE KEY" + marker + "\nbody\n" + marker + "END ", "PRIVATE KEY "),
+        "jwt-no-dots": ("", "eyJ"),
+    }[name]
+    return prefix + (seed * (size // len(seed) + 1))[:size - len(prefix)]
 
 
 def fill(seed):
@@ -34,7 +48,7 @@ def inputs():
         "pem-header-without-key": fill("-" * 5 + "BEGIN " + "A" * 1024 + "\n"),
         "token-digits": fill("token=" + "0" * 512 + " "),
         "url-without-at": fill("://" + "a" * 256 + ":" + "b" * 256 + "? "),
-        "jwt-no-dots": fill("eyJ"),
+        **{name: slow_input(name, redaction.ENTRY_BYTES) for name in SLOW},
     }
 
 
@@ -55,8 +69,45 @@ def measure(samples=10):
             "warmups": 1, "environment_values": 0, "rows": rows}
 
 
+def measure_growth(samples=3):
+    """Measure the same four inputs without a guard hiding regex growth.
+
+    Runs only in the test's bounded subprocess. Limits are raised in that
+    disposable process; production limits and the 512 KiB benchmark stay fixed.
+    """
+    rows = []
+    saved = redaction.ENTRY_BYTES, redaction.WINDOW_BYTES
+    try:
+        def timed(text):
+            redaction.redact(text, {})
+            times = []
+            for _ in range(samples):
+                started = time.perf_counter()
+                redaction.redact(text, {})
+                times.append((time.perf_counter() - started) * 1000)
+            return statistics.median(times)
+        for name in SLOW:
+            size = 128 * 1024
+            while True:
+                redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
+                small = timed(slow_input(name, size))
+                if small > 21:
+                    break
+                size *= 2
+                if size > 4 * 1024 * 1024:
+                    raise RuntimeError("growth timing floor unavailable")
+            large = timed(slow_input(name, size * 4))
+            rows.append({"input": name, "small_bytes": size, "large_bytes": size * 4,
+                         "small_ms": round(small, 3), "large_ms": round(large, 3),
+                         "ratio": round(large / small, 4), "samples": samples})
+    finally:
+        redaction.ENTRY_BYTES, redaction.WINDOW_BYTES = saved
+    return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=10, choices=range(1, 101))
+    parser.add_argument("--growth", action="store_true")
     args = parser.parse_args()
-    print(MARKER + json.dumps(measure(args.samples), ensure_ascii=True))
+    print(MARKER + json.dumps(measure_growth(args.samples) if args.growth else measure(args.samples), ensure_ascii=True))

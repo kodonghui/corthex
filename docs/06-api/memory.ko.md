@@ -464,7 +464,7 @@ CORTHEX memory, consent version 1.
 
 `setup --at <folder>`(API-031)는 동의가 없는 기기에서 `no-consent`로 거절됩니다. 이 명령은 클라우드 환경 같은 임시 기기의 환경 설정을 위한 POSIX 셸 스크립트를 내보내며, 그 기기에서 프로젝트는 `<folder>`에 있습니다. 스크립트는 표준 라이브러리만 쓰는, 안에 넣은 Python 프로그램을 돌리며, 이 프로그램은 파일마다 없을 때만 씁니다:
 
-- 프로젝트와 `<folder>`를 담은 프로젝트 목록 `~/.corthex/projects.json`. 설정은 어떤 도구보다 먼저 돌고, 기억 플러그인은 프로젝트 목록을 스스로 바꾸지 않기 때문입니다.
+- 프로젝트와 `<folder>`를 담은 프로젝트 목록 `~/.corthex/projects.json`. 설정은 어떤 도구보다 먼저 돌고, 기억 플러그인은 프로젝트 목록을 스스로 바꾸지 않기 때문입니다. 기억은 이 목록을 읽을 때 맨 앞의 UTF-8 BOM 하나를 받으며, JSON 키가 중복되면 읽을 수 없는 목록으로 봅니다.
 - 새 기기 ID를 담은 기억 폴더 정보.
 - 이 기기의 동의, 켠 프로젝트, `temporary` true, 같은 동기화 설정을 담은 기억 설정.
 - 프로젝트의 폴더와 그 빈 정리 진행 기록.
@@ -670,11 +670,11 @@ OpenAI의 오류도 같은 이름을 붙입니다. 400 `invalid_request_error`, 
 3. 개인 키 블록: `-----BEGIN`으로 시작하고 개인 키를 가리키는 줄부터, 그 `-----END` 줄이나 글 끝까지를 `[redacted:private-key]`로 바꿉니다. 패턴은 아래 목록에 있습니다.
 4. 두 기억 전용 키의 정확한 값을 `[redacted:memory-key]`로 바꾸고, 이름에 대소문자 상관없이 `KEY`, `TOKEN`, `SECRET`, `PASSWORD`가 든 환경 변수의 값을 `[redacted:environment]`로 바꿉니다. 12자 이상인 값만, 가장 긴 것부터 바꿉니다.
 5. 아래 패턴을 차례로 적용합니다. 맞는 곳마다 `[redacted:<kind>]`로 바꾸며, 묶음이 있는 패턴은 묶음의 글을 표시 앞에 남깁니다.
-6. 1단계가 글을 잘랐으면, 먼저 2–5단계가 1단계 글의 512KB 지점 뒤에서 만든 것을 버립니다. 그 지점 앞에서 시작한 표시(`[redacted:…]`)는 남깁니다. 그다음 글자 경계에서 512KB로 자릅니다(SPEC-002). 1단계가 글을 자르지 않았으면 이 마지막 자르기만 적용합니다. 1이나 이 단계에서 무언가를 잘랐으면, 기록 줄의 `cut`이 1 전의 글 크기를 알려 줍니다.
+6. 1단계가 글을 잘랐으면, 먼저 2–5단계가 1단계 글의 512KB 지점 뒤에서 만든 것을 버립니다. 그 지점 앞에서 시작한 표시(`[redacted:…]`)는 남깁니다. 그다음 글자 경계에서 512KB로 자릅니다(SPEC-002). 1단계가 글을 자르지 않았으면 이 마지막 자르기만 적용합니다. 1이나 이 단계에서 무언가를 잘랐으면, 기록 줄의 `cut`이 1단계의 자르기 전, 정규화한 UTF-8 글 크기를 알려 줍니다.
 
 ```text
 kind              Python re pattern
-private-key       -{5}BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}|\Z)
+private-key       -{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)
 anthropic-key     sk-ant-[A-Za-z0-9_-]{20,}
 openai-key        sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}
 github-token      gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}
@@ -682,7 +682,7 @@ gitlab-token      glpat-[A-Za-z0-9_-]{20,}
 slack-token       xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}
 aws-key           (?:AKIA|ASIA)[A-Z0-9]{16}
 google-key        AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}
-jwt               eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+jwt               (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 url-credentials   (?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)
 authorization     (?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+
 assigned-secret   (?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)V
@@ -693,7 +693,7 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 ```
 
 - `V`와 `VS`는 이름 뒤의 값을 나타냅니다. `V`는 어떤 값이든, `VS`는 글자가 든 8자 이상의 값이므로, `max_tokens: 64000`이나 `token = 5`는 남습니다.
-- 개인 키 패턴은 3에서, 나머지는 5에서 돕니다. JWT 후보는 base64url 글자와 점으로 이룬 가장 긴 구간으로 훑고, 첫 조각마다 가장 앞의 eyJ만 검사하여 점이 없는 뒷부분을 되풀이해 읽지 않습니다. 나머지 패턴은 상한이 있거나 겹치지 않은 반복을 씁니다. Linux 컨테이너에서 Python 3.13으로 512KB를 잰 결과: 보통 글은 50ms쯤, 느리게 만든 입력은 39\~69ms, `password`라는 낱말을 되풀이한 글은 196ms입니다. Windows와 macOS는 12단계에서 잽니다.
+- 개인 키 패턴은 3단계에서, 나머지는 5단계에서 돕니다. 반복에 상한이 있거나 base64url 구간에서 한 번만 시작할 수 있어 시간이 글 길이에 비례합니다. BEGIN과 END의 개인 키 이름 칸은 각각 40자까지입니다. JWT는 바로 앞이 ASCII 영문자·숫자·밑줄·붙임표가 아닐 때만 시작합니다. 12단계는 512KB의 보통 글과 모든 느린 입력을 가능한 각 시스템·Python에서 잰 중앙값과 최댓값을 기록합니다. BEGIN·END의 개인 키 이름 반복, eyJ 반복, 점 없는 base64 JSON도 포함합니다.
 - 테스트는 도는 동안 알려진 형식마다 키를 지어냅니다(SPEC-004). 이 저장소에는 어떤 키도 적혀 있지 않습니다.
 - 패턴이 알 수 없는 것은 사용자가 비공개로 표시하거나 잊습니다(SPEC-004, SPEC-035).
 

@@ -19,7 +19,7 @@ SECRET_VALUE = (r'''"(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'''
                 r"'(?=[^'\r\n]{0,512}[A-Za-z])[^'\r\n]{8,512}'|"
                 r'''(?=[^\s"',;]{0,512}[A-Za-z])[^\s"',;]{8,512}''')
 PATTERNS = (
-    ("private-key", r"-{5}BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}|\Z)"),
+    ("private-key", r"-{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)"),
     ("anthropic-key", r"sk-ant-[A-Za-z0-9_-]{20,}"),
     ("openai-key", r"sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}"),
     ("github-token", r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}"),
@@ -27,14 +27,13 @@ PATTERNS = (
     ("slack-token", r"xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}"),
     ("aws-key", r"(?:AKIA|ASIA)[A-Z0-9]{16}"),
     ("google-key", r"AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}"),
-    ("jwt", r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+    ("jwt", r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("url-credentials", r"(?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)"),
     ("authorization", r"(?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+"),
     ("assigned-secret", r'''(?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)(?:''' + VALUE + ")"),
     ("assigned-secret", r'''(?i)((?:token|api[_-]?key|access[_-]?key)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)(?:''' + SECRET_VALUE + ")"),
 )
 COMPILED = tuple((kind, re.compile(pattern)) for kind, pattern in PATTERNS)
-JWT_RUN = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 @dataclass(frozen=True)
@@ -107,26 +106,6 @@ def _environment(text, environment, boundary):
     return text, boundary
 
 
-def _jwt(text, pattern, boundary):
-    # A maximal base64url/dot run has only one possible first-segment end.
-    # If its earliest eyJ fails, later eyJ starts in that same segment cannot
-    # fix the second/third segment or the minimum remaining first length.
-    pieces, used, delta = [], 0, 0
-    for run in JWT_RUN.finditer(text):
-        parts = run.group().split(".")
-        start = run.start()
-        for index, part in enumerate(parts[:-2]):
-            prefix = part.find("eyJ")
-            if prefix >= 0 and start + prefix >= used:
-                match = pattern.match(text, start + prefix, run.end())
-                if match is not None:
-                    pieces.extend((text[used:match.start()], "[redacted:jwt]"))
-                    delta += _adjust(boundary, match.start(), match.end(), len("[redacted:jwt]"))
-                    used = match.end()
-            start += len(part) + 1
-    return "".join(pieces) + text[used:], None if boundary is None else boundary + delta
-
-
 def redact(text, environment=None):
     """Return redacted text and optional original bytes; never catch an error."""
     if not isinstance(text, str):
@@ -150,7 +129,7 @@ def redact(text, environment=None):
     text, boundary = _environment(text, dict(os.environ) if environment is None else environment, boundary)
     # 5. Keep each pattern's name/header group, as the contract requires.
     for kind, pattern in COMPILED[1:]:
-        text, boundary = _jwt(text, pattern, boundary) if kind == "jwt" else _replace(text, pattern, kind, boundary)
+        text, boundary = _replace(text, pattern, kind, boundary)
     # 6. A cut in either step reports the size before any transformation.
     if boundary is not None:
         text = text[:boundary]

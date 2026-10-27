@@ -82,7 +82,7 @@ def entries(registry):
     except (OSError, ValueError, UnicodeError):
         raise ProjectError("no-project-list") from None
     return [entry for entry in data["projects"] if isinstance(entry, dict)
-            and isinstance(entry.get("name"), str) and NAME.fullmatch(entry["name"])]
+            and isinstance(entry.get("name"), str)]
 
 
 def locate(cwd=None, registry=None):
@@ -123,6 +123,8 @@ def locate(cwd=None, registry=None):
             raise ProjectError("project-clash", matching)
         if matching:
             name, (primary, alias) = next(iter(matching.items()))
+            if not NAME.fullmatch(name):
+                return None
             return Project(name, primary, folder, path, alias)
     return None
 

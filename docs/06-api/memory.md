@@ -464,7 +464,7 @@ A release that sends new kinds of data raises the version, and each device asks 
 
 `setup --at <folder>` (API-031) is refused with `no-consent` on a device without consent. It prints a POSIX shell script for the environment setup of a temporary device, such as a cloud environment, whose project is at `<folder>` there. The script runs an embedded Python program, standard library only, which writes each file only when it is missing:
 
-- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself;
+- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself; Memory accepts a single leading UTF-8 BOM when reading this list, and rejects duplicate JSON keys as an unreadable list.
 - the store record, with a new device ID;
 - the memory configuration, with this device's consent, the project enabled, `temporary` true and the same sync settings;
 - the project's folder and its empty curation record;
@@ -670,11 +670,11 @@ Redaction (SPEC-004) runs in this order on each prompt and final answer before i
 3. Private key blocks: from a line that begins `-----BEGIN` and names a private key, to its `-----END` line or to the end of the text, become `[redacted:private-key]`. The pattern is in the list below.
 4. The exact values of the two memory keys become `[redacted:memory-key]`, and the values of environment variables whose names hold `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, in any case, become `[redacted:environment]`: values of 12 characters or more, the longest first.
 5. The patterns below, in order: each match becomes `[redacted:<kind>]`, and where a pattern has a group, the group's text stays before the mark.
-6. If step 1 cut the text, first discard what steps 2–5 produced after the 512 KB point in step 1's text, keeping any `[redacted:…]` mark that started before that point. Then cut at a character boundary to 512 KB (SPEC-002). When step 1 did not cut the text, only this final cut applies. When step 1 or this step cut anything, the entry's `cut` gives the text's size before step 1.
+6. If step 1 cut the text, first discard what steps 2–5 produced after the 512 KB point in step 1's text, keeping any `[redacted:…]` mark that started before that point. Then cut at a character boundary to 512 KB (SPEC-002). When step 1 did not cut the text, only this final cut applies. When step 1 or this step cut anything, the entry's `cut` gives the normalized UTF-8 text's size before step 1's cut.
 
 ```text
 kind              Python re pattern
-private-key       -{5}BEGIN [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]*PRIVATE KEY[A-Z ]*-{5}|\Z)
+private-key       -{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)
 anthropic-key     sk-ant-[A-Za-z0-9_-]{20,}
 openai-key        sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}
 github-token      gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,}
@@ -682,7 +682,7 @@ gitlab-token      glpat-[A-Za-z0-9_-]{20,}
 slack-token       xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}
 aws-key           (?:AKIA|ASIA)[A-Z0-9]{16}
 google-key        AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}
-jwt               eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+jwt               (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 url-credentials   (?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)
 authorization     (?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+
 assigned-secret   (?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)V
@@ -693,7 +693,7 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 ```
 
 - `V` and `VS` stand for the value after the name: `V` any value, `VS` one of 8 or more characters with a letter in it, so that `max_tokens: 64000` or `token = 5` stays.
-- The private key pattern runs in step 3, the others in step 5. JWT candidates are scanned by maximal base64url/dot runs, testing only the earliest eyJ start in each possible first segment; missing dots do not rescan the same suffix. The other patterns use bounded or non-nested repeats. Measured on 512 KB in a Linux container with Python 3.13: about 50 ms for typical prose, 39 to 69 ms for inputs made to be slow, and 196 ms for the word `password` repeated. Windows and macOS are measured in stage 12.
+- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded or can start only once per base64url run, so their time grows with the text's length. The private-key name slots on BEGIN and END allow at most 40 characters each. A JWT starts only when the preceding character is not an ASCII letter, digit, underscore or hyphen. Stage 12 records median and maximum times for 512 KB of prose and every slow input, including repeated private-key names in BEGIN and END, repeated eyJ and dot-free base64 JSON, on each available system and Python version.
 - A test makes up a key in each known format while it runs (SPEC-004); none is written in this repository.
 - What the patterns cannot know, the user marks as private or forgets (SPEC-004, SPEC-035).
 
