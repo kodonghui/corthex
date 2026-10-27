@@ -302,17 +302,19 @@ class MemoryDiagnosticsTest(StoreCase):
 
     def test_tc013_lease_class_names_and_instances_use_their_fixed_codes(self):
         values = (("LockBusy", "lock-busy"), (locks.LockBusy(), "lock-busy"),
-                  ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"))
+                  ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"), ("lost-lock", "lost-lock"))
         for value, expected in values:
             self.assertEqual(diagnostics.error_kind(value), expected)
             self.assertTrue(self.logger.failure(value, "record", time.monotonic() + 2,
                                                 when=self.when))
         self.assertEqual([row["error"] for row in self.failures()],
-                         ["lock-busy", "lock-busy", "lost-lock", "lost-lock"])
+                         ["lock-busy", "lock-busy", "lost-lock", "lost-lock", "lost-lock"])
         self.assertEqual(diagnostics.error_kind("PermissionError"), "PermissionError")
         self.assertEqual(diagnostics.error_kind(ValueError("made-up")), "ValueError")
         self.assertIsNone(diagnostics.error_kind("LostLock made-up private text"))
         self.assertIsNone(diagnostics.error_kind("unknown-class"))
+        self.assertIsNone(diagnostics.error_kind("refusal"))
+        self.assertIsNone(diagnostics.error_kind("stale"))
 
     def test_tc014_timing_release_failure_is_logged_without_discarding_the_timing(self):
         rename = locks.os.rename
