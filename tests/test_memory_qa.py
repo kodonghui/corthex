@@ -19,7 +19,7 @@ RUNS = ["contract", "api", "e2e", "agent", "manual", "real"]
 # The From prefixes of the codes that every command, every model call, and the hooks and the memory worker
 # in the failure log can have: the last three rows of stage 10's outcomes.
 TOKENS = dict(zip(["commands", "model-calls", "failure-log"], SHARED))
-LAST = re.compile(r"not run|removed \(\d{4}-\d{2}-\d{2}\).+|(?:pass|fail|blocked)\b.* \(commit [0-9a-f]{7,40}\).*|" + re.escape(D3_SUPERSEDED))
+LAST = re.compile(r"not run(?:; .+)?|removed \(\d{4}-\d{2}-\d{2}\).+|(?:pass|fail|blocked)\b.* \(commit [0-9a-f]{7,40}\).*|" + re.escape(D3_SUPERSEDED))
 # A Korean particle after an ID depends on how its number ends when read aloud: 2, 4, 5 and 9 end with a
 # vowel, 1, 7 and 8 with ㄹ, and the others, 0 and the tens, hundreds and thousands, with another consonant.
 PARTICLES = {"이": "가", "은": "는", "을": "를", "과": "와", "으로": "로"}
@@ -293,7 +293,7 @@ class TranslationTest(unittest.TestCase):
                         for column in ("ID", "From", "Task", "Runs as"):
                             index = COLUMNS.index(column)
                             self.assertEqual(other[index], row[index], column)
-                        self.assertEqual(other[-1] == "실행 전", row[-1] == "not run")
+                        self.assertEqual(other[-1].startswith("실행 전"), row[-1].startswith("not run"))
                         self.assertEqual(re.findall(r"[0-9a-f]{7,40}(?=\))", other[-1]), re.findall(r"[0-9a-f]{7,40}(?=\))", row[-1]))
 
     def test_particles_fit_the_ids(self):

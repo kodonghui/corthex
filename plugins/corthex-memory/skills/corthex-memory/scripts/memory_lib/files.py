@@ -40,14 +40,20 @@ def _retry(operation, deadline=None):
             time.sleep(min(0.02, left))
 
 
-def _unlink(path):
+def _checked(check, operation):
+    if check is not None:
+        check()
+    return operation()
+
+
+def _unlink(path, check=None):
     try:
-        _retry(lambda: path.unlink())
+        _retry(lambda: _checked(check, path.unlink))
     except FileNotFoundError:
         pass
 
 
-def delete_file(path):
+def delete_file(path, check=None):
     """Delete a whole file and its backup/temps while its caller holds its lock.
 
     Remove recovery artifacts first so a failed cleanup keeps the original.
@@ -55,7 +61,7 @@ def delete_file(path):
     Each Windows sharing failure uses the same one-second retry as moves.
     """
     path = Path(path)
-    _unlink(path.with_name(path.name + ".bak"))
+    _unlink(path.with_name(path.name + ".bak"), check)
     try:
         siblings = _retry(lambda: list(path.parent.iterdir()))
     except FileNotFoundError:
@@ -63,8 +69,8 @@ def delete_file(path):
     for sibling in siblings:
         if (sibling.name.startswith(path.name + ".") and sibling.name.endswith(".tmp")
                 and len(sibling.name) >= len(path.name) + 5):
-            _unlink(sibling)
-    _unlink(path)
+            _unlink(sibling, check)
+    _unlink(path, check)
 
 
 def _sync(fd):
@@ -95,22 +101,22 @@ def _temporary(path, data, durable):
         raise
 
 
-def _backup(path, backup):
-    _unlink(backup)
+def _backup(path, backup, check=None):
+    _unlink(backup, check)
     try:
-        os.link(str(path), str(backup))
+        _checked(check, lambda: os.link(str(path), str(backup)))
     except OSError:
         # A copied backup becomes visible only after it is complete and durable.
-        temporary = _temporary(backup, _retry(path.read_bytes), True)
+        temporary = _checked(check, lambda: _temporary(backup, _retry(path.read_bytes), True))
         try:
-            _retry(lambda: os.replace(str(temporary), str(backup)))
+            _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(backup))))
         finally:
             _unlink(temporary)
     if os.name != "nt":
-        backup.chmod(0o600)
+        _checked(check, lambda: backup.chmod(0o600))
 
 
-def replace_bytes(path, data, rebuildable=False):
+def replace_bytes(path, data, rebuildable=False, check=None):
     """Replace using a same-directory temporary, then backup, move, cleanup.
 
     A failed replacement preserves the old target and its backup. A process
@@ -118,23 +124,23 @@ def replace_bytes(path, data, rebuildable=False):
     Rebuildable files omit fsync and the backup, as stage 05 specifies.
     """
     path = Path(path)
-    temporary = _temporary(path, data, not rebuildable)
+    temporary = _checked(check, lambda: _temporary(path, data, not rebuildable))
     backup = path.with_name(path.name + ".bak")
     try:
         if not rebuildable and path.exists():
-            _backup(path, backup)
-        _retry(lambda: os.replace(str(temporary), str(path)))
+            _backup(path, backup, check=check)
+        _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(path))))
         if not rebuildable:
-            _unlink(backup)
+            _unlink(backup, check)
     finally:
         _unlink(temporary)
 
 
-def write_json(path, record, table, rebuildable=False):
-    replace_bytes(path, json_bytes(record, table), rebuildable)
+def write_json(path, record, table, rebuildable=False, check=None):
+    replace_bytes(path, json_bytes(record, table), rebuildable, check=check)
 
 
-def append_jsonl(path, record, table, report=None):
+def append_jsonl(path, record, table, report=None, check=None, deadline=None):
     """Append an already-redacted object with exactly one unbuffered write.
 
     Caller holds the file lock through recovery, the size/last-byte read, write
@@ -142,20 +148,21 @@ def append_jsonl(path, record, table, report=None):
     before opening for append. A short write truncates to the prior fstat size
     before failing; this is correct only while that caller keeps the record
     lock. No fsync: bytes are handed to the OS, as the append contract requires.
+    Optional check fences shared mutations; deadline caps recovery/open retries.
     """
     data = json_bytes(record, table, compact=True)
     path = Path(path)
     if not path.exists() and path.with_name(path.name + ".bak").exists():
-        read_jsonl(path, report, holding_lock=True)
-    fd = private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND)
+        read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
+    fd = _retry(lambda: _checked(check, lambda: private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND)), deadline)
     try:
         size = os.fstat(fd).st_size
         if size:
             os.lseek(fd, -1, os.SEEK_END)
             if os.read(fd, 1) != b"\n":
                 data = b"\n" + data
-        if os.write(fd, data) != len(data):
-            os.ftruncate(fd, size)
+        if _checked(check, lambda: os.write(fd, data)) != len(data):
+            _checked(check, lambda: os.ftruncate(fd, size))
             raise OSError("short append")
     finally:
         os.close(fd)

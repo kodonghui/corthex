@@ -300,7 +300,7 @@ While it waits for a model or for Git, a second thread refreshes its locks as of
 
 ## Memory configuration
 
-The memory configuration (TBL-002) is `configuration.json` in the memory store, checked against [memory-configuration.schema.json](memory-configuration.schema.json) by every process that reads it. The check is strict: an unknown field, a value of the wrong type or outside its range, or a project name that does not fit makes the whole configuration invalid. Memory is then off on the device, as if there were no consent: nothing is recorded or sent, the start summary says so in one line, and the memory status names the first field that is wrong. A field left out takes its default. Only the memory skill writes the configuration, under the store lock; a user who edits it by hand learns from the memory status what is wrong. The code checks the same rules in plain Python (REQ-061). In JSON Schema a pattern's `$` matches only at the end of the text, while Python's `$` also matches before a final line break, so the code reads `$` as `\Z`.
+The memory configuration (TBL-002) is `configuration.json` in the memory store, checked against [memory-configuration.schema.json](memory-configuration.schema.json) by every process that reads it. The check is strict: an unknown field, a value of the wrong type or outside its range, or a project name that does not fit makes the whole configuration invalid. Memory is then off on the device, as if there were no consent: nothing is recorded or sent, the start summary says so in one line, and the memory status names the first field that is wrong. A field left out takes its default. Only the memory skill writes the configuration, under the store lock; a user who edits it by hand learns from the memory status what is wrong. The code checks the same rules in plain Python (REQ-061). In JSON Schema a pattern's `$` matches only at the end of the text, while Python's `$` also matches before a final line break, so the code reads `$` as `\Z`. Patterns avoid engine-dependent whitespace classes and dot wildcards, so the Python verdict matches the schema apart from reading `$` as `\Z`.
 
 | Field | Value | Default | From |
 | --- | --- | --- | --- |
@@ -821,11 +821,11 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | `restored` | A backup was moved back (stage 05) | The file is whole again |
 | `redaction` | Redaction raised an error (SPEC-004) | The text is neither written nor sent |
 | `worker-start` | The memory worker could not be started (SPEC-013) | The next trigger tries again |
-| `store-newer` | The memory store's format is newer than the release (SPEC-039) | Nothing is read or written |
-| `store-damaged` | The store record is missing or damaged, and no backup can be restored (TBL-001) | Nothing is read or written until `repair` |
 | `configuration-invalid` | The memory configuration fails its schema | Memory is off on the device |
 
 An invalid `CORTHEX_MEMORY_HOME` is never written to the failure log: there is no store.
+
+`store-newer` and `store-damaged` (no readable backup) are not written to the failure log; hooks and the memory worker stop before any other reads or writes, and commands return these codes.
 
 ### Model calls
 
