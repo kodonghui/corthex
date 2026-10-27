@@ -491,5 +491,22 @@ class MemoryStoreTest(StoreCase):
         self.assertFalse(list(self.root.glob("*.tmp")))
 
 
+    def test_tc009_configuration_release_failure_is_logged_after_the_write(self):
+        rename = locks.os.rename
+        def sharing(source, target):
+            if Path(source).name == "store.lock":
+                raise PermissionError("made-up store cleanup detail")
+            return rename(source, target)
+        with mock.patch.object(locks.os, "rename", sharing):
+            result = self.memory.write_configuration({"temporary":True}, time.monotonic() + 3)
+        self.addCleanup((self.root / "store.lock").unlink)
+        self.assertEqual(result.document, {"temporary":True})
+        self.assertEqual(files.read_json(self.root / "configuration.json"), {"temporary":True})
+        failures = [row for path in (self.root / "logs").glob("failures-*.jsonl")
+                    for row in files.read_jsonl(path)]
+        self.assertEqual([(row["error"], row["step"]) for row in failures],
+                         [("PermissionError", "skill")])
+
+
 if __name__ == "__main__":
     unittest.main()

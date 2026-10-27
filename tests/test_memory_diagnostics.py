@@ -274,6 +274,7 @@ class MemoryDiagnosticsTest(StoreCase):
         with mock.patch.object(files, "append_jsonl", delayed):
             self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 0.02, when=self.when))
         self.assertEqual(self.failures(), [])
+
         def changed(*args, **kwargs):
             header = dict(self.header, device=base.new_id("d"))
             (self.root / "store.json").write_bytes(base.json_bytes(header, "TBL-001"))
@@ -281,3 +282,64 @@ class MemoryDiagnosticsTest(StoreCase):
         with mock.patch.object(files, "append_jsonl", changed):
             self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 2, when=self.when))
         self.assertEqual(self.failures(), [])
+
+    def test_tc011_store_recovery_precedes_the_log_lease_and_failure_line(self):
+        path = self.root / "store.json"
+        path.write_bytes(b"{")
+        path.with_name("store.json.bak").write_bytes(base.json_bytes(self.header, "TBL-001"))
+        original, reads = self.memory.record, []
+        def before_lock(*args, **kwargs):
+            self.assertFalse(locks._active, "store recovery was attempted under another lease")
+            reads.append(True)
+            return original(*args, **kwargs)
+        with mock.patch.object(self.memory, "record", before_lock):
+            self.assertTrue(self.logger.failure("deadline", "record", time.monotonic() + 2,
+                                                when=self.when))
+        self.assertTrue(reads)
+        self.assertEqual(files.read_json(path), self.header)
+        self.assertFalse(path.with_name("store.json.bak").exists())
+        self.assertEqual([row["error"] for row in self.failures()], ["deadline"])
+
+    def test_tc013_lease_class_names_and_instances_use_their_fixed_codes(self):
+        values = (("LockBusy", "lock-busy"), (locks.LockBusy(), "lock-busy"),
+                  ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"))
+        for value, expected in values:
+            self.assertEqual(diagnostics.error_kind(value), expected)
+            self.assertTrue(self.logger.failure(value, "record", time.monotonic() + 2,
+                                                when=self.when))
+        self.assertEqual([row["error"] for row in self.failures()],
+                         ["lock-busy", "lock-busy", "lost-lock", "lost-lock"])
+        self.assertEqual(diagnostics.error_kind("PermissionError"), "PermissionError")
+        self.assertEqual(diagnostics.error_kind(ValueError("made-up")), "ValueError")
+        self.assertIsNone(diagnostics.error_kind("LostLock made-up private text"))
+        self.assertIsNone(diagnostics.error_kind("unknown-class"))
+
+    def test_tc014_timing_release_failure_is_logged_without_discarding_the_timing(self):
+        rename = locks.os.rename
+        def sharing(source, target):
+            if Path(source).name == "hooks.lock":
+                raise PermissionError("made-up cleanup detail")
+            return rename(source, target)
+        with mock.patch.object(locks.os, "rename", sharing):
+            self.assertTrue(self.logger.timing("prompt", "codex", 1, "ok",
+                                               time.monotonic() + 3, when=self.when))
+        self.addCleanup((self.root / "logs/hooks.lock").unlink)
+        self.assertEqual(len(files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")), 1)
+        failures = self.failures()
+        self.assertEqual([row["error"] for row in failures], ["PermissionError"])
+        self.assertEqual((failures[0]["hook"], failures[0]["host"]), ("prompt", "codex"))
+        self.assertNotIn(b"made-up cleanup detail", b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file()))
+
+    def test_tc014_failure_log_release_does_not_report_itself_recursively(self):
+        rename = locks.os.rename
+        def sharing(source, target):
+            if Path(source).name == "failures.lock":
+                raise PermissionError("made-up cleanup detail")
+            return rename(source, target)
+        with mock.patch.object(locks.os, "rename", sharing), \
+                mock.patch.object(self.logger, "failure", wraps=self.logger.failure) as calls:
+            self.assertTrue(self.logger.failure("deadline", "record", time.monotonic() + 3,
+                                                when=self.when))
+        self.addCleanup((self.root / "logs/failures.lock").unlink)
+        self.assertEqual(calls.call_count, 1)
+        self.assertEqual([row["error"] for row in self.failures()], ["deadline"])

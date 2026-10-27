@@ -139,7 +139,10 @@ class MemoryStore:
         before = self.record(deadline=deadline)
         checked = configuration.prepare(document)
         lock = locks.Lock(self.folder / "store.lock", "store", before["device"])
-        with lock.held(deadline):
+        def report_release(error, count):
+            from .diagnostics import Diagnostics
+            Diagnostics(self).failure(error, "skill", deadline)
+        with lock.held(deadline, report=report_release):
             def guard():
                 self._guard(lock, deadline)()
                 if self.record(deadline=deadline, holding_lock=lock)["device"] != before["device"]:

@@ -191,6 +191,8 @@ Windows directories use the default creation mode to inherit their parent's perm
 
 Store reads require the caller's absolute operation deadline. Recovery uses the public reading and file-parser functions under store.lock; a caller already holding that lease supplies it explicitly. Permission and other operational I/O errors propagate for internal command handling; only missing/unparseable records with no recovery become store-damaged. RestoreNeeded is explicitly handled as RuntimeError, and lock contention remains lock-busy.
 
+Diagnostic store reads and any recovery finish before the log lease. Under that lease, guards check the header file identity, size and mtime without reading/restoring it, retaining the deadline/token/change fence. Known LockBusy/LostLock classes and class-name notices map to lock-busy/lost-lock; other class names retain the fixed-code/built-in rules. Configuration and timing lease-release failures use the failure logger when the caller deadline still permits it; releasing the failure log never reports recursively.
+
 ## Project hub
 
 `corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The NEXUS server in `nexus/` is optional and puts the same page on the user's own address.

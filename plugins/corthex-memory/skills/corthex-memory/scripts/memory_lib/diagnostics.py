@@ -28,11 +28,15 @@ LOG = re.compile(r"(?:claude-code|codex)-[0-9a-f]{16}\Z")
 
 def error_kind(error):
     if isinstance(error, str):
+        if error in ("LockBusy", "LostLock"):
+            return {"LockBusy": "lock-busy", "LostLock": "lost-lock"}[error]
         return error if error in CODES or error in EXCEPTIONS.values() else None
     if isinstance(error, configuration.ConfigurationInvalid):
         return "configuration-invalid"
     if isinstance(error, locks.LockBusy):
         return "lock-busy"
+    if isinstance(error, locks.LostLock):
+        return "lost-lock"
     if isinstance(error, store.StoreUnavailable):
         # Store gate codes are returned by commands, never failure-log entries.
         return None
@@ -51,20 +55,41 @@ class Diagnostics:
     def __init__(self, memory_store):
         self.store = memory_store
 
+    @staticmethod
+    def _stamp(path):
+        try:
+            info = path.stat()
+        except FileNotFoundError:
+            return None
+        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+
     def _append(self, name, table, record, deadline):
         try:
             if (not configuration.number(deadline) or not math.isfinite(deadline) or
                     time.monotonic() >= deadline):
                 return False
+            record_path = self.store.folder / "store.json"
+            first = self._stamp(record_path)
             before = self.store.record(deadline=deadline)
+            stamp = self._stamp(record_path)
+            if first != stamp:
+                # Recovery or a concurrent rewrite changed the header. Validate
+                # its new identity while no log lease is held.
+                before = self.store.record(deadline=deadline)
+                if self._stamp(record_path) != stamp:
+                    return False
             folder = self.store.folder / "logs"
             lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
-            with lock.held(deadline):
+            def report_release(error, count):
+                self.failure(error, "record", deadline, hook=record.get("hook"),
+                             host=record.get("host"))
+            with lock.held(deadline, report=report_release if name != "failures" else None):
                 def guard():
                     if time.monotonic() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
-                    if self.store.record(deadline=deadline)["device"] != before["device"]:
+                    # Never read or restore the header under a log lease.
+                    if self._stamp(record_path) != stamp:
                         raise locks.LostLock()
                 guard()
                 path = folder / (name + "-" + record["at"][:10] + ".jsonl")
