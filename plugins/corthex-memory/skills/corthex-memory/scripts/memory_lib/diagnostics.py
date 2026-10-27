@@ -10,7 +10,7 @@ import math
 import re
 import time
 
-from . import base, configuration, files, locks, store
+from . import base, configuration, files, locks, projects, store
 
 HOOKS = {"start", "prompt", "end-of-turn", "end"}
 HOSTS = {"claude-code", "codex"}
@@ -33,6 +33,8 @@ def error_kind(error):
         return "configuration-invalid"
     if isinstance(error, locks.LockBusy):
         return "lock-busy"
+    if isinstance(error, projects.ProjectError):
+        return error.code if choice(error.code, CODES) else None
     if isinstance(error, store.StoreUnavailable):
         # Store gate codes are returned by commands, never failure-log entries.
         return None
