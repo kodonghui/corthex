@@ -353,7 +353,7 @@ The prompt length that decides Claude Haiku 5.5's higher prices counts all input
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | the memory worker; the end-of-turn and session end hooks only check that it is there | Curation, consolidation and token counts (SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | the prompt hook, the memory worker and `search` | Embeddings |
-| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039) |
+| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039); empty is unset; after `~` expansion it must be absolute, otherwise memory is off in that process, hooks write nothing, commands return `configuration-invalid`, and memory status explains why |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | the processes that call the APIs | A test server in place of the API: an `https://` address, or `http://` for `localhost`, `127.0.0.1` or `[::1]` only; another value is ignored. The memory status shows when one is set |
 | `CLAUDE_CODE_REMOTE` | every process | `true` makes the device temporary, unless the configuration says otherwise (SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | the hooks | Which host runs the hook |
@@ -821,7 +821,7 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | `worker-start` | The memory worker could not be started (SPEC-013) | The next trigger tries again |
 | `store-newer` | The memory store's format is newer than the release (SPEC-039) | Nothing is read or written |
 | `store-damaged` | The store record is missing or damaged, and no backup can be restored (TBL-001) | Nothing is read or written until `repair` |
-| `configuration-invalid` | The memory configuration fails its schema | Memory is off on the device |
+| `configuration-invalid` | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion | Memory is off on the device |
 
 ### Model calls
 
@@ -871,7 +871,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `no-store` | refused, or nothing for `status` | all but `on`, `purge` and `repair` | No memory store yet; `on` makes one |
 | `store-newer` | refused | all but `purge` | The memory store is from a newer release |
 | `store-damaged` | refused | all but `purge` and `repair` | The store record is missing or damaged; `repair` writes a new one |
-| `configuration-invalid` | refused | all but `status`, `purge` and `repair`, which still work | The memory configuration fails its schema; `data.field` names the field |
+| `configuration-invalid` | refused | all but `status`, `purge` and `repair`, which still work | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion; `data.field` names the field or environment variable |
 | `no-project-list` | refused | the commands for a project | The project list is missing or cannot be read |
 | `not-in-project` | refused | the commands for a project | The folder is in no project, or in two (`data.clash`); the corthex skill adds projects |
 | `not-enabled` | nothing for `off`, else refused | the commands for a project | Memory is off for the project; `on` turns it on |

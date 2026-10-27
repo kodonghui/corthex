@@ -62,13 +62,27 @@ def utc_date(value=None):
     return utc_time(value)[:10]
 
 
+class MemoryHomeInvalid(ValueError):
+    code = "configuration-invalid"
+    field = "CORTHEX_MEMORY_HOME"
+    reason = "absolute-path-required"
+
+    def __init__(self):
+        super().__init__("CORTHEX_MEMORY_HOME must be an absolute path")
+
+
 def memory_home():
     """Resolve the store without reading it or creating it."""
-    if "CORTHEX_MEMORY_HOME" in os.environ:
-        if not os.environ["CORTHEX_MEMORY_HOME"]:
-            raise ValueError("empty memory home")
-        return Path(os.environ["CORTHEX_MEMORY_HOME"]).expanduser()
-    return Path.home() / ".corthex" / "corthex-memory"
+    override = os.environ.get("CORTHEX_MEMORY_HOME")
+    if not override:
+        return Path.home() / ".corthex" / "corthex-memory"
+    try:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            raise MemoryHomeInvalid()
+        return path
+    except (OSError, RuntimeError, ValueError):
+        raise MemoryHomeInvalid() from None
 
 
 def project_folder_name(name):
@@ -83,7 +97,10 @@ def private_directory(path):
     missing, cursor = [], path
     while not cursor.exists():
         missing.append(cursor)
-        cursor = cursor.parent
+        parent = cursor.parent
+        if parent == cursor:
+            raise FileNotFoundError("directory root is missing")
+        cursor = parent
     for directory in reversed(missing):
         # Python 3.13's Windows 0700 disables inheritance; use its default there.
         directory.mkdir(mode=0o777 if os.name == "nt" else 0o700, exist_ok=True)

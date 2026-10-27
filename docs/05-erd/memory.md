@@ -411,6 +411,8 @@ The JSON Lines files (raw logs, logs and injection logs) take lines this way:
 3. Write the line and its LF with one write call, and hand it to the system before releasing the lock. No fsync: a power cut can lose the last lines but never makes the file unreadable (SPEC-007).
 4. Release the lock.
 
+If the write is short, the caller keeps the record lock, truncates the file to its size from `fstat` before the write, and then reports failure.
+
 Under the same lock, a raw log append first reads the last complete line for its `seq` and `turn`, and then makes its turn's marker (TBL-008).
 
 ### Rewriting
@@ -422,13 +424,17 @@ Every other change of a file, and every rewrite of a JSON Lines file, goes throu
 3. Move the new file over the old one, which replaces it at once.
 4. Delete `<name>.bak`.
 
+On macOS the disk flush first tries `fcntl.F_FULLFSYNC`, falling back to `os.fsync` when it is unavailable or fails ([Apple's fsync contract](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html)).
+
 A raw log or injection log rewrite builds the new file without the lock, then holds the file's lock for its last read and the move, copying into the new file, unchanged, the lines appended since its first read (SPEC-007). That carries appends over but not another rewrite's changes, so the rewrites of one file run one after another: each holds the project's curated layer lock from its first read to the move. Forgets and tombstones hold it anyway, and retention takes it for each raw log or injection log file that it rewrites or deletes. When retention would keep no line of a file, it holds the file's lock for a last read and the deletion, and if that read finds lines appended since its first read, it keeps them: it moves a new file holding only those lines over the old one instead of deleting it (SPEC-009). Files that the code can make again from others (the markers, notices, the item list and the search index) skip the flush to disk and the backup.
+
+Deleting a whole file under its lock also removes its `<name>.bak` and remaining `<name>.*.tmp` files, using the same Windows retries for each deletion.
 
 On Windows a move or a deletion fails while another process holds the file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once.
 
 ### Restoring
 
-- A reader that finds a rewritten file missing or unreadable while its `.bak` can be read moves the backup back, and the failure log notes it (`restore`, `restored`).
+- A reader restores a readable `.bak` only when the rewritten file is missing (`FileNotFoundError`) or its content cannot be interpreted (`ValueError` or `UnicodeError`); it reads the original once more just before each restoration attempt and keeps it if it now parses, otherwise moves the backup back and notes `restore`, `restored`. A temporarily inaccessible file is not unreadable content: `PermissionError` is retried on Windows for up to one second, then raised without restoration; POSIX raises it immediately, and other `OSError` failures are raised without restoration.
 - In the background at each session start, the code deletes `.tmp` files older than ten minutes and the backups of files that can be read. Until then a backup can hold text that a forget removed.
 - A record with no copy that can be read is handled as its section says.
 

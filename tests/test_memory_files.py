@@ -243,7 +243,8 @@ class MemoryFilesTest(unittest.TestCase):
         self.assertEqual(operation.call_count, 1)
         notices = []
         self.assertEqual(files.read_jsonl(path, lambda *n: notices.append(n)), [])
-        self.assertEqual(notices, [("damaged-line", 1)])
+        self.assertEqual(notices, [])
+        self.assertEqual(path.read_bytes(), b"")
         files.append_jsonl(path, {"seq": 2}, "TBL-007")
         self.assertEqual(files.read_jsonl(path), [{"seq": 2}])
 
@@ -332,9 +333,10 @@ class MemoryFilesTest(unittest.TestCase):
     def test_tc004_flush_or_move_failure_preserves_old_content(self):
         path = self.folder / "store.json"
         files.write_json(path, {"format": 1}, "TBL-001")
-        for operation in ("fsync", "replace"):
+        for operation in ("_sync", "replace"):
             with self.subTest(operation=operation):
-                with mock.patch.object(files.os, operation, side_effect=OSError("made-up failure")):
+                target = files if operation == "_sync" else files.os
+                with mock.patch.object(target, operation, side_effect=OSError("made-up failure")):
                     with self.assertRaises(OSError):
                         files.write_json(path, {"format": 2}, "TBL-001")
                 self.assertEqual(files.read_json(path), {"format": 1})
@@ -363,14 +365,16 @@ k.CloseHandle(handle)
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             self.assertEqual(process.stdout.readline().strip(), "ready")
-            started = time.monotonic()
-            with self.assertRaises(PermissionError):
-                files.write_json(path, {"format": 2}, "TBL-001")
-            elapsed = time.monotonic() - started
-            self.assertGreaterEqual(elapsed, 0.95)
-            self.assertLess(elapsed, 3.0)
-            self.assertEqual(files.read_json(path), {"format": 1})
-            self.assertEqual(list(self.folder.glob("*.tmp")), [])
+            for action in (lambda: files.write_json(path, {"format": 2}, "TBL-001"),
+                           lambda: files.delete_file(path)):
+                started = time.monotonic()
+                with self.assertRaises(PermissionError):
+                    action()
+                elapsed = time.monotonic() - started
+                self.assertGreaterEqual(elapsed, 0.95)
+                self.assertLess(elapsed, 3.0)
+                self.assertEqual(files.read_json(path), {"format": 1})
+                self.assertEqual(list(self.folder.glob("*.tmp")), [])
         finally:
             process.communicate("x", timeout=10)
 

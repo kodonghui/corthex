@@ -353,7 +353,7 @@ Claude Haiku 5.5의 더 높은 가격을 정하는 프롬프트 길이는 캐시
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | 기억 작업 프로세스. 턴 끝 훅과 세션 끝 훅은 있는지만 확인 | 정리, 통합, 토큰 세기(SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | 프롬프트 훅, 기억 작업 프로세스, `search` | 임베딩 |
-| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039) |
+| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039). 빈 값은 설정하지 않은 것과 같고, `~`를 푼 뒤에도 절대 경로가 아니면 그 프로세스에서 기억이 꺼집니다. 훅은 아무것도 쓰지 않고, 명령은 `configuration-invalid`를 돌려주며 기억 상태가 이유를 말합니다 |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | API를 부르는 프로세스 | API 대신 쓸 시험 서버: `https://` 주소, 또는 `localhost`, `127.0.0.1`, `[::1]`에 한해 `http://`. 다른 값은 무시함. 설정되어 있으면 기억 상태가 보여 줌 |
 | `CLAUDE_CODE_REMOTE` | 모든 프로세스 | 설정이 달리 말하지 않으면, `true`일 때 임시 기기(SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | 훅 | 어느 도구가 훅을 돌리는지 |
@@ -821,7 +821,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | `worker-start` | 기억 작업 프로세스를 띄울 수 없었음(SPEC-013) | 다음 정리 시작 조건에서 다시 해 봄 |
 | `store-newer` | 기억 폴더의 형식이 그 판보다 새로움(SPEC-039) | 아무것도 읽거나 쓰지 않음 |
 | `store-damaged` | 기억 폴더 정보가 없거나 망가졌고, 되살릴 백업이 없음(TBL-001) | `repair`까지 아무것도 읽거나 쓰지 않음 |
-| `configuration-invalid` | 기억 설정이 스키마에 맞지 않음 | 그 기기에서 기억이 꺼짐 |
+| `configuration-invalid` | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님 | 그 기기에서 기억이 꺼짐 |
 
 ### 모델 호출의 코드
 
@@ -871,7 +871,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | `no-store` | `refused`, `status`에서는 `nothing` | `on`, `purge`, `repair`를 뺀 모두 | 아직 기억 폴더가 없음. `on`이 만듦 |
 | `store-newer` | `refused` | `purge`를 뺀 모두 | 기억 폴더가 더 새로운 판에서 옴 |
 | `store-damaged` | `refused` | `purge`와 `repair`를 뺀 모두 | 기억 폴더 정보가 없거나 망가짐. `repair`가 새로 씀 |
-| `configuration-invalid` | `refused` | 그래도 되는 `status`, `purge`, `repair`를 뺀 모두 | 기억 설정이 스키마에 맞지 않음. `data.field`가 그 필드를 알려 줌 |
+| `configuration-invalid` | `refused` | 그래도 되는 `status`, `purge`, `repair`를 뺀 모두 | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님. `data.field`가 필드나 환경 변수를 알려 줌 |
 | `no-project-list` | `refused` | 프로젝트에 대한 명령 | 프로젝트 목록이 없거나 읽을 수 없음 |
 | `not-in-project` | `refused` | 프로젝트에 대한 명령 | 폴더가 어느 프로젝트에도 없거나 둘에 있음(`data.clash`). 프로젝트는 corthex 스킬이 더함 |
 | `not-enabled` | `off`에서는 `nothing`, 아니면 `refused` | 프로젝트에 대한 명령 | 그 프로젝트에 기억이 꺼져 있음. `on`이 켬 |
