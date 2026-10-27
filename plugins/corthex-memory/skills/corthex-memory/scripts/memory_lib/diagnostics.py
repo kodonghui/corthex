@@ -28,6 +28,8 @@ LOG = re.compile(r"(?:claude-code|codex)-[0-9a-f]{16}\Z")
 
 def error_kind(error):
     if isinstance(error, str):
+        if error == "lost-lock":
+            return error
         if error in ("LockBusy", "LostLock"):
             return {"LockBusy": "lock-busy", "LostLock": "lost-lock"}[error]
         return error if error in CODES or error in EXCEPTIONS.values() else None

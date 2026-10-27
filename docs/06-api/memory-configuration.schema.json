@@ -95,7 +95,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 400,
-      "pattern": "^(?!(?:.*/)?\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001f]+(?:/[^/\\\\:\\u0000-\\u001f]+)*$"
+      "pattern": "^(?!(?:[\\s\\S]*/)?\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001f]+(?:/[^/\\\\:\\u0000-\\u001f]+)*$"
     },
     "project": {
       "type": "object",
@@ -144,7 +144,7 @@
       "required": ["taken", "from", "models"],
       "properties": {
         "taken": {"description": "When the prices were read from the price pages.", "$ref": "#/$defs/date"},
-        "from": {"description": "The price pages, one address each.", "type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "maxLength": 2000, "pattern": "^https://[^\\s]+$"}},
+        "from": {"description": "The price pages, one address each: printable non-space ASCII; percent-encode non-ASCII characters.", "type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "maxLength": 2000, "pattern": "^https://[!-~]+$"}},
         "models": {"type": "object", "minProperties": 1, "propertyNames": {"$ref": "#/$defs/model"}, "additionalProperties": {"$ref": "#/$defs/price"}}
       }
     }

@@ -3,6 +3,8 @@
 import copy
 import json
 import os
+import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -241,6 +243,43 @@ class MemoryStoreTest(StoreCase):
             else:
                 self.assert_invalid(doc)
 
+    def test_tc010_unicode_pattern_edges_agree_with_the_schema(self):
+        for folder in ("x\u2028/../y", "x\u2029/.."):
+            document = {"projects": {"sample": {"enabled":True,"since":AT,"left_out":{"folders":[folder]}}}}
+            self.assertTrue(fits(self.schema,document))
+            self.assert_invalid(document,"projects.*.left_out.folders[0]")
+        for char in ("\ufeff", "\u001c", "\u0085"):
+            document = copy.deepcopy(self.examples["valid"]["own-prices"])
+            document["prices"]["from"] = ["https://a"+char+"b"]
+            self.assertTrue(fits(self.schema,document))
+            self.assert_invalid(document,"prices.from[0]")
+        document["prices"]["from"] = ["https://example.invalid/%E2%80%A8"]
+        self.assertFalse(fits(self.schema,document))
+        configuration.prepare(document)
+
+    def test_tc010_every_pattern_agrees_with_node_ecma_u_for_boundary_values(self):
+        executable = next((Path(folder) / ("node.exe" if os.name == "nt" else "node")
+                           for folder in os.get_exec_path() if Path(folder).is_absolute()
+                           and (Path(folder) / ("node.exe" if os.name == "nt" else "node")).is_file()), None)
+        if executable is None:
+            self.skipTest("Node.js is not installed in an absolute PATH folder")
+        patterns = []
+        def visit(value):
+            if isinstance(value,dict):
+                if "pattern" in value: patterns.append(value["pattern"])
+                for child in value.values(): visit(child)
+            elif isinstance(value,list):
+                for child in value: visit(child)
+        visit(self.schema)
+        values = ["x\u2028/../y","x\u2029/..","https://a\ufeffb","https://a\u001cb","https://a\u0085b",
+                  "folder/sub","a/../b","sample","main","https://example.invalid/%E2%80%A8"]
+        expected = [[bool(re.search(pattern.replace("$",r"\Z"),value)) for value in values] for pattern in patterns]
+        program = 'let b="";process.stdin.setEncoding("utf8");process.stdin.on("data",x=>b+=x);process.stdin.on("end",()=>{const d=JSON.parse(b);process.stdout.write(JSON.stringify(d.patterns.map(p=>d.values.map(v=>new RegExp(p,"u").test(v)))))});'
+        result = subprocess.run([str(executable),"-e",program],input=json.dumps({"patterns":patterns,"values":values}),
+                                capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),expected)
+
     def test_tc010_array_limits_uniqueness_and_price_requirements(self):
         document = copy.deepcopy(self.examples["valid"]["tuned"])
         left = document["projects"]["corthex"]["left_out"]
@@ -326,7 +365,9 @@ class MemoryStoreTest(StoreCase):
                 path.write_bytes(broken)
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
-            self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
+            with mock.patch.object(store.locks,"Lock",wraps=locks.Lock) as lease:
+                self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
+            self.assertEqual(lease.call_args[0][2],self.header["device"])
             self.assertEqual(notices, [("restored", None)])
             self.assertFalse(backup.exists())
         path.write_bytes(b"{")
