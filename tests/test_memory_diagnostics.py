@@ -127,7 +127,7 @@ class MemoryDiagnosticsTest(StoreCase):
         path.with_name(path.name + ".bak").write_bytes(b"{}\n")
         def report(code, count):
             self.logger.failure(code, "restore", time.monotonic() + 2, count=count, when=self.when)
-        self.assertEqual(self.memory.configuration(report).document, {})
+        self.assertEqual(self.memory.configuration(report, deadline=time.monotonic() + 1).document, {})
         self.assertEqual(self.failures()[-1]["error"], "restored")
         self.assertEqual(set(self.failures()[-1]), {"at", "step", "error"})
 
@@ -177,7 +177,7 @@ class MemoryDiagnosticsTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed), mock.patch.object(locks.Lock, "acquire") as acquire:
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration()
+                    self.memory.configuration(deadline=time.monotonic() + 1)
                 self.assertEqual(caught.exception.code, code)
                 self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 2, when=self.when))
                 self.assertFalse(self.logger.timing("prompt", "codex", 1, "error", time.monotonic() + 2, when=self.when))
@@ -198,11 +198,11 @@ class MemoryDiagnosticsTest(StoreCase):
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
             def report(code, count):
-                self.assertEqual(self.memory.record(), self.header)
+                self.assertEqual(self.memory.record(deadline=time.monotonic() + 1), self.header)
                 self.assertFalse(backup.exists())
                 notices.append((code, count))
                 self.assertTrue(self.logger.failure(code, "restore", time.monotonic() + 2, when=self.when))
-            self.assertEqual(self.memory.configuration(report).document, {})
+            self.assertEqual(self.memory.configuration(report, deadline=time.monotonic() + 1).document, {})
             self.assertEqual(notices, [("restored", None)])
             self.assertEqual(self.failures()[-1]["error"], "restored")
         self.assertEqual(len(self.failures()), 2)

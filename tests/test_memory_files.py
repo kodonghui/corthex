@@ -1,4 +1,4 @@
-"""TC-001–005: C1 representation and crash-safe files, in isolated stores."""
+"""TC-001–005 and TC-316: C1 representation and files, in isolated stores."""
 
 import json
 import os
@@ -243,7 +243,8 @@ class MemoryFilesTest(unittest.TestCase):
         self.assertEqual(operation.call_count, 1)
         notices = []
         self.assertEqual(files.read_jsonl(path, lambda *n: notices.append(n)), [])
-        self.assertEqual(notices, [("damaged-line", 1)])
+        self.assertEqual(notices, [])
+        self.assertEqual(path.read_bytes(), b"")
         files.append_jsonl(path, {"seq": 2}, "TBL-007")
         self.assertEqual(files.read_jsonl(path), [{"seq": 2}])
 
@@ -286,7 +287,7 @@ class MemoryFilesTest(unittest.TestCase):
                     self.assertEqual(files.read_json(backup), old)
                 if step == "backup":
                     path.unlink()
-                    self.assertEqual(files.read_json(path, self.report), old)
+                    self.assertEqual(files.read_json(path, self.report, holding_lock=True), old)
                     self.assertFalse(backup.exists())
                     self.assertEqual(files.read_jsonl(self.folder / "failures.jsonl")[-1]["error"], "restored")
 
@@ -295,7 +296,7 @@ class MemoryFilesTest(unittest.TestCase):
         backup = self.folder / "store.json.bak"
         path.write_bytes(b"broken")
         backup.write_bytes(base.json_bytes({"format": 1}, "TBL-001"))
-        self.assertEqual(files.read_json(path, self.report), {"format": 1})
+        self.assertEqual(files.read_json(path, self.report, holding_lock=True), {"format": 1})
         self.assertEqual(files.read_json(path), {"format": 1})
         self.assertFalse(backup.exists())
         path.write_bytes(b"broken")
@@ -308,7 +309,7 @@ class MemoryFilesTest(unittest.TestCase):
         path, backup = self.folder / "raw.jsonl", self.folder / "raw.jsonl.bak"
         backup.write_bytes(b'{"seq":1}\n')
         notices = []
-        self.assertEqual(files.read_jsonl(path, lambda *n: notices.append(n)), [{"seq": 1}])
+        self.assertEqual(files.read_jsonl(path, lambda *n: notices.append(n), holding_lock=True), [{"seq": 1}])
         self.assertEqual(notices, [("restored", None)])
         backup.write_bytes(b'{"seq":0}\n')
         files.append_jsonl(path, {"seq": 2}, "TBL-007")
@@ -332,9 +333,10 @@ class MemoryFilesTest(unittest.TestCase):
     def test_tc004_flush_or_move_failure_preserves_old_content(self):
         path = self.folder / "store.json"
         files.write_json(path, {"format": 1}, "TBL-001")
-        for operation in ("fsync", "replace"):
+        for operation in ("_sync", "replace"):
             with self.subTest(operation=operation):
-                with mock.patch.object(files.os, operation, side_effect=OSError("made-up failure")):
+                target = files if operation == "_sync" else files.os
+                with mock.patch.object(target, operation, side_effect=OSError("made-up failure")):
                     with self.assertRaises(OSError):
                         files.write_json(path, {"format": 2}, "TBL-001")
                 self.assertEqual(files.read_json(path), {"format": 1})
@@ -342,6 +344,13 @@ class MemoryFilesTest(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows sharing violation requires Windows")
     def test_tc005_windows_open_target_retries_one_second_then_keeps_old_file(self):
+        self.windows_open_target(lambda path: files.write_json(path, {"format": 2}, "TBL-001"))
+
+    @unittest.skipUnless(os.name == "nt", "Windows sharing violation requires Windows")
+    def test_tc316_windows_open_target_deletion_retries_one_second_then_keeps_old_file(self):
+        self.windows_open_target(files.delete_file)
+
+    def windows_open_target(self, action):
         path = self.folder / "store.json"
         files.write_json(path, {"format": 1}, "TBL-001")
         holder = r'''
@@ -365,7 +374,7 @@ k.CloseHandle(handle)
             self.assertEqual(process.stdout.readline().strip(), "ready")
             started = time.monotonic()
             with self.assertRaises(PermissionError):
-                files.write_json(path, {"format": 2}, "TBL-001")
+                action(path)
             elapsed = time.monotonic() - started
             self.assertGreaterEqual(elapsed, 0.95)
             self.assertLess(elapsed, 3.0)

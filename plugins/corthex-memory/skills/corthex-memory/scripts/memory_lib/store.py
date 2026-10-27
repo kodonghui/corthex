@@ -1,10 +1,12 @@
 """Format-1 store gate and configuration I/O. No directory is created here."""
 
 import json
+import math
+import time
 import re
 from pathlib import Path
 
-from . import base, configuration, files, locks
+from . import base, configuration, files, locks, reading
 
 TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z\Z")
 DEVICE = re.compile(r"d_[0-9a-hjkmnp-tv-z]{12}\Z")
@@ -68,33 +70,79 @@ class MemoryStore:
     def __init__(self, folder=None):
         self.folder = Path(folder) if folder is not None else base.memory_home()
 
-    def record(self, report=None):
+    @staticmethod
+    def _deadline(deadline):
+        if not configuration.number(deadline) or not math.isfinite(deadline):
+            raise ValueError("a finite read deadline is required")
+
+    @staticmethod
+    def _guard(lock, deadline):
+        def check():
+            if time.monotonic() >= deadline:
+                raise locks.LockBusy()
+            lock.check()
+        return check
+
+    def _read_record(self, path, parse, deadline, report, device=None, holding_lock=None):
+        if holding_lock is not None:
+            check = self._guard(holding_lock, deadline)
+            check()
+            return files.read_record(path, parse, report, holding_lock=True, check=check)
+        if device is not None:
+            lock = locks.Lock(self.folder / "store.lock", "store", device)
+            return reading.read_record(path, parse, lock, deadline, report)
         try:
-            if not self.folder.exists():
-                raise StoreUnavailable("no-store")
-            return files._read(self.folder / "store.json", _record, report)
-        except (OSError, ValueError):
+            return files.read_record(path, parse, report)
+        except files.RestoreNeeded:
+            # A damaged store has no usable primary device ID. Validate the
+            # readable backup before creating a lock, keeping opaque headers
+            # completely read-only. Never manufacture another device identity.
+            backup = path.with_name(path.name + ".bak")
+            try:
+                header = files.read_record(backup, _record)
+            except FileNotFoundError:
+                # Another reader may already have restored the same backup.
+                return files.read_record(path, parse, report)
+            lock = locks.Lock(self.folder / "store.lock", "store", header["device"])
+            return reading.read_record(path, parse, lock, deadline, report)
+
+    def record(self, report=None, *, deadline, holding_lock=None):
+        """Read the gate; recovery borrows the caller's operation deadline.
+
+        Malformed/missing records without recovery are store-damaged. Ordinary
+        I/O errors propagate for the command's internal result; a recovery
+        lease that is busy keeps lock-busy. No blocked state writes a log.
+        """
+        self._deadline(deadline)
+        if not self.folder.exists():
+            raise StoreUnavailable("no-store")
+        try:
+            return self._read_record(self.folder / "store.json", _record, deadline,
+                                     report, holding_lock=holding_lock)
+        except (FileNotFoundError, ValueError, UnicodeError, files.RestoreNeeded):
             raise StoreUnavailable("store-damaged") from None
 
-    def configuration(self, report=None):
-        self.record(report)
+    def configuration(self, report=None, *, deadline, holding_lock=None):
+        header = self.record(report, deadline=deadline, holding_lock=holding_lock)
         try:
-            document = files._read(self.folder / "configuration.json", _configuration, report)
+            document = self._read_record(self.folder / "configuration.json", _configuration,
+                                         deadline, report, device=header["device"],
+                                         holding_lock=holding_lock)
         except FileNotFoundError:
             document = {}
-        except (OSError, ValueError):
+        except (ValueError, UnicodeError, files.RestoreNeeded):
             raise configuration.ConfigurationInvalid("$") from None
         # Schema-invalid JSON is deliberately not rolled back to a backup.
         return configuration.prepare(document)
 
     def write_configuration(self, document, deadline):
-        before = self.record()
+        before = self.record(deadline=deadline)
         checked = configuration.prepare(document)
         lock = locks.Lock(self.folder / "store.lock", "store", before["device"])
         with lock.held(deadline):
             def guard():
-                lock.check()
-                if self.record()["device"] != before["device"]:
+                self._guard(lock, deadline)()
+                if self.record(deadline=deadline, holding_lock=lock)["device"] != before["device"]:
                     raise locks.LostLock()
             guard()
             files.write_json(self.folder / "configuration.json", checked.document, "TBL-002", check=guard)
