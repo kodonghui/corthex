@@ -58,8 +58,12 @@ def killed_writer(connection, folder, ordinal, count, stop):
         connection.recv()
 
 
-def concurrent_writer(connection, folder, count):
+def concurrent_writer(connection, folder, count, late_marker=False):
     log = raw_log.RawLog(store.MemoryStore(folder), "sample", "codex", "made-up-session")
+    if late_marker:
+        def expired(*args):
+            raise raw_log.RecordingDeadline()
+        log._marker = expired
     connection.send("ready")
     connection.recv()
     written = []
@@ -68,7 +72,9 @@ def concurrent_writer(connection, folder, count):
         result = log.append("prompt", raw_log.prepare("made-up concurrent turn", {}),
                             diagnostic_deadline=time.monotonic() + 2)
         if result.entry:
-            written.append(result.entry["id"])
+            if result.outcome not in ("ok", "deadline"):
+                raise AssertionError("unexpected completed writer outcome")
+            written.append((result.entry["id"],result.entry["turn"],result.outcome))
         elif result.outcome not in ("lock-busy", "deadline"):
             raise AssertionError("unexpected writer outcome")
     connection.send(written)
@@ -216,6 +222,43 @@ class RawLogTest(StoreCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(self.log.path.stat().st_mode), 0o600)
 
+    def test_tc030_many_pending_markers_keep_the_recording_budget(self):
+        for turn in range(1, 101):
+            (self.log.markers / ("20261027T091203Z.codex-" + "0"*16 + "." + str(turn))).write_bytes(b"")
+        prepared = raw_log.prepare("made-up new turn", {})
+        clock, original = [time.monotonic()], locks.Lock.check
+        def metadata_cost(lease):
+            result = original(lease)
+            if lease.path == self.log.path.with_suffix(".lock"):
+                clock[0] += 0.002
+            return result
+        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
+                mock.patch.object(locks.Lock,"check",metadata_cost):
+            result = self.log.append("prompt", prepared, diagnostic_deadline=clock[0]+3,when=WHEN)
+        self.assertEqual(result.outcome,"ok")
+        self.assertEqual(self.entries(),[result.entry])
+        self.assertEqual(len(self.markers()),101)
+
+    def test_tc030_token_lost_during_marker_scan_preserves_the_entry_only(self):
+        path, listed = self.log.path.with_suffix(".lock"), Path.iterdir
+        taken = []
+        def scan(folder):
+            if folder == self.log.markers:
+                value = json.loads(path.read_bytes())
+                value["token"] = "c" * 32
+                path.write_text(json.dumps(value),encoding="utf-8")
+                taken.append(path.read_bytes())
+            return listed(folder)
+        prepared = raw_log.prepare("made-up",{})
+        prepared = raw_log.Prepared(prepared.text,prepared.cut,time.monotonic()+2)
+        with mock.patch.object(Path,"iterdir",scan):
+            result = self.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3,when=WHEN)
+        self.assertEqual(result.outcome,"error")
+        self.assertEqual(self.entries(),[result.entry])
+        self.assertEqual(self.markers(),[])
+        self.assertEqual(path.read_bytes(),taken[0])
+        self.assertEqual([r["error"] for r in self.failures()],["lost-lock"])
+
     def test_tc030_lost_marker_is_recreated_when_a_turn_gets_another_entry(self):
         self.record()
         self.markers()[0].unlink()
@@ -344,7 +387,7 @@ class RawLogTest(StoreCase):
         self.assertEqual(self.entries()[-1],winner)
 
     def test_tc029_real_writers_serialize_sequences_under_one_log_lease(self):
-        workers = [self.start(concurrent_writer, str(self.root), 12) for _ in range(2)]
+        workers = [self.start(concurrent_writer, str(self.root), 12, late) for late in (False,True)]
         for connection, _ in workers: self.assertEqual(self.receive(connection), "ready")
         for connection, _ in workers: connection.send("go")
         written = []
@@ -352,9 +395,11 @@ class RawLogTest(StoreCase):
             written += self.receive(connection)
             process.join(20)
             self.assertEqual(process.exitcode, 0)
-        self.assertEqual(len(set(written)), 24)
+        self.assertEqual(len({row[0] for row in written}), 24)
         self.assertEqual([r["seq"] for r in self.entries()], list(range(1,25)))
-        self.assertEqual(len(self.markers()), 24)
+        self.assertTrue(any(row[2]=="deadline" for row in written))
+        self.assertEqual({int(p.name.rsplit(".",1)[1]) for p in self.markers()},
+                         {row[1] for row in written if row[2]=="ok"})
 
     def test_tc029_kill_writers_during_1000_appends_preserves_returned_writes(self):
         acknowledged, rng = set(), random.Random(29)
@@ -408,6 +453,32 @@ class RawLogTest(StoreCase):
         with self.assertRaises(store.StoreUnavailable):
             self.record()
         self.assertEqual(self.snapshot(), before)
+
+    def test_tc031_benchmark_counts_expired_attempts_without_inventing_entries(self):
+        import bench_memory_raw_log as bench
+        original, calls = raw_log.prepare, [0]
+        def delayed(text, environment):
+            value = original(text,environment)
+            calls[0] += 1
+            if calls[0] == 2:
+                return raw_log.Prepared(value.text,value.cut,time.monotonic()-1)
+            return value
+        with mock.patch.object(raw_log,"prepare",delayed):
+            row = bench.measure(1)["cases"][0]
+        self.assertEqual(row["outcomes"],{"lock-busy":1})
+        self.assertEqual((row["entries"],row["skipped"]),(0,1))
+
+    def test_tc031_benchmark_rejects_premature_timeouts_and_errors(self):
+        import bench_memory_raw_log as bench
+        original = raw_log.prepare
+        def remaining(text, environment):
+            value = original(text,environment)
+            return raw_log.Prepared(value.text,value.cut,time.monotonic()+5)
+        for outcome in ("deadline","lock-busy","error"):
+            with self.subTest(outcome=outcome), mock.patch.object(raw_log,"prepare",remaining), \
+                    mock.patch.object(raw_log.RawLog,"append",return_value=raw_log.Recorded(outcome)):
+                with self.assertRaises(bench.MeasurementFailure):
+                    bench.measure(1)
 
     def test_tc032_session_names_hash_paths_unicode_and_each_host_independently(self):
         for host in ("codex","claude-code"):

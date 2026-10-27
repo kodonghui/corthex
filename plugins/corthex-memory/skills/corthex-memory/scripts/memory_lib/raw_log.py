@@ -165,9 +165,14 @@ class RawLog:
 
     def _marker(self, entry, check, deadline):
         pattern = re.compile(r"[0-9]{8}T[0-9]{6}Z\." + re.escape(self.log) + r"\." + str(entry["turn"]) + r"\Z")
+        check()
         for path in self.markers.iterdir():
-            check()
+            # Listing is read-only: check the clock without reopening the
+            # lease/header for every pending turn. Mutation still uses check.
+            if time.monotonic() >= deadline:
+                raise RecordingDeadline()
             if pattern.fullmatch(path.name):
+                check()
                 return
         at = entry["at"][:19].replace("-", "").replace(":", "") + "Z"
         path = self.markers / (at + "." + self.log + "." + str(entry["turn"]))
