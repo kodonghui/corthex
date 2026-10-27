@@ -17,7 +17,7 @@ import time
 from collections import namedtuple
 from pathlib import Path
 
-from .base import private_open, utc_time
+from .base import memory_home, private_open, utc_time
 
 Policy = namedtuple("Policy", "rank refresh stale")
 POLICIES = dict(zip(("store", "curation", "sync", "layer", "raw", "log"),
@@ -130,6 +130,8 @@ class Lock:
         path = Path(path)
         self.path = path.parent.resolve() / path.name
         self.policy, self.device = POLICIES[kind], device
+        relative = os.path.relpath(str(self.path), str(memory_home().resolve())).replace(os.sep, "/")
+        self._order = (self.policy.rank, relative.casefold() if os.name == "nt" else relative)
         self.pid, self.token = os.getpid(), None
         self._stop, self._mutex = threading.Event(), threading.RLock()
         self._thread = None
@@ -142,10 +144,10 @@ class Lock:
                 _registry_pid = os.getpid()
             if self.pid != os.getpid():
                 raise LostLock()
-            if self in _active or any(rank > self.policy.rank or path == self.path
-                                      for rank, path in _active.values()):
+            if self in _active or any(order > self._order or path == self.path
+                                      for order, path in _active.values()):
                 raise LockOrderError()
-            _active[self] = (self.policy.rank, self.path)
+            _active[self] = (self._order, self.path)
 
     def _unreserve(self):
         with _registry_guard:
@@ -167,7 +169,7 @@ class Lock:
         cleanup = False
         try:
             os.rename(str(self.path), str(moved))
-        except (FileNotFoundError, PermissionError):
+        except FileNotFoundError:
             return None
         try:
             actual = _snapshot(moved)
@@ -267,36 +269,57 @@ class Lock:
             except (OSError, ValueError, LostLock):
                 stop.set()
 
-    def release(self, deadline=None):
+    def _release(self, deadline):
+        last = None
+        with self._mutex:
+            while self.token:
+                try:
+                    current = _snapshot(self.path)
+                    if not current or current.token != self.token:
+                        return
+                    if self._detach(current, stale=False, deadline=deadline) is not None:
+                        return
+                except OSError as error:
+                    last = error
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise last if last is not None else LockBusy()
+                time.sleep(min(0.005, left))
+
+    def release(self, report=None):
+        """Release with its own one-second retry; report failure, never raise it.
+
+        A leftover lease expires normally. A completed protected operation keeps
+        its result even if cleanup fails. Reports contain only the class name.
+        """
+        failure = None
         if self.pid != os.getpid():
-            raise LostLock()
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=1)
-        deadline = time.monotonic() + 1 if deadline is None else deadline
-        try:
-            with self._mutex:
-                while self.token:
-                    try:
-                        current = _snapshot(self.path)
-                        if not current or current.token != self.token:
-                            break
-                        if self._detach(current, stale=False, deadline=deadline) is not None:
-                            break
-                    except PermissionError:
-                        pass
-                    left = deadline - time.monotonic()
-                    if left <= 0:
-                        raise LockBusy()
-                    time.sleep(min(0.005, left))
-        finally:
-            self.token = None
-            self._unreserve()
+            # Do not enter mutexes inherited from vanished parent threads.
+            failure = LostLock()
+        else:
+            try:
+                self._stop.set()
+                if self._thread:
+                    self._thread.join(timeout=1)
+                self._release(time.monotonic() + 1)
+            except Exception as error:
+                failure = error
+            finally:
+                self.token = None
+                try:
+                    self._unreserve()
+                except Exception as error:
+                    failure = error
+        if failure is not None and report is not None:
+            try:
+                report(type(failure).__name__, None)
+            except Exception:
+                pass
 
     @contextlib.contextmanager
-    def held(self, deadline, wait=True, force=False):
+    def held(self, deadline, wait=True, force=False, report=None):
         self.acquire(deadline, wait=wait, force=force)
         try:
             yield self
         finally:
-            self.release(deadline=deadline if self.policy.refresh is None else None)
+            self.release(report=report)

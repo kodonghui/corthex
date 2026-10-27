@@ -1,4 +1,4 @@
-"""TC-008 manual measurement: metadata only, under a real foreign lease."""
+"""TC-318 manual measurement: metadata only, under a real foreign lease."""
 
 import argparse
 import json
