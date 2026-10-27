@@ -207,7 +207,7 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 
 | Step | Deadline | When it passes |
 | --- | --- | --- |
-| Recording: the raw log lock, the append and the marker | 50 ms after redaction ends | No entry; the failure log and the hook timing say `lock-busy` |
+| Recording: the raw log lock, the append and the marker | 50 ms after redaction ends | No entry; the failure log and the hook timing say `lock-busy`. If the append already returned before the deadline passes, keep the entry, skip its marker and remaining steps, and record `deadline` in the failure log and hook timing (TC-319). |
 | The session start hook's memory part | 1,000 ms | The memory part is one line: `Memory could not be read in time.` |
 | The prompt hook | 900 ms | Recall stops, and nothing is injected |
 | The prompt's embedding (API-010) | the request ends 800 ms after the hook's start | Nothing is injected |
