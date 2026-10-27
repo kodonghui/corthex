@@ -87,22 +87,22 @@ class MemoryStore:
         if holding_lock is not None:
             check = self._guard(holding_lock, deadline)
             check()
-            return files.read_record(path, parse, report, holding_lock=True, check=check)
+            return files.read_record(path, parse, report, holding_lock=True, check=check, deadline=deadline)
         if device is not None:
             lock = locks.Lock(self.folder / "store.lock", "store", device)
             return reading.read_record(path, parse, lock, deadline, report)
         try:
-            return files.read_record(path, parse, report)
+            return files.read_record(path, parse, report, deadline=deadline)
         except files.RestoreNeeded:
             # A damaged store has no usable primary device ID. Validate the
             # readable backup before creating a lock, keeping opaque headers
             # completely read-only. Never manufacture another device identity.
             backup = path.with_name(path.name + ".bak")
             try:
-                header = files.read_record(backup, _record)
+                header = files.read_record(backup, _record, deadline=deadline)
             except FileNotFoundError:
                 # Another reader may already have restored the same backup.
-                return files.read_record(path, parse, report)
+                return files.read_record(path, parse, report, deadline=deadline)
             lock = locks.Lock(self.folder / "store.lock", "store", header["device"])
             return reading.read_record(path, parse, lock, deadline, report)
 

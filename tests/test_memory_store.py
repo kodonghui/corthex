@@ -391,6 +391,26 @@ class MemoryStoreTest(StoreCase):
                 self.memory.configuration(deadline=time.monotonic() + 1)
         self.assertEqual(self.snapshot(), before)
 
+    def test_tc011_store_and_configuration_sharing_retries_use_the_caller_deadline(self):
+        for name in ("store.json", "configuration.json"):
+            path = self.root / name
+            if name == "configuration.json":
+                path.write_bytes(b"{}\n")
+            before = self.snapshot()
+            original = Path.read_bytes
+            def read(target):
+                if target == path:
+                    raise PermissionError("made-up sharing failure")
+                return original(target)
+            deadline = time.monotonic() + 0.05
+            started = time.perf_counter()
+            with mock.patch.object(files, "_WINDOWS", True), \
+                    mock.patch.object(Path, "read_bytes", read):
+                with self.assertRaises(PermissionError):
+                    self.memory.configuration(deadline=deadline)
+            self.assertLess(time.perf_counter() - started, 0.3)
+            self.assertEqual(self.snapshot(), before)
+
     def test_tc012_missing_configuration_has_no_consent_or_writes(self):
         before = self.snapshot()
         for _ in range(2):
@@ -456,7 +476,7 @@ class MemoryStoreTest(StoreCase):
                 lock_path.write_text(json.dumps(record), encoding="utf-8")
                 raise PermissionError("made-up sharing failure")
             return replace(source, target)
-        def retry_once(operation):
+        def retry_once(operation, deadline=None):
             # Exercise Windows' second attempt on every OS, keeping the path
             # implementation native and the production guard inside the retry.
             try:
