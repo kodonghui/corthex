@@ -171,3 +171,34 @@ class MemoryReadingTest(unittest.TestCase):
         self.assertFalse(path.exists())
         self.assertEqual(backup.read_bytes(), b'{"seq":1}\n')
         self.assertFalse(lease.path.exists())
+
+    def test_tc008_windows_read_retries_share_the_operation_deadline(self):
+        for phase in ("primary", "backup", "locked-primary", "locked-backup", "recheck"):
+            with self.subTest(phase=phase):
+                path, backup, lease = self.prepare()
+                if phase == "primary":
+                    path.write_bytes(b'{"seq":2}\n')
+                elif path.exists():
+                    path.unlink()
+                before = {p.name:p.read_bytes() for p in self.folder.iterdir() if p.is_file()}
+                counts = {"primary":0, "backup":0}
+                original = Path.read_bytes
+                def read(target):
+                    kind = "primary" if target == path else "backup"
+                    counts[kind] += 1
+                    blocked = (phase == kind or
+                               phase == "locked-" + kind and counts[kind] >= 2 or
+                               phase == "recheck" and kind == "primary" and counts[kind] >= 3)
+                    if blocked:
+                        raise PermissionError("made-up sharing failure")
+                    return original(target)
+                notices = []
+                deadline = time.monotonic() + 0.05
+                started = time.perf_counter()
+                with mock.patch.object(files, "_WINDOWS", True), \
+                        mock.patch.object(Path, "read_bytes", read):
+                    with self.assertRaises(PermissionError):
+                        reading.read_json(path, lease, deadline, lambda *n:notices.append(n))
+                self.assertLess(time.perf_counter() - started, 0.3)
+                self.assertEqual({p.name:p.read_bytes() for p in self.folder.iterdir() if p.is_file()}, before)
+                self.assertEqual(notices, [])

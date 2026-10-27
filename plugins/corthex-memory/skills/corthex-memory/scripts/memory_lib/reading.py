@@ -12,7 +12,7 @@ from . import files, locks
 
 def _recover(reader, path, lock, deadline, report, **options):
     try:
-        return reader(path, report=report, **options)
+        return reader(path, report=report, deadline=deadline, **options)
     except files.RestoreNeeded:
         pass
     lock.acquire(deadline)
@@ -22,7 +22,8 @@ def _recover(reader, path, lock, deadline, report, **options):
                 raise locks.LockBusy()
             lock.check()
         check()
-        return reader(path, report=report, holding_lock=True, check=check, **options)
+        return reader(path, report=report, holding_lock=True, check=check,
+                      deadline=deadline, **options)
     finally:
         lock.release(deadline=deadline)
 
