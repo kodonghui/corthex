@@ -41,6 +41,7 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │   ├── hooks/hooks.json             one SessionStart hook, read by both hosts
 │   │   ├── scripts/session_start.py     builds the context, Python standard library only
 │   │   ├── context/principles.md        short form of the working principles
+│   │   ├── skills/corthex-memory/scripts/memory_lib/   shared C1 store library, not yet connected to hooks
 │   │   └── LICENSE, NOTICE
 │   └── corthex-nexus/                   project hub, a skill with a script
 │       ├── .claude-plugin/plugin.json   manifest for Claude Code
@@ -169,6 +170,14 @@ It reads only those files, writes nothing and makes no network calls. If anythin
   - On 2026-10-24, on a Windows Server 2025 runner with Claude Code 2.1.310, Codex CLI 0.164.0 and the same stand-in (`.github/workflows/windows-hook-check.yml`): with Git Bash, and with PowerShell 7 but no Git Bash, the context reached the model in both hosts. With only Windows PowerShell 5.1, the `||` command could not be parsed, so Claude Code started without the context, and Codex got it through `commandWindows`.
 
   Forking in Codex and macOS are not tested yet. The hook needs `python3`, `python` or the Windows `py` launcher on the PATH of the shell that runs it.
+
+## Memory store library
+
+C1 starts with the shared library in `plugins/corthex-memory/skills/corthex-memory/scripts/memory_lib/` (TASK-001, TASK-002). Keeping it inside the future memory skill makes the skill self-contained when copied on its own, and its links can stay inside its folder as the Agent Skills rules require. The future `scripts/memory.py` imports its sibling `memory_lib`. The plugin's future `scripts/hook.py` and `scripts/worker.py` find that same scripts directory from their own resolved file location, under the plugin root's `skills/corthex-memory/scripts`, rather than from the working directory or an installed package. No duplicate library or global Python installation is needed. The skill entry point and the hook/worker imports are added by their later tasks.
+
+`base.py` defines the four random ID prefixes, UTC times and dates, C1 records' stable UTF-8 JSON representation, private directories and files, the store location and Windows device-name mapping on every OS. Resolving `CORTHEX_MEMORY_HOME` or importing the library creates nothing. Only the future `on` command may create the store; file writes require an existing parent folder. `files.py` appends a complete JSONL object with one write, skips and counts damaged lines, replaces files through a same-folder temporary and a backup, restores readable backups, and bounds Windows move/deletion retries to one second. Its safe notices let the later failure logger record `damaged-line` with a count and `restored` without paths or error text. Callers must redact and validate records, hold the locks added in TASK-003, and carry concurrent appends over when rewriting a log. Rebuildable files skip the disk flush and backup. The existing 0.1.0 session-start hook is unchanged and does not use this library yet.
+
+`tests/test_memory_files.py` covers TC-001–005 with temporary homes and stores, generated IDs and made-up text: table ordering and byte equality, paths and permissions, damaged/cut lines, killed appenders, process stops after each replacement step, restoration, and a target held open by another process on Windows. It reads no real memory store or host settings.
 
 ## Project hub
 

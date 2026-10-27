@@ -41,6 +41,7 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │   ├── hooks/hooks.json             세션 시작 훅 하나, 두 도구가 함께 읽음
 │   │   ├── scripts/session_start.py     문맥을 만듦, Python 표준 라이브러리만 씀
 │   │   ├── context/principles.md        일하는 원칙의 짧은 판
+│   │   ├── skills/corthex-memory/scripts/memory_lib/   C1 공용 저장 라이브러리, 아직 훅에 연결하지 않음
 │   │   └── LICENSE, NOTICE
 │   └── corthex-nexus/                   프로젝트 허브, 스크립트가 든 스킬
 │       ├── .claude-plugin/plugin.json   Claude Code용 매니페스트
@@ -169,6 +170,14 @@ AI는 도구에 MCP 서버, 커넥터, API가 있으면 그것으로 사람 화�
   - 2026-10-24에 Windows Server 2025 실행기에서 Claude Code 2.1.310, Codex CLI 0.164.0, 같은 가짜 모델 API로 확인했습니다(`.github/workflows/windows-hook-check.yml`). Git Bash가 있을 때와, Git Bash 없이 PowerShell 7만 있을 때는 두 도구 모두 모델에 문맥이 실렸습니다. Windows PowerShell 5.1만 있을 때는 `||` 명령을 읽지 못해 Claude Code는 문맥 없이 시작했고, Codex는 `commandWindows`로 문맥을 받았습니다.
 
   Codex의 세션 갈라 내기와 macOS는 아직 시험하지 않았습니다. 훅을 돌리는 셸의 PATH에 `python3`, `python`, Windows의 `py` 실행기 중 하나가 있어야 합니다.
+
+## 기억 저장 라이브러리
+
+C1은 `plugins/corthex-memory/skills/corthex-memory/scripts/memory_lib/`의 공용 라이브러리부터 만듭니다(TASK-001, TASK-002). 앞으로 만들 기억 스킬 안에 두면 스킬만 따로 복사해도 필요한 코드가 함께 가고, Agent Skills 규칙대로 링크도 그 폴더 안에 둘 수 있습니다. 앞으로 만들 `scripts/memory.py`는 옆의 `memory_lib`를 가져옵니다. 플러그인의 `scripts/hook.py`와 `scripts/worker.py`는 작업 폴더나 설치된 패키지 대신, 자기 파일의 실제 위치에서 플러그인 루트 아래 `skills/corthex-memory/scripts`를 찾아 같은 라이브러리를 가져오게 합니다. 라이브러리 복사본이나 전역 Python 설치가 필요하지 않습니다. 스킬 실행기와 훅·작업 프로세스의 가져오기는 해당 작업에서 더합니다.
+
+`base.py`는 무작위 ID의 접두사 넷, UTC 시각과 날짜, C1 기록의 일정한 UTF-8 JSON 형식, 비공개 폴더와 파일, 저장소 위치, 모든 OS에서 같은 Windows 장치 이름 변환을 정합니다. `CORTHEX_MEMORY_HOME`을 찾거나 라이브러리를 가져오는 것만으로는 아무것도 만들지 않습니다. 저장소는 앞으로 만들 `on` 명령만 만들 수 있고, 파일을 쓰려면 부모 폴더가 이미 있어야 합니다. `files.py`는 JSONL 객체 하나를 한 번의 쓰기로 더하고, 손상된 줄을 넘기며 세고, 같은 폴더의 임시 파일과 백업으로 파일을 교체하고, 읽을 수 있는 백업을 복원하며, Windows 이동·삭제 재시도를 1초로 제한합니다. 안전한 알림을 전달해 뒤에 만들 실패 기록기가 경로나 오류 원문 없이 `damaged-line`과 그 수, `restored`를 남기게 합니다. 호출하는 쪽에서 먼저 기록을 가리고 검사하며, TASK-003에서 더할 잠금을 잡고, 로그를 다시 쓸 때 그동안 더해진 줄을 옮겨야 합니다. 다시 만들 수 있는 파일은 디스크 쓰기 확정과 백업을 생략합니다. 기존 0.1.0 세션 시작 훅은 그대로이며 아직 이 라이브러리를 쓰지 않습니다.
+
+`tests/test_memory_files.py`는 임시 홈·저장소와 만들어 낸 ID·문장으로 TC-001–005를 검사합니다. 표의 순서와 바이트 일치, 경로와 권한, 손상되거나 잘린 줄, 강제로 끝낸 추가 프로세스, 교체 단계마다 멈춘 프로세스, 복원, Windows의 다른 프로세스가 열어 둔 파일을 다룹니다. 실제 기억 저장소나 호스트 설정은 읽지 않습니다.
 
 ## 프로젝트 허브
 
