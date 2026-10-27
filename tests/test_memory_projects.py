@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from test_memory_store import AT, StoreCase
-from memory_lib import configuration, diagnostics, projects
+from memory_lib import configuration, diagnostics, projects, store
 
 
 class MemoryProjectsTest(StoreCase):
@@ -131,6 +131,20 @@ class MemoryProjectsTest(StoreCase):
             with self.assertRaises(projects.ProjectError) as caught:
                 projects.find(self.config, self.repo)
         self.assertEqual(caught.exception.code, "no-project-list")
+
+    def test_tc019_registry_bom_compatibility_keeps_memory_records_strict(self):
+        original = self.registry.read_bytes()
+        for prefix in (b"", b"\xef\xbb\xbf"):
+            self.registry.write_bytes(prefix + original)
+            self.assertEqual(projects.find(self.config,self.repo).name,"sample")
+        self.registry.write_bytes(b"\xef\xbb\xbf"*2 + original)
+        with self.assertRaises(projects.ProjectError):
+            projects.locate(self.repo)
+        record = self.root / "store.json"
+        record.write_bytes(b"\xef\xbb\xbf" + record.read_bytes())
+        with self.assertRaises(store.StoreUnavailable) as caught:
+            self.memory.record(deadline=time.monotonic()+2)
+        self.assertEqual(caught.exception.code,"store-damaged")
 
     def test_tc019_tied_folder_is_a_clash_even_if_one_project_is_disabled(self):
         self.register({"name": "sample", "path": str(self.repo)},

@@ -665,12 +665,12 @@ OpenAI's errors are given the same names: 400 `invalid_request_error`, 401 `auth
 
 Redaction (SPEC-004) runs in this order on each prompt and final answer before it is recorded, on each search request before it is embedded, and on each request document before it is sent:
 
-1. First replace unpaired surrogates with U+FFFD, preserving valid pairs as their Unicode scalar; normalize environment values the same way and count byte sizes in this normalized UTF-8 text. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB.
+1. First replace unpaired surrogates with U+FFFD, preserving valid pairs as their Unicode scalar; normalize environment values the same way and count byte sizes in this normalized UTF-8 text. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB. Since steps 2–5 can shorten the text, step 6 measures this point in step 1's text.
 2. Private spans: from each `<private>` to the next `</private>`, found without regard to ASCII case, or to the end of the text when none follows, become `[redacted:private]`.
 3. Private key blocks: from a line that begins `-----BEGIN` and names a private key, to its `-----END` line or to the end of the text, become `[redacted:private-key]`. The pattern is in the list below.
 4. The exact values of the two memory keys become `[redacted:memory-key]`, and the values of environment variables whose names hold `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, in any case, become `[redacted:environment]`: values of 12 characters or more, the longest first.
 5. The patterns below, in order: each match becomes `[redacted:<kind>]`, and where a pattern has a group, the group's text stays before the mark.
-6. Cut at a character boundary to 512 KB (SPEC-002). When step 1 or this step cut anything, the entry's `cut` gives the text's size before step 1.
+6. If step 1 cut the text, first discard what steps 2–5 produced after the 512 KB point in step 1's text, keeping any `[redacted:…]` mark that started before that point. Then cut at a character boundary to 512 KB (SPEC-002). When step 1 did not cut the text, only this final cut applies. When step 1 or this step cut anything, the entry's `cut` gives the text's size before step 1.
 
 ```text
 kind              Python re pattern
@@ -693,7 +693,7 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 ```
 
 - `V` and `VS` stand for the value after the name: `V` any value, `VS` one of 8 or more characters with a letter in it, so that `max_tokens: 64000` or `token = 5` stays.
-- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded and not nested, so their time grows with the text's length. Measured on 512 KB in a Linux container with Python 3.13: about 50 ms for typical prose, 39 to 69 ms for inputs made to be slow, and 196 ms for the word `password` repeated. Windows and macOS are measured in stage 12.
+- The private key pattern runs in step 3, the others in step 5. JWT candidates are scanned by maximal base64url/dot runs, testing only the earliest eyJ start in each possible first segment; missing dots do not rescan the same suffix. The other patterns use bounded or non-nested repeats. Measured on 512 KB in a Linux container with Python 3.13: about 50 ms for typical prose, 39 to 69 ms for inputs made to be slow, and 196 ms for the word `password` repeated. Windows and macOS are measured in stage 12.
 - A test makes up a key in each known format while it runs (SPEC-004); none is written in this repository.
 - What the patterns cannot know, the user marks as private or forgets (SPEC-004, SPEC-035).
 

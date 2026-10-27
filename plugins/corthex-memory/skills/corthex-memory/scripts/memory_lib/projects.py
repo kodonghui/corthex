@@ -73,7 +73,10 @@ class Project:
 
 def entries(registry):
     try:
-        data = json_document(registry.read_bytes())
+        raw = registry.read_bytes()
+        if raw.startswith(b"\xef\xbb\xbf"):
+            raw = raw[3:]
+        data = json_document(raw)
         if not isinstance(data, dict) or not isinstance(data.get("projects"), list):
             raise ValueError("invalid project list")
     except (OSError, ValueError, UnicodeError):

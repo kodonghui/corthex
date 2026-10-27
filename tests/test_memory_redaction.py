@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import string
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -106,6 +107,29 @@ class MemoryRedactionTest(StoreCase):
                 else:
                     expected = "[redacted:" + kind + "]" if length >= minimum else value
                     self.assertTrue(output == expected)
+
+    def test_tc023_jwt_candidate_scanning_matches_the_canonical_pattern(self):
+        pattern = dict(redaction.COMPILED)["jwt"]
+        values=[]
+        for a in (7,8,9):
+            for b in (7,8,9):
+                for c in (7,8,9):
+                    values.append("eyJ"+random_text(a)+".eyJ"+random_text(b)+"."+random_text(c))
+        token=values[-1]
+        values += ["prefix"+token,token+"."+token,"eyJ"*100+".eyJ"*2+"x",
+                   token+"extra",token+"!"+token,"."+token+"..", "eyJ"*100+".eyJabcdefgh."]
+        for source in values:
+            expected=pattern.sub("[redacted:jwt]",source)
+            self.assertTrue(redaction._jwt(source,pattern,None)[0]==expected,"canonical JWT replacement must agree")
+
+    def test_tc028_nonmatching_jwt_runs_have_bounded_processing_time(self):
+        for suffix in ("", ".eyJabcdefgh.", ".eyJshort.signature", ".wrong.abcdefgh"):
+            source="eyJ"*32000+suffix
+            started=time.perf_counter()
+            result=redaction.redact(source,{})
+            elapsed=time.perf_counter()-started
+            self.assertTrue(result.text==source,"nonmatching JWT look-alikes must stay")
+            self.assertLess(elapsed,0.5)
 
     def test_tc024_unclosed_private_span_removes_everything_after_it(self):
         self.assertEqual(redaction.redact("a <private> b c", {}).text, "a [redacted:private]")
@@ -220,6 +244,75 @@ class MemoryRedactionTest(StoreCase):
         result = redaction.redact(source, {})
         self.assertFalse(key in result.text)
         self.assertIsNone(result.cut)  # Redaction shrank it before either cut.
+
+    def test_tc320_earlier_shrinking_passes_cannot_expose_the_guard_fragment(self):
+        long_value=random_text(20000)
+        prefixes=[("<private>"+"p"*20000+"</private>",{}),
+                  (key_block("PRIVATE KEY","p"*20000),{}),
+                  (long_value,{"EARLIER_SECRET":long_value}),
+                  ("Authorization: "+"p"*20000+"\n",{})]
+        for prefix,environment in prefixes:
+            value=random_text(64)
+            environment=dict(environment,DEPLOY_TOKEN=value)
+            source=prefix+"z"*(redaction.WINDOW_BYTES-len(prefix)-32)+value+" tail"
+            result=redaction.redact(source,environment)
+            self.assertFalse(value[:32] in result.text,"guard fragments must not enter output")
+            self.assertEqual(result.cut,len(source.encode("utf-8")))
+            self.assertLessEqual(len(result.text.encode("utf-8")),redaction.ENTRY_BYTES)
+        value=random_text(32)+"가"+random_text(32)
+        prefix=prefixes[0][0]
+        source=prefix+"z"*(redaction.WINDOW_BYTES-len(prefix)-33)+value+" tail"
+        result=redaction.redact(source,{"DEPLOY_TOKEN":value})
+        self.assertFalse(value[:32] in result.text)
+        self.assertEqual(result.cut,len(source.encode("utf-8")))
+
+    def test_tc320_cutoff_preserves_only_markers_started_before_the_source_point(self):
+        prefix="<private>"+"p"*20000+"</private>"
+        value=random_text(64)
+        for offset,kept in ((-8,True),(0,False),(8,False)):
+            public=prefix+"z"*(redaction.ENTRY_BYTES+offset-len(prefix))
+            source=public+value+" q"*5000
+            result=redaction.redact(source,{"DEPLOY_TOKEN":value})
+            self.assertEqual("[redacted:environment]" in result.text,kept)
+            self.assertFalse(value in result.text)
+            self.assertEqual(result.cut,len(source.encode("utf-8")))
+        for value_start,kept in ((redaction.ENTRY_BYTES-4,True),(redaction.ENTRY_BYTES+8,False)):
+            header="Authorization: "
+            public=prefix+"z"*(value_start-len(prefix)-len(header))
+            source=public+header+value+"\n"+" q"*5000
+            result=redaction.redact(source,{})
+            self.assertEqual("[redacted:authorization]" in result.text,kept)
+            self.assertFalse(value in result.text)
+
+    def test_tc320_canonical_fragments_and_jwt_markers_use_the_source_point(self):
+        prefix = "<private>" + "p" * 20000 + "</private>"
+        values = ["AKIA" + random_text(16, string.ascii_uppercase + string.digits),
+                  "eyJ" + random_text(12) + ".eyJ" + random_text(12) + "." + random_text(32)]
+        for value in values:
+            visible = value[:-10]
+            source = prefix + "z" * (redaction.WINDOW_BYTES - len(prefix) - len(visible)) + value
+            result = redaction.redact(source, {})
+            self.assertFalse(visible in result.text, "canonical fragments must not enter output")
+            self.assertEqual(result.cut, len(source.encode("utf-8")))
+        value = values[-1]
+        for offset, kept in ((-8, True), (0, False), (8, False)):
+            source = prefix + "z" * (redaction.ENTRY_BYTES + offset - len(prefix)) + value + " q" * 5000
+            result = redaction.redact(source, {})
+            self.assertEqual("[redacted:jwt]" in result.text, kept)
+            self.assertFalse(value in result.text)
+
+    def test_tc320_unclipped_input_and_character_start_semantics_stay_intact(self):
+        prefix="<private>"+"p"*20000+"</private>"
+        source=prefix+"z"*(redaction.ENTRY_BYTES+1000-len(prefix))+" ordinary tail"
+        result=redaction.redact(source,{})
+        self.assertTrue(result.text.endswith(" ordinary tail"))
+        self.assertIsNone(result.cut)
+        value="가"+random_text(32)
+        source=prefix+"z"*(redaction.ENTRY_BYTES-1-len(prefix))+value+" q"*5000
+        result=redaction.redact(source,{"DEPLOY_TOKEN":value})
+        self.assertTrue(result.text.endswith("[redacted:environment]"))
+        self.assertFalse(value in result.text)
+        self.assertEqual(result.cut,len(source.encode("utf-8")))
 
     def test_tc028_pass_order_and_recording_imports(self):
         key = "sk-proj-" + random_text(32)

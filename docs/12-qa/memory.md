@@ -17,6 +17,10 @@ Inputs: the user flows in [docs/03-user-flow/memory/](../03-user-flow/memory/REA
 - `Expected`: the outcome and its effect on the memory store: the code of stage 06, or what is shown or printed, and what changed, or that nothing did. Unless a case says otherwise, every hook exits with 0 and leaves the host session as it was, and no code, error text or key reaches the conversation.
 - `Last result`: `not run`, or the result with where it ran and the commit, such as `pass on Linux, macOS and Windows in CI (commit abc1234)`; a performance result also gives its percentile and its load. `superseded (D3, 2026-10-27)` is a design status for historical C3 cases and never a passing or blocked execution result. A pass against a test server shows that memory handles the answer it was given, not that the provider gives it.
 
+Reserved case IDs: TC-319.
+
+TC-319 belongs to TASK-008, prepared separately; it is not counted until its row is included.
+
 ## Where the cases run
 
 Never on a user's memory store, and on the maintainer's only where a case says so:
@@ -30,7 +34,7 @@ Never on a user's memory store, and on the maintainer's only where a case says s
 
 ## C1: recording and the start summary
 
-The 118 cases of 0.2.0, TC-001 to TC-115 and TC-316 to TC-318, written by TASK-001 to TASK-030 and TASK-057.
+The 119 cases of 0.2.0, TC-001 to TC-115, TC-316 to TC-318 and TC-320, written by TASK-001 to TASK-030 and TASK-057.
 
 | ID | Case | From | Task | Runs as | Steps | Expected | Last result |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -152,6 +156,7 @@ The 118 cases of 0.2.0, TC-001 to TC-115 and TC-316 to TC-318, written by TASK-0
 | TC-316 | Whole-file deletion removes recovery artifacts | SPEC-009, REQ-060 | TASK-002 | api | Delete a whole file with a backup and matching temporary siblings, including an orphan backup and literal glob characters; on Windows hold the target open in another process and inject sharing failures during cleanup | The original, `<name>.bak` and matching `<name>.*.tmp` are removed without touching unrelated files or creating folders; a deleted backup cannot restore forgotten content; Windows retries for one second, and failed cleanup keeps the original | pass on Linux and Windows with Python 3.8 and 3.12; macOS not run; native open-file deletion tested on Windows (commit f585b397db3e) |
 | TC-317 | Durable writes use the Darwin flush with fallback | REQ-064, REQ-060 | TASK-002 | api | Simulate Darwin with `F_FULLFSYNC` working, unavailable and failing; compare durable and rebuildable temporary writes | Durable Darwin writes first try `F_FULLFSYNC`, falling back to `fsync` if unavailable or failing; rebuildable files skip the flush; simulated branches do not establish native macOS durability | pass on Linux and Windows with Python 3.8 and 3.12; macOS not run; Darwin flush branches mocked only (commit f585b397db3e) |
 | TC-318 | An unlocked read briefly acquires the recovery lock | SPEC-007, SPEC-008, REQ-064 | TASK-003 | api | With real processes, read a missing or damaged primary with a readable backup while its record lock is busy, while a writer completes, with two recovery readers, and with a takeover; expire the deadline after acquisition and inject Windows read/release sharing failures | Recovery takes the matching record lock within the caller deadline, rechecks and restores, or fails without moving files when busy, expired or displaced; release retries independently for one second and reports a remaining error without discarding the recovered value | pass on Linux and Windows with Python 3.8 and 3.12; real-process and deterministic race/release tests; macOS not run (commit a73a259437a7) |
+| TC-320 | Redaction keeps the source cutoff after earlier shrinking | SPEC-004, SPEC-002 | TASK-007 | api | In the redaction library, shorten the prefix with each earlier pass in text longer than 520 KB; split an environment value and canonical secrets at the guard edge; put marks before, at and after the source 512 KB point, including a grouped header and a UTF-8 character crossing the point; also process text that step 1 does not cut | Only output originating before step 1's 512 KB point remains, including a mark starting before that point; guard fragments never enter the output; the final cut is character-safe and at most 512 KB, with the original normalized byte count in cut; without the step 1 cut the existing behavior remains | not run |
 
 ## C2: curation and recall
 
@@ -381,9 +386,9 @@ The twelve kinds of the stage, for a plugin without accounts or screens: access 
 | State changes | The store record, item status (current, superseded, withdrawn), pins, the curation record, consent, sync on and off, and indexes of another version | TC-011, TC-063, TC-075, TC-097, TC-117, TC-120, TC-136, TC-140, TC-148, TC-150, TC-165, TC-169, TC-170, TC-175, TC-186, TC-187, TC-191, TC-201, TC-202, TC-208, TC-210, TC-222, TC-229, TC-231, TC-236, TC-268, TC-272, TC-283, TC-292, TC-304, TC-309 |
 | Repeats | A command run twice, stale confirmation codes, a call tried again, and one usage line for each try | TC-030, TC-078, TC-082, TC-083, TC-085, TC-093, TC-121, TC-124, TC-203, TC-214, TC-232, TC-233, TC-240, TC-243, TC-246, TC-286 |
 | Concurrency | Locks between the hooks, the memory worker and the commands; rewrites stopped midway; appends during a rewrite; and two devices through sync | TC-004, TC-005, TC-006, TC-007, TC-008, TC-014, TC-029, TC-031, TC-057, TC-061, TC-062, TC-077, TC-095, TC-118, TC-119, TC-145, TC-146, TC-173, TC-174, TC-189, TC-193, TC-237, TC-238, TC-245, TC-246, TC-289, TC-290, TC-295, TC-302, TC-305, TC-308, TC-316, TC-318 |
-| Limits | Deadlines and time limits, sizes of prompts, the start summary, requests and items, the curation triggers, and the token and byte limits | TC-008, TC-028, TC-038, TC-042, TC-047, TC-049, TC-050, TC-054, TC-070, TC-105, TC-127, TC-128, TC-130, TC-141, TC-142, TC-143, TC-149, TC-151, TC-152, TC-153, TC-154, TC-155, TC-157, TC-168, TC-182, TC-183, TC-190, TC-197, TC-204, TC-207, TC-213, TC-216, TC-220, TC-223, TC-227, TC-230, TC-250, TC-256, TC-274, TC-288, TC-318 |
+| Limits | Deadlines and time limits, sizes of prompts, the start summary, requests and items, the curation triggers, and the token and byte limits | TC-008, TC-028, TC-038, TC-042, TC-047, TC-049, TC-050, TC-054, TC-070, TC-105, TC-127, TC-128, TC-130, TC-141, TC-142, TC-143, TC-149, TC-151, TC-152, TC-153, TC-154, TC-155, TC-157, TC-168, TC-182, TC-183, TC-190, TC-197, TC-204, TC-207, TC-213, TC-216, TC-220, TC-223, TC-227, TC-230, TC-250, TC-256, TC-274, TC-288, TC-318, TC-320 |
 | Outside services | The model APIs and Git: their errors, no connection, time limits, a missing `git`, and the system's certificates and proxy | TC-121, TC-128, TC-129, TC-130, TC-134, TC-207, TC-260, TC-280, TC-283, TC-284, TC-293, TC-306 |
-| Data exposure | Keys, private spans, conversation text in logs, the store's permissions, what each model request sends, and what sync pushes | TC-002, TC-013, TC-022, TC-023, TC-024, TC-025, TC-026, TC-032, TC-035, TC-043, TC-073, TC-087, TC-108, TC-110, TC-131, TC-141, TC-158, TC-160, TC-197, TC-220, TC-226, TC-234, TC-235, TC-239, TC-243, TC-248, TC-254, TC-262, TC-267, TC-285, TC-291, TC-294, TC-300, TC-301, TC-303, TC-313, TC-316 |
+| Data exposure | Keys, private spans, conversation text in logs, the store's permissions, what each model request sends, and what sync pushes | TC-002, TC-013, TC-022, TC-023, TC-024, TC-025, TC-026, TC-032, TC-035, TC-043, TC-073, TC-087, TC-108, TC-110, TC-131, TC-141, TC-158, TC-160, TC-197, TC-220, TC-226, TC-234, TC-235, TC-239, TC-243, TC-248, TC-254, TC-262, TC-267, TC-285, TC-291, TC-294, TC-300, TC-301, TC-303, TC-313, TC-316, TC-320 |
 | Empty and streamed answers | Empty prompts, turns without an answer, empty memory and empty results, and streamed answers that are cut or empty | TC-039, TC-044, TC-053, TC-088, TC-125, TC-133, TC-171, TC-223 |
 | Screen states | Not applicable: the memory plugin has no screens. What the memory skill says in each state is checked by the cases of the commands and of the memory skill, and by the walks | none |
 | AI answers | The curator's answers, questions inside and outside its scope, and the embeddings ([AI calls](#ai-calls)) | TC-125, TC-126, TC-133, TC-139, TC-156, TC-161, TC-162, TC-163, TC-164, TC-166, TC-167, TC-170, TC-171, TC-172, TC-177, TC-178, TC-179, TC-180, TC-181, TC-184, TC-185, TC-187, TC-192, TC-194, TC-195, TC-205, TC-206, TC-217, TC-225, TC-251, TC-252, TC-258, TC-259, TC-261, TC-262, TC-263, TC-271, TC-273 |
@@ -453,6 +458,7 @@ What the notes of stages 03 to 06 asked of this stage, and the cases that do it.
 | 06 | From outside: the whole hooks' times, the memory worker outliving the hook and the session, and what Codex asks after an update | TC-105, TC-256, TC-103, TC-107 |
 | 06 | For each release of a host: the input fields, the marks of host-made prompts, `stop_hook_active`, and input outside ASCII on Windows | TC-106 |
 | 06 | Redaction's time on Windows and macOS | TC-028 |
+| 06 | The source cutoff after earlier redaction passes shorten clipped text | TC-320 |
 | 06 | Against the real APIs: the three answer schemas, a refusal and a cut answer, and the usage lines against each provider's console | TC-258, TC-259, TC-260 |
 | 06 | Before C2, on the trial's sample: the recall threshold, both estimates, medium, high and xhigh effort, and 512 against 1,536 numbers per vector | TC-252, TC-250, TC-251 |
 | 06 | The prompt hook with 1,000, 5,000 and 20,000 items | TC-256 |
@@ -551,12 +557,12 @@ A no-go names what must change. A go is followed by the release task, TASK-030, 
 
 With results through commit c506ed9ff8dd, passing cases cover 1 of 12 flows, 1 of 109 acceptance criteria, 3 of 153 outcomes and 5 of 13 non-functional requirements (REQ-056, REQ-060, REQ-062, REQ-063, REQ-064). Host agents walked 0 of 12 flows. No outcome was checked only against a test server. Passing C1 cases: TC-001, TC-002, TC-003, TC-004, TC-005, TC-006, TC-007, TC-008, TC-009, TC-010, TC-013, TC-021, TC-027, TC-100, TC-316, TC-317, TC-318; the other C1 cases and all C2 cases have not run under their current definitions. macOS has not run; TC-317 simulates Darwin flush branches. All 37 C3 cases are `superseded (D3, 2026-10-27)` and are not an executable test plan until the server sync design replaces them.
 
-The plan has 318 cases: 118 for C1, 163 for C2 and 37 for C3. The 112 pairs of an acceptance criterion and a task that tests it, and the 192 of an outcome and a task that tests it, each have a case. By how they run:
+The plan has 319 cases: 119 for C1, 163 for C2 and 37 for C3. The 112 pairs of an acceptance criterion and a task that tests it, and the 192 of an outcome and a task that tests it, each have a case. By how they run:
 
 | Runs as | C1 | C2 | C3 | All |
 | --- | --- | --- | --- | --- |
 | `contract` | 8 | 7 | 2 | 17 |
-| `api` | 100 | 135 | 32 | 267 |
+| `api` | 101 | 135 | 32 | 268 |
 | `e2e` | 10 | 5 | 0 | 15 |
 | `agent` | 5 | 8 | 3 | 16 |
 | `manual` | 1 | 11 | 1 | 13 |
@@ -603,7 +609,7 @@ Passed on 2026-10-27: the recommendations listed below, with 100-day default ret
 
 The first release decision, of 0.2.0, comes after the trial of C1. Before that, most worth a look:
 
-1. The cases of C1 (TC-001 to TC-115 and TC-316 to TC-318), above all what the walks of C1 (TC-109 to TC-113) ask of the agent.
+1. The cases of C1 (TC-001 to TC-115, TC-316 to TC-318 and TC-320), above all what the walks of C1 (TC-109 to TC-113) ask of the agent.
 2. The three walk tasks added to stage 10, and the trials that now wait for them.
 3. The `real` cases and the measurements before C2, which run on the maintainer's device with the maintainer's keys at the cost that the usage log shows.
 4. The success measures as the decision on going on after C2 (TASK-050).

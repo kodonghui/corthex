@@ -36,6 +36,8 @@ codex plugin add corthex@corthex
 
 `corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It reads local files only and makes no network calls. It needs Python 3 on the PATH (it tries `python3`, `python` and the Windows `py` launcher), and with Claude Code on Windows also Git for Windows or PowerShell 7.
 
+Conversation recording is in development for C1 (0.2.0). Its [interface contract](docs/06-api/memory.md) defines project selection, exclusions and redaction before recording; the current hooks do not record conversations yet.
+
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too
 codex plugin add corthex-memory@corthex        # Codex, after corthex

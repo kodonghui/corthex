@@ -34,6 +34,7 @@ def inputs():
         "pem-header-without-key": fill("-" * 5 + "BEGIN " + "A" * 1024 + "\n"),
         "token-digits": fill("token=" + "0" * 512 + " "),
         "url-without-at": fill("://" + "a" * 256 + ":" + "b" * 256 + "? "),
+        "jwt-no-dots": fill("eyJ"),
     }
 
 
