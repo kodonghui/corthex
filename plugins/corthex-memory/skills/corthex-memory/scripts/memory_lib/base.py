@@ -65,7 +65,6 @@ def utc_date(value=None):
 class MemoryHomeInvalid(ValueError):
     code = "configuration-invalid"
     field = "CORTHEX_MEMORY_HOME"
-    reason = "absolute-path-required"
 
     def __init__(self):
         super().__init__("CORTHEX_MEMORY_HOME must be an absolute path")

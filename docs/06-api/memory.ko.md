@@ -219,7 +219,7 @@ Current state:
 ### 세션 시작 훅 (API-001)
 
 1. 입력을 읽고 도구를 가려냅니다. 0.1.0처럼 `cwd`에 대한 기본 부분을 만듭니다.
-2. 기억 폴더가 없으면 기본 부분을 내보내고 끝냅니다. 기억 폴더 정보가 없거나 읽을 수 없고 되살릴 백업도 없을 때, 더 새로운 형식일 때, 또는 기억 설정이 올바르지 않을 때는, 세션의 폴더가 프로젝트 목록의 프로젝트 안에 있으면 무엇이 잘못됐는지 적은 한 줄을 `## Memory` 아래에 붙여 기본 부분을 내보내고([알림](#알림)) 끝냅니다.
+2. `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아니면 기본 부분과 `## Memory` 아래의 `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.`를 내보내고, 아무것도 쓰지 않고 끝냅니다. 그 값은 보여 주지 않습니다. 기억 폴더가 없으면 기본 부분을 내보내고 끝냅니다. 기억 폴더 정보가 없거나 읽을 수 없고 되살릴 백업도 없을 때, 더 새로운 형식일 때, 또는 기억 설정이 올바르지 않을 때는, 세션의 폴더가 프로젝트 목록의 프로젝트 안에 있으면 무엇이 잘못됐는지 적은 한 줄을 `## Memory` 아래에 붙여 기본 부분을 내보내고([알림](#알림)) 끝냅니다.
 3. 세션의 프로젝트를 찾습니다(SPEC-001). 켠 프로젝트가 없으면 기본 부분을 내보내고, 폴더가 프로젝트 목록의 프로젝트 안에 있으면 보관 기간 처리를 위해 기억 작업 프로세스를 띄운 뒤(아래 8번) 끝냅니다. 보관 기간은 모든 프로젝트에 적용되기 때문입니다(SPEC-009, SPEC-036).
 4. 폴더나 세션 경계를 빼 두지 않았으면(SPEC-006) 시작 경계를 덧붙입니다(SPEC-005).
 5. 1,000ms 안에 기억 부분을 만듭니다(SPEC-021, SPEC-022).
@@ -353,7 +353,7 @@ Claude Haiku 5.5의 더 높은 가격을 정하는 프롬프트 길이는 캐시
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | 기억 작업 프로세스. 턴 끝 훅과 세션 끝 훅은 있는지만 확인 | 정리, 통합, 토큰 세기(SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | 프롬프트 훅, 기억 작업 프로세스, `search` | 임베딩 |
-| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039). 빈 값은 설정하지 않은 것과 같고, `~`를 푼 뒤에도 절대 경로가 아니면 그 프로세스에서 기억이 꺼집니다. 훅은 아무것도 쓰지 않고, 명령은 `configuration-invalid`를 돌려주며 기억 상태가 이유를 말합니다 |
+| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039). 빈 값은 설정하지 않은 것과 같고, `~`를 푼 뒤에도 절대 경로가 아니면 그 프로세스에서 기억이 꺼지고 훅은 아무것도 쓰지 않습니다. `status`, `purge`, `repair`를 포함한 모든 명령을 `configuration-invalid`와 `data.field` `CORTHEX_MEMORY_HOME`으로 거절하며, `status`도 거절의 `say`로 이유를 말합니다. 어느 명령도 기본 폴더로 돌아가지 않습니다 |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | API를 부르는 프로세스 | API 대신 쓸 시험 서버: `https://` 주소, 또는 `localhost`, `127.0.0.1`, `[::1]`에 한해 `http://`. 다른 값은 무시함. 설정되어 있으면 기억 상태가 보여 줌 |
 | `CLAUDE_CODE_REMOTE` | 모든 프로세스 | 설정이 달리 말하지 않으면, `true`일 때 임시 기기(SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | 훅 | 어느 도구가 훅을 돌리는지 |
@@ -763,7 +763,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 
 | 알림 | 보여 주는 때 | 글 |
 | --- | --- | --- |
-| 기억을 읽을 수 없음 | 이어지는 동안 | `Memory could not be read: <reason>. The memory status says more.` 이유는 더 새로운 형식, 없거나 망가진 기억 폴더 정보, 또는 필드를 함께 적는 올바르지 않은 설정입니다. 다른 알림은 뒤따르지 않음 |
+| 기억을 읽을 수 없음 | 이어지는 동안 | `Memory could not be read: <reason>. The memory status says more.` 이유는 더 새로운 형식, 없거나 망가진 기억 폴더 정보, 또는 필드를 함께 적는 올바르지 않은 설정입니다. `CORTHEX_MEMORY_HOME`이 절대 경로가 아니면 대신 그 값 없이 `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.`를 씁니다. 다른 알림은 뒤따르지 않음 |
 | 멈춤 | 이어지는 동안 | `Curation is stopped for this project after three failed attempts in a row (<error>). The memory status can resume it.` |
 | 동의를 기다림 | 이어지는 동안 | `Memory records nothing on this device until the user consents to version <n> of the consent text.` |
 | 키를 기다림 | 이어지는 동안, 키마다 | `Curation is waiting for CORTHEX_MEMORY_ANTHROPIC_API_KEY, which the hook's environment does not have.` OpenAI 키는 `Recall and search by meaning are waiting for CORTHEX_MEMORY_OPENAI_API_KEY, which the hook's environment does not have.` 둘 다 `Memory keys are read only from the environment that the host starts in, such as a shell profile or a cloud environment's secret settings.`를 더하며, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`가 설정되어 있으면 `Claude Code's CLAUDE_CODE_SUBPROCESS_ENV_SCRUB setting can remove it from hooks.`도 더함 |
@@ -821,7 +821,9 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | `worker-start` | 기억 작업 프로세스를 띄울 수 없었음(SPEC-013) | 다음 정리 시작 조건에서 다시 해 봄 |
 | `store-newer` | 기억 폴더의 형식이 그 판보다 새로움(SPEC-039) | 아무것도 읽거나 쓰지 않음 |
 | `store-damaged` | 기억 폴더 정보가 없거나 망가졌고, 되살릴 백업이 없음(TBL-001) | `repair`까지 아무것도 읽거나 쓰지 않음 |
-| `configuration-invalid` | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님 | 그 기기에서 기억이 꺼짐 |
+| `configuration-invalid` | 기억 설정이 스키마에 맞지 않음 | 그 기기에서 기억이 꺼짐 |
+
+잘못된 `CORTHEX_MEMORY_HOME`은 저장소가 없으니 실패 기록에 쓰지 않습니다.
 
 ### 모델 호출의 코드
 
@@ -871,7 +873,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | `no-store` | `refused`, `status`에서는 `nothing` | `on`, `purge`, `repair`를 뺀 모두 | 아직 기억 폴더가 없음. `on`이 만듦 |
 | `store-newer` | `refused` | `purge`를 뺀 모두 | 기억 폴더가 더 새로운 판에서 옴 |
 | `store-damaged` | `refused` | `purge`와 `repair`를 뺀 모두 | 기억 폴더 정보가 없거나 망가짐. `repair`가 새로 씀 |
-| `configuration-invalid` | `refused` | 그래도 되는 `status`, `purge`, `repair`를 뺀 모두 | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님. `data.field`가 필드나 환경 변수를 알려 줌 |
+| `configuration-invalid` | `refused` | 스키마에 맞지 않는 설정은 `status`, `purge`, `repair`를 뺀 모두. 잘못된 `CORTHEX_MEMORY_HOME`은 모든 명령 | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님. `data.field`가 필드나 환경 변수를 알려 줍니다. 그것이 `CORTHEX_MEMORY_HOME`이면 `status`, `purge`, `repair`도 거절합니다. 처리할 저장소가 없으므로 어느 명령도 기본 폴더로 돌아가지 않고, 결과 스키마를 바꾸지 않고 `say`로 거절 이유를 말합니다 |
 | `no-project-list` | `refused` | 프로젝트에 대한 명령 | 프로젝트 목록이 없거나 읽을 수 없음 |
 | `not-in-project` | `refused` | 프로젝트에 대한 명령 | 폴더가 어느 프로젝트에도 없거나 둘에 있음(`data.clash`). 프로젝트는 corthex 스킬이 더함 |
 | `not-enabled` | `off`에서는 `nothing`, 아니면 `refused` | 프로젝트에 대한 명령 | 그 프로젝트에 기억이 꺼져 있음. `on`이 켬 |

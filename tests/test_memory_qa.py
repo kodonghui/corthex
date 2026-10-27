@@ -105,8 +105,10 @@ class TestPlanTest(unittest.TestCase):
                 self.assertEqual(header, COLUMNS)
                 self.assertTrue(rows)
                 self.assertTrue(all(len(row) == len(COLUMNS) and all(row) for row in rows))
-        # Cases are never renumbered or deleted, so their numbers run step by step without a gap.
-        self.assertEqual(list(self.cases), ["TC-%03d" % n for n in range(1, len(self.cases) + 1)])
+                self.assertEqual([row[0] for row in rows], sorted(row[0] for row in rows))
+        # New cases take the next free ID within their release step, keeping
+        # existing IDs intact; their global set still has no gaps.
+        self.assertEqual(sorted(self.cases), ["TC-%03d" % n for n in range(1, len(self.cases) + 1)])
         titles = Counter(case["Case"] for case in self.cases.values())
         self.assertEqual([title for title, count in titles.items() if count > 1], [])
         for key, case in self.cases.items():
@@ -227,7 +229,7 @@ class TestPlanTest(unittest.TestCase):
         (rows,) = tables(section(self.doc, "## Non-functional requirements"))
         self.assertEqual(rows[0], ["Requirement", "Priority", "What it asks", "Cases", "How it is checked"])
         self.assertEqual([row[0] for row in rows[1:]], self.nonfunctional)
-        naming = {req: [key for key, case in self.cases.items() if req in case["tokens"]] for req in self.nonfunctional}
+        naming = {req: sorted(key for key, case in self.cases.items() if req in case["tokens"]) for req in self.nonfunctional}
         for row in rows[1:]:
             with self.subTest(requirement=row[0]):
                 self.assertEqual(row[1], self.requirements[row[0]][3])

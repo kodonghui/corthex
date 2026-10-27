@@ -53,7 +53,7 @@ class MemoryFileReviewTest(unittest.TestCase):
                         base.memory_home()
                 self.assertEqual(caught.exception.code, "configuration-invalid")
                 self.assertEqual(caught.exception.field, "CORTHEX_MEMORY_HOME")
-                self.assertEqual(caught.exception.reason, "absolute-path-required")
+                self.assertFalse(hasattr(caught.exception, "reason"))
                 self.assertFalse(raw in str(caught.exception))
                 self.assertEqual(list(folder.iterdir()), [])
         finally:
@@ -134,7 +134,7 @@ class MemoryFileReviewTest(unittest.TestCase):
                 return read(target)
             report = mock.Mock()
             with mock.patch.object(Path, "read_bytes", writer_finished), mock.patch.object(files.os, "replace") as move:
-                self.assertEqual(files.read_json(path, report), {"release": "new"})
+                self.assertEqual(files.read_json(path, report, holding_lock=True), {"release": "new"})
                 move.assert_not_called()
             self.assertEqual(path.read_bytes(), new)
             self.assertEqual(backup.read_bytes(), old)
@@ -149,7 +149,7 @@ class MemoryFileReviewTest(unittest.TestCase):
             raise PermissionError("made-up move sharing failure")
         report = mock.Mock()
         with mock.patch.object(files, "_WINDOWS", True), mock.patch.object(files.os, "replace", sharing):
-            self.assertEqual(files.read_json(path, report), {"release": "new"})
+            self.assertEqual(files.read_json(path, report, holding_lock=True), {"release": "new"})
         self.assertEqual(path.read_bytes(), new)
         self.assertEqual(backup.read_bytes(), old)
         report.assert_not_called()
@@ -171,7 +171,7 @@ class MemoryFileReviewTest(unittest.TestCase):
                 files.append_jsonl(path, {"seq": 3}, "TBL-007")
                 self.assertEqual([row["seq"] for row in files.read_jsonl(path)], [1, 3] if initial else [3])
 
-    def test_tc004_darwin_full_sync_success_and_supported_fallbacks(self):
+    def test_tc317_darwin_full_sync_success_and_supported_fallbacks(self):
         full = types.SimpleNamespace(F_FULLFSYNC=51, fcntl=mock.Mock())
         with mock.patch.object(files.sys, "platform", "darwin"), mock.patch.dict(sys.modules, {"fcntl": full}), \
                 mock.patch.object(files.os, "fsync") as sync:
@@ -185,7 +185,7 @@ class MemoryFileReviewTest(unittest.TestCase):
                 files._sync(17)
                 sync.assert_called_once_with(17)
 
-    def test_tc004_only_durable_temporaries_call_the_sync_helper(self):
+    def test_tc317_only_durable_temporaries_call_the_sync_helper(self):
         for durable in (True, False):
             with mock.patch.object(files, "_sync") as sync:
                 temporary = files._temporary(self.folder / "record", b"whole", durable)
@@ -193,7 +193,7 @@ class MemoryFileReviewTest(unittest.TestCase):
             self.assertEqual(temporary.read_bytes(), b"whole")
             temporary.unlink()
 
-    def test_tc004_whole_deletion_removes_backups_and_literal_temp_names(self):
+    def test_tc316_whole_deletion_removes_backups_and_literal_temp_names(self):
         path = self.folder / "record[1].jsonl"
         deleted = [path, path.with_name(path.name + ".bak"), path.with_name(path.name + ".random.tmp")]
         kept = [path.with_name(path.name + ".tmp"), self.folder / "record1.jsonl.random.tmp", self.folder / "other.random.tmp"]
@@ -207,7 +207,7 @@ class MemoryFileReviewTest(unittest.TestCase):
         files.delete_file(missing)
         self.assertFalse(missing.parent.exists())
 
-    def test_tc004_deleting_an_orphan_backup_cannot_resurrect_forgotten_content(self):
+    def test_tc316_deleting_an_orphan_backup_cannot_resurrect_forgotten_content(self):
         path, backup = self.folder / "record.json", self.folder / "record.json.bak"
         backup.write_bytes(b'{"release":"forgotten"}\n')
         files.delete_file(path)
@@ -215,7 +215,7 @@ class MemoryFileReviewTest(unittest.TestCase):
             files.read_json(path)
         self.assertFalse(backup.exists())
 
-    def test_tc005_whole_deletion_retries_windows_sharing_and_keeps_primary_on_failed_cleanup(self):
+    def test_tc316_whole_deletion_retries_windows_sharing_and_keeps_primary_on_failed_cleanup(self):
         path = self.folder / "record"
         backup, temporary = self.folder / "record.bak", self.folder / "record.random.tmp"
         for target in (path, backup, temporary):
