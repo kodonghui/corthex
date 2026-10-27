@@ -430,14 +430,14 @@ A raw log or injection log rewrite builds the new file without the lock, then ho
 
 Deleting a whole file under its lock also removes its `<name>.bak` and remaining `<name>.*.tmp` files, using the same Windows retries for each deletion.
 
-On Windows a move or a deletion fails while another process holds the file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once.
+On Windows a move or a deletion fails while another process holds the file open. The code tries again for up to one second; then the step fails as a whole, the failure log notes it, and it runs again at its next trigger. Readers open a file, read it whole and close it at once. Lock release always uses that full one-second retry, even after a hook deadline, to avoid leaving a lease behind; if release still fails, it reports only the last exception class and does not turn completed work into a failure.
 
 ### Restoring
 
 - Only a process holding the file's write lock restores a readable `.bak`, and only when the rewritten file is missing (`FileNotFoundError`) or its content cannot be interpreted (`ValueError` or `UnicodeError`). It reads the original once more just before each restoration attempt and keeps it if it now parses, otherwise moves the backup back and notes `restore`, `restored`. If the move finds the backup already gone, it reads the original once more. A temporarily inaccessible file is not unreadable content: `PermissionError` is retried on Windows for up to one second, then raised without restoration; within a hook, this retry stops at that hook's deadline. POSIX raises it immediately, and other `OSError` failures are raised without restoration.
 - An unlocked reader that finds a readable backup makes a short attempt to take the file's write lock, then rechecks and restores while holding it; if it cannot take the lock, the read fails without restoring. The file primitives signal `RestoreNeeded` without moving files; TASK-003 connects the short lock attempt. A JSONL rewrite reads the current entries with the locked read.
 - An append, already holding the file's write lock, first restores a readable backup when the original is missing, notes `restored`, and only then appends the new entry.
-- In the background at each session start, the code deletes `.tmp` files older than ten minutes and the backups of files that can be read. Until then a backup can hold text that a forget removed.
+- In the background at each session start, the code deletes `.tmp` files and `<lock>.*.stale` files older than ten minutes and the backups of files that can be read. Until then a backup can hold text that a forget removed.
 - A record with no copy that can be read is handled as its section says.
 
 ### Locks
@@ -451,11 +451,11 @@ On Windows a move or a deletion fails while another process holds the file open.
 | Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, the last read and the move of a rewrite, or retention's last read and deletion of a file; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
 | Log locks | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | One append | not refreshed | 10 seconds |
 
-- A lock is a file made with an exclusive create, which fails while the file is there. It holds the holder's process ID, the device ID, the time and a random token. The holder refreshes it by touching its modified time; the lock is stale once that time is older than the table allows.
+- A lock is a file made with an exclusive create, which fails while the file is there. It holds the holder's process ID, the device ID, the time and a random token. The holder refreshes it by touching its modified time; the lock is stale once that time is older than the table allows. Staleness compares this device clock with the lock mtime, so keep the memory folder on a local disk: a forward clock jump or a network folder with a different server clock can make a live lease look stale; that holder discovers the missing token on its next check.
 - To take a stale lock over, a process renames it to a name of its own (`<lock>.<random>.stale`), checks that the renamed file holds the token it judged stale, deletes it and makes the lock anew. If the renamed file holds another token, it was a fresh lock: the process puts it back unless a lock is there again, and gives up.
 - Before each change, the holder checks that the lock still holds its token. A process that lost its lock changes nothing more.
-- Order: store, curation, sync, curated layer, raw log, log. A process never waits for a lock earlier in this order while it holds a later one, so no two processes wait for each other.
-- Hooks take only raw log locks and log locks, and wait for them at most until their deadline (SPEC-008).
+- Order: store, curation, sync, curated layer, raw log, log. A process never waits for a lock earlier in this order while it holds a later one, so no two processes wait for each other. Within one kind, acquire locks in the string order of their paths relative to the memory folder, ignoring case on Windows.
+- Hooks take only raw log locks and log locks, and wait for them at most until their deadline (SPEC-008). The sole exception is the short backup-recovery attempt in Restoring: with no other lock held, a hook takes that file's lock within its deadline, restores, and releases it immediately.
 - Reading needs no lock: every rewrite ends in a move, so a reader sees the old file or the new one, whole.
 - Retention of a project runs under its curation lock, so that deleting a whole raw log file also removes it from the curation record; when a curator holds the lock, retention leaves the project for the next session start. A session resumed after its file was deleted then starts a new file from `seq` 1.
 - The memory skill takes a lock over at once, without waiting for it to go stale, only to delete a project's memory or to purge (SPEC-037, SPEC-038). The process that held it then finds its token gone and applies nothing.

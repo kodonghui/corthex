@@ -26,9 +26,10 @@ class RestoreNeeded(RuntimeError):
         super().__init__("backup restoration requires the record lock")
 
 
-def _retry(operation):
-    """Retry a Windows sharing/access failure for at most one second."""
-    deadline = time.monotonic() + 1.0
+def _retry(operation, deadline=None):
+    """Retry a Windows sharing failure until the caller or one-second limit."""
+    limit = time.monotonic() + 1.0
+    deadline = limit if deadline is None else min(deadline, limit)
     while True:
         try:
             return operation()
@@ -171,14 +172,14 @@ def _object(data):
     return value
 
 
-def _read(path, parse, report, holding_lock=False):
+def _read(path, parse, report, holding_lock=False, check=None, deadline=None):
     path = Path(path)
     try:
-        return parse(_retry(path.read_bytes))
+        return parse(_retry(path.read_bytes, deadline))
     except _RESTORABLE as original:
         backup = path.with_name(path.name + ".bak")
         try:
-            value = parse(_retry(backup.read_bytes))
+            value = parse(_retry(backup.read_bytes, deadline))
         except _RESTORABLE:
             raise original
         if not holding_lock:
@@ -187,25 +188,38 @@ def _read(path, parse, report, holding_lock=False):
             # A writer may have finished after the first read. Recheck before
             # each move attempt, including after a Windows sharing failure.
             try:
-                return parse(_retry(path.read_bytes))
+                return parse(_retry(path.read_bytes, deadline))
             except _RESTORABLE:
                 try:
+                    if check is not None:
+                        check()
                     os.replace(str(backup), str(path))
                 except FileNotFoundError:
-                    return parse(_retry(path.read_bytes))
+                    return parse(_retry(path.read_bytes, deadline))
                 if report:
                     report("restored", None)
                 return value
-        return _retry(restore)
+        return _retry(restore, deadline)
 
 
-def read_json(path, report=None, holding_lock=False):
+def read_record(path, parse, report=None, holding_lock=False, check=None, deadline=None):
+    """Read with a pure byte parser; only a caller holding the lock may restore.
+
+    A parser rejects unparseable bytes with ValueError/UnicodeError. Policy
+    refusals use a different exception so they never restore older contents.
+    check, when supplied, fences each restoration move by current ownership.
+    deadline caps all Windows read/recovery retries at the caller's deadline.
+    """
+    return _read(path, parse, report, holding_lock, check, deadline)
+
+
+def read_json(path, report=None, holding_lock=False, check=None, deadline=None):
     """Read an object; restore only while the caller holds this record's lock.
 
     An unlocked reader raises RestoreNeeded for a readable backup and changes
     nothing. Only pass holding_lock=True while holding that record's write lock.
     """
-    return _read(path, _object, report, holding_lock)
+    return read_record(path, _object, report, holding_lock, check, deadline)
 
 
 def _lines(data):
@@ -222,7 +236,7 @@ def _lines(data):
     return entries, damaged
 
 
-def read_jsonl(path, report=None, holding_lock=False):
+def read_jsonl(path, report=None, holding_lock=False, check=None, deadline=None):
     """Keep complete object lines, skip/count bad lines without guessing.
 
     Damaged JSONL lines are not a reason to roll the file back to a backup,
@@ -231,7 +245,7 @@ def read_jsonl(path, report=None, holding_lock=False):
     Without that lock a readable backup raises RestoreNeeded without moving
     files. Permission and other I/O errors never roll back to older content.
     """
-    entries, damaged = _read(path, _lines, report, holding_lock)
+    entries, damaged = read_record(path, _lines, report, holding_lock, check, deadline)
     if damaged and report:
         report("damaged-line", damaged)
     return entries

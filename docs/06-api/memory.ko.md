@@ -110,7 +110,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 ```
 
 - 명령은 `python3`, `python`, `py -3` 순서로, `commandWindows`는 `python`, `py -3` 순서로 해 봅니다. 0.1.0과 같으며, 0.1.0의 `windows-hook-check` 워크플로가 Windows에서 이것을 돌려 봅니다. 훅은 언제나 0으로 끝나므로, 앞의 인터프리터가 없을 때만 다음 것이 돕니다.
-- 도구의 시간 제한은 멈춘 훅을 끊을 뿐이고, 훅마다 그보다 짧은 자기 마감 시간이 있습니다. Claude Code는 SessionEnd 훅 모두에 합쳐 1.5초를 주며, 플러그인의 `timeout`으로 이 시간을 늘릴 수 없습니다(문서에 있음). Codex는 긴 SessionEnd 시간 제한을 줄입니다(관찰: 10초를 3초로). 세션 끝 훅의 500ms는 둘 다에 맞습니다.
+- 도구의 시간 제한은 멈춘 훅을 끊을 뿐이고, 훅마다 그보다 짧은 자기 마감 시간이 있습니다. Claude Code는 SessionEnd 훅 모두에 합쳐 1.5초를 주며, 플러그인의 `timeout`으로 이 시간을 늘릴 수 없습니다(문서에 있음). Codex는 긴 SessionEnd 시간 제한을 줄입니다(관찰: 10초를 3초로). 세션 끝 훅의 500ms는 둘 다에 맞습니다. 드물게 해제가 실패하면 세션 끝 훅이 Claude Code의 1.5초를 넘을 수 있고, 그때 호스트가 훅을 끊습니다. 남는 것은 한도가 지나면 넘겨받힐 잠금뿐입니다.
 - `additionalContextLimit`은 훅이 더하는 문맥에 대한 Codex의 토큰 상한입니다. Claude Code는 10,000자가 넘는 더한 문맥을 파일로 옮깁니다(문서에 있음). 시작 요약은 8,000바이트 아래, 불러오기 블록은 600토큰 아래로 두므로, 두 도구 모두에서 문맥에 그대로 들어갑니다.
 - 쓰지 않는 것: StopFailure는 Claude Code에만 있고 훅을 기다리지 않습니다. API 오류로 끝난 턴은 답 없이 프롬프트만 기록에 남습니다. SubagentStop과 다른 하위 에이전트 사건은 하위 에이전트의 턴을 기록하지 않으므로 쓰지 않습니다(SPEC-003). PreCompact와 PostCompact는 압축 요약을 기록하지 않으므로, 도구 호출 사건은 도구 호출을 기록하지 않으므로 쓰지 않습니다.
 
@@ -215,6 +215,8 @@ Current state:
 | 세션 끝 훅 | 500ms | 턴 끝 훅과 같음 |
 
 지우기 처리는 기록하기 전에, 훅의 마감 시간 안에서 돌며, 시작하면 끝까지 합니다. 그래서 긴 답은 턴 끝 훅을 마감 시간보다 늦게 만들 수 있고, 잰 바로는 512KB에서 200ms쯤까지입니다([지우기 처리](#지우기-처리)). 그래도 그 기록 줄은 씁니다. 훅 스크립트는 기록하기에 필요한 것만 가져오고 네트워크와 SQLite 모듈은 불러오기에서만 읽으므로, 기록만 하는 훅은 빨리 뜹니다. 12단계는 인터프리터가 뜨는 시간까지 넣어 훅 전체를 밖에서 잽니다(REQ-011, REQ-034).
+
+잠금 해제는 훅 기한 뒤에도 05의 별도 다시 시도를 씁니다. 해제 하나가 훅을 약 1초까지, 갱신 스레드도 기다리는 갱신 잠금은 약 2초까지 늘릴 수 있습니다.
 
 ### 세션 시작 훅 (API-001)
 
@@ -353,7 +355,7 @@ Claude Haiku 5.5의 더 높은 가격을 정하는 프롬프트 길이는 캐시
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | 기억 작업 프로세스. 턴 끝 훅과 세션 끝 훅은 있는지만 확인 | 정리, 통합, 토큰 세기(SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | 프롬프트 훅, 기억 작업 프로세스, `search` | 임베딩 |
-| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039). 빈 값은 설정하지 않은 것과 같고, `~`를 푼 뒤에도 절대 경로가 아니면 그 프로세스에서 기억이 꺼지고 훅은 아무것도 쓰지 않습니다. `status`, `purge`, `repair`를 포함한 모든 명령을 `configuration-invalid`와 `data.field` `CORTHEX_MEMORY_HOME`으로 거절하며, `status`도 거절의 `say`로 이유를 말합니다. 어느 명령도 기본 폴더로 돌아가지 않습니다 |
+| `CORTHEX_MEMORY_HOME` | 모든 프로세스 | `~/.corthex/corthex-memory/` 대신 쓸 기억 폴더(SPEC-039). 빈 값은 설정하지 않은 것과 같고, `~`를 푼 뒤에도 절대 경로가 아니면 그 프로세스에서 기억이 꺼지고 훅은 아무것도 쓰지 않습니다. `status`, `purge`, `repair`를 포함한 모든 명령을 `configuration-invalid`와 `data.field` `CORTHEX_MEMORY_HOME`으로 거절하며, `status`도 거절의 `say`로 이유를 말합니다. 어느 명령도 기본 폴더로 돌아가지 않습니다. 이 폴더는 로컬 디스크에 둡니다(05). |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | API를 부르는 프로세스 | API 대신 쓸 시험 서버: `https://` 주소, 또는 `localhost`, `127.0.0.1`, `[::1]`에 한해 `http://`. 다른 값은 무시함. 설정되어 있으면 기억 상태가 보여 줌 |
 | `CLAUDE_CODE_REMOTE` | 모든 프로세스 | 설정이 달리 말하지 않으면, `true`일 때 임시 기기(SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | 훅 | 어느 도구가 훅을 돌리는지 |

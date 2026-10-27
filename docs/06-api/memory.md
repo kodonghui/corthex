@@ -110,7 +110,7 @@ One script, `scripts/hook.py`, serves the four hooks, with the hook's name as it
 ```
 
 - The commands try `python3`, then `python`, then `py -3`, and `commandWindows` tries `python`, then `py -3`, as in 0.1.0, whose `windows-hook-check` workflow runs them on Windows. A hook always exits with 0, so a later interpreter runs only when an earlier one is missing.
-- The host timeouts only stop a hook that hangs; each hook keeps its own, shorter deadline. Claude Code gives SessionEnd hooks 1.5 seconds in all, and a plugin's `timeout` does not raise that budget (documented); Codex shortens a long SessionEnd timeout (observed: 10 to 3 seconds). The session end hook's 500 ms fits both.
+- The host timeouts only stop a hook that hangs; each hook keeps its own, shorter deadline. Claude Code gives SessionEnd hooks 1.5 seconds in all, and a plugin's `timeout` does not raise that budget (documented); Codex shortens a long SessionEnd timeout (observed: 10 to 3 seconds). The session end hook's 500 ms fits both. In a rare release failure, the session end hook can exceed Claude Code's 1.5 seconds and the host terminates it; only a lease left for takeover after its expiry remains.
 - `additionalContextLimit` is Codex's limit, in tokens, on the context a hook adds. Claude Code moves added context of more than 10,000 characters into a file (documented); the start summary stays under 8,000 bytes and a recall block under 600 tokens, so both stay inline in both hosts.
 - Not used: StopFailure, which only Claude Code has and which does not wait for its hook; a turn that ends in an API error keeps its prompt recorded without an answer. SubagentStop and the other subagent events, since subagent turns are not recorded (SPEC-003). PreCompact and PostCompact, since compaction summaries are not recorded. The tool events, since tool calls are not recorded.
 
@@ -215,6 +215,8 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
 Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 200 ms for 512 KB as measured ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+
+Lock release has the separate retry in stage 05 even after the hook deadline: each release can extend the hook by up to about one second, or about two seconds for a refreshed lease that also waits for its heartbeat thread.
 
 ### Session start hook (API-001)
 
@@ -353,7 +355,7 @@ The prompt length that decides Claude Haiku 5.5's higher prices counts all input
 | --- | --- | --- |
 | `CORTHEX_MEMORY_ANTHROPIC_API_KEY` | the memory worker; the end-of-turn and session end hooks only check that it is there | Curation, consolidation and token counts (SPEC-031) |
 | `CORTHEX_MEMORY_OPENAI_API_KEY` | the prompt hook, the memory worker and `search` | Embeddings |
-| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039); empty is unset; after `~` expansion it must be absolute, otherwise memory is off in that process and hooks write nothing. Every command, including `status`, `purge` and `repair`, is refused with `configuration-invalid` and `data.field` `CORTHEX_MEMORY_HOME`; the refusal's `say` explains why, including for `status`. No command falls back to the default folder |
+| `CORTHEX_MEMORY_HOME` | every process | The memory store's folder instead of `~/.corthex/corthex-memory/` (SPEC-039); empty is unset; after `~` expansion it must be absolute, otherwise memory is off in that process and hooks write nothing. Every command, including `status`, `purge` and `repair`, is refused with `configuration-invalid` and `data.field` `CORTHEX_MEMORY_HOME`; the refusal's `say` explains why, including for `status`. No command falls back to the default folder. Keep this folder on a local disk (stage 05). |
 | `CORTHEX_MEMORY_ANTHROPIC_BASE_URL`, `CORTHEX_MEMORY_OPENAI_BASE_URL` | the processes that call the APIs | A test server in place of the API: an `https://` address, or `http://` for `localhost`, `127.0.0.1` or `[::1]` only; another value is ignored. The memory status shows when one is set |
 | `CLAUDE_CODE_REMOTE` | every process | `true` makes the device temporary, unless the configuration says otherwise (SPEC-011) |
 | `CLAUDECODE`, `PLUGIN_ROOT` | the hooks | Which host runs the hook |
