@@ -663,7 +663,7 @@ OpenAI's errors are given the same names: 400 `invalid_request_error`, 401 `auth
 
 Redaction (SPEC-004) runs in this order on each prompt and final answer before it is recorded, on each search request before it is embedded, and on each request document before it is sent:
 
-1. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB.
+1. First replace unpaired surrogates with U+FFFD, preserving valid pairs as their Unicode scalar; normalize environment values the same way and count byte sizes in this normalized UTF-8 text. Cut the text at a character boundary to 520 KB. The 8 KB past the entry limit mean that a secret which this cut splits lies wholly past the last cut, unless it is longer than 8 KB.
 2. Private spans: from each `<private>` to the next `</private>`, found without regard to ASCII case, or to the end of the text when none follows, become `[redacted:private]`.
 3. Private key blocks: from a line that begins `-----BEGIN` and names a private key, to its `-----END` line or to the end of the text, become `[redacted:private-key]`. The pattern is in the list below.
 4. The exact values of the two memory keys become `[redacted:memory-key]`, and the values of environment variables whose names hold `KEY`, `TOKEN`, `SECRET` or `PASSWORD`, in any case, become `[redacted:environment]`: values of 12 characters or more, the longest first.

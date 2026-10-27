@@ -12,6 +12,7 @@ ENTRY_BYTES = 512 * 1024
 WINDOW_BYTES = 520 * 1024
 MEMORY_KEYS = ("CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KEY")
 SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.IGNORECASE | re.ASCII)
+SURROGATE = re.compile(r"[\ud800-\udfff]")
 PRIVATE = re.compile(r"<private>[\s\S]*?(?:</private>|\Z)", re.IGNORECASE | re.ASCII)
 VALUE = r'''"[^"\r\n]{1,512}"|'[^'\r\n]{1,512}'|[^\s"',;]{1,512}'''
 SECRET_VALUE = (r'''"(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'''
@@ -41,6 +42,13 @@ class Redacted:
     cut: object = None
 
 
+def _unicode(text):
+    # Keep ordinary scalar text fast; preserve pairs and replace lone units.
+    if not SURROGATE.search(text):
+        return text
+    return text.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+
+
 def _clip(text, limit):
     data = text.encode("utf-8")
     return data[:limit].decode("utf-8", "ignore"), len(data)
@@ -49,7 +57,12 @@ def _clip(text, limit):
 def _environment(text, environment):
     values = {}
     for name, value in environment.items():
-        if not isinstance(name, str) or not isinstance(value, str) or len(value) < 12:
+        if not isinstance(name, str) or not isinstance(value, str):
+            continue
+        if name not in MEMORY_KEYS and not SECRET_NAME.search(name):
+            continue
+        value = _unicode(value)
+        if len(value) < 12:
             continue
         if name in MEMORY_KEYS:
             values[value] = "memory-key"
@@ -64,7 +77,8 @@ def redact(text, environment=None):
     """Return redacted text and optional original bytes; never catch an error."""
     if not isinstance(text, str):
         raise TypeError("text must be a string")
-    # 1. Preserve a guard window beyond the final entry limit.
+    # 1. Normalize lone surrogates before byte counts and the guard window.
+    text = _unicode(text)
     text, original = _clip(text, WINDOW_BYTES)
     cut = original > WINDOW_BYTES
     # 2–3. Private spans and key blocks precede all exact-value/pattern passes.

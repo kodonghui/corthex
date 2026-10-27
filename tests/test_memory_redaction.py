@@ -164,8 +164,35 @@ class MemoryRedactionTest(StoreCase):
                 redaction.redact(random_text(32), {})
         with self.assertRaises(TypeError):
             redaction.redact(None, {})
-        with self.assertRaises(UnicodeEncodeError):
-            redaction.redact("\ud800", {})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_tc028_lone_surrogates_are_normalized_before_utf8_cuts(self):
+        cases = [("\ud800", "\ufffd"), ("\udfff", "\ufffd"),
+                 ("a\ud800b\udc00c", "a\ufffdb\ufffdc"),
+                 ("\ud800\ud800\udc00", "\ufffd\U00010000"),
+                 ("\ud83d\ude42", "\U0001f642"), ("가\U0001f642", "가\U0001f642")]
+        before = self.snapshot()
+        for source, expected in cases:
+            result = redaction.redact(source, {})
+            self.assertEqual(result.text, expected)
+            self.assertIsNone(result.cut)
+            result.text.encode("utf-8")
+        for limit in (redaction.ENTRY_BYTES, redaction.WINDOW_BYTES):
+            source = "x" * (limit - 1) + "\ud800"
+            result = redaction.redact(source, {})
+            self.assertEqual(result.cut, limit + 2)
+            self.assertLessEqual(len(result.text.encode("utf-8")), redaction.ENTRY_BYTES)
+            self.assertNotIn("\ufffd", result.text)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_tc025_environment_matching_uses_the_same_surrogate_normalization(self):
+        prefix = random_text(24)
+        raw, normalized = prefix + "\ud800", prefix + "\ufffd"
+        environment = {"DEPLOY_TOKEN": raw, redaction.MEMORY_KEYS[0]: normalized}
+        before = self.snapshot()
+        result = redaction.redact(raw + " " + normalized, environment)
+        self.assertTrue(result.text == "[redacted:memory-key] [redacted:memory-key]")
+        self.assertFalse(prefix in result.text)
         self.assertEqual(self.snapshot(), before)
 
     def test_tc028_utf8_cuts_are_character_boundaries_and_report_original_bytes(self):
