@@ -819,9 +819,9 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | `restored` | A backup was moved back (stage 05) | The file is whole again |
 | `redaction` | Redaction raised an error (SPEC-004) | The text is neither written nor sent |
 | `worker-start` | The memory worker could not be started (SPEC-013) | The next trigger tries again |
-| `store-newer` | The memory store's format is newer than the release (SPEC-039) | Nothing is read or written |
-| `store-damaged` | The store record is missing or damaged, and no backup can be restored (TBL-001) | Nothing is read or written until `repair` |
 | `configuration-invalid` | The memory configuration fails its schema | Memory is off on the device |
+
+`store-newer` and `store-damaged` (no readable backup) are not written to the failure log; hooks and the memory worker stop before any other reads or writes, and commands return these codes.
 
 ### Model calls
 

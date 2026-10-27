@@ -144,7 +144,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 10단계�
 | API-032 | `ok`, `confirm-stale` | TASK-025 |
 | 모든 명령 | `usage`, `no-store`, `store-newer`, `store-damaged`, `configuration-invalid`, `no-project-list`, `not-in-project`, `not-enabled`, `lock-busy`, `internal` | TASK-018 |
 | 모든 모델 호출 | `invalid_request_error`, `authentication_error`, `billing_error`, `permission_error`, `not_found_error`, `conflict_error`, `request_too_large`, `rate_limit_error`, `api_error`, `timeout_error`, `overloaded_error`, `insufficient_quota`, `network`, `timeout` | TASK-032 |
-| 실패 기록의 훅과 기억 작업 프로세스 | `bad-input`, `unknown-host`, `no-project-list`, `project-clash`, `lock-busy`, `deadline`, `damaged-line`, `future-entry`, `restored`, `redaction`, `worker-start`, `store-newer`, `store-damaged`, `configuration-invalid` | TASK-002 (`damaged-line`, `restored`); TASK-004 (`store-newer`, `store-damaged`, `configuration-invalid`); TASK-006 (`no-project-list`, `project-clash`); TASK-008 (`lock-busy`); TASK-009 (`bad-input`, `unknown-host`); TASK-010 (`deadline`, `redaction`); TASK-015 (`worker-start`); TASK-016 (`future-entry`) |
+| 실패 기록의 훅과 기억 작업 프로세스 | `bad-input`, `unknown-host`, `no-project-list`, `project-clash`, `lock-busy`, `deadline`, `damaged-line`, `future-entry`, `restored`, `redaction`, `worker-start`, `configuration-invalid` | TASK-002 (`damaged-line`, `restored`); TASK-004 (`configuration-invalid`); TASK-006 (`no-project-list`, `project-clash`); TASK-008 (`lock-busy`); TASK-009 (`bad-input`, `unknown-host`); TASK-010 (`deadline`, `redaction`); TASK-015 (`worker-start`); TASK-016 (`future-entry`) |
 
 모든 명령이 가질 수 있는 코드는 TASK-018에서, 코드마다 어느 명령에 해당하는지 적은 표를 거쳐 모든 명령에 대해 시험합니다. 뒤에 오는 명령도 그 표를 씁니다.
 

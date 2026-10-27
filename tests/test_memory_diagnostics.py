@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-from test_memory_api import errors
+from test_memory_api import errors, section, table
 from test_memory_store import API, SCRIPTS, StoreCase
 from memory_lib import base, configuration, diagnostics, files, locks, store
 
@@ -131,19 +131,81 @@ class MemoryDiagnosticsTest(StoreCase):
         self.assertEqual(self.failures()[-1]["error"], "restored")
         self.assertEqual(set(self.failures()[-1]), {"at", "step", "error"})
 
-    def test_tc013_blocked_store_logs_wait_for_the_spec_decision(self):
-        # TC-011 requests a failure line, but TBL-001 and stage 06 prohibit any
-        # other store I/O here. Keep this subcase blocked pending clarification.
+    def test_tc011_store_gate_codes_are_command_results_and_never_logged(self):
+        api = (API / "memory.md").read_text(encoding="utf-8")
+        failures = {row[0].strip("`") for row in table(section(api, "### Hooks and the memory worker"))}
+        commands = {row[0].strip("`") for row in table(section(api, "### Command results"))}
+        self.assertEqual(diagnostics.CODES, failures)
+        before = self.snapshot()
+        for code in ("store-newer", "store-damaged"):
+            self.assertIn(code, commands)
+            self.assertIn(code, self.result_schema["$defs"]["any-command-codes"]["enum"])
+            self.assertNotIn(code, failures)
+            # Even after a store recovers, these codes cannot be retroactively
+            # appended, whether given as a string or a structured gate error.
+            for error in (code, store.StoreUnavailable(code)):
+                self.assertIsNone(diagnostics.error_kind(error))
+                self.assertFalse(self.logger.failure(error, "record", time.monotonic() + 2, when=self.when))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_tc011_blocked_store_reads_only_its_record_and_writes_nothing(self):
         path = self.root / "store.json"
-        for broken in (b'{"format":2}', b'{"format":1,"migrating":{}}', b"{", None):
+        backup = self.root / "store.json.bak"
+        (self.root / "configuration.json").write_bytes(b"{}\n")
+        (self.root / "logs/failures-2026-10-27.jsonl").write_bytes(b"preexisting failure log\n")
+        (self.root / "logs/hooks-2026-10-27.jsonl").write_bytes(b"preexisting timing log\n")
+        readable = base.json_bytes(self.header, "TBL-001")
+        cases = [(b'{"format":2}', readable, "store-newer"),
+                 (b'{"format":1,"migrating":{}}', readable, "store-newer"),
+                 (b"{", None, "store-damaged"), (b"{", b"{", "store-damaged"),
+                 (None, None, "store-damaged"), (None, b"{", "store-damaged")]
+        for broken, saved, code in cases:
             if broken is None:
-                path.unlink()
+                path.unlink(missing_ok=True)
             else:
                 path.write_bytes(broken)
+            if saved is None:
+                backup.unlink(missing_ok=True)
+            else:
+                backup.write_bytes(saved)
             before = self.snapshot()
-            self.assertFalse(self.logger.failure("store-newer", "record", time.monotonic() + 2, when=self.when))
-            self.assertFalse(self.logger.timing("prompt", "codex", 1, "error", time.monotonic() + 2, when=self.when))
+            read = Path.read_bytes
+            accessed = []
+            def observed(target):
+                self.assertIn(target, (path, backup))
+                accessed.append(target)
+                return read(target)
+            with mock.patch.object(Path, "read_bytes", observed), mock.patch.object(locks.Lock, "acquire") as acquire:
+                with self.assertRaises(store.StoreUnavailable) as caught:
+                    self.memory.configuration()
+                self.assertEqual(caught.exception.code, code)
+                self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 2, when=self.when))
+                self.assertFalse(self.logger.timing("prompt", "codex", 1, "error", time.monotonic() + 2, when=self.when))
+                acquire.assert_not_called()
+            self.assertTrue(accessed)
+            self.assertEqual(accessed[0], path)
             self.assertEqual(self.snapshot(), before)
+
+    def test_tc011_readable_store_backup_is_restored_before_logging_restored(self):
+        path = self.root / "store.json"
+        backup = self.root / "store.json.bak"
+        (self.root / "configuration.json").write_bytes(b"{}\n")
+        for broken in (None, b"{"):
+            if broken is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(broken)
+            backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
+            notices = []
+            def report(code, count):
+                self.assertEqual(self.memory.record(), self.header)
+                self.assertFalse(backup.exists())
+                notices.append((code, count))
+                self.assertTrue(self.logger.failure(code, "restore", time.monotonic() + 2, when=self.when))
+            self.assertEqual(self.memory.configuration(report).document, {})
+            self.assertEqual(notices, [("restored", None)])
+            self.assertEqual(self.failures()[-1]["error"], "restored")
+        self.assertEqual(len(self.failures()), 2)
 
     def test_tc013_missing_store_or_logs_never_creates_a_directory(self):
         absent = self.folder / "absent"

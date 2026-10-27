@@ -19,7 +19,7 @@ STEPS = {"record", "recall", "summary", "trigger", "curate", "consolidate", "emb
 OUTCOMES = {"ok", "left-out", "no-answer", "lock-busy", "deadline", "error"}
 CODES = {"bad-input", "unknown-host", "no-project-list", "project-clash", "lock-busy",
          "deadline", "damaged-line", "future-entry", "restored", "redaction", "worker-start",
-         "store-newer", "store-damaged", "configuration-invalid"}
+         "configuration-invalid"}
 EXCEPTIONS = {value: name for name, value in vars(builtins).items()
               if isinstance(value, type) and issubclass(value, Exception) and value.__name__ == name}
 PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,59}\Z")
@@ -34,7 +34,8 @@ def error_kind(error):
     if isinstance(error, locks.LockBusy):
         return "lock-busy"
     if isinstance(error, store.StoreUnavailable):
-        return error.code if choice(error.code, CODES) else None
+        # Store gate codes are returned by commands, never failure-log entries.
+        return None
     if isinstance(error, Exception):
         # A custom class name can itself contain private text. Use its nearest
         # built-in base class, never its name, args, filename, or provider text.
