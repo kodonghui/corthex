@@ -1,4 +1,4 @@
-"""TC-007–008: recovery leases with real processes and caller deadlines."""
+"""TC-007/318: recovery leases with real processes and caller deadlines."""
 
 import json
 import os
@@ -61,7 +61,7 @@ class MemoryReadingTest(unittest.TestCase):
         backup.write_bytes(b'{"seq":1}\n')
         return path, backup, locks.Lock(self.folder / "record.lock", "raw", self.device)
 
-    def test_tc008_busy_process_blocks_recovery_until_the_recording_deadline(self):
+    def test_tc318_busy_process_blocks_recovery_until_the_recording_deadline(self):
         path, backup, lease = self.prepare()
         connection, process = self.start(fixtures.holder, str(lease.path), self.device)
         self.assertTrue(self.receive(connection))
@@ -86,7 +86,7 @@ class MemoryReadingTest(unittest.TestCase):
         self.assertFalse(backup.exists())
         self.assertFalse(lease.path.exists())
 
-    def test_tc008_waiting_read_rechecks_a_real_writer_before_restoring(self):
+    def test_tc318_waiting_read_rechecks_a_real_writer_before_restoring(self):
         path, backup, lease = self.prepare()
         connection, process = self.start(waiting_writer, str(self.folder), self.device)
         self.assertEqual(self.receive(connection), "ready")
@@ -105,7 +105,7 @@ class MemoryReadingTest(unittest.TestCase):
         self.assertFalse(backup.exists(), "the completed rewrite cleans up its backup")
         self.assertEqual(notices, [])
 
-    def test_tc008_two_real_readers_restore_once_and_both_read_the_primary(self):
+    def test_tc318_two_real_readers_restore_once_and_both_read_the_primary(self):
         path, backup, lease = self.prepare()
         barrier = self.context.Barrier(3)
         children = [self.start(recovery_reader, barrier, str(self.folder), self.device) for _ in range(2)]
@@ -145,7 +145,7 @@ class MemoryReadingTest(unittest.TestCase):
         process.join(10)
         self.assertEqual(process.exitcode, 0)
 
-    def test_tc008_jsonl_and_custom_parser_share_the_public_recovery_path(self):
+    def test_tc318_jsonl_and_custom_parser_share_the_public_recovery_path(self):
         path, backup, lease = self.prepare()
         self.assertEqual(reading.read_jsonl(path, lease, time.monotonic() + 1), [{"seq": 1}])
         path.unlink()
@@ -159,7 +159,7 @@ class MemoryReadingTest(unittest.TestCase):
             self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1), {"seq": 3})
             acquire.assert_not_called()
 
-    def test_tc008_permission_and_expired_deadline_never_move_the_backup(self):
+    def test_tc318_permission_and_expired_deadline_never_move_the_backup(self):
         path, backup, lease = self.prepare()
         with mock.patch.object(files, "read_json", side_effect=PermissionError("made-up")), \
                 mock.patch.object(lease, "acquire") as acquire:
@@ -172,7 +172,7 @@ class MemoryReadingTest(unittest.TestCase):
         self.assertEqual(backup.read_bytes(), b'{"seq":1}\n')
         self.assertFalse(lease.path.exists())
 
-    def test_tc008_windows_read_retries_share_the_operation_deadline(self):
+    def test_tc318_windows_read_retries_share_the_operation_deadline(self):
         for phase in ("primary", "backup", "locked-primary", "locked-backup", "recheck"):
             with self.subTest(phase=phase):
                 path, backup, lease = self.prepare()
