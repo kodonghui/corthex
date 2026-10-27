@@ -124,6 +124,8 @@ def _restore(source, target, snapshot):
 
 
 class Lock:
+    """Stage 05 lease; its lock path must be inside the memory folder."""
+
     def __init__(self, path, kind, device):
         if kind not in POLICIES or not re.fullmatch(r"d_[0-9a-hjkmnp-tv-z]{12}", device):
             raise ValueError("invalid lock kind or device")
@@ -287,29 +289,29 @@ class Lock:
                 time.sleep(min(0.005, left))
 
     def release(self, report=None):
-        """Release with its own one-second retry; report failure, never raise it.
+        """Retry cleanup for one second; report cleanup failure without raising.
 
         A leftover lease expires normally. A completed protected operation keeps
         its result even if cleanup fails. Reports contain only the class name.
+        Releasing another process's lease is misuse and raises LostLock.
         """
-        failure = None
         if self.pid != os.getpid():
             # Do not enter mutexes inherited from vanished parent threads.
-            failure = LostLock()
-        else:
+            raise LostLock()
+        failure = None
+        try:
+            self._stop.set()
+            if self._thread:
+                self._thread.join(timeout=1)
+            self._release(time.monotonic() + 1)
+        except Exception as error:
+            failure = error
+        finally:
+            self.token = None
             try:
-                self._stop.set()
-                if self._thread:
-                    self._thread.join(timeout=1)
-                self._release(time.monotonic() + 1)
+                self._unreserve()
             except Exception as error:
                 failure = error
-            finally:
-                self.token = None
-                try:
-                    self._unreserve()
-                except Exception as error:
-                    failure = error
         if failure is not None and report is not None:
             try:
                 report(type(failure).__name__, None)
