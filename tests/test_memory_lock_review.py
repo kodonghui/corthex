@@ -204,3 +204,57 @@ class MemoryLockReviewTest(unittest.TestCase):
         with self.new_lock("a.lock").held(time.monotonic() + 1):
             with self.new_lock("Z.lock").held(time.monotonic() + 1):
                 pass
+
+    def test_tc008_held_forwards_cleanup_failure_without_hiding_the_body_error(self):
+        lease, notices = self.new_lock(), []
+        rename = locks.os.rename
+        def sharing(source, target):
+            if Path(source) == lease.path:
+                raise PermissionError("made-up release sharing failure")
+            return rename(source, target)
+        with mock.patch.object(locks.os, "rename", sharing):
+            with self.assertRaises(KeyError):
+                with lease.held(time.monotonic() + 2, report=lambda *n:notices.append(n)):
+                    raise KeyError("made-up body failure")
+        self.addCleanup(lease.path.unlink)
+        self.assertEqual(notices, [("PermissionError", None)])
+        self.assertTrue(lease.path.exists())
+
+    def test_tc007_displaced_release_is_quiet_and_preserves_the_new_owner(self):
+        lease, notices = self.new_lock(), []
+        lease.acquire(time.monotonic() + 2)
+        self.addCleanup(lease.release)
+        past = time.time() - 11
+        os.utime(str(lease.path), (past, past))
+        connection, process = self.start(fixtures.holder, str(lease.path), self.device)
+        self.assertTrue(self.receive(connection))
+        data = lease.path.read_bytes()
+        try:
+            lease.release(lambda *n:notices.append(n))
+            self.assertEqual(notices, [])
+            self.assertEqual(lease.path.read_bytes(), data)
+        finally:
+            connection.send("check")
+            self.assertEqual(self.receive(connection), "changed")
+            process.join(10)
+        self.assertEqual(process.exitcode, 0)
+
+    @unittest.skipUnless(os.name == "nt", "Windows lock aliases ignore case")
+    def test_tc008_windows_same_path_with_another_case_is_an_order_error(self):
+        with self.new_lock("A.lock").held(time.monotonic() + 1):
+            with self.assertRaises(locks.LockOrderError):
+                with self.new_lock("a.lock").held(time.monotonic() + 0.05, wait=False):
+                    pass
+
+    def test_tc318_public_reader_recovers_a_damaged_primary(self):
+        path, lease = self.folder / "record.json", self.new_lock()
+        path.write_bytes(b"{")
+        backup = path.with_name(path.name + ".bak")
+        backup.write_bytes(b'{"seq":1}\n')
+        notices = []
+        self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1,
+                                          lambda *n:notices.append(n)), {"seq":1})
+        self.assertEqual(path.read_bytes(), b'{"seq":1}\n')
+        self.assertFalse(backup.exists())
+        self.assertFalse(lease.path.exists())
+        self.assertEqual(notices, [("restored", None)])
