@@ -85,6 +85,88 @@ class MemoryDiagnosticsTest(StoreCase):
         if os.name != "nt":
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def diagnostic_transition(self, stage, opportunistic=True):
+        for name in ("failures", "hooks"):
+            logger = diagnostics.Diagnostics(self.memory)
+            now, offset, attempts = memory_clock.now, [0.0], []
+            deadline = now() + 2
+            read_gate, create = logger.read_gate, locks.Lock._create
+            def gated(*args, **kwargs):
+                value = read_gate(*args, **kwargs)
+                if stage == "gate":
+                    offset[0] = 3.0
+                return value
+            def creating(lock):
+                attempts.append(lock.path.name)
+                value = create(lock)
+                if stage == "acquired":
+                    offset[0] = 3.0
+                return value
+            before = self.snapshot()
+            with mock.patch.object(memory_clock, "now", side_effect=lambda: now()+offset[0]), \
+                    mock.patch.object(logger, "read_gate", gated), \
+                    mock.patch.object(locks.Lock, "_create", creating):
+                if name == "failures":
+                    result = logger.failure("deadline", "record", deadline, hook="end-of-turn",
+                                            host="codex", opportunistic=opportunistic, when=self.when)
+                else:
+                    result = logger.timing("end-of-turn", "codex", 1, "deadline", deadline,
+                                           opportunistic=opportunistic, when=self.when)
+            self.assertEqual(result, opportunistic)
+            self.assertEqual(attempts, [name+".lock"] if opportunistic else [])
+            if opportunistic:
+                path = self.root / ("logs/"+name+"-2026-10-27.jsonl")
+                rows = files.read_jsonl(path)
+                self.assertEqual(rows[-1].get("error", rows[-1].get("outcome")),
+                                 "deadline")
+            else:
+                self.assertEqual(self.snapshot(), before)
+
+    def test_tc321_expiry_during_the_diagnostic_gate_still_attempts_free_locks(self):
+        self.diagnostic_transition("gate")
+
+    def test_tc321_acquired_diagnostic_locks_finish_one_line_after_expiry(self):
+        self.diagnostic_transition("acquired")
+
+    def test_tc321_ordinary_logger_callers_keep_their_strict_deadline(self):
+        self.diagnostic_transition("gate", opportunistic=False)
+
+    def test_tc321_gate_expiry_tries_a_busy_lock_once_without_waiting(self):
+        parent, child = multiprocessing.Pipe()
+        worker = multiprocessing.Process(target=hold_logs, args=(child, str(self.root), self.header["device"]))
+        worker.start()
+        try:
+            self.assertTrue(parent.poll(10))
+            self.assertTrue(parent.recv())
+            now, offset, attempts = memory_clock.now, [0.0], []
+            deadline, read_gate = now()+2, self.logger.read_gate
+            original_try = locks.Lock.try_once
+            def gated(*args, **kwargs):
+                value = read_gate(*args, **kwargs)
+                offset[0] = 3.0
+                return value
+            def tried(lock):
+                attempts.append(lock.path.name)
+                return original_try(lock)
+            before = self.snapshot()
+            with mock.patch.object(memory_clock, "now", side_effect=lambda: now()+offset[0]), \
+                    mock.patch.object(self.logger, "read_gate", gated), \
+                    mock.patch.object(locks.Lock, "try_once", tried), \
+                    mock.patch.object(locks.Lock, "acquire", side_effect=AssertionError("must not wait")):
+                self.assertFalse(self.logger.failure("deadline", "record", deadline,
+                                                     hook="end-of-turn", opportunistic=True))
+            self.assertEqual(attempts, ["failures.lock"])
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            parent.send(True)
+            worker.join(10)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+            parent.close()
+            child.close()
+        self.assertEqual(worker.exitcode, 0)
+
     def test_tc013_never_serializes_error_text_filename_or_generated_key(self):
         marker = "made-up-private-" + secrets.token_hex(16)
         generated_key = "sk-" + secrets.token_hex(24)

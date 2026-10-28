@@ -8,6 +8,7 @@ logs directory. A blocked store produces no diagnostic write (TBL-001).
 import builtins
 import math
 import re
+from contextlib import contextmanager
 
 from . import base, configuration, files, locks, projects, store
 from . import clock
@@ -54,6 +55,25 @@ def error_kind(error):
 
 def choice(value, allowed):
     return isinstance(value, str) and value in allowed
+
+
+@contextmanager
+def _log_lease(lock, deadline, opportunistic, report):
+    if opportunistic:
+        # A hook may cross its deadline during the header read or this create.
+        # Try once before any optional waiting, never reclaiming a late lock.
+        try:
+            lock.try_once()
+        except locks.LockBusy:
+            if clock.now() >= deadline:
+                raise
+            lock.acquire(deadline)
+    else:
+        lock.acquire(deadline)
+    try:
+        yield
+    finally:
+        lock.release(report=report)
 
 
 class Diagnostics:
@@ -119,10 +139,11 @@ class Diagnostics:
             lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
             def report_release(error, count):
                 self.failure(error, "record", deadline, hook=record.get("hook"),
-                             host=record.get("host"))
-            with lock.held(deadline, report=report_release if name != "failures" else None):
+                             host=record.get("host"), opportunistic=opportunistic)
+            with _log_lease(lock, deadline, opportunistic,
+                            report_release if name != "failures" else None):
                 def guard():
-                    if clock.now() >= deadline:
+                    if not opportunistic and clock.now() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
                     # Never read or restore the header under a log lease.
