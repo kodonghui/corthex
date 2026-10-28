@@ -189,7 +189,7 @@ class RawLogTest(StoreCase):
             result = self.log.append("prompt", prepared, diagnostic_deadline=time.monotonic() + 2, when=WHEN)
         self.assertEqual(calls.call_count, 1)
         self.assertEqual(result.outcome, "ok")
-        self.assertNotIn(generated.encode(), self.log.path.read_bytes())
+        self.assertTrue(generated.encode() not in self.log.path.read_bytes())
         self.assertIn("[redacted:openai-key]", self.entries()[0]["text"])
 
     def test_tc030_512k_utf8_cut_and_pre_redaction_size(self):
@@ -222,25 +222,63 @@ class RawLogTest(StoreCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(self.log.path.stat().st_mode), 0o600)
 
-    def test_tc030_many_pending_markers_keep_the_recording_budget(self):
-        for turn in range(1, 101):
+    def test_tc030_new_turns_and_known_marker_do_not_list_pending_markers(self):
+        for turn in range(1, 1001):
             (self.log.markers / ("20261027T091203Z.codex-" + "0"*16 + "." + str(turn))).write_bytes(b"")
-        prepared = raw_log.prepare("made-up new turn", {})
-        clock, original = [time.monotonic()], locks.Lock.check
-        def metadata_cost(lease):
-            result = original(lease)
-            if lease.path == self.log.path.with_suffix(".lock"):
-                clock[0] += 0.002
-            return result
-        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
-                mock.patch.object(locks.Lock,"check",metadata_cost):
-            result = self.log.append("prompt", prepared, diagnostic_deadline=clock[0]+3,when=WHEN)
-        self.assertEqual(result.outcome,"ok")
-        self.assertEqual(self.entries(),[result.entry])
-        self.assertEqual(len(self.markers()),101)
+        with mock.patch.object(raw_log.os,"listdir",wraps=os.listdir) as listed:
+            prompt = self.record()
+            joined = self.record("answer")
+            orphan = self.record("answer")
+        listed.assert_not_called()
+        self.assertEqual([r.outcome for r in (prompt,joined,orphan)],["ok"]*3)
+        self.assertEqual([r.entry["turn"] for r in (prompt,joined,orphan)],[1,1,3])
+        self.assertEqual(len(self.markers()),1002)
+
+    def test_tc030_missing_or_unknown_original_marker_lists_once(self):
+        self.record()
+        original = self.markers()[0]
+        with mock.patch.object(raw_log.os,"listdir",wraps=os.listdir) as listed:
+            self.record("answer")
+            self.record("answer",stop_hook_active=True)
+        self.assertEqual(listed.call_count,1)  # The second answer knows only turn 1.
+        original.unlink()
+        with mock.patch.object(raw_log.os,"listdir",wraps=os.listdir) as listed:
+            result = self.record("answer",stop_hook_active=True)
+        self.assertEqual(listed.call_count,1)
+        self.assertEqual((result.outcome,result.entry["turn"]),("ok",1))
+        self.assertEqual(len(self.markers()),1)
+
+    def test_tc030_exclusive_marker_creation_accepts_an_existing_name(self):
+        result = self.record()
+        marker = self.markers()[0]
+        before = marker.stat().st_mtime_ns
+        self.log._marker(result.entry,lambda:None,time.monotonic()+1)
+        self.assertEqual(marker.stat().st_mtime_ns,before)
+
+    def test_tc030_fallback_marker_scan_checks_deadline_per_name(self):
+        self.record()
+        self.markers()[0].unlink()
+        prepared = raw_log.prepare("made-up answer",{})
+        clock, seen = [time.monotonic()], []
+        def names(folder):
+            for number in range(1000):
+                seen.append(number)
+                clock[0] += 0.01
+                yield "unrelated."+str(number)
+        with mock.patch.object(raw_log.os,"listdir",names), \
+                mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]):
+            result = self.log.append("answer",prepared,diagnostic_deadline=clock[0]+3,when=WHEN)
+        self.assertEqual(result.outcome,"deadline")
+        self.assertIsNotNone(result.entry)
+        self.assertGreater(len(seen),1)
+        self.assertLess(len(seen),10)
+        self.assertEqual(self.markers(),[])
+        self.assertEqual([r["error"] for r in self.failures()],["deadline"])
 
     def test_tc030_token_lost_during_marker_scan_preserves_the_entry_only(self):
-        path, listed = self.log.path.with_suffix(".lock"), Path.iterdir
+        self.record()
+        self.markers()[0].unlink()
+        path, listed = self.log.path.with_suffix(".lock"), os.listdir
         taken = []
         def scan(folder):
             if folder == self.log.markers:
@@ -251,10 +289,10 @@ class RawLogTest(StoreCase):
             return listed(folder)
         prepared = raw_log.prepare("made-up",{})
         prepared = raw_log.Prepared(prepared.text,prepared.cut,time.monotonic()+2)
-        with mock.patch.object(Path,"iterdir",scan):
-            result = self.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3,when=WHEN)
+        with mock.patch.object(raw_log.os,"listdir",scan):
+            result = self.log.append("answer",prepared,diagnostic_deadline=time.monotonic()+3,when=WHEN)
         self.assertEqual(result.outcome,"error")
-        self.assertEqual(self.entries(),[result.entry])
+        self.assertEqual(self.entries()[-1],result.entry)
         self.assertEqual(self.markers(),[])
         self.assertEqual(path.read_bytes(),taken[0])
         self.assertEqual([r["error"] for r in self.failures()],["lost-lock"])
@@ -266,16 +304,45 @@ class RawLogTest(StoreCase):
         self.assertEqual(result.entry["turn"], 1)
         self.assertEqual(len(self.markers()), 1)
 
-    def test_tc029_cut_and_invalid_last_lines_are_skipped_without_guessing(self):
+    def test_tc029_invalid_turn_rows_still_reserve_their_parsed_sequence(self):
         self.record()
         with self.log.path.open("ab") as output:
             output.write(b'{"seq":999}\n{"cut')
         result = self.record("answer", "made-up answer")
-        self.assertEqual(result.entry["seq"], 2)
+        self.assertEqual(result.entry["seq"], 1000)
         self.assertEqual(result.entry["turn"], 1)
         notices = self.failures()
         self.assertEqual([(r["error"],r.get("count")) for r in notices], [("damaged-line",2)])
         self.assertIn(b'{"cut\n', self.log.path.read_bytes())
+
+    def test_tc029_parseable_unterminated_entry_reserves_sequence_not_turn(self):
+        self.record()
+        value = dict(self.entries()[0],seq=7,turn=7)
+        with self.log.path.open("ab") as output:
+            output.write(base.json_bytes(value,"TBL-007",compact=True).rstrip(b"\n"))
+        result = self.record("answer")
+        self.assertEqual((result.entry["seq"],result.entry["turn"]),(8,1))
+
+    def test_tc029_oversized_forget_rewrite_reserves_sequence_not_turn(self):
+        self.record()
+        value = dict(self.entries()[0],seq=8,turn=8,text="\ufffd"*redaction.ENTRY_BYTES)
+        with self.log.path.open("ab") as output:
+            output.write(base.json_bytes(value,"TBL-007",compact=True))
+        prepared = raw_log.Prepared("made-up",None,time.monotonic()+3)
+        result = self.log.append("answer",prepared,diagnostic_deadline=time.monotonic()+4,when=WHEN)
+        self.assertEqual((result.entry["seq"],result.entry["turn"]),(9,1))
+
+    def test_tc029_multiblock_control_character_line_is_read_in_new_blocks(self):
+        # JSON escapes expand this legal 512 KiB text to a 3 MiB row. Reducing
+        # BLOCK exposes repeated suffix scans without a wall-time assertion.
+        value = self.record(text="\x01"*redaction.ENTRY_BYTES).entry
+        self.assertIsNotNone(value)
+        count = self.log.path.stat().st_size
+        self.assertGreater(count,3*1024*1024)
+        prepared = raw_log.Prepared("made-up",None,time.monotonic()+10)
+        with mock.patch.object(raw_log,"BLOCK",1024):
+            result = self.log.append("answer",prepared,diagnostic_deadline=time.monotonic()+11,when=WHEN)
+        self.assertEqual((result.outcome,result.entry["seq"],result.entry["turn"]),("ok",2,1))
 
     def test_tc029_missing_primary_restores_before_assigning_the_next_sequence(self):
         self.record()
@@ -473,7 +540,7 @@ class RawLogTest(StoreCase):
                 return raw_log.Prepared(value.text,value.cut,time.monotonic()-1)
             return value
         with mock.patch.object(raw_log,"prepare",delayed):
-            row = bench.measure(1)["cases"][0]
+            row = bench.measure(1,pending_counts=())["cases"][0]
         self.assertEqual(row["outcomes"],{"lock-busy":1})
         self.assertEqual((row["entries"],row["skipped"]),(0,1))
 
@@ -487,7 +554,7 @@ class RawLogTest(StoreCase):
             with self.subTest(outcome=outcome), mock.patch.object(raw_log,"prepare",remaining), \
                     mock.patch.object(raw_log.RawLog,"append",return_value=raw_log.Recorded(outcome)):
                 with self.assertRaises(bench.MeasurementFailure):
-                    bench.measure(1)
+                    bench.measure(1,pending_counts=())
 
     def test_tc032_session_names_hash_paths_unicode_and_each_host_independently(self):
         for host in ("codex","claude-code"):
@@ -525,7 +592,7 @@ class RawLogTest(StoreCase):
         self.assertEqual((next_entry["seq"],next_entry["turn"]),(2,1))
         self.assertEqual(len(self.markers()),1)
 
-    def test_tc319_expiry_after_acquisition_before_write_is_deadline_not_contention(self):
+    def test_tc031_expiry_after_acquisition_without_entry_is_lock_busy(self):
         prepared = raw_log.prepare("made-up",{})
         clock, acquire = [time.monotonic()], locks.Lock.acquire
         def acquired(lease,*args,**kwargs):
@@ -535,8 +602,42 @@ class RawLogTest(StoreCase):
         with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
                 mock.patch.object(locks.Lock,"acquire",acquired):
             result = self.log.append("prompt",prepared,diagnostic_deadline=clock[0]+5,when=WHEN)
-        self.assertEqual((result.outcome,result.entry),("deadline",None))
+        self.assertEqual((result.outcome,result.entry),("lock-busy",None))
         self.assertFalse(self.log.path.exists())
+        self.assertEqual([r["error"] for r in self.failures()],["lock-busy"])
+
+    def test_tc031_failure_notices_wait_until_the_raw_lease_is_released(self):
+        failure = self.log.logger.failure
+        observed = []
+        def report(*args,**kwargs):
+            observed.append(self.log.path.with_suffix(".lock").exists())
+            return failure(*args,**kwargs)
+        with mock.patch.object(self.log.logger,"failure",report), \
+                mock.patch.object(files,"append_jsonl",side_effect=OSError("made-up")):
+            result = self.record()
+        self.assertEqual(result.outcome,"error")
+        self.assertEqual(observed,[False])
+
+    def test_tc031_oserror_after_deadline_splits_by_returned_entry(self):
+        for after_append in (False,True):
+            with self.subTest(after_append=after_append):
+                prepared = raw_log.prepare("made-up",{})
+                clock = [time.monotonic()]
+                def expired(*args,**kwargs):
+                    clock[0] = prepared.deadline+0.001
+                    raise OSError("made-up private detail")
+                target = self.log if after_append else files
+                name = "_marker" if after_append else "append_jsonl"
+                # Patch only the raw append; diagnostics use the real writer.
+                original = files.append_jsonl
+                def writer(*args,**kwargs):
+                    return expired() if args[2]=="TBL-007" else original(*args,**kwargs)
+                with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
+                        mock.patch.object(target,name,expired if after_append else writer):
+                    result = self.log.append("prompt",prepared,diagnostic_deadline=clock[0]+3,when=WHEN)
+                self.assertEqual(result.outcome,"deadline" if after_append else "lock-busy")
+                self.assertEqual(result.entry is not None,after_append)
+        self.assertEqual([r["error"] for r in self.failures()],["lock-busy","deadline"])
 
     def test_tc319_marker_failure_does_not_erase_a_returned_write_or_log_error_text(self):
         with mock.patch.object(self.log,"_marker",side_effect=PermissionError("made-up private detail")):
