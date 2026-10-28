@@ -70,17 +70,16 @@ class Hook:
 
     def finish(self, outcome):
         late = clock.now() >= self.deadline
-        if late:
-            outcome = "deadline"
+        if outcome == "deadline":
             self.logger.failure("deadline", "record", self.deadline, hook=self.hook,
-                                host=self.host, project=self.project.name, opportunistic=True)
+                                host=self.host, project=self.project.name, opportunistic=late)
         ms = max(0, int((clock.now() - self.started) * 1000))
         self.logger.timing(self.hook, self.host, ms, outcome, self.deadline, opportunistic=late)
 
     def failure(self, error):
-        if clock.now() < self.deadline:
-            self.logger.failure(error, "record", self.deadline, hook=self.hook,
-                                host=self.host, project=self.project.name)
+        self.logger.failure(error, "record", self.deadline, hook=self.hook,
+                            host=self.host, project=self.project.name,
+                            opportunistic=clock.now() >= self.deadline)
         self.finish("error")
 
 
@@ -130,9 +129,6 @@ def run(hook, started, incoming, output):
         if project is None:
             return
         frame = Hook(hook, event, host, memory, config, project, logger, started, deadline)
-        if clock.now() >= deadline:
-            frame.finish("deadline")
-            return
         outcome = process(frame)
         if outcome is not None:
             frame.finish(outcome)
