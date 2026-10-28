@@ -41,6 +41,10 @@ def measure(samples, pending_counts=(0,1000,20000)):
                         break
                 metadata.update(markers=count,marker_setup_ms=round((time.perf_counter()-setup)*1000,3))
             if "control_text_bytes" in metadata:
+                # Resetting seq for this fixture must not reuse an earlier
+                # profile's marker, especially when this append expires.
+                for marker in case.markers():
+                    marker.unlink()
                 value = dict(case.entries()[-1],seq=1,turn=1,text="\x01"*(512*1024))
                 baseline = raw_log.base.json_bytes(value,"TBL-007",compact=True)
                 metadata["tail_bytes"] = len(baseline)

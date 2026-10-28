@@ -89,9 +89,12 @@ class RawLogTest(StoreCase):
         self.log = raw_log.RawLog(self.memory, "sample", "codex", "made-up-session")
         self.context = multiprocessing.get_context("spawn")
 
-    def record(self, kind="prompt", text="made-up text", when=WHEN, **options):
-        prepared = raw_log.prepare(text, {}) if kind in ("prompt", "answer") and text is not None else None
-        return self.log.append(kind, prepared, diagnostic_deadline=time.monotonic() + 3, when=when, **options)
+    def record(self, kind="prompt", text="made-up text", when=WHEN, record_seconds=3, log=None, **options):
+        # Functional shape/sequence fixtures need to reach the assertion even
+        # on slow disks. Deadline tests and benchmarks retain the real 50 ms.
+        with mock.patch.object(raw_log,"RECORD_SECONDS",record_seconds):
+            prepared = raw_log.prepare(text, {}) if kind in ("prompt", "answer") and text is not None else None
+            return (log or self.log).append(kind, prepared, diagnostic_deadline=time.monotonic() + 3, when=when, **options)
 
     def entries(self):
         return files.read_jsonl(self.log.path) if self.log.path.exists() else []
@@ -518,7 +521,8 @@ class RawLogTest(StoreCase):
         try:
             for kind, hook in (("prompt","prompt"),("answer","end-of-turn"),("end","end")):
                 started = time.monotonic()
-                result = self.record(kind, None if kind=="end" else "made-up", deadline=started+1)
+                result = self.record(kind, None if kind=="end" else "made-up", deadline=started+1,
+                                     record_seconds=raw_log.RECORD_SECONDS)
                 elapsed = time.monotonic() - started
                 self.assertEqual(result.outcome, "lock-busy")
                 self.assertIsNone(result.entry)
@@ -575,13 +579,29 @@ class RawLogTest(StoreCase):
                 with self.assertRaises(bench.MeasurementFailure):
                     bench.measure(1,pending_counts=())
 
+    def test_tc319_benchmark_expiry_does_not_reuse_an_earlier_fixtures_marker(self):
+        import bench_memory_raw_log as bench
+        clock,offset,append = time.monotonic,[0.0],files.append_jsonl
+        def expired(path,value,table,*args,**kwargs):
+            expanded = table=="TBL-007" and path.exists() and path.stat().st_size>3*1024*1024
+            result = append(path,value,table,*args,**kwargs)
+            if expanded:
+                offset[0] += 1.0
+            return result
+        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock()+offset[0]), \
+                mock.patch.object(files,"append_jsonl",expired), \
+                mock.patch.object(base,"utc_time",return_value="2026-10-27T09:12:03.456Z"):
+            row = next(r for r in bench.measure(1,pending_counts=())["cases"] if r["name"]=="after-control-512KiB")
+        self.assertEqual(row["outcomes"],{"deadline":1})
+        self.assertEqual((row["entries"],row["skipped"]),(1,0))
+
     def test_tc032_session_names_hash_paths_unicode_and_each_host_independently(self):
         for host in ("codex","claude-code"):
             for session in ("../../outside","made-up/한국어", "same"):
                 log = raw_log.RawLog(self.memory,"sample",host,session)
                 expected = host + "-" + hashlib.sha256(session.encode()).hexdigest()[:16]
                 self.assertEqual(log.log, expected)
-                result = log.append("prompt",raw_log.prepare("made-up",{}),diagnostic_deadline=time.monotonic()+2,when=WHEN)
+                result = self.record(log=log)
                 self.assertEqual(result.entry["session"], session)
                 self.assertEqual(log.path.parent, self.root / "projects/sample/raw")
         self.assertFalse((self.folder / "outside").exists())
