@@ -103,8 +103,6 @@ def process(frame):
         return "left-out"
     if kind == "end":
         return record(frame,"end",reason=event.get("reason"))
-    if clock.now() >= frame.deadline:
-        return "deadline"
     try:
         prepared = raw_log.prepare(text)
     except Exception:

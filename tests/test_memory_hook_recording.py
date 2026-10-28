@@ -4,6 +4,7 @@ import copy
 import json
 import multiprocessing
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -19,6 +20,40 @@ from memory_lib import clock as memory_clock
 class HookRecordingTest(HookCase):
     def run_functional(self,*args,**kwargs):
         return self.run_hook(*args,**kwargs)
+
+    def late_recording(self, phase):
+        counter = self.folder / "late-redaction-count"
+        patch = ("from pathlib import Path\nfrom memory_lib import clock, projects, redaction\n"
+                 "now = clock.now\noffset = [0.0]\nclock.now = lambda: now()+offset[0]\n"
+                 "find = projects.find\n"
+                 "def delayed_find(*args):\n    result = find(*args)\n"
+                 + ("    offset[0] = 1.2\n" if phase=="before-process" else "") +
+                 "    return result\nprojects.find = delayed_find\n"
+                 "process = hooks.process\nlimit = [None]\n"
+                 "def delayed_process(frame):\n    limit[0] = frame.deadline\n"
+                 + ("    offset[0] = 1.2\n" if phase=="before-redaction" else "") +
+                 "    return process(frame)\nhooks.process = delayed_process\n"
+                 "redact = redaction.redact\n"
+                 "def counted(*args, **kwargs):\n    assert clock.now() >= limit[0]\n"
+                 "    path = Path("+repr(str(counter))+")\n"
+                 "    count = int(path.read_text()) if path.exists() else 0\n"
+                 "    path.write_text(str(count+1))\n    result = redact(*args, **kwargs)\n"
+                 "    offset[0] += 0.05\n    return result\nredaction.redact = counted")
+        for index,hook in enumerate(("prompt","end-of-turn","end"),1):
+            self.run_hook(hook,patch=patch)
+            self.assertEqual(len(self.raw()),index)
+            self.assertEqual(int(counter.read_text()),min(index,2))
+            self.assertEqual(len(self.markers()),1)
+            self.outcome("ok")
+            self.assertGreaterEqual(self.records("hooks")[-1]["ms"],1250 if hook!="end" else 1200)
+        self.assertEqual([r["kind"] for r in self.raw()],["prompt","answer","end"])
+        self.assertEqual(self.records("failures"),[])
+
+    def test_tc325_arrival_after_the_hook_deadline_still_calls_process(self):
+        self.late_recording("before-process")
+
+    def test_tc325_arrival_after_the_hook_deadline_still_redacts_and_records(self):
+        self.late_recording("before-redaction")
 
     def test_tc031_restore_lock_busy_before_raw_lease_reports_contention(self):
         patch = ("from memory_lib import raw_log, locks\noriginal = raw_log.RawLog.__init__\n"
@@ -164,14 +199,14 @@ class HookRecordingTest(HookCase):
         self.assertFalse(any(b"private-redaction-error-fixture" in p.read_bytes()
                              for p in self.root.rglob("*") if p.is_file()))
 
-    def test_tc042_deadline_before_redaction_skips_remaining_work(self):
+    def test_tc042_deadline_before_redaction_still_records(self):
         patch = ("from memory_lib import projects\noriginal = projects.find\n"
                  "def slow(*args):\n    time.sleep(0.92)\n    return original(*args)\nprojects.find = slow")
         self.run_hook("prompt", patch=patch)
-        self.assertEqual(self.raw(), [])
-        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        self.assertEqual(len(self.raw()), 1)
+        self.assertEqual(self.records("failures"), [])
         self.assertGreaterEqual(self.records("hooks")[-1]["ms"], 900)
-        self.outcome("deadline")
+        self.outcome("ok")
 
     def test_tc012_consent_enabling_and_missing_store_gate_all_four_hooks(self):
         self.configure(consent=None)
@@ -355,10 +390,40 @@ class HookRecordingTest(HookCase):
                  "def expired(*args, **kwargs):\n    value = prepare(*args, **kwargs)\n"
                  "    return raw_log.Prepared(value.text, value.cut, memory_clock.now()-1)\n"
                  "raw_log.prepare = expired")
+        recovery = ("initialize = raw_log.RawLog.__init__\n"
+                    "def missing(log, *args):\n    initialize(log, *args)\n"
+                    "    path = log.store.folder / 'store.json'\n"
+                    "    path.replace(path.with_name('store.json.bak'))\n"
+                    "raw_log.RawLog.__init__ = missing")
+        for count,extra in enumerate(("",recovery),1):
+            self.run_hook("prompt",patch=patch+"\n"+extra)
+            self.assertEqual(len(self.raw()),count)
+            self.assertEqual(len(self.markers()),count)
+            self.outcome("ok")
+        self.assertEqual([r["error"] for r in self.records("failures")],["restored"])
+
+    def test_tc322_hook_finishes_acquired_store_recovery_then_attempts_raw_once(self):
+        patch = ("from memory_lib import locks, raw_log\nacquire = locks.Lock.acquire\n"
+                 "def slow(lease, *args, **kwargs):\n    result = acquire(lease, *args, **kwargs)\n"
+                 "    if lease.policy == locks.POLICIES['store']:\n        time.sleep(1.01)\n"
+                 "    return result\nlocks.Lock.acquire = slow\ninitialize = raw_log.RawLog.__init__\n"
+                 "def missing(log, *args):\n    initialize(log, *args)\n"
+                 "    path = log.store.folder / 'store.json'\n"
+                 "    path.replace(path.with_name('store.json.bak'))\n"
+                 "raw_log.RawLog.__init__ = missing")
         self.run_hook("prompt",patch=patch)
         self.assertEqual(len(self.raw()),1)
         self.assertEqual(len(self.markers()),1)
         self.outcome("ok")
+
+    def test_tc049_benchmark_keeps_the_late_end_boundary(self):
+        import bench_memory_hooks as bench
+        with tempfile.TemporaryDirectory() as folder:
+            state = bench.fixture(Path(folder),1,bench.SCRIPT)
+            elapsed,outcome,entries = bench.attempt(state,"end","slow-end",0)
+        self.assertGreaterEqual(elapsed,500)
+        self.assertEqual(outcome,"ok")
+        self.assertEqual(entries,1)
 
     def test_tc324_hook_does_not_append_without_a_complete_tail_sequence(self):
         log = raw_log.RawLog(self.memory,"sample","claude-code",self.event("prompt")["session_id"])

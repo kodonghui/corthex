@@ -180,14 +180,15 @@ def _object(data):
     return value
 
 
-def _read(path, parse, report, holding_lock=False, check=None, deadline=None):
+def _read(path, parse, report, holding_lock=False, check=None, deadline=None, reader=None):
     path = Path(path)
+    read = (lambda candidate: candidate.read_bytes()) if reader is None else reader
     try:
-        return parse(_retry(path.read_bytes, deadline))
+        return parse(_retry(lambda: read(path), deadline))
     except _RESTORABLE as original:
         backup = path.with_name(path.name + ".bak")
         try:
-            value = parse(_retry(backup.read_bytes, deadline))
+            value = parse(_retry(lambda: read(backup), deadline))
         except _RESTORABLE:
             raise original
         if not holding_lock:
@@ -196,29 +197,32 @@ def _read(path, parse, report, holding_lock=False, check=None, deadline=None):
             # A writer may have finished after the first read. Recheck before
             # each move attempt, including after a Windows sharing failure.
             try:
-                return parse(_retry(path.read_bytes, deadline))
+                return parse(_retry(lambda: read(path), deadline))
             except _RESTORABLE:
                 try:
                     if check is not None:
                         check()
                     os.replace(str(backup), str(path))
                 except FileNotFoundError:
-                    return parse(_retry(path.read_bytes, deadline))
+                    return parse(_retry(lambda: read(path), deadline))
                 if report:
                     report("restored", None)
                 return value
         return _retry(restore, deadline)
 
 
-def read_record(path, parse, report=None, holding_lock=False, check=None, deadline=None):
-    """Read with a pure byte parser; only a caller holding the lock may restore.
+def read_record(path, parse, report=None, holding_lock=False, check=None, deadline=None,
+                *, reader=None):
+    """Read with a pure parser; only a caller holding the lock may restore.
 
-    A parser rejects unparseable bytes with ValueError/UnicodeError. Policy
+    The default reader supplies bytes. A bounded reader may instead supply
+    parsed input, but must close the file before returning so moves work on
+    Windows. A parser rejects invalid input with ValueError/UnicodeError. Policy
     refusals use a different exception so they never restore older contents.
     check, when supplied, fences each restoration move by current ownership.
     deadline caps all Windows read/recovery retries at the caller's deadline.
     """
-    return _read(path, parse, report, holding_lock, check, deadline)
+    return _read(path, parse, report, holding_lock, check, deadline, reader)
 
 
 def read_json(path, report=None, holding_lock=False, check=None, deadline=None):

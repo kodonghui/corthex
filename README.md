@@ -36,7 +36,7 @@ codex plugin add corthex@corthex
 
 `corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It stays on the local machine and makes no network calls. With an existing memory store, hook diagnostics contain only safe error codes; late failures keep their original codes. Late completion alone does not turn success into failure; hook deadlines skip or shorten only the specified later steps, and never skip redaction or recording. Without a store, nothing is written. It needs Python 3 on the PATH (it tries `python3`, `python` and the Windows `py` launcher), and with Claude Code on Windows also Git for Windows or PowerShell 7.
 
-With an existing local memory store, consent and an enabled registered project, hooks also record prompts, final answers and session-end boundaries after redaction. These records stay on this machine; hooks create no memory store.
+With an existing local memory store, consent and an enabled registered project, hooks also record prompts, final answers and session-end boundaries after redaction. These records stay on this machine; hooks create no memory store. Recording waits up to 50ms for another process's lock, then finishes reading, appending and its marker under the acquired lock, so a slow disk can take it past the whole-hook deadline.
 
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too

@@ -105,22 +105,14 @@ def _parsed_entry(value, host, session):
     return value
 
 
-def _tail(path, host, session, check, report):
-    """Read at most 8MiB backwards; guard recovery moves, not read blocks.
+def _scan_tail(path, host, session):
+    """Read at most 8MiB backwards without changing shared files.
 
     Empty/new logs begin at one. A nonempty tail needs a complete JSON line
     with a positive seq; without one its next sequence cannot be inferred.
     Parsed cut-tail sequences still stay reserved when a complete line exists.
     """
-    try:
-        incoming = files._retry(lambda: path.open("rb"))
-    except FileNotFoundError:
-        if not path.with_name(path.name + ".bak").exists():
-            return None, 0
-        # Recovery is rare; the existing strict JSONL reader validates the
-        # backup. Healthy appends never read/parse the whole raw log.
-        files.read_jsonl(path, report, holding_lock=True, check=check)
-        return _tail(path, host, session, check, report)
+    incoming = path.open("rb")
     turn, damaged, highest, complete_seq = None, 0, 0, False
     def parsed(line, complete=True):
         nonlocal turn, damaged, highest, complete_seq
@@ -170,12 +162,33 @@ def _tail(path, host, session, check, report):
                     parsed(pending, complete=False)
             elif pending:
                 parsed(pending)
+    if size and not complete_seq:
+        return None, None, max(1, damaged)
+    return turn, highest, damaged
+
+
+def _tail(path, host, session, check, report):
+    """Apply the same bounded read to primary and recovery candidates.
+
+    Reuse the locked reader's recheck and guarded move. A missing primary and
+    backup starts a new log; a backup lost after reading must not reset seq.
+    """
+    seen = False
+    def read(candidate):
+        nonlocal seen
+        value = _scan_tail(candidate, host, session)
+        seen = True
+        return value
+    try:
+        turn, highest, damaged = files.read_record(
+            path, lambda value: value, report, holding_lock=True, check=check,
+            reader=read)
+    except FileNotFoundError:
+        if seen:
+            raise
+        return None, 0
     if damaged:
         report("damaged-line", damaged)
-    if size and not complete_seq:
-        if not damaged:
-            report("damaged-line", 1)
-        return None, None
     return turn, highest
 
 

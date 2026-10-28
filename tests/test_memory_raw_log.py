@@ -786,6 +786,60 @@ class RawLogTest(StoreCase):
         self.assertEqual(len(self.entries()),2)
         self.assertEqual(self.markers(),[])
 
+    def test_tc322_sharing_retry_after_acquisition_uses_the_ordinary_second(self):
+        opened,clock,calls = files.private_open,[memory_clock.now()],[]
+        prepared = raw_log.Prepared("made-up",None,clock[0]+0.05)
+        def retry(path,*args,**kwargs):
+            if path == self.log.path:
+                calls.append(clock[0])
+                if len(calls)<3:
+                    clock[0] += 0.2
+                    raise PermissionError("made-up sharing failure")
+            return opened(path,*args,**kwargs)
+        with mock.patch.object(files,"_WINDOWS",True), \
+                mock.patch.object(files,"private_open",retry), \
+                mock.patch.object(memory_clock,"now",side_effect=lambda:clock[0]):
+            result = self.log.append("prompt",prepared,diagnostic_deadline=clock[0]+0.3,notices=[])
+        self.assertEqual(result.outcome,"ok")
+        self.assertEqual(len(calls),3)
+        self.assertGreater(calls[-1],prepared.deadline)
+        self.assertEqual(self.entries(),[result.entry])
+        self.assertEqual(len(self.markers()),1)
+
+    def test_tc324_missing_primary_uses_a_bounded_backup_tail(self):
+        first = self.record().entry
+        rows = []
+        for seq in range(1,5):
+            value = dict(first,id=base.new_id("e"),seq=seq,turn=seq,
+                         text="\x01"*redaction.ENTRY_BYTES if seq<4 else "made-up last turn")
+            rows.append(base.json_bytes(value,"TBL-007",compact=True))
+        backup = self.log.path.with_name(self.log.path.name+".bak")
+        backup.write_bytes(b"".join(rows))
+        self.log.path.unlink()
+        self.assertGreater(backup.stat().st_size,9*1024*1024)
+        opened,read_bytes = Path.open,[]
+        class Reader:
+            def __init__(self,stream): self.stream=stream
+            def __enter__(self): return self
+            def __exit__(self,*args): self.stream.close()
+            def seek(self,*args): return self.stream.seek(*args)
+            def read(self,size=-1):
+                data=self.stream.read(size)
+                read_bytes.append(len(data))
+                return data
+        def opening(path,*args,**kwargs):
+            stream=opened(path,*args,**kwargs)
+            mode=args[0] if args else kwargs.get("mode")
+            return Reader(stream) if path in (self.log.path,backup) and mode=="rb" else stream
+        with mock.patch.object(Path,"open",opening):
+            result=self.record("answer")
+        self.assertEqual(result.outcome,"ok")
+        self.assertEqual((result.entry["seq"],result.entry["turn"]),(5,4))
+        self.assertLessEqual(sum(read_bytes),8*1024*1024)
+        self.assertFalse(backup.exists())
+        self.assertEqual(self.entries()[-1],result.entry)
+        self.assertEqual([row["error"] for row in self.failures()],["restored"])
+
     def test_tc324_tail_without_a_complete_sequence_stops_within_eight_mib(self):
         before = b"x"*(raw_log.TAIL_BYTES+raw_log.BLOCK)
         self.log.path.write_bytes(before)

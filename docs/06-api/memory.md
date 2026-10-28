@@ -207,7 +207,7 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 
 | Step | Deadline | When it passes |
 | --- | --- | --- |
-| Recording: the raw log lock, the append and the marker | 50 ms after redaction ends | No entry; the failure log and the hook timing say `lock-busy`. If the append already returned before the deadline passes, keep the entry, skip its marker and remaining steps, and record `deadline` in the failure log and hook timing (TC-319). |
+| Recording: waiting for the raw lock or store-record recovery lock | 50 ms after redaction ends; from recording start for a boundary | Each lock gets a first attempt even after expiry. A lock held by another process that cannot be acquired gives no entry and `lock-busy`. After the raw lease is acquired, finish the tail read, append and marker without deadline checks. Recording has no `deadline` outcome (TASK-060). |
 | The session start hook's memory part | 1,000 ms | The memory part is one line: `Memory could not be read in time.` |
 | The prompt hook | 900 ms | Recall stops, and nothing is injected |
 | The prompt's embedding (API-010) | the request ends 800 ms after the hook's start | Nothing is injected |
@@ -215,6 +215,8 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
 Redaction and recording are attempted even when the whole-hook deadline has passed before those steps are reached; their time counts in the hook timing. Started redaction finishes: a long answer can take the end-of-turn hook past its deadline by up to about 450 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The whole-hook deadline skips only the table's recall, trigger check and worker start, or shortens start memory to its one-line fallback. The hook script imports only what recording needs and loads network and SQLite modules only for recall. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+
+Recording under an acquired raw lease finishes even past the whole-hook deadline. Read backwards at most 8 MiB, without rereading the lease or store record for each block or line. A new or empty file begins at `seq` 1. For a nonempty file, no complete JSON line with a positive integer `seq` in that window means no append, a `damaged-line` failure and recording result `error`. A sequence without a turn-defining entry makes an answer a new turn. Check the lease and store-record identity immediately before every shared mutation, including append open/write/rollback and marker creation. Windows sharing failures use the ordinary one-second retry, without extending lock waiting after expiry. The same rules cover start/end boundaries. A late C1 session-end hook records its boundary and keeps its supplied outcome; only C2 trigger checks and worker starts are skipped for expiry.
 
 After its deadline, a hook makes one attempt without waiting for each failure-log and hook-timing lock: if acquired it writes the failure's own code or the hook's supplied outcome, otherwise it skips that line; there is no new diagnostic budget, and release keeps its separate retry. `deadline` is used only when a step named in the deadline table was actually skipped or shortened. A late hook that skipped nothing retains its supplied outcome, such as `ok`, `lock-busy` or `left-out`; a late exception retains its code and the outcome `error`. Elapsed ms show the lateness. The recording-only prompt, end-of-turn and session-end hooks of C1 have no such later recall, trigger or worker stages yet.
 
@@ -907,7 +909,7 @@ None. Format 1 is the first format of the memory store and of the sync remote, a
 - Stage 05, the memory configuration (TBL-002): `prices.from` holds a list of addresses, one per price page; `models.dims` has the default 512; a project's `left_out` may be left out, which leaves nothing out; and the fields' ranges and patterns are the configuration schema's, such as at most 3,650 days of retention. [docs/05-erd/memory.md](../05-erd/memory.md) and its translation change with this file.
 - Made precise, with nothing else changed:
   - Stage 05's note for this stage: Codex reports `stop_hook_active` as Claude Code does (observed).
-  - SPEC-008: the 50 ms of recording count from the end of redaction.
+  - SPEC-008: the 50 ms after redaction limit only recording-lock waiting, with a first attempt at each lock; after raw acquisition the tail read, append and marker finish (TASK-060).
   - SPEC-023: the 800 ms of the embedding count from the start of the hook.
   - SPEC-021: the memory part of the start summary has a deadline of 1,000 ms.
   - SPEC-031: no host's secure store is used in format 1; the keys come from the two variables only.
