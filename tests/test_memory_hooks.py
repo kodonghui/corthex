@@ -87,6 +87,13 @@ class HookCase(StoreCase):
 
 
 class HookFrameworkTest(HookCase):
+    def test_tc036_deadlines_match_the_four_hook_contracts(self):
+        self.assertEqual(hooks.SECONDS,{"start":1.0,"prompt":0.9,"end-of-turn":0.3,"end":0.5})
+
+    def test_tc036_all_library_deadlines_use_the_shared_counter(self):
+        for path in (SCRIPTS / "memory_lib").glob("*.py"):
+            self.assertTrue("time.monotonic" not in path.read_text(encoding="utf-8"),path.name)
+
     def test_tc036_shared_counter_drives_recording_and_hook_elapsed_time(self):
         from memory_lib import clock, raw_log, reading
         for module in (files,locks,raw_log,reading,store,diagnostics,hooks):
@@ -112,12 +119,75 @@ class HookFrameworkTest(HookCase):
                 self.assertEqual(len(rows), before + 1)
                 self.assertEqual(rows[-1]["error"], "bad-input")
             if hook == "prompt":
-                self.run_hook(hook, dict(valid, prompt=None))
-                self.assertEqual(self.records("failures")[-1]["error"], "bad-input")
+                missing = dict(valid)
+                missing.pop("prompt")
+                for payload in (dict(valid,prompt=None),missing):
+                    before = len(self.records("failures"))
+                    self.run_hook(hook,payload)
+                    self.assertEqual(len(self.records("failures")),before+1)
+                    self.assertEqual(self.records("failures")[-1]["error"],"bad-input")
             before = len(self.records("failures"))
             self.run_hook(hook, b"\xef\xbb\xbf" + json.dumps(valid).encode("utf-8"))
             self.assertNotIn("bad-input", [row["error"] for row in self.records("failures")[before:]])
         self.assertEqual([row["hook"] for row in self.records("hooks")], ["prompt", "end-of-turn", "end"])
+
+    def test_tc033_deep_json_is_bad_input_for_each_hook(self):
+        for hook in hooks.EVENTS:
+            before = len(self.records("failures"))
+            self.run_hook(hook,b"["*2000+b"0"+b"]"*2000)
+            self.assertEqual(len(self.records("failures")),before+1)
+            self.assertEqual(self.records("failures")[-1]["error"],"bad-input")
+
+    def test_tc033_tc034_late_input_failures_keep_their_own_codes(self):
+        patch = ("read=hooks.read_input\ndef slow(*args):\n    time.sleep(0.35)\n"
+                 "    return read(*args)\nhooks.read_input=slow")
+        for payload,error in ((b"not json","bad-input"),(self.event("end-of-turn"),"unknown-host")):
+            before = len(self.records("failures"))
+            self.run_hook("end-of-turn",payload,{"CLAUDECODE":"","PLUGIN_ROOT":""},patch)
+            self.assertEqual(len(self.records("failures")),before+1)
+            self.assertEqual(self.records("failures")[-1]["error"],error)
+        self.assertEqual(self.records("hooks"),[])
+
+    def test_tc036_product_import_time_uses_the_original_entry_deadline(self):
+        plugin = self.folder / "slow-plugin"
+        shutil.copytree(PLUGIN,plugin,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
+        init = plugin / "skills/corthex-memory/scripts/memory_lib/__init__.py"
+        init.write_text("import time\ntime.sleep(0.35)\n"+init.read_text(encoding="utf-8"),encoding="utf-8")
+        script = plugin / "scripts/hook.py"
+        run = subprocess.run([sys.executable,str(script),"end-of-turn"],input=json.dumps(self.event("end-of-turn")).encode(),
+                             env=self.environment(),cwd=str(self.repo),capture_output=True,timeout=15)
+        self.assertEqual((run.returncode,run.stdout,run.stderr),(0,b"",b""))
+        timing = self.records("hooks")[-1]
+        self.assertEqual(timing["outcome"],"deadline")
+        self.assertGreaterEqual(timing["ms"],300)
+
+    def test_tc035_broken_context_keeps_both_entry_points_quiet_and_successful(self):
+        plugin = self.folder / "incomplete-plugin"
+        shutil.copytree(PLUGIN,plugin,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
+        context = plugin / "skills/corthex-memory/scripts/memory_lib/context.py"
+        context.rename(context.with_suffix(".hidden"))
+        for name,args in (("session_start.py",[]),("hook.py",["start"])):
+            run = subprocess.run([sys.executable,str(plugin/"scripts"/name)]+args,input=json.dumps(self.event("start")).encode(),
+                                 env=self.environment(),cwd=str(self.repo),capture_output=True,timeout=15)
+            self.assertEqual(run.returncode,0)
+            self.assertEqual(run.stdout,b"")
+            self.assertEqual(len(run.stderr.splitlines()),1)
+            self.assertTrue(run.stderr.startswith(b"corthex-memory: "))
+
+    def test_tc014_configuration_notice_precedes_the_consent_gate(self):
+        path = self.root / "configuration.json"
+        backup = path.with_name(path.name+".bak")
+        if backup.exists():
+            backup.unlink()
+        path.write_bytes(b"broken")
+        self.run_hook("prompt")
+        self.assertEqual([row["error"] for row in self.records("failures")],["configuration-invalid"])
+        self.assertEqual(self.records("hooks"),[])
+        backup.write_bytes(base.json_bytes({},"TBL-002"))
+        path.write_bytes(b"broken")
+        self.run_hook("prompt")
+        self.assertEqual([row["error"] for row in self.records("failures")],["configuration-invalid","restored"])
+        self.assertEqual(self.records("hooks"),[])
 
     def test_tc033_bad_start_input_uses_process_cwd_for_the_base(self):
         other = self.folder / "other"

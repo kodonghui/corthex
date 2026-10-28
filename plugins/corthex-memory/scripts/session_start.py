@@ -9,7 +9,6 @@ from pathlib import Path
 
 LIBRARY = Path(__file__).resolve().parent.parent / "skills/corthex-memory/scripts"
 sys.path.insert(0, str(LIBRARY))
-from memory_lib.context import *
 
 def read_event(stream):
     """The hook input object, or {} when there is none."""
@@ -37,6 +36,7 @@ def main():
 
 if __name__ == "__main__":
     try:
+        from memory_lib.context import *
         sys.exit(main())
     except Exception as error:  # A missing context must never stop the session.
         sys.stderr.write("corthex-memory: no session context (%s)\n" % type(error).__name__)

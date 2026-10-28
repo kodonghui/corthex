@@ -141,7 +141,7 @@ def record(frame,kind,prepared=None,**options):
 
 def note_failure(logger, error, hook, host, deadline):
     late = clock.now() >= deadline
-    logger.failure("deadline" if late else error, "record", deadline, hook=hook,
+    logger.failure(error, "record", deadline, hook=hook,
                    host=host, opportunistic=late)
 
 
@@ -160,7 +160,7 @@ def run(hook, started, incoming, output):
             logger = None
         try:
             event = read_input(incoming, hook)
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RecursionError):
             if logger is not None:
                 note_failure(logger, "bad-input", hook, None, deadline)
             return

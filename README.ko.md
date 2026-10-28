@@ -34,7 +34,7 @@ codex plugin add corthex@corthex
 
 ### 선택: 세션 시작 문맥
 
-`corthex-memory`는 세션이 시작될 때 일하는 원칙, 프로필, 현재 프로젝트 설정을 넣습니다. 로컬 파일만 읽고 네트워크에 연결하지 않습니다. PATH에서 Python 3을 찾을 수 있어야 하고(`python3`, `python`, Windows의 `py` 실행기를 차례로 찾습니다), Windows의 Claude Code에서는 Git for Windows나 PowerShell 7도 있어야 합니다.
+`corthex-memory`는 세션이 시작될 때 일하는 원칙, 프로필, 현재 프로젝트 설정을 넣습니다. 이 기기에서만 동작하고 네트워크에 연결하지 않습니다. 기억 저장소가 이미 있으면 훅의 진단에는 안전한 오류 코드만 남기며, 늦은 실패도 본래 코드를 유지합니다. 저장소가 없으면 아무것도 쓰지 않습니다. PATH에서 Python 3을 찾을 수 있어야 하고(`python3`, `python`, Windows의 `py` 실행기를 차례로 찾습니다), Windows의 Claude Code에서는 Git for Windows나 PowerShell 7도 있어야 합니다.
 
 로컬 기억 저장소가 이미 있고, 동의와 켠 등록 프로젝트가 있으면 훅이 가리기를 거친 프롬프트·최종 답변·세션 종료 경계도 기록합니다. 이 기록은 이 기기에 남으며 훅은 기억 저장소를 만들지 않습니다.
 
