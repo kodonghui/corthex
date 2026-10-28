@@ -140,9 +140,9 @@ class MemoryRedactionTest(StoreCase):
         source = key_block("PRIVATE KEY", random_text(32), False) + "\n-----END " + "A" * 41 + "PRIVATE KEY-----\nafter"
         self.assertTrue(redaction.redact(source, {}).text == "[redacted:private-key]")
 
-    def test_tc028_each_pattern_grows_within_eight_times_for_four_times_bytes(self):
+    def test_tc028_four_small_calls_and_one_large_stay_within_growth_limit(self):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
-        run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "3"],
+        run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "5"],
                              capture_output=True, text=True, timeout=25)
         self.assertEqual(run.returncode, 0, "growth worker exit %d; input remains suppressed" % run.returncode)
         marked = [line for line in run.stdout.splitlines() if line.startswith("CORTHEX_REDACTION_BENCH=")]
@@ -150,15 +150,17 @@ class MemoryRedactionTest(StoreCase):
         data = json.loads(marked[0].split("=", 1)[1])
         self.assertEqual(data["mode"], "growth")
         self.assertEqual(data["statistic"], "minimum")
+        self.assertEqual((data["small_repetitions"],data["large_repetitions"]),(4,1))
         self.assertEqual({row["input"] for row in data["rows"]},
                          {"private-openers", "pem-begin-name-repeat", "jwt-no-dots",
                           "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
                           "github-near-minimum", "gitlab-near-minimum", "slack-near-minimum", "aws-short-body",
                           "google-short-body", "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat"})
         for row in data["rows"]:
+            self.assertEqual(row["samples"],5)
             self.assertEqual(row["large_bytes"], row["small_bytes"] * 4)
             self.assertGreater(row["small_ms"], 20, json.dumps(row, sort_keys=True))
-            self.assertLessEqual(row["ratio"], 8, json.dumps(row, sort_keys=True))
+            self.assertLessEqual(row["ratio"], 2.5, json.dumps(row, sort_keys=True))
 
     def test_tc024_unclosed_private_span_removes_everything_after_it(self):
         self.assertEqual(redaction.redact("a <private> b c", {}).text, "a [redacted:private]")

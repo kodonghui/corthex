@@ -330,7 +330,7 @@ class HookRecordingTest(HookCase):
         self.assertFalse((self.folder / "outside").exists())
 
     def test_tc319_late_marker_keeps_the_append_and_reports_deadline_in_both_logs(self):
-        patch = ("from memory_lib import raw_log\ndef late(self, entry, check, deadline):\n"
+        patch = ("from memory_lib import raw_log\ndef late(self, entry, check, deadline, prior=None):\n"
                  "    time.sleep(0.055)\n    check()\nraw_log.RawLog._marker = late")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(len(self.raw()), 1)

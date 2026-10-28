@@ -65,8 +65,14 @@ def _positive(value):
 
 
 def _entry(line, host, session):
-    """Validate complete stored entries, including rows rewritten by a forget."""
-    value = store.json_document(line)
+    """Validate the recording shape used for turn inference.
+
+    The byte limit for future forget rewrites is decided with that C2 task.
+    """
+    return _parsed_entry(store.json_document(line), host, session)
+
+
+def _parsed_entry(value, host, session):
     required = {"id", "seq", "at", "host", "session", "kind"}
     if not isinstance(value, dict) or not required <= set(value) <= set(base.FIELDS["TBL-007"].split()):
         raise ValueError("invalid raw entry")
@@ -108,49 +114,62 @@ def _tail(path, host, session, check, deadline, report):
         incoming = files._retry(lambda: path.open("rb"), deadline)
     except FileNotFoundError:
         if not path.with_name(path.name + ".bak").exists():
-            return None, None
+            return None, 0
         # Recovery is rare; the existing strict JSONL reader validates the
         # backup. Healthy appends never read/parse the whole raw log.
         files.read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
         return _tail(path, host, session, check, deadline, report)
-    last, turn, damaged = None, None, 0
-    def parsed(line):
-        nonlocal last, turn, damaged
+    turn, damaged, highest = None, 0, 0
+    def parsed(line, complete=True):
+        nonlocal turn, damaged, highest
         check()
         try:
-            value = _entry(line, host, session)
+            value = store.json_document(line)
+            if isinstance(value, dict) and _positive(value.get("seq")):
+                highest = max(highest, int(value["seq"]))
+            if not complete:
+                damaged += bool(line)
+                return
+            value = _parsed_entry(value, host, session)
         except (ValueError, UnicodeError):
             damaged += 1
             return
-        if last is None:
-            last = value
         if value["kind"] in ("prompt", "answer") and turn is None:
             turn = value
     with incoming:
         position = incoming.seek(0, os.SEEK_END)
-        pending, first = b"", True
+        fragments, first = [], True
         while position and turn is None:
             check()
             start = max(0, position - BLOCK)
             incoming.seek(start)
-            parts = (incoming.read(position - start) + pending).split(b"\n")
-            pending, position = parts[0], start
+            # Split only the new block. Join accumulated fragments once per
+            # line instead of copying and rescanning a growing suffix.
+            parts = incoming.read(position - start).split(b"\n")
+            position = start
             for line in reversed(parts[1:]):
+                if fragments:
+                    line = b"".join([line] + list(reversed(fragments)))
+                    fragments.clear()
                 if first:
                     first = False
-                    damaged += bool(line)
+                    if line:
+                        parsed(line, complete=False)
                 else:
                     parsed(line)
                     if turn is not None:
                         break
+            fragments.append(parts[0])
         if not position and turn is None:
+            pending = b"".join(reversed(fragments))
             if first:
-                damaged += bool(pending)
+                if pending:
+                    parsed(pending, complete=False)
             elif pending:
                 parsed(pending)
     if damaged:
         report("damaged-line", damaged)
-    return last, turn
+    return turn, highest
 
 
 class RawLog:
@@ -163,22 +182,29 @@ class RawLog:
         self.markers = root / "unprocessed"
         self.logger = diagnostics.Diagnostics(memory_store)
 
-    def _marker(self, entry, check, deadline):
-        pattern = re.compile(r"[0-9]{8}T[0-9]{6}Z\." + re.escape(self.log) + r"\." + str(entry["turn"]) + r"\Z")
+    def _marker(self, entry, check, deadline, prior=None):
         check()
-        for path in self.markers.iterdir():
-            # Listing is read-only: check the clock without reopening the
-            # lease/header for every pending turn. Mutation still uses check.
-            if clock.now() >= deadline:
-                raise RecordingDeadline()
-            if pattern.fullmatch(path.name):
-                check()
-                return
+        if entry["turn"] != entry["seq"]:
+            suffix = "." + self.log + "." + str(entry["turn"])
+            if prior is not None and prior["seq"] == prior["turn"] == entry["turn"]:
+                at = prior["at"][:19].replace("-", "").replace(":", "") + "Z"
+                if (self.markers / (at + suffix)).exists():
+                    check()
+                    return
+            for name in os.listdir(self.markers):
+                if clock.now() >= deadline:
+                    raise RecordingDeadline()
+                if name.endswith(suffix):
+                    check()
+                    return
         at = entry["at"][:19].replace("-", "").replace(":", "") + "Z"
         path = self.markers / (at + "." + self.log + "." + str(entry["turn"]))
         def create():
             check()
-            fd = base.private_open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                fd = base.private_open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                return
             os.close(fd)
         files._retry(create, deadline)
 
@@ -253,8 +279,8 @@ class RawLog:
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
-            last, prior = _tail(self.path, self.host, self.session, check, deadline, report)
-            seq = int(last["seq"]) + 1 if last is not None else 1
+            prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
+            seq = highest + 1
             value = {"id": base.new_id("e"), "seq": seq, "at": at,
                      "host": self.host, "session": self.session, "kind": kind}
             if kind in ("prompt", "answer"):
@@ -274,14 +300,15 @@ class RawLog:
             entry = value
             check()
             if "turn" in entry:
-                self._marker(entry, check, deadline)
+                self._marker(entry, check, deadline, prior)
         except RecordingDeadline:
-            outcome = "deadline"
-            report("deadline", None)
+            outcome = "lock-busy" if entry is None else "deadline"
+            report(outcome, None)
         except (OSError, RuntimeError, ValueError) as error:
-            outcome = "deadline" if isinstance(error, OSError) and clock.now() >= deadline else "error"
+            expired = isinstance(error, OSError) and clock.now() >= deadline
+            outcome = ("lock-busy" if entry is None else "deadline") if expired else "error"
             report(error if notices is not None and isinstance(error,FileNotFoundError)
-                   else "deadline" if outcome == "deadline" else error, None)
+                   else outcome if expired else error, None)
         finally:
             lock.release(report=report)
         flush()

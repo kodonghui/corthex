@@ -90,7 +90,7 @@ def measure(samples=10):
             "warmups": 1, "environment_values": 0, "rows": rows}
 
 
-def measure_growth(samples=3):
+def measure_growth(samples=5):
     """Measure every pattern without a guard hiding regex growth.
 
     Runs only in the test's bounded subprocess. Limits are raised in that
@@ -100,25 +100,27 @@ def measure_growth(samples=3):
     started = time.perf_counter()
     saved = redaction.ENTRY_BYTES, redaction.WINDOW_BYTES
     try:
-        def timed(text):
+        def timed(text, repetitions=1):
             started = time.perf_counter()
-            redaction.redact(text, {})
+            for _ in range(repetitions):
+                redaction.redact(text, {})
             return (time.perf_counter() - started) * 1000
         for name in GROWTH:
-            size = 128 * 1024
+            size = 32 * 1024
             redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size + 1
             pilot_text = slow_input(name, size)
-            pilot = min(timed(pilot_text) for _ in range(samples))
+            pilot = min(timed(pilot_text,4) for _ in range(samples))
             # Calibrate once near 26 ms, avoiding successive doubling and a
             # warm-up at every size. The pilot already warms this expression.
             size = max(1024, min(4 * 1024 * 1024, int(size * 26 / max(pilot, 0.001))))
             while True:
                 redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
                 small_text, large_text = slow_input(name, size), slow_input(name, size * 4)
-                # Interleave sizes and compare their minima: added scheduling
-                # time cannot lower the best sample. Never retry a bad ratio.
-                if timed(small_text) > 21:
-                    pairs = [(timed(small_text), timed(large_text)) for _ in range(samples)]
+                # Equal-duration samples share steady contention. Minima reduce
+                # occasional pauses; they cannot remove every source of noise.
+                # Never retry a bad ratio, only an unavailable timing floor.
+                if timed(small_text,4) > 21:
+                    pairs = [(timed(small_text,4), timed(large_text)) for _ in range(samples)]
                     small = min(pair[0] for pair in pairs)
                     large = min(pair[1] for pair in pairs)
                     if small > 21:
@@ -132,7 +134,8 @@ def measure_growth(samples=3):
     finally:
         redaction.ENTRY_BYTES, redaction.WINDOW_BYTES = saved
     return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0,
-            "clock": "perf_counter", "pairing": "alternating sizes", "statistic": "minimum",
+            "clock": "perf_counter", "pairing": "alternating equal-duration samples", "statistic": "minimum",
+            "small_repetitions": 4, "large_repetitions": 1,
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3)}
 
 
