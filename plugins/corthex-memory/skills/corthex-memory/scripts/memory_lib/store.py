@@ -76,46 +76,52 @@ class MemoryStore:
             raise ValueError("a finite read deadline is required")
 
     @staticmethod
-    def _guard(lock, deadline):
+    def _guard(lock, deadline, recording=False):
         def check():
-            if clock.now() >= deadline:
+            if not recording and clock.now() >= deadline:
                 raise locks.LockBusy()
             lock.check()
         return check
 
-    def _read_record(self, path, parse, deadline, report, device=None, holding_lock=None):
+    def _read_record(self, path, parse, deadline, report, device=None, holding_lock=None,
+                     recording=False):
+        operation_deadline = None if recording else deadline
         if holding_lock is not None:
-            check = self._guard(holding_lock, deadline)
+            check = self._guard(holding_lock, deadline, recording)
             check()
-            return files.read_record(path, parse, report, holding_lock=True, check=check, deadline=deadline)
+            return files.read_record(path, parse, report, holding_lock=True, check=check,
+                                     deadline=operation_deadline)
         if device is not None:
             lock = locks.Lock(self.folder / "store.lock", "store", device)
             def gate():
                 self.record(report, deadline=deadline, holding_lock=lock)
             return reading.read_record(path, parse, lock, deadline, report, check=gate)
         try:
-            return files.read_record(path, parse, report, deadline=deadline)
+            return files.read_record(path, parse, report, deadline=operation_deadline)
         except files.RestoreNeeded:
             # A damaged store has no usable primary device ID. Validate the
             # readable backup before creating a lock, keeping opaque headers
             # completely read-only. Never manufacture another device identity.
             backup = path.with_name(path.name + ".bak")
             try:
-                header = files.read_record(backup, _record, deadline=deadline)
+                header = files.read_record(backup, _record, deadline=operation_deadline)
             except FileNotFoundError:
                 # Another reader may already have restored the same backup.
-                return files.read_record(path, parse, report, deadline=deadline)
+                return files.read_record(path, parse, report, deadline=operation_deadline)
             lock = locks.Lock(self.folder / "store.lock", "store", header["device"])
             def gate():
-                self.record(report, deadline=deadline, holding_lock=lock)
-            return reading.read_record(path, parse, lock, deadline, report, check=gate)
+                self.record(report, deadline=deadline, holding_lock=lock, recording=recording)
+            return reading.read_record(path, parse, lock, deadline, report, check=gate,
+                                       finish_recovery=recording)
 
-    def record(self, report=None, *, deadline, holding_lock=None):
+    def record(self, report=None, *, deadline, holding_lock=None, recording=False):
         """Read the gate; recovery borrows the caller's operation deadline.
 
         Malformed/missing records without recovery are store-damaged. Ordinary
         I/O errors propagate for the command's internal result; a recovery
         lease that is busy keeps lock-busy. No blocked state writes a log.
+        recording=True limits only recovery-lock waiting; acquired recovery
+        finishes and makes its first attempt even when that wait has expired.
         """
         self._deadline(deadline)
         if not self.folder.exists():
@@ -128,7 +134,7 @@ class MemoryStore:
             return value
         try:
             return self._read_record(self.folder / "store.json", parse, deadline,
-                                     report, holding_lock=holding_lock)
+                                     report, holding_lock=holding_lock, recording=recording)
         except (FileNotFoundError, ValueError, UnicodeError, files.RestoreNeeded):
             raise StoreUnavailable("store-damaged") from None
 

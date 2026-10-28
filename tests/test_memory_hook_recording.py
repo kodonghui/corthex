@@ -18,11 +18,7 @@ from memory_lib import clock as memory_clock
 
 class HookRecordingTest(HookCase):
     def run_functional(self,*args,**kwargs):
-        # Isolate input/field behavior from slow test disks. Dedicated deadline
-        # cases, native hosts and whole-hook benches retain production budgets.
-        patch = kwargs.pop("patch",None) or ""
-        budget = "from memory_lib import raw_log\nraw_log.RECORD_SECONDS = 3\n"
-        return self.run_hook(*args,patch=budget+patch,**kwargs)
+        return self.run_hook(*args,**kwargs)
 
     def test_tc031_restore_lock_busy_before_raw_lease_reports_contention(self):
         patch = ("from memory_lib import raw_log, locks\noriginal = raw_log.RawLog.__init__\n"
@@ -85,7 +81,7 @@ class HookRecordingTest(HookCase):
         self.assertEqual(self.records("hooks"),[])
         self.assertEqual([row["error"] for row in self.records("failures")],["FileNotFoundError"]*2)
 
-    def test_tc319_marker_folder_lost_during_creation_keeps_append_without_timing(self):
+    def test_tc046_marker_folder_lost_during_creation_keeps_append_without_timing(self):
         patch = ("from pathlib import Path\nfrom memory_lib import base, clock\n"
                  "opened, now = base.private_open, clock.now\noffset = [0.0]\n"
                  "clock.now = lambda: now() + offset[0]\n"
@@ -329,17 +325,15 @@ class HookRecordingTest(HookCase):
         self.assertEqual(len(self.raw()), 3)
         self.assertFalse((self.folder / "outside").exists())
 
-    def test_tc319_late_marker_keeps_the_append_and_reports_deadline_in_both_logs(self):
-        patch = ("from memory_lib import raw_log\ndef late(self, entry, check, deadline, prior=None):\n"
-                 "    time.sleep(0.055)\n    check()\nraw_log.RawLog._marker = late")
+    def test_tc322_late_marker_finishes_after_the_lock_wait_window(self):
+        patch = ("from memory_lib import raw_log\noriginal = raw_log.RawLog._marker\n"
+                 "def late(self, entry, check, prior=None):\n"
+                 "    time.sleep(0.055)\n    return original(self, entry, check, prior)\nraw_log.RawLog._marker = late")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(len(self.raw()), 1)
-        self.assertEqual(self.markers(), [])
-        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
-        self.outcome("deadline")
-        self.run_hook("end-of-turn")
-        self.assertEqual([r["turn"] for r in self.raw()], [1, 1])
         self.assertEqual(len(self.markers()), 1)
+        self.assertEqual(self.records("failures"), [])
+        self.outcome("ok")
 
     def test_tc014_busy_diagnostic_leases_leave_logs_empty(self):
         parent, child = multiprocessing.Pipe()

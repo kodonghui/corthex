@@ -196,7 +196,7 @@ class Lock:
             self._thread = threading.Thread(target=self._heartbeat, args=(self._stop,), daemon=True)
             self._thread.start()
 
-    def _attempt(self, deadline, force):
+    def _attempt(self, deadline, force, finish=False):
         if self._create():
             return True
         previous = _snapshot(self.path)
@@ -204,15 +204,17 @@ class Lock:
             detached = self._detach(previous, stale=True, force=force, deadline=deadline)
             if detached is False:
                 raise LockBusy()
-            if detached and clock.now() < deadline:
+            if detached and (finish or clock.now() < deadline):
                 return self._create()
         return False
 
-    def acquire(self, deadline, wait=True, force=False):
+    def acquire(self, deadline, wait=True, force=False, *, at_least_once=False):
         """Acquire by an absolute monotonic deadline; force is for purge/delete.
 
         wait=False makes one attempt, for workers that leave a busy project.
         A failed token check after a rename gives up immediately.
+        Recording opts into at_least_once: expiry limits waiting, not its first
+        acquisition attempt. Other callers retain their strict deadline gate.
         """
         if not math.isfinite(deadline):
             raise ValueError("a finite deadline is required")
@@ -220,9 +222,12 @@ class Lock:
         self.token = secrets.token_hex(16)
         self._stop, self._thread = threading.Event(), None
         try:
-            while clock.now() < deadline:
+            first = True
+            while clock.now() < deadline or first and at_least_once:
+                first = False
                 try:
-                    acquired = self._attempt(deadline, force)
+                    acquired = (self._attempt(deadline, force, finish=True) if at_least_once
+                                else self._attempt(deadline, force))
                 except PermissionError:
                     acquired = False
                 if acquired:

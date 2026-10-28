@@ -71,10 +71,7 @@ def measure(samples, pending_counts=(0,1000,20000)):
                 result = case.log.append("answer" if continued else "prompt",prepared,
                                          stop_hook_active=continued,diagnostic_deadline=memory_clock.now()+3)
                 elapsed = (time.perf_counter()-started)*1000
-                ended = memory_clock.now()
-                valid = (result.outcome == "ok" and result.entry is not None or
-                         result.outcome == "deadline" and result.entry is not None and ended >= prepared.deadline or
-                         result.outcome == "lock-busy" and result.entry is None and ended >= prepared.deadline)
+                valid = result.outcome == "ok" and result.entry is not None
                 if not valid:
                     raise MeasurementFailure(case=name, sample=sample, outcome=result.outcome,
                                              entry=result.entry is not None, elapsed_ms=round(elapsed,3))
@@ -94,7 +91,8 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     entries += result.entry is not None
                 else:
                     warmup = dict(warmup_outcome=result.outcome,warmup_entry=result.entry is not None)
-            rows.append(dict(name=name,samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,bytes=size,
+            rows.append(dict(name=name,samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,
+                             budget_applies_to="lock-wait",bytes=size,
                              outcome="ok" if outcomes=={"ok":samples} else "mixed",outcomes=dict(outcomes),
                              entries=entries,skipped=samples-entries,
                              median_ms=round(statistics.median(times),3),max_ms=round(max(times),3),**warmup,**metadata))

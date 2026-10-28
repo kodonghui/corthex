@@ -1,4 +1,4 @@
-"""Manual 50 ms loss measurement, with zero or one competing CPU process.
+"""Manual lock-wait/recording measurement, with zero or one CPU process.
 
 Run --samples 100 in an isolated checker checkout under the Windows flock.
 Both processes use one available core; no machine affinity setting changes.
@@ -71,7 +71,7 @@ def measure(samples):
                 try:
                     value = dict(case.record().entry, text=prior_text)
                     baseline = raw_log.base.json_bytes(value, "TBL-007", compact=True)
-                    outcomes, times, entries, expired = Counter(), [], 0, 0
+                    outcomes, times, entries = Counter(), [], 0
                     for _ in range(samples):
                         case.log.path.write_bytes(baseline)
                         for marker in case.markers():
@@ -81,19 +81,22 @@ def measure(samples):
                         started = clock.now()
                         result = case.log.append("prompt", prepared, diagnostic_deadline=started+3)
                         ended = clock.now()
-                        valid = (result.outcome == "ok" and result.entry is not None or
-                            result.outcome == "deadline" and result.entry is not None and ended >= prepared.deadline or
-                            result.outcome == "lock-busy" and result.entry is None and ended >= prepared.deadline)
+                        valid = result.outcome == "ok" and result.entry is not None
                         if not valid:
                             raise RuntimeError("unexpected recording result")
                         outcomes[result.outcome] += 1
                         entries += result.entry is not None
-                        expired += result.entry is None and ended >= prepared.deadline
+                        assert case.entries()[-1] == result.entry
+                        assert len([p for p in case.markers() if p.name.endswith("."+case.log.log+".2")]) == 1
                         times.append((ended-started)*1000)
                     rows.append(dict(name=name, cpu_load_processes=int(competing), samples=samples,
-                        deadline_ms=raw_log.RECORD_SECONDS*1000, bytes=len(text.encode("utf-8")), tail_bytes=len(baseline),
-                        entries=entries, expired_without_entry=expired, loss_percent=100*expired/samples,
-                        outcomes=dict(outcomes), median_ms=round(statistics.median(times),3), max_ms=round(max(times),3)))
+                        deadline_ms=raw_log.RECORD_SECONDS*1000, budget_applies_to="lock-wait",
+                        bytes=len(text.encode("utf-8")), tail_bytes=len(baseline),
+                        entries=entries, expired_without_entry=samples-entries, loss_percent=100*(samples-entries)/samples,
+                        outcomes=dict(outcomes), median_ms=round(statistics.median(times),3),
+                        p95_ms=round(sorted(times)[max(0,(95*samples+99)//100-1)],3),
+                        p99_ms=round(sorted(times)[max(0,(99*samples+99)//100-1)],3),
+                        max_ms=round(max(times),3)))
                 finally:
                     case.doCleanups()
         finally:
