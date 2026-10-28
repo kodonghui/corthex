@@ -13,6 +13,7 @@ from test_memory_redaction import key_block, random_text, secret_examples
 from test_memory_locks import holder
 from test_memory_diagnostics import hold_logs
 from memory_lib import base, files, hooks, raw_log
+from memory_lib import clock as memory_clock
 
 
 class HookRecordingTest(HookCase):
@@ -24,18 +25,18 @@ class HookRecordingTest(HookCase):
         return list((self.root / "projects").glob("*/unprocessed/*"))
 
     def configure(self, **changes):
-        document = copy.deepcopy(self.memory.configuration(deadline=time.monotonic() + 2).document)
+        document = copy.deepcopy(self.memory.configuration(deadline=memory_clock.now() + 2).document)
         for key, value in changes.items():
             if value is None:
                 document.pop(key, None)
             else:
                 document[key] = value
-        self.memory.write_configuration(document, time.monotonic() + 2)
+        self.memory.write_configuration(document, memory_clock.now() + 2)
 
     def exclude(self, kinds=(), folders=()):
-        document = copy.deepcopy(self.memory.configuration(deadline=time.monotonic() + 2).document)
+        document = copy.deepcopy(self.memory.configuration(deadline=memory_clock.now() + 2).document)
         document["projects"]["sample"]["left_out"] = {"kinds": list(kinds), "folders": list(folders)}
-        self.memory.write_configuration(document, time.monotonic() + 2)
+        self.memory.write_configuration(document, memory_clock.now() + 2)
 
     def outcome(self, expected):
         self.assertEqual(self.records("hooks")[-1]["outcome"], expected)
@@ -166,7 +167,7 @@ class HookRecordingTest(HookCase):
         patch = ("from memory_lib import raw_log\noriginal_process = hooks.process\n"
                  "def controlled(frame):\n    original_prepare = raw_log.prepare\n"
                  "    def after(text):\n        prepared = original_prepare(text)\n"
-                 "        frame.deadline = time.monotonic() - 0.001\n"
+                 "        frame.deadline = memory_clock.now() - 0.001\n"
                  "        frame.started = frame.deadline - hooks.SECONDS[frame.hook]\n"
                  "        return prepared\n    raw_log.prepare = after\n    return original_process(frame)\n"
                  "hooks.process = controlled")

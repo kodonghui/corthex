@@ -199,13 +199,13 @@ def prepare(base):
     scripts = MEMORY / "skills/corthex-memory/scripts"
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
-    from memory_lib import base as memory_base, files, store
+    from memory_lib import base as memory_base, files, store, clock as memory_clock
     memory = store.MemoryStore(home / ".corthex/corthex-memory")
     memory_base.private_directory(memory.folder / "logs")
     files.write_json(memory.folder / "store.json", store.new_record("0.2.0"), "TBL-001")
     at = memory_base.utc_time()
     memory.write_configuration({"consent": {"at": at, "version": 1},
-        "projects": {"demo": {"enabled": True, "since": at}}}, time.monotonic() + 2)
+        "projects": {"demo": {"enabled": True, "since": at}}}, memory_clock.now() + 2)
     for name in ("raw", "unprocessed"):
         memory_base.private_directory(memory.folder / "projects" / memory_base.project_folder_name("demo") / name)
     return home, demo

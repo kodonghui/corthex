@@ -18,6 +18,7 @@ from test_memory_api import fits
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import base, configuration, files, locks, store
+from memory_lib import clock as memory_clock
 
 API = ROOT / "docs/06-api"
 AT = "2026-10-27T09:12:03.004Z"
@@ -76,8 +77,8 @@ class MemoryStoreTest(StoreCase):
             with self.subTest(example=name):
                 self.assertEqual(fits(self.schema, document), [])
                 original = copy.deepcopy(document)
-                written = self.memory.write_configuration(document, time.monotonic() + 2)
-                read = self.memory.configuration(deadline=time.monotonic() + 1)
+                written = self.memory.write_configuration(document, memory_clock.now() + 2)
+                read = self.memory.configuration(deadline=memory_clock.now() + 1)
                 self.assertEqual(document, original)
                 self.assertEqual(written.document, document)
                 self.assertEqual(read.document, document)
@@ -106,7 +107,7 @@ class MemoryStoreTest(StoreCase):
                 self.assert_invalid(document, expected[name])
                 before = self.snapshot()
                 with self.assertRaises(configuration.ConfigurationInvalid):
-                    self.memory.write_configuration(document, time.monotonic() + 2)
+                    self.memory.write_configuration(document, memory_clock.now() + 2)
                 self.assertEqual(self.snapshot(), before)
 
     def test_tc009_defaults_are_effective_only_and_never_add_consent(self):
@@ -124,7 +125,7 @@ class MemoryStoreTest(StoreCase):
         self.assertNotIn("sync", prepared.values)
         prepared.values["prices"]["models"].clear()
         self.assertTrue(configuration.prepare({}).values["prices"]["models"])
-        self.memory.write_configuration({}, time.monotonic() + 2)
+        self.memory.write_configuration({}, memory_clock.now() + 2)
         self.assertEqual((self.root / "configuration.json").read_bytes(), b"{}\n")
         self.assert_invalid({"consent": {}}, "consent.at")
 
@@ -152,7 +153,7 @@ class MemoryStoreTest(StoreCase):
         path.with_name(path.name + ".bak").write_text(json.dumps(self.examples["valid"]["tuned"]), encoding="utf-8")
         before = self.snapshot()
         with self.assertRaises(configuration.ConfigurationInvalid) as caught:
-            self.memory.configuration(deadline=time.monotonic() + 1)
+            self.memory.configuration(deadline=memory_clock.now() + 1)
         self.assertEqual(caught.exception.field, "consent.at")
         self.assertEqual(self.snapshot(), before)
 
@@ -163,12 +164,12 @@ class MemoryStoreTest(StoreCase):
                 path.write_bytes(broken)
                 path.with_name(path.name + ".bak").write_bytes(b"{}\n")
                 notices = []
-                self.assertEqual(self.memory.configuration(lambda *args: notices.append(args), deadline=time.monotonic() + 1).document, {})
+                self.assertEqual(self.memory.configuration(lambda *args: notices.append(args), deadline=memory_clock.now() + 1).document, {})
                 self.assertEqual(notices, [("restored", None)])
                 self.assertEqual(path.read_bytes(), b"{}\n")
                 path.write_bytes(broken)
                 with self.assertRaises(configuration.ConfigurationInvalid):
-                    self.memory.configuration(deadline=time.monotonic() + 1)
+                    self.memory.configuration(deadline=memory_clock.now() + 1)
 
     def test_tc010_all_numeric_bounds_and_field_types_match_the_schema(self):
         document = configuration.prepare(self.examples["valid"]["with-sync"]).values
@@ -328,7 +329,7 @@ class MemoryStoreTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed):
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration(deadline=time.monotonic() + 1)
+                    self.memory.configuration(deadline=memory_clock.now() + 1)
             self.assertEqual(caught.exception.code, "store-newer")
             self.assertEqual(accessed, [path])
             self.assertEqual(self.snapshot(), before)
@@ -350,7 +351,7 @@ class MemoryStoreTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed):
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration(deadline=time.monotonic() + 1)
+                    self.memory.configuration(deadline=memory_clock.now() + 1)
             self.assertEqual(caught.exception.code, "store-damaged")
             self.assertEqual(accessed, ["store.json", "store.json.bak"])
             self.assertEqual(self.snapshot(), before)
@@ -366,7 +367,7 @@ class MemoryStoreTest(StoreCase):
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
             with mock.patch.object(store.locks,"Lock",wraps=locks.Lock) as lease:
-                self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=time.monotonic() + 1), self.header)
+                self.assertEqual(self.memory.record(lambda *args: notices.append(args), deadline=memory_clock.now() + 1), self.header)
             self.assertEqual(lease.call_args[0][2],self.header["device"])
             self.assertEqual(notices, [("restored", None)])
             self.assertFalse(backup.exists())
@@ -374,7 +375,7 @@ class MemoryStoreTest(StoreCase):
         backup.write_bytes(b'{"format":2}')
         before = self.snapshot()
         with self.assertRaises(store.StoreUnavailable) as caught:
-            self.memory.record(deadline=time.monotonic() + 1)
+            self.memory.record(deadline=memory_clock.now() + 1)
         self.assertEqual(caught.exception.code, "store-newer")
         self.assertEqual(self.snapshot(), before)
 
@@ -384,7 +385,7 @@ class MemoryStoreTest(StoreCase):
             record = dict(self.header, **{key: value})
             (self.root / "store.json").write_text(json.dumps(record), encoding="utf-8")
             with self.assertRaises(store.StoreUnavailable) as caught:
-                self.memory.record(deadline=time.monotonic() + 1)
+                self.memory.record(deadline=memory_clock.now() + 1)
             self.assertEqual(caught.exception.code, "store-damaged")
         self.assertRegex(store.new_record("0.2.0")["device"], r"d_[0-9a-hjkmnp-tv-z]{12}\Z")
         with self.assertRaises(ValueError):
@@ -408,7 +409,7 @@ class MemoryStoreTest(StoreCase):
                         return original(target)
                     with mock.patch.object(Path, "read_bytes", read):
                         with self.assertRaises(failure):
-                            self.memory.configuration(deadline=time.monotonic() + 2)
+                            self.memory.configuration(deadline=memory_clock.now() + 2)
                     self.assertNotIn(name + ".bak", accessed)
                     self.assertEqual(self.snapshot(), before)
 
@@ -434,7 +435,7 @@ class MemoryStoreTest(StoreCase):
                     return read(target)
                 with mock.patch.object(locks.Lock,"acquire",changed), mock.patch.object(Path,"read_bytes",observed):
                     with self.assertRaises(expected):
-                        self.memory.configuration(lambda *n:notices.append(n),deadline=time.monotonic()+2)
+                        self.memory.configuration(lambda *n:notices.append(n),deadline=memory_clock.now()+2)
                 self.assertEqual(late_reads,[])
                 self.assertFalse(path.exists())
                 self.assertEqual(backup.read_bytes(),b"{}\n")
@@ -455,7 +456,7 @@ class MemoryStoreTest(StoreCase):
             return result
         with mock.patch.object(locks.Lock,"acquire",changed):
             with self.assertRaises(locks.LostLock):
-                self.memory.configuration(deadline=time.monotonic()+2)
+                self.memory.configuration(deadline=memory_clock.now()+2)
         self.assertFalse(header_path.exists())
         self.assertFalse(path.exists())
         self.assertEqual(header_backup.read_bytes(),replacement)
@@ -474,7 +475,7 @@ class MemoryStoreTest(StoreCase):
             return result
         with mock.patch.object(locks.Lock,"acquire",changed):
             with self.assertRaises(locks.LostLock):
-                self.memory.record(deadline=time.monotonic()+2)
+                self.memory.record(deadline=memory_clock.now()+2)
         self.assertFalse(path.exists())
         self.assertEqual(backup.read_bytes(),replacement)
 
@@ -485,7 +486,7 @@ class MemoryStoreTest(StoreCase):
         before = self.snapshot()
         with mock.patch.object(store.reading, "read_record", side_effect=files.RestoreNeeded()):
             with self.assertRaises(store.StoreUnavailable) as caught:
-                self.memory.record(deadline=time.monotonic() + 1)
+                self.memory.record(deadline=memory_clock.now() + 1)
         self.assertEqual(caught.exception.code, "store-damaged")
         self.assertEqual(self.snapshot(), before)
         path.write_bytes(base.json_bytes(self.header, "TBL-001"))
@@ -495,7 +496,7 @@ class MemoryStoreTest(StoreCase):
         before = self.snapshot()
         with mock.patch.object(store.reading, "read_record", side_effect=files.RestoreNeeded()):
             with self.assertRaises(configuration.ConfigurationInvalid):
-                self.memory.configuration(deadline=time.monotonic() + 1)
+                self.memory.configuration(deadline=memory_clock.now() + 1)
         self.assertEqual(self.snapshot(), before)
 
     def test_tc011_store_and_configuration_sharing_retries_use_the_caller_deadline(self):
@@ -509,7 +510,7 @@ class MemoryStoreTest(StoreCase):
                 if target == path:
                     raise PermissionError("made-up sharing failure")
                 return original(target)
-            deadline = time.monotonic() + 0.05
+            deadline = memory_clock.now() + 0.05
             started = time.perf_counter()
             with mock.patch.object(files, "_WINDOWS", True), \
                     mock.patch.object(Path, "read_bytes", read):
@@ -521,7 +522,7 @@ class MemoryStoreTest(StoreCase):
     def test_tc012_missing_configuration_has_no_consent_or_writes(self):
         before = self.snapshot()
         for _ in range(2):
-            result = self.memory.configuration(deadline=time.monotonic() + 1)
+            result = self.memory.configuration(deadline=memory_clock.now() + 1)
             self.assertFalse(result.consented())
             self.assertFalse(result.enabled("sample"))
             self.assertEqual(result.document, {})
@@ -529,7 +530,7 @@ class MemoryStoreTest(StoreCase):
         self.assertEqual(self.snapshot(), before)
         absent = store.MemoryStore(self.folder / "absent")
         with self.assertRaises(store.StoreUnavailable) as caught:
-            absent.configuration(deadline=time.monotonic() + 1)
+            absent.configuration(deadline=memory_clock.now() + 1)
         self.assertEqual(caught.exception.code, "no-store")
         self.assertFalse(absent.folder.exists())
 
@@ -541,7 +542,7 @@ class MemoryStoreTest(StoreCase):
                                    "token": "0" * 32}), encoding="utf-8")
         before = self.snapshot()
         with self.assertRaises(locks.LockBusy):
-            self.memory.write_configuration({}, time.monotonic() + 0.02)
+            self.memory.write_configuration({}, memory_clock.now() + 0.02)
         self.assertEqual(self.snapshot(), before)
 
     def test_tc009_lost_lease_and_changed_device_fence_the_primary_move(self):
@@ -563,7 +564,7 @@ class MemoryStoreTest(StoreCase):
                     return temporary
                 with mock.patch.object(files, "_temporary", changed):
                     with self.assertRaises(locks.LostLock):
-                        self.memory.write_configuration({"temporary": True}, time.monotonic() + 2)
+                        self.memory.write_configuration({"temporary": True}, memory_clock.now() + 2)
                 self.assertEqual(path.read_bytes(), b"{}\n")
                 self.assertFalse(list(self.root.glob("*.tmp")))
                 (self.root / "store.lock").unlink(missing_ok=True)
@@ -592,7 +593,7 @@ class MemoryStoreTest(StoreCase):
                 return retry(operation)
         with mock.patch.object(files.os, "replace", sharing), mock.patch.object(files, "_retry", retry_once):
             with self.assertRaises(locks.LostLock):
-                self.memory.write_configuration({"temporary": True}, time.monotonic() + 2)
+                self.memory.write_configuration({"temporary": True}, memory_clock.now() + 2)
         self.assertEqual(len(calls), 1)
         self.assertEqual(path.read_bytes(), b"{}\n")
         self.assertFalse(list(self.root.glob("*.tmp")))
@@ -605,7 +606,7 @@ class MemoryStoreTest(StoreCase):
                 raise PermissionError("made-up store cleanup detail")
             return rename(source, target)
         with mock.patch.object(locks.os, "rename", sharing):
-            result = self.memory.write_configuration({"temporary":True}, time.monotonic() + 3)
+            result = self.memory.write_configuration({"temporary":True}, memory_clock.now() + 3)
         self.addCleanup((self.root / "store.lock").unlink)
         self.assertEqual(result.document, {"temporary":True})
         self.assertEqual(files.read_json(self.root / "configuration.json"), {"temporary":True})

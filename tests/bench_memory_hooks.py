@@ -23,6 +23,7 @@ SCRIPT = ROOT / "plugins/corthex-memory/scripts/hook.py"
 sys.path.insert(0, str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"))
 sys.dont_write_bytecode = True
 from memory_lib import base, files, store
+from memory_lib import clock as memory_clock
 
 MARKER = "CORTHEX_HOOK_BENCH="
 CALL = "CORTHEX_HOOK_CALL="
@@ -32,14 +33,14 @@ WRAPPER = r'''
 import sys, time, builtins
 script, hook, mode = sys.argv[1:4]
 sys.argv = [script, hook]
-real_clock, started = time.monotonic, []
+real_clock, started = time.perf_counter, []
 def clock():
     value = real_clock()
     if sys._getframe(1).f_code.co_filename == script:
         started.append(value)
-        time.monotonic = real_clock
+        time.perf_counter = real_clock
     return value
-time.monotonic = clock
+time.perf_counter = clock
 if mode != "normal":
     original_import = builtins.__import__
     def importing(name, *args, **kwargs):
@@ -95,7 +96,7 @@ def fixture(folder, count, script):
     files.write_json(memory.folder / "store.json", store.new_record("0.2.0"), "TBL-001")
     at = base.utc_time()
     memory.write_configuration({"consent": {"at": at, "version": 1},
-        "projects": {"sample": {"enabled": True, "since": at}}}, time.monotonic() + 2)
+        "projects": {"sample": {"enabled": True, "since": at}}}, memory_clock.now() + 2)
     for name in ("raw", "unprocessed"):
         base.private_directory(memory.folder / "projects" / base.project_folder_name("sample") / name)
     environment = {k: v for k, v in os.environ.items() if k.upper() in
@@ -173,7 +174,7 @@ def measure(samples=5):
                              "skipped_entries": 0 if hook == "start" else samples - entries,
                              "over_budget": sum(value >= BUDGETS[hook] for value in times), "valid": valid})
     return {"schema": 1, "os": platform.system(), "python": platform.python_version(),
-            "clock": "hook.py STARTED through return", "interpreter_start_included": False,
+            "clock": "hook.py STARTED through return", "clock_source": "perf_counter", "interpreter_start_included": False,
             "product_imports_included": True, "plugin_bytecode_excluded": True,
             "fixture_setup_included": False, "rows": rows}
 

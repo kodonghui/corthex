@@ -19,6 +19,7 @@ from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import base, files
+from memory_lib import clock as memory_clock
 
 AT = "2026-10-27T09:12:03.004Z"
 WORKER = r'''
@@ -372,10 +373,10 @@ k.CloseHandle(handle)
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             self.assertEqual(process.stdout.readline().strip(), "ready")
-            started = time.monotonic()
+            started = memory_clock.now()
             with self.assertRaises(PermissionError):
                 action(path)
-            elapsed = time.monotonic() - started
+            elapsed = memory_clock.now() - started
             self.assertGreaterEqual(elapsed, 0.95)
             self.assertLess(elapsed, 3.0)
             self.assertEqual(files.read_json(path), {"format": 1})

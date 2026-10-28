@@ -18,6 +18,7 @@ from collections import namedtuple
 from pathlib import Path
 
 from .base import memory_home, private_open, utc_time
+from . import clock
 
 Policy = namedtuple("Policy", "rank refresh stale")
 POLICIES = dict(zip(("store", "curation", "sync", "layer", "raw", "log"),
@@ -100,7 +101,7 @@ def _discard(path, deadline):
         except FileNotFoundError:
             return
         except PermissionError:
-            left = deadline - time.monotonic()
+            left = deadline - clock.now()
             if left <= 0:
                 raise
             time.sleep(min(0.005, left))
@@ -166,7 +167,7 @@ class Lock:
         return True
 
     def _detach(self, expected, stale, force=False, deadline=None):
-        deadline = time.monotonic() + 1 if deadline is None else deadline
+        deadline = clock.now() + 1 if deadline is None else deadline
         moved = self.path.with_name(self.path.name + "." + secrets.token_hex(16) + ".stale")
         cleanup = False
         try:
@@ -203,7 +204,7 @@ class Lock:
             detached = self._detach(previous, stale=True, force=force, deadline=deadline)
             if detached is False:
                 raise LockBusy()
-            if detached and time.monotonic() < deadline:
+            if detached and clock.now() < deadline:
                 return self._create()
         return False
 
@@ -219,7 +220,7 @@ class Lock:
         self.token = secrets.token_hex(16)
         self._stop, self._thread = threading.Event(), None
         try:
-            while time.monotonic() < deadline:
+            while clock.now() < deadline:
                 try:
                     acquired = self._attempt(deadline, force)
                 except PermissionError:
@@ -229,7 +230,7 @@ class Lock:
                     return self
                 if not wait:
                     break
-                time.sleep(max(0, min(0.005, deadline - time.monotonic())))
+                time.sleep(max(0, min(0.005, deadline - clock.now())))
             raise LockBusy()
         except BaseException:
             self.token = None
@@ -306,7 +307,7 @@ class Lock:
                         return
                 except OSError as error:
                     last = error
-                left = deadline - time.monotonic()
+                left = deadline - clock.now()
                 if left <= 0:
                     raise last if last is not None else LockBusy()
                 time.sleep(min(0.005, left))
@@ -326,7 +327,7 @@ class Lock:
             self._stop.set()
             if self._thread:
                 self._thread.join(timeout=1)
-            self._release(time.monotonic() + 1)
+            self._release(clock.now() + 1)
         except Exception as error:
             failure = error
         finally:

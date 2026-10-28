@@ -8,9 +8,9 @@ recovery with no other lease held. Release uses its separate one-second retry
 and reports cleanup failures without replacing the read result.
 """
 
-import time
 
 from . import files, locks
+from . import clock
 
 
 def _recover(reader, path, lock, deadline, report, before_locked=None, **options):
@@ -21,7 +21,7 @@ def _recover(reader, path, lock, deadline, report, before_locked=None, **options
     lock.acquire(deadline)
     try:
         def check():
-            if time.monotonic() >= deadline:
+            if clock.now() >= deadline:
                 raise locks.LockBusy()
             lock.check()
             if before_locked is not None:

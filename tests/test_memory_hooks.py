@@ -14,6 +14,7 @@ from _common import ROOT
 from test_memory_diagnostics import hold_logs
 from test_memory_store import AT, SCRIPTS, StoreCase
 from memory_lib import base, diagnostics, files, hooks, locks, store
+from memory_lib import clock as memory_clock
 
 PLUGIN = ROOT / "plugins/corthex-memory"
 SCRIPT = PLUGIN / "scripts/hook.py"
@@ -30,7 +31,7 @@ class HookCase(StoreCase):
         (self.home / ".corthex/projects.json").write_text(json.dumps({"projects": [
             {"name": "sample", "path": str(self.repo)}]}), encoding="utf-8")
         self.memory.write_configuration({"consent": {"at": AT, "version": 1},
-            "projects": {"sample": {"enabled": True, "since": AT}}}, time.monotonic() + 2)
+            "projects": {"sample": {"enabled": True, "since": AT}}}, memory_clock.now() + 2)
         for name in ("raw", "unprocessed"):
             base.private_directory(self.root / "projects" / base.project_folder_name("sample") / name)
 
@@ -57,6 +58,7 @@ class HookCase(StoreCase):
             shim = self.folder / "caller.py"
             text = "import json, runpy, sys, time\n"
             text += "sys.path.insert(0, " + repr(str(SCRIPTS)) + ")\n"
+            text += "from memory_lib import clock as memory_clock\n"
             if patch is not None:
                 text += "from memory_lib import hooks\n" + patch + "\n"
             text += "sys.argv = [" + repr(str(SCRIPT)) + ", " + repr(hook) + "]\n"
@@ -85,6 +87,18 @@ class HookCase(StoreCase):
 
 
 class HookFrameworkTest(HookCase):
+    def test_tc036_shared_counter_drives_recording_and_hook_elapsed_time(self):
+        from memory_lib import clock, raw_log, reading
+        for module in (files,locks,raw_log,reading,store,diagnostics,hooks):
+            self.assertIs(module.clock,clock)
+        logger = mock.Mock()
+        frame = hooks.Hook("prompt",{},"codex",self.memory,None,None,logger,37.0,38.0)
+        with mock.patch.object(clock.time,"perf_counter",return_value=37.125):
+            self.assertEqual(clock.now(),37.125)
+            self.assertAlmostEqual(raw_log.prepare("clock fixture",{}).deadline,37.175)
+            frame.finish("ok")
+        logger.timing.assert_called_once_with("prompt","codex",125,"ok",38.0,opportunistic=False)
+
     def test_tc033_each_hook_rejects_invalid_utf8_json_event_and_session(self):
         for hook in hooks.EVENTS:
             valid = self.event(hook)
@@ -235,7 +249,7 @@ class HookFrameworkTest(HookCase):
         self.assertEqual(list(plugin.rglob("__pycache__")), [])
 
     def test_tc321_expired_hook_attempts_free_logs_once_and_skips_busy_logs(self):
-        patch = ("def expire(frame):\n    frame.started = time.monotonic() - 2\n"
+        patch = ("def expire(frame):\n    frame.started = memory_clock.now() - 2\n"
                  "    frame.deadline = frame.started + hooks.SECONDS[frame.hook]\n    return 'ok'\nhooks.process = expire")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(self.records("failures")[-1]["error"], "deadline")
@@ -263,7 +277,7 @@ class HookFrameworkTest(HookCase):
 
     def test_tc321_late_diagnostic_rechecks_the_cached_store_gate(self):
         patch = ("def change(frame):\n    (frame.memory.folder / 'store.json').write_bytes(b'{\"format\":2}')\n"
-                 "    frame.started = time.monotonic() - 2\n    frame.deadline = frame.started + 0.9\n"
+                 "    frame.started = memory_clock.now() - 2\n    frame.deadline = frame.started + 0.9\n"
                  "    return 'ok'\nhooks.process = change")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(self.records("failures"), [])
@@ -271,12 +285,12 @@ class HookFrameworkTest(HookCase):
 
     def test_tc321_late_windows_open_gets_one_attempt_and_no_retry_budget(self):
         logger = diagnostics.Diagnostics(self.memory)
-        logger.read_gate(time.monotonic() + 2)
+        logger.read_gate(memory_clock.now() + 2)
         before = self.snapshot()
         with mock.patch.object(files, "_WINDOWS", True), \
                 mock.patch.object(files, "private_open", side_effect=PermissionError()) as opening, \
                 mock.patch.object(time, "sleep", side_effect=AssertionError("must not wait")):
-            self.assertFalse(logger.failure("deadline", "record", time.monotonic() - 1,
+            self.assertFalse(logger.failure("deadline", "record", memory_clock.now() - 1,
                                             hook="prompt", host="codex", opportunistic=True))
             self.assertEqual(opening.call_count, 1)
         self.assertEqual(self.snapshot(), before)

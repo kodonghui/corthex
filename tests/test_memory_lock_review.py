@@ -9,6 +9,7 @@ from unittest import mock
 
 import test_memory_locks as fixtures
 from memory_lib import files, locks, reading
+from memory_lib import clock as memory_clock
 
 
 class MemoryLockReviewTest(unittest.TestCase):
@@ -24,7 +25,7 @@ class MemoryLockReviewTest(unittest.TestCase):
         self.seed(path)
         before = locks._snapshot(path)
         replacement = self.new_lock()
-        with replacement.held(time.monotonic() + 2):
+        with replacement.held(memory_clock.now() + 2):
             past = time.time() - 11
             os.utime(str(path), (past, past))
             data, stamp = path.read_bytes(), path.stat().st_mtime_ns
@@ -41,7 +42,7 @@ class MemoryLockReviewTest(unittest.TestCase):
 
     def test_tc007_old_release_rechecks_after_a_real_takeover(self):
         lease = self.new_lock()
-        lease.acquire(time.monotonic() + 2)
+        lease.acquire(memory_clock.now() + 2)
         self.addCleanup(lease.release)
         old = locks._snapshot(lease.path)
         past = time.time() - 11
@@ -68,7 +69,7 @@ class MemoryLockReviewTest(unittest.TestCase):
         path, lease = self.folder / "record.json", self.new_lock()
         backup = path.with_name(path.name + ".bak")
         backup.write_bytes(b'{"seq":1}\n')
-        original_read, rename, monotonic = files.read_json, locks.os.rename, time.monotonic
+        original_read, rename, monotonic = files.read_json, locks.os.rename, memory_clock.now
         offset, attempts, notices = [0], [], []
         def read(*args, **kwargs):
             result = original_read(*args, **kwargs)
@@ -84,7 +85,7 @@ class MemoryLockReviewTest(unittest.TestCase):
         started = time.perf_counter()
         with mock.patch.object(files, "read_json", read), \
                 mock.patch.object(locks.os, "rename", sharing), \
-                mock.patch.object(locks.time, "monotonic", side_effect=lambda:monotonic() + offset[0]):
+                mock.patch.object(locks.clock, "now", side_effect=lambda:monotonic() + offset[0]):
             value = reading.read_json(path, lease, monotonic() + 1, lambda *n:notices.append(n))
         self.assertEqual(value, {"seq":1})
         self.assertEqual(path.read_bytes(), b'{"seq":1}\n')
@@ -112,14 +113,14 @@ class MemoryLockReviewTest(unittest.TestCase):
         backup = path.with_name(path.name + ".bak")
         data = b'{"seq":1}\n'
         backup.write_bytes(data)
-        acquire, monotonic = lease.acquire, time.monotonic
+        acquire, monotonic = lease.acquire, memory_clock.now
         offset = [0]
         def expire(deadline):
             result = acquire(deadline)
             offset[0] = 2
             return result
         with mock.patch.object(lease, "acquire", expire), \
-                mock.patch.object(locks.time, "monotonic", side_effect=lambda:monotonic() + offset[0]):
+                mock.patch.object(locks.clock, "now", side_effect=lambda:monotonic() + offset[0]):
             with self.assertRaises(locks.LockBusy):
                 reading.read_json(path, lease, monotonic() + 1)
         self.assertFalse(path.exists())
@@ -132,7 +133,7 @@ class MemoryLockReviewTest(unittest.TestCase):
         started = time.perf_counter()
         with mock.patch.object(lease, "_detach", return_value=False):
             with self.assertRaises(locks.LockBusy):
-                lease.acquire(time.monotonic() + 0.4)
+                lease.acquire(memory_clock.now() + 0.4)
         self.assertLess(time.perf_counter() - started, 0.2)
 
     def test_tc008_pending_acquisition_also_enforces_the_order(self):
@@ -145,7 +146,7 @@ class MemoryLockReviewTest(unittest.TestCase):
             return False
         def wait_later():
             try:
-                later.acquire(time.monotonic() + 2, wait=False)
+                later.acquire(memory_clock.now() + 2, wait=False)
             except locks.LockBusy:
                 answers.append("busy")
         with mock.patch.object(later, "_attempt", blocked_attempt):
@@ -154,7 +155,7 @@ class MemoryLockReviewTest(unittest.TestCase):
             try:
                 self.assertTrue(entered.wait(1))
                 with self.assertRaises(locks.LockOrderError):
-                    with self.new_lock("earlier.lock", "store").held(time.monotonic() + 1):
+                    with self.new_lock("earlier.lock", "store").held(memory_clock.now() + 1):
                         pass
             finally:
                 finish.set()
@@ -173,36 +174,36 @@ class MemoryLockReviewTest(unittest.TestCase):
                     with mock.patch.object(locks.time, "time_ns", return_value=stamp + limit * 10**9 + delta):
                         if delta < 0:
                             with self.assertRaises(locks.LockBusy):
-                                lease.acquire(time.monotonic() + 1, wait=False)
+                                lease.acquire(memory_clock.now() + 1, wait=False)
                         else:
-                            with lease.held(time.monotonic() + 1, wait=False):
+                            with lease.held(memory_clock.now() + 1, wait=False):
                                 lease.check()
 
     def test_tc007_background_refresh_failure_marks_the_lease_lost(self):
         with mock.patch.dict(locks.POLICIES, {"store":locks.Policy(0,0.01,120)}):
             lease = self.new_lock(kind="store")
         with mock.patch.object(lease, "refresh", side_effect=OSError("made-up refresh failure")):
-            with lease.held(time.monotonic() + 2):
+            with lease.held(memory_clock.now() + 2):
                 lease._thread.join(1)
                 self.assertFalse(lease._thread.is_alive())
                 with self.assertRaises(locks.LostLock):
                     lease.check()
 
     def test_tc008_same_kind_paths_can_be_acquired_in_order(self):
-        with self.new_lock("a.lock").held(time.monotonic() + 1):
-            with self.new_lock("b.lock").held(time.monotonic() + 1) as later:
+        with self.new_lock("a.lock").held(memory_clock.now() + 1):
+            with self.new_lock("b.lock").held(memory_clock.now() + 1) as later:
                 later.check()
 
     def test_tc008_same_kind_paths_are_refused_in_reverse_order(self):
-        with self.new_lock("b.lock").held(time.monotonic() + 1):
+        with self.new_lock("b.lock").held(memory_clock.now() + 1):
             with self.assertRaises(locks.LockOrderError):
-                with self.new_lock("a.lock").held(time.monotonic() + 1):
+                with self.new_lock("a.lock").held(memory_clock.now() + 1):
                     pass
 
     @unittest.skipUnless(os.name == "nt", "Windows lock path ordering ignores case")
     def test_tc008_windows_same_kind_path_order_ignores_case(self):
-        with self.new_lock("a.lock").held(time.monotonic() + 1):
-            with self.new_lock("Z.lock").held(time.monotonic() + 1):
+        with self.new_lock("a.lock").held(memory_clock.now() + 1):
+            with self.new_lock("Z.lock").held(memory_clock.now() + 1):
                 pass
 
     def test_tc008_held_forwards_cleanup_failure_without_hiding_the_body_error(self):
@@ -214,7 +215,7 @@ class MemoryLockReviewTest(unittest.TestCase):
             return rename(source, target)
         with mock.patch.object(locks.os, "rename", sharing):
             with self.assertRaises(KeyError):
-                with lease.held(time.monotonic() + 2, report=lambda *n:notices.append(n)):
+                with lease.held(memory_clock.now() + 2, report=lambda *n:notices.append(n)):
                     raise KeyError("made-up body failure")
         self.addCleanup(lease.path.unlink)
         self.assertEqual(notices, [("PermissionError", None)])
@@ -222,7 +223,7 @@ class MemoryLockReviewTest(unittest.TestCase):
 
     def test_tc007_displaced_release_is_quiet_and_preserves_the_new_owner(self):
         lease, notices = self.new_lock(), []
-        lease.acquire(time.monotonic() + 2)
+        lease.acquire(memory_clock.now() + 2)
         self.addCleanup(lease.release)
         past = time.time() - 11
         os.utime(str(lease.path), (past, past))
@@ -241,9 +242,9 @@ class MemoryLockReviewTest(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows lock aliases ignore case")
     def test_tc008_windows_same_path_with_another_case_is_an_order_error(self):
-        with self.new_lock("A.lock").held(time.monotonic() + 1):
+        with self.new_lock("A.lock").held(memory_clock.now() + 1):
             with self.assertRaises(locks.LockOrderError):
-                with self.new_lock("a.lock").held(time.monotonic() + 0.05, wait=False):
+                with self.new_lock("a.lock").held(memory_clock.now() + 0.05, wait=False):
                     pass
 
     def test_tc318_public_reader_recovers_a_damaged_primary(self):
@@ -252,7 +253,7 @@ class MemoryLockReviewTest(unittest.TestCase):
         backup = path.with_name(path.name + ".bak")
         backup.write_bytes(b'{"seq":1}\n')
         notices = []
-        self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1,
+        self.assertEqual(reading.read_json(path, lease, memory_clock.now() + 1,
                                           lambda *n:notices.append(n)), {"seq":1})
         self.assertEqual(path.read_bytes(), b'{"seq":1}\n')
         self.assertFalse(backup.exists())

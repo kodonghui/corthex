@@ -17,6 +17,7 @@ from unittest import mock
 
 from test_memory_store import StoreCase
 from memory_lib import base, diagnostics, files, locks, raw_log, redaction, store
+from memory_lib import clock as memory_clock
 
 WHEN = datetime(2026, 10, 27, 9, 12, 3, 456000, timezone.utc)
 
@@ -44,14 +45,14 @@ def killed_writer(connection, folder, ordinal, count, stop):
         with mock.patch.object(files.os, "write", acknowledged):
             return original(path, value, table, *args, **kwargs)
     with mock.patch.object(files, "append_jsonl", append):
-        limit = time.monotonic() + 20
+        limit = memory_clock.now() + 20
         for index in range(count):
             while True:
                 result = log.append("prompt", raw_log.prepare("made-up turn %d/%d" % (ordinal, index), {}),
-                                    diagnostic_deadline=time.monotonic() + 3)
+                                    diagnostic_deadline=memory_clock.now() + 3)
                 if result.entry is not None:
                     break
-                if result.outcome not in ("lock-busy", "deadline") or time.monotonic() >= limit:
+                if result.outcome not in ("lock-busy", "deadline") or memory_clock.now() >= limit:
                     connection.send(("failed", result.outcome))
                     return
         connection.send(("stop", None))
@@ -67,10 +68,10 @@ def concurrent_writer(connection, folder, count, late_marker=False):
     connection.send("ready")
     connection.recv()
     written = []
-    limit = time.monotonic() + 15
-    while len(written) < count and time.monotonic() < limit:
+    limit = memory_clock.now() + 15
+    while len(written) < count and memory_clock.now() < limit:
         result = log.append("prompt", raw_log.prepare("made-up concurrent turn", {}),
-                            diagnostic_deadline=time.monotonic() + 2)
+                            diagnostic_deadline=memory_clock.now() + 2)
         if result.entry:
             if result.outcome not in ("ok", "deadline"):
                 raise AssertionError("unexpected completed writer outcome")
@@ -91,7 +92,7 @@ class RawLogTest(StoreCase):
 
     def record(self, kind="prompt", text="made-up text", when=WHEN, **options):
         prepared = raw_log.prepare(text, {}) if kind in ("prompt", "answer") and text is not None else None
-        return self.log.append(kind, prepared, diagnostic_deadline=time.monotonic() + 3, when=when, **options)
+        return self.log.append(kind, prepared, diagnostic_deadline=memory_clock.now() + 3, when=when, **options)
 
     def entries(self):
         return files.read_jsonl(self.log.path) if self.log.path.exists() else []
@@ -170,7 +171,7 @@ class RawLogTest(StoreCase):
             log = raw_log.RawLog(store.MemoryStore(folder), "unprovisioned", "codex", "made-up-session")
             with self.assertRaises(error):
                 log.append("prompt", raw_log.prepare("made-up", {}),
-                           diagnostic_deadline=time.monotonic() + 2)
+                           diagnostic_deadline=memory_clock.now() + 2)
             self.assertFalse((folder / "projects/unprovisioned").exists())
         self.assertFalse((self.folder / "absent").exists())
         self.assertEqual(self.snapshot(), before)
@@ -185,8 +186,8 @@ class RawLogTest(StoreCase):
             return original(text, environment)
         with mock.patch.object(redaction, "redact", side_effect=redact) as calls:
             prepared = raw_log.prepare("made-up " + generated, {})
-            self.assertGreater(prepared.deadline, time.monotonic())
-            result = self.log.append("prompt", prepared, diagnostic_deadline=time.monotonic() + 2, when=WHEN)
+            self.assertGreater(prepared.deadline, memory_clock.now())
+            result = self.log.append("prompt", prepared, diagnostic_deadline=memory_clock.now() + 2, when=WHEN)
         self.assertEqual(calls.call_count, 1)
         self.assertEqual(result.outcome, "ok")
         self.assertNotIn(generated.encode(), self.log.path.read_bytes())
@@ -208,7 +209,7 @@ class RawLogTest(StoreCase):
         for prepared in (None, "made-up", raw_log.Prepared("a"*(redaction.ENTRY_BYTES+1),None,1),
                          raw_log.Prepared("a",True,1),raw_log.Prepared("a",None,float("nan"))):
             with self.assertRaises(ValueError):
-                self.log.append("prompt", prepared, diagnostic_deadline=time.monotonic() + 2)
+                self.log.append("prompt", prepared, diagnostic_deadline=memory_clock.now() + 2)
         self.assertEqual(self.snapshot(), before)
 
     def test_tc030_existing_marker_keeps_its_oldest_time_and_permissions(self):
@@ -226,13 +227,13 @@ class RawLogTest(StoreCase):
         for turn in range(1, 101):
             (self.log.markers / ("20261027T091203Z.codex-" + "0"*16 + "." + str(turn))).write_bytes(b"")
         prepared = raw_log.prepare("made-up new turn", {})
-        clock, original = [time.monotonic()], locks.Lock.check
+        clock, original = [memory_clock.now()], locks.Lock.check
         def metadata_cost(lease):
             result = original(lease)
             if lease.path == self.log.path.with_suffix(".lock"):
                 clock[0] += 0.002
             return result
-        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
+        with mock.patch.object(raw_log.clock,"now",side_effect=lambda:clock[0]), \
                 mock.patch.object(locks.Lock,"check",metadata_cost):
             result = self.log.append("prompt", prepared, diagnostic_deadline=clock[0]+3,when=WHEN)
         self.assertEqual(result.outcome,"ok")
@@ -250,9 +251,9 @@ class RawLogTest(StoreCase):
                 taken.append(path.read_bytes())
             return listed(folder)
         prepared = raw_log.prepare("made-up",{})
-        prepared = raw_log.Prepared(prepared.text,prepared.cut,time.monotonic()+2)
+        prepared = raw_log.Prepared(prepared.text,prepared.cut,memory_clock.now()+2)
         with mock.patch.object(Path,"iterdir",scan):
-            result = self.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3,when=WHEN)
+            result = self.log.append("prompt",prepared,diagnostic_deadline=memory_clock.now()+3,when=WHEN)
         self.assertEqual(result.outcome,"error")
         self.assertEqual(self.entries(),[result.entry])
         self.assertEqual(self.markers(),[])
@@ -431,15 +432,15 @@ class RawLogTest(StoreCase):
         self.assertTrue(self.receive(connection))
         try:
             for kind, hook in (("prompt","prompt"),("answer","end-of-turn"),("end","end")):
-                started = time.monotonic()
+                started = memory_clock.now()
                 result = self.record(kind, None if kind=="end" else "made-up", deadline=started+1)
-                elapsed = time.monotonic() - started
+                elapsed = memory_clock.now() - started
                 self.assertEqual(result.outcome, "lock-busy")
                 self.assertIsNone(result.entry)
                 self.assertFalse(self.log.path.exists())
                 self.assertEqual(self.markers(), [])
                 self.assertLess(elapsed, 0.35)
-                self.assertTrue(self.log.logger.timing(hook,"codex",int(elapsed*1000),result.outcome,time.monotonic()+1,when=WHEN))
+                self.assertTrue(self.log.logger.timing(hook,"codex",int(elapsed*1000),result.outcome,memory_clock.now()+1,when=WHEN))
             self.assertEqual([r["error"] for r in self.failures()], ["lock-busy"]*3)
             self.assertEqual([r["outcome"] for r in files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")], ["lock-busy"]*3)
         finally:
@@ -449,8 +450,8 @@ class RawLogTest(StoreCase):
 
     def test_tc031_caller_deadline_only_shortens_the_recording_budget(self):
         prepared = raw_log.prepare("made-up",{})
-        result = self.log.append("prompt",prepared,deadline=time.monotonic()-1,
-                                 diagnostic_deadline=time.monotonic()+3,when=WHEN)
+        result = self.log.append("prompt",prepared,deadline=memory_clock.now()-1,
+                                 diagnostic_deadline=memory_clock.now()+3,when=WHEN)
         self.assertEqual((result.outcome,result.entry),("lock-busy",None))
         self.assertFalse(self.log.path.exists())
         self.assertEqual(self.markers(),[])
@@ -470,7 +471,7 @@ class RawLogTest(StoreCase):
             value = original(text,environment)
             calls[0] += 1
             if calls[0] == 2:
-                return raw_log.Prepared(value.text,value.cut,time.monotonic()-1)
+                return raw_log.Prepared(value.text,value.cut,memory_clock.now()-1)
             return value
         with mock.patch.object(raw_log,"prepare",delayed):
             row = bench.measure(1)["cases"][0]
@@ -482,7 +483,7 @@ class RawLogTest(StoreCase):
         original = raw_log.prepare
         def remaining(text, environment):
             value = original(text,environment)
-            return raw_log.Prepared(value.text,value.cut,time.monotonic()+5)
+            return raw_log.Prepared(value.text,value.cut,memory_clock.now()+5)
         for outcome in ("deadline","lock-busy","error"):
             with self.subTest(outcome=outcome), mock.patch.object(raw_log,"prepare",remaining), \
                     mock.patch.object(raw_log.RawLog,"append",return_value=raw_log.Recorded(outcome)):
@@ -495,7 +496,7 @@ class RawLogTest(StoreCase):
                 log = raw_log.RawLog(self.memory,"sample",host,session)
                 expected = host + "-" + hashlib.sha256(session.encode()).hexdigest()[:16]
                 self.assertEqual(log.log, expected)
-                result = log.append("prompt",raw_log.prepare("made-up",{}),diagnostic_deadline=time.monotonic()+2,when=WHEN)
+                result = log.append("prompt",raw_log.prepare("made-up",{}),diagnostic_deadline=memory_clock.now()+2,when=WHEN)
                 self.assertEqual(result.entry["session"], session)
                 self.assertEqual(log.path.parent, self.root / "projects/sample/raw")
         self.assertFalse((self.folder / "outside").exists())
@@ -504,13 +505,13 @@ class RawLogTest(StoreCase):
 
     def test_tc319_deadline_after_append_keeps_entry_skips_marker_and_reports_deadline(self):
         prepared = raw_log.prepare("made-up turn",{})
-        clock = [time.monotonic()]
+        clock = [memory_clock.now()]
         original = files.append_jsonl
         def expire(*args, **kwargs):
             value = original(*args, **kwargs)
             if args[2] == "TBL-007": clock[0] = prepared.deadline + 0.001
             return value
-        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
+        with mock.patch.object(raw_log.clock,"now",side_effect=lambda:clock[0]), \
                 mock.patch.object(files,"append_jsonl",expire), \
                 mock.patch.object(self.log,"_marker",wraps=self.log._marker) as marker:
             result = self.log.append("prompt",prepared,diagnostic_deadline=clock[0]+5,when=WHEN)
@@ -519,7 +520,7 @@ class RawLogTest(StoreCase):
         marker.assert_not_called()
         self.assertEqual(self.markers(),[])
         self.assertEqual([r["error"] for r in self.failures()],["deadline"])
-        self.assertTrue(self.log.logger.timing("prompt","codex",51,result.outcome,time.monotonic()+1,when=WHEN))
+        self.assertTrue(self.log.logger.timing("prompt","codex",51,result.outcome,memory_clock.now()+1,when=WHEN))
         self.assertEqual(files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")[0]["outcome"],"deadline")
         next_entry = self.record("answer","made-up answer").entry
         self.assertEqual((next_entry["seq"],next_entry["turn"]),(2,1))
@@ -527,12 +528,12 @@ class RawLogTest(StoreCase):
 
     def test_tc319_expiry_after_acquisition_before_write_is_deadline_not_contention(self):
         prepared = raw_log.prepare("made-up",{})
-        clock, acquire = [time.monotonic()], locks.Lock.acquire
+        clock, acquire = [memory_clock.now()], locks.Lock.acquire
         def acquired(lease,*args,**kwargs):
             result = acquire(lease,*args,**kwargs)
             clock[0] = prepared.deadline + 0.001
             return result
-        with mock.patch.object(raw_log.time,"monotonic",side_effect=lambda:clock[0]), \
+        with mock.patch.object(raw_log.clock,"now",side_effect=lambda:clock[0]), \
                 mock.patch.object(locks.Lock,"acquire",acquired):
             result = self.log.append("prompt",prepared,diagnostic_deadline=clock[0]+5,when=WHEN)
         self.assertEqual((result.outcome,result.entry),("deadline",None))

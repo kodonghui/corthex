@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from .base import json_bytes, private_open
+from . import clock
 
 _WINDOWS = os.name == "nt"
 _RESTORABLE = (FileNotFoundError, ValueError, UnicodeError)
@@ -28,13 +29,13 @@ class RestoreNeeded(RuntimeError):
 
 def _retry(operation, deadline=None):
     """Retry a Windows sharing failure until the caller or one-second limit."""
-    limit = time.monotonic() + 1.0
+    limit = clock.now() + 1.0
     deadline = limit if deadline is None else min(deadline, limit)
     while True:
         try:
             return operation()
         except PermissionError:
-            left = deadline - time.monotonic()
+            left = deadline - clock.now()
             if not _WINDOWS or left <= 0:
                 raise
             time.sleep(min(0.02, left))

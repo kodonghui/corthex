@@ -8,6 +8,7 @@ import time
 
 from test_memory_locks import holder
 from test_memory_reading import MemoryReadingTest, locks, reading
+from memory_lib import clock as memory_clock
 
 
 def measure(samples):
@@ -19,7 +20,7 @@ def measure(samples):
         connection, process = case.start(holder, str(lease.path), case.device)
         assert case.receive(connection)
         for _ in range(samples):
-            deadline = time.monotonic() + 0.05
+            deadline = memory_clock.now() + 0.05
             started = time.perf_counter()
             try:
                 reading.read_json(path, lease, deadline)

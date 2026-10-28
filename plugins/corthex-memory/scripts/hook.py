@@ -3,7 +3,8 @@
 
 import time
 
-STARTED = time.monotonic()
+# Sample before product imports; subsequent calls use memory_lib.clock.
+STARTED = time.perf_counter()
 
 import sys
 sys.dont_write_bytecode = True
