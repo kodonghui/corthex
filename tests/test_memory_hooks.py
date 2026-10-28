@@ -66,7 +66,7 @@ class HookCase(StoreCase):
         run = subprocess.run(args, input=raw, env=self.environment(changes), cwd=str(self.repo),
                              capture_output=True, timeout=15)
         self.assertEqual(run.returncode, 0)
-        self.assertEqual(run.stderr, expected_stderr)
+        self.assertEqual(run.stderr.replace(b"\r\n", b"\n"), expected_stderr)
         self.assertTrue(all(byte < 128 for byte in run.stdout))
         if hook == "start" and expect_start:
             value = json.loads(run.stdout)
