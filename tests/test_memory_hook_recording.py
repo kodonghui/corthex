@@ -476,9 +476,12 @@ class HookRecordingTest(HookCase):
         try:
             self.assertTrue(parent.poll(10))
             self.assertTrue(parent.recv())
-            self.run_hook("prompt")
+            patch = ("from memory_lib import redaction\ndef fail(*args, **kwargs):\n"
+                     "    raise RuntimeError('private-held-log-fixture')\nredaction.redact = fail")
+            self.run_hook("prompt",patch=patch)
             self.assertEqual(self.records("hooks"), [])
             self.assertEqual(self.records("failures"), [])
+            self.assertEqual(self.raw(), [])
         finally:
             parent.send(True)
             worker.join(10)
@@ -498,9 +501,12 @@ class HookRecordingTest(HookCase):
         self.configure(projects={name: {"enabled": True, "since": AT} for name in ("sample", "nested")})
         (self.home / ".corthex/projects.json").write_text(json.dumps({"projects": [
             {"name": "sample", "path": str(self.repo)}, {"name": "nested", "path": str(nested)}]}))
+        parent = self.root / "projects" / base.project_folder_name("sample")
+        before = {str(p.relative_to(parent)):p.read_bytes() for p in parent.rglob("*") if p.is_file()}
         self.run_functional("prompt", dict(self.event("prompt"), cwd=str(inside)))
         paths = list((self.root / "projects").glob("*/raw/*.jsonl"))
         self.assertEqual([p.parent.parent.name for p in paths], [base.project_folder_name("nested")])
+        self.assertEqual({str(p.relative_to(parent)):p.read_bytes() for p in parent.rglob("*") if p.is_file()},before)
 
     def test_tc017_unregistered_folder_changes_no_memory_file(self):
         outside = self.folder / "unregistered"
@@ -553,7 +559,10 @@ class HookRecordingTest(HookCase):
 
     def test_tc022_024_private_spans_never_reach_the_raw_log(self):
         secret = random_text(32)
-        for source, expected in (("x<PRIVATE>" + secret + "</private>y", "x[redacted:private]y"),
+        for source, expected in (("<private>my address</private> hi", "[redacted:private] hi"),
+                                 ("<PRIVATE>a</Private> b", "[redacted:private] b"),
+                                 ("a <private> b c", "a [redacted:private]"),
+                                 ("x<PRIVATE>" + secret + "</private>y", "x[redacted:private]y"),
                                  ("x<private>" + secret, "x[redacted:private]")):
             self.run_functional("prompt", dict(self.event("prompt"), prompt=source))
             self.assertTrue(self.raw()[-1]["text"] == expected)
@@ -563,21 +572,24 @@ class HookRecordingTest(HookCase):
         examples = secret_examples()
         text = "\n".join(value for _, value in examples)
         expected = "\n".join("[redacted:" + kind + "]" for kind, _ in examples)
-        self.run_functional("prompt", dict(self.event("prompt"), prompt=text))
-        self.assertTrue(self.raw()[-1]["text"] == expected)
+        for hook,field in (("prompt","prompt"),("end-of-turn","last_assistant_message")):
+            self.run_functional(hook,dict(self.event(hook),**{field:text}))
+            self.assertTrue(self.raw()[-1]["text"] == expected)
         for name in ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "ENCRYPTED PRIVATE KEY"):
             for closed in (True, False):
-                self.run_functional("prompt", dict(self.event("prompt"), prompt=key_block(name, random_text(96), closed)))
-                self.assertTrue(self.raw()[-1]["text"] == "[redacted:private-key]")
+                text = key_block(name,random_text(96),closed)
+                for hook,field in (("prompt","prompt"),("end-of-turn","last_assistant_message")):
+                    self.run_functional(hook,dict(self.event(hook),**{field:text}))
+                    self.assertTrue(self.raw()[-1]["text"] == "[redacted:private-key]")
         stored = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
         self.assertTrue(all(value.encode() not in stored for _, value in examples))
 
     def test_tc025_memory_and_environment_values_are_masked(self):
-        first, second, environment = random_text(32), random_text(32), random_text(16)
+        first, second, environment, short = random_text(32), random_text(32), random_text(16), random_text(8)
         changes = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": first, "CORTHEX_MEMORY_OPENAI_API_KEY": second,
-                   "BUILD_TOKEN": environment}
-        self.run_functional("prompt", dict(self.event("prompt"), prompt=" ".join((first, second, environment))), changes)
-        self.assertTrue(self.raw()[-1]["text"] == "[redacted:memory-key] [redacted:memory-key] [redacted:environment]")
+                   "DEPLOY_TOKEN": environment, "SHORT_KEY": short}
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=" ".join((first, second, environment, short))), changes)
+        self.assertTrue(self.raw()[-1]["text"] == "[redacted:memory-key] [redacted:memory-key] [redacted:environment] "+short)
 
     def test_tc026_numeric_lookalikes_url_credentials_and_authorization(self):
         value = random_text(24)
