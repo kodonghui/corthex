@@ -149,6 +149,7 @@ class MemoryRedactionTest(StoreCase):
         self.assertEqual(len(marked), 1)
         data = json.loads(marked[0].split("=", 1)[1])
         self.assertEqual(data["mode"], "growth")
+        self.assertEqual(data["statistic"], "minimum")
         self.assertEqual({row["input"] for row in data["rows"]},
                          {"private-openers", "pem-begin-name-repeat", "jwt-no-dots",
                           "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
