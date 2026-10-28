@@ -108,19 +108,19 @@ def measure_growth(samples=3):
             size = 128 * 1024
             redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size + 1
             pilot_text = slow_input(name, size)
-            pilot = statistics.median(timed(pilot_text) for _ in range(samples))
+            pilot = min(timed(pilot_text) for _ in range(samples))
             # Calibrate once near 26 ms, avoiding successive doubling and a
             # warm-up at every size. The pilot already warms this expression.
             size = max(1024, min(4 * 1024 * 1024, int(size * 26 / max(pilot, 0.001))))
             while True:
                 redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
                 small_text, large_text = slow_input(name, size), slow_input(name, size * 4)
-                # Interleave sizes so their medians do not come from two
-                # separate periods of machine load. Never retry a bad ratio.
+                # Interleave sizes and compare their minima: added scheduling
+                # time cannot lower the best sample. Never retry a bad ratio.
                 if timed(small_text) > 21:
                     pairs = [(timed(small_text), timed(large_text)) for _ in range(samples)]
-                    small = statistics.median(pair[0] for pair in pairs)
-                    large = statistics.median(pair[1] for pair in pairs)
+                    small = min(pair[0] for pair in pairs)
+                    large = min(pair[1] for pair in pairs)
                     if small > 21:
                         break
                 size = int(size * 1.25)
@@ -132,7 +132,7 @@ def measure_growth(samples=3):
     finally:
         redaction.ENTRY_BYTES, redaction.WINDOW_BYTES = saved
     return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0,
-            "clock": "perf_counter", "pairing": "alternating sizes",
+            "clock": "perf_counter", "pairing": "alternating sizes", "statistic": "minimum",
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3)}
 
 
