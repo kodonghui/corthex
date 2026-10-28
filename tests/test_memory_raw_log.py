@@ -231,7 +231,7 @@ class RawLogTest(StoreCase):
             (self.log.markers / ("20261027T091203Z.codex-" + "0"*16 + "." + str(turn))).write_bytes(b"")
         with mock.patch.object(raw_log.os,"listdir",wraps=os.listdir) as listed:
             prompt = self.record()
-            joined = self.record("answer")
+            joined = self.record("answer",when=WHEN+timedelta(seconds=1))
             orphan = self.record("answer")
         listed.assert_not_called()
         self.assertEqual([r.outcome for r in (prompt,joined,orphan)],["ok"]*3)
@@ -258,6 +258,16 @@ class RawLogTest(StoreCase):
         before = marker.stat().st_mtime_ns
         self.log._marker(result.entry,lambda:None,memory_clock.now()+1)
         self.assertEqual(marker.stat().st_mtime_ns,before)
+
+    def test_tc030_another_turns_suffix_does_not_replace_a_missing_marker(self):
+        self.record()
+        self.markers()[0].unlink()
+        other = self.log.markers / ("20261027T091203Z."+self.log.log+".11")
+        other.write_bytes(b"")
+        result = self.record("answer",when=WHEN+timedelta(seconds=1))
+        self.assertEqual((result.outcome,result.entry["turn"]),("ok",1))
+        self.assertEqual(len(self.markers()),2)
+        self.assertTrue(any(path.name.endswith("."+self.log.log+".1") for path in self.markers()))
 
     def test_tc030_fallback_marker_scan_checks_deadline_per_name(self):
         self.record()
@@ -577,8 +587,18 @@ class RawLogTest(StoreCase):
         for outcome in ("deadline","lock-busy","error"):
             with self.subTest(outcome=outcome), mock.patch.object(raw_log,"prepare",remaining), \
                     mock.patch.object(raw_log.RawLog,"append",return_value=raw_log.Recorded(outcome)):
-                with self.assertRaises(bench.MeasurementFailure):
+                with self.assertRaises(bench.MeasurementFailure) as caught:
                     bench.measure(1,pending_counts=())
+                self.assertEqual(caught.exception.metadata["case"],"append-1KiB")
+
+    def test_tc031_benchmark_rejects_deadline_without_entry_at_the_first_profile(self):
+        import bench_memory_raw_log as bench
+        expired = raw_log.Prepared("made-up",None,memory_clock.now()-1)
+        with mock.patch.object(raw_log,"prepare",return_value=expired), \
+                mock.patch.object(raw_log.RawLog,"append",return_value=raw_log.Recorded("deadline")):
+            with self.assertRaises(bench.MeasurementFailure) as caught:
+                bench.measure(1,pending_counts=())
+        self.assertEqual(caught.exception.metadata["case"],"append-1KiB")
 
     def test_tc319_benchmark_expiry_does_not_reuse_an_earlier_fixtures_marker(self):
         import bench_memory_raw_log as bench

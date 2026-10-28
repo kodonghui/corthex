@@ -114,14 +114,14 @@ def _tail(path, host, session, check, deadline, report):
         incoming = files._retry(lambda: path.open("rb"), deadline)
     except FileNotFoundError:
         if not path.with_name(path.name + ".bak").exists():
-            return None, None, 0
+            return None, 0
         # Recovery is rare; the existing strict JSONL reader validates the
         # backup. Healthy appends never read/parse the whole raw log.
         files.read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
         return _tail(path, host, session, check, deadline, report)
-    last, turn, damaged, highest = None, None, 0, 0
+    turn, damaged, highest = None, 0, 0
     def parsed(line, complete=True):
-        nonlocal last, turn, damaged, highest
+        nonlocal turn, damaged, highest
         check()
         try:
             value = store.json_document(line)
@@ -134,8 +134,6 @@ def _tail(path, host, session, check, deadline, report):
         except (ValueError, UnicodeError):
             damaged += 1
             return
-        if last is None:
-            last = value
         if value["kind"] in ("prompt", "answer") and turn is None:
             turn = value
     with incoming:
@@ -171,7 +169,7 @@ def _tail(path, host, session, check, deadline, report):
                 parsed(pending)
     if damaged:
         report("damaged-line", damaged)
-    return last, turn, highest
+    return turn, highest
 
 
 class RawLog:
@@ -277,7 +275,7 @@ class RawLog:
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
-            last, prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
+            prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
             seq = highest + 1
             value = {"id": base.new_id("e"), "seq": seq, "at": at,
                      "host": self.host, "session": self.session, "kind": kind}
