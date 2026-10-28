@@ -104,7 +104,7 @@ class HookFrameworkTest(HookCase):
             self.assertEqual(clock.now(),37.125)
             self.assertAlmostEqual(raw_log.prepare("clock fixture",{}).deadline,37.175)
             frame.finish("ok")
-        logger.timing.assert_called_once_with("prompt","codex",125,"ok",38.0,opportunistic=False)
+        logger.timing.assert_called_once_with("prompt","codex",125,"ok",38.0,opportunistic=True)
 
     def test_tc033_each_hook_rejects_invalid_utf8_json_event_and_session(self):
         for hook in hooks.EVENTS:
@@ -143,6 +143,18 @@ class HookFrameworkTest(HookCase):
                  "    return read(*args)\nhooks.read_input=slow")
         for payload,error in ((b"not json","bad-input"),(self.event("end-of-turn"),"unknown-host")):
             before = len(self.records("failures"))
+            self.run_hook("end-of-turn",payload,{"CLAUDECODE":"","PLUGIN_ROOT":""},patch)
+            self.assertEqual(len(self.records("failures")),before+1)
+            self.assertEqual(self.records("failures")[-1]["error"],error)
+        self.assertEqual(self.records("hooks"),[])
+
+    def test_tc033_tc034_input_failures_keep_their_codes_when_diagnostics_turn_late(self):
+        patch = ("from memory_lib import diagnostics,clock\ngate=diagnostics.Diagnostics.read_gate\ncalls=[0]\n"
+                 "def crossing(self,deadline,*args,**kwargs):\n    calls[0]+=1\n"
+                 "    if calls[0]==2:\n        time.sleep(max(0,deadline-clock.now())+0.02)\n"
+                 "    return gate(self,deadline,*args,**kwargs)\ndiagnostics.Diagnostics.read_gate=crossing")
+        for payload,error in ((b"not json","bad-input"),(self.event("end-of-turn"),"unknown-host")):
+            before=len(self.records("failures"))
             self.run_hook("end-of-turn",payload,{"CLAUDECODE":"","PLUGIN_ROOT":""},patch)
             self.assertEqual(len(self.records("failures")),before+1)
             self.assertEqual(self.records("failures")[-1]["error"],error)

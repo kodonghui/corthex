@@ -69,17 +69,16 @@ class Hook:
     deadline: float
 
     def finish(self, outcome):
-        late = clock.now() >= self.deadline
         if outcome == "deadline":
             self.logger.failure("deadline", "record", self.deadline, hook=self.hook,
-                                host=self.host, project=self.project.name, opportunistic=late)
+                                host=self.host, project=self.project.name, opportunistic=True)
         ms = max(0, int((clock.now() - self.started) * 1000))
-        self.logger.timing(self.hook, self.host, ms, outcome, self.deadline, opportunistic=late)
+        self.logger.timing(self.hook, self.host, ms, outcome, self.deadline, opportunistic=True)
 
     def failure(self, error):
         self.logger.failure(error, "record", self.deadline, hook=self.hook,
                             host=self.host, project=self.project.name,
-                            opportunistic=clock.now() >= self.deadline)
+                            opportunistic=True)
         self.finish("error")
 
 
@@ -123,7 +122,7 @@ def record(frame,kind,prepared=None,**options):
     def failure(error,count=None):
         frame.logger.failure(error,"record",frame.deadline,hook=frame.hook,host=frame.host,
                              project=frame.project.name,log=log.log,count=count,
-                             opportunistic=clock.now() >= frame.deadline)
+                             opportunistic=True)
     try:
         result = log.append(kind,prepared,diagnostic_deadline=frame.deadline,notices=notices,**options)
     except FileNotFoundError as error:
@@ -139,9 +138,8 @@ def record(frame,kind,prepared=None,**options):
 
 
 def note_failure(logger, error, hook, host, deadline):
-    late = clock.now() >= deadline
     logger.failure(error, "record", deadline, hook=hook,
-                   host=host, opportunistic=late)
+                   host=host, opportunistic=True)
 
 
 def run(hook, started, incoming, output):
@@ -172,7 +170,8 @@ def run(hook, started, incoming, output):
             return
         config = memory.configuration(lambda error, count: notices.append((error, count)), deadline=deadline)
         for error, count in notices:
-            logger.failure(error, "record", deadline, hook=hook, host=host, count=count)
+            logger.failure(error, "record", deadline, hook=hook, host=host, count=count,
+                           opportunistic=True)
         if not config.consented():
             return
         project = projects.find(config, event.get("cwd"))
@@ -187,7 +186,7 @@ def run(hook, started, incoming, output):
             pass
         elif frame is not None and isinstance(error,locks.LockBusy):
             frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name,
-                                 opportunistic=clock.now() >= deadline)
+                                 opportunistic=True)
             frame.finish("lock-busy")
         elif frame is not None:
             frame.failure(error)
