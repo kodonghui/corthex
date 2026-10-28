@@ -124,7 +124,7 @@ class HookShellTest(unittest.TestCase):
         folder.mkdir()
         for name, role in roles.items():
             if os.name == "nt":
-                args = "%2" if name == "py" else "%*"  # py gets -3 first
+                args = "%2 %3" if name == "py" else "%*"  # py gets -3, then the script and hook argument
                 lines = {"run": '@"%s" %s' % (sys.executable, args), "fail": "@exit /b 9", "junk": "@echo junk"}
                 (folder / (name + ".cmd")).write_text(lines[role] + "\n", encoding="utf-8")
             else:
@@ -140,7 +140,8 @@ class HookShellTest(unittest.TestCase):
         shells = self.shells()
         if not shells:
             self.skipTest("no sh or PowerShell here")
-        event = json.dumps({"cwd": str(self.work), "source": "startup"})
+        event = json.dumps({"hook_event_name": "SessionStart", "session_id": "shell-fixture",
+                            "cwd": str(self.work), "source": "startup"})
         for name, args, command, pythons in shells:
             first, last = pythons[0], pythons[-1]
             cases = {
