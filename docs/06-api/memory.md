@@ -214,7 +214,7 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The end-of-turn hook | 300 ms | The trigger check and the worker's start are skipped; the next trigger tries again |
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
-Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 400 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 450 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
 Lock release has the separate retry in stage 05 even after the hook deadline: each release can extend the hook by up to about one second, or about two seconds for a refreshed lease that also waits for its heartbeat thread.
 
