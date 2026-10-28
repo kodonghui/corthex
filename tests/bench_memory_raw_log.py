@@ -94,7 +94,7 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     entries += result.entry is not None
                 else:
                     warmup = dict(warmup_outcome=result.outcome,warmup_entry=result.entry is not None)
-            rows.append(dict(name=name,samples=samples,deadline_ms=50,bytes=size,
+            rows.append(dict(name=name,samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,bytes=size,
                              outcome="ok" if outcomes=={"ok":samples} else "mixed",outcomes=dict(outcomes),
                              entries=entries,skipped=samples-entries,
                              median_ms=round(statistics.median(times),3),max_ms=round(max(times),3),**warmup,**metadata))
@@ -114,7 +114,7 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     raise MeasurementFailure(case=phase, sample=sample, outcome=result.outcome,
                                              entry=result.entry is not None, elapsed_ms=round(elapsed,3))
                 assert case.log.path.read_bytes() == before
-            rows.append(dict(name="foreign-lease",samples=samples,deadline_ms=50,bytes=0,
+            rows.append(dict(name="foreign-lease",samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,bytes=0,
                              outcome="lock-busy",outcomes={"lock-busy":samples},entries=0,skipped=samples,
                              median_ms=round(statistics.median(times),3),max_ms=round(max(times),3)))
         finally:

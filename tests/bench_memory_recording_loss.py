@@ -48,7 +48,7 @@ def load(stop, ready, core):
 
 
 def measure(samples):
-    assert raw_log.RECORD_SECONDS == 0.05 and raw_log.clock is clock
+    assert raw_log.RECORD_SECONDS > 0 and raw_log.clock is clock
     core, rows = pin(), []
     context = multiprocessing.get_context("spawn")
     for competing in (False, True):
@@ -91,7 +91,7 @@ def measure(samples):
                         expired += result.entry is None and ended >= prepared.deadline
                         times.append((ended-started)*1000)
                     rows.append(dict(name=name, cpu_load_processes=int(competing), samples=samples,
-                        deadline_ms=50, bytes=len(text.encode("utf-8")), tail_bytes=len(baseline),
+                        deadline_ms=raw_log.RECORD_SECONDS*1000, bytes=len(text.encode("utf-8")), tail_bytes=len(baseline),
                         entries=entries, expired_without_entry=expired, loss_percent=100*expired/samples,
                         outcomes=dict(outcomes), median_ms=round(statistics.median(times),3), max_ms=round(max(times),3)))
                 finally:

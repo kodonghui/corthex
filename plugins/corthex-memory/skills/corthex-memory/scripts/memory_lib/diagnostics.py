@@ -85,7 +85,7 @@ class Diagnostics:
 
     def _late_append(self, name, table, record, deadline):
         # No new budget: recovery/opening get the expired retry deadline.
-        if self._ready is None or record.get("error", record.get("outcome")) != "deadline":
+        if self._ready is None:
             return False
         device, stamp = self._ready
         header = self.store.folder / "store.json"

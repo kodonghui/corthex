@@ -602,14 +602,30 @@ class RawLogTest(StoreCase):
 
     def test_tc319_benchmark_expiry_does_not_reuse_an_earlier_fixtures_marker(self):
         import bench_memory_raw_log as bench
-        clock,offset,append = memory_clock.now,[0.0],files.append_jsonl
+        clock,offset,append,record = memory_clock.now,[0.0],files.append_jsonl,raw_log.RawLog.append
+        frozen = [None]
+        def now():
+            return clock()+offset[0] if frozen[0] is None else frozen[0]
+        def recording(log,*args,**kwargs):
+            # Pin only the expanded-row fixture until its append returns.
+            # Other profiles, including the foreign lease, keep a live clock.
+            expanded = (log.path.exists() and log.path.stat().st_size>3*1024*1024
+                        and not log.path.with_suffix(".lock").exists())
+            if expanded:
+                frozen[0] = clock()+offset[0]
+            try:
+                return record(log,*args,**kwargs)
+            finally:
+                frozen[0] = None
         def expired(path,value,table,*args,**kwargs):
             expanded = table=="TBL-007" and path.exists() and path.stat().st_size>3*1024*1024
             result = append(path,value,table,*args,**kwargs)
             if expanded:
                 offset[0] += 1.0
+                frozen[0] += 1.0
             return result
-        with mock.patch.object(raw_log.clock,"now",side_effect=lambda:clock()+offset[0]), \
+        with mock.patch.object(raw_log.clock,"now",side_effect=now), \
+                mock.patch.object(raw_log.RawLog,"append",recording), \
                 mock.patch.object(files,"append_jsonl",expired), \
                 mock.patch.object(base,"utc_time",return_value="2026-10-27T09:12:03.456Z"):
             row = next(r for r in bench.measure(1,pending_counts=())["cases"] if r["name"]=="after-control-512KiB")
