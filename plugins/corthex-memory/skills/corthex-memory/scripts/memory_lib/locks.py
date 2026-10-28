@@ -236,6 +236,29 @@ class Lock:
             self._unreserve()
             raise
 
+    def try_once(self):
+        """One exclusive-create attempt; no waiting or stale-lock takeover.
+
+        Used by expired hooks for their best-effort deadline diagnostics.
+        Unlike acquire(wait=False), this has no future operation budget.
+        """
+        self._reserve()
+        self.token = secrets.token_hex(16)
+        self._stop, self._thread = threading.Event(), None
+        try:
+            try:
+                acquired = self._create()
+            except PermissionError:
+                acquired = False
+            if not acquired:
+                raise LockBusy()
+            self._start_heartbeat()
+            return self
+        except BaseException:
+            self.token = None
+            self._unreserve()
+            raise
+
     def check(self):
         """Raise lost-lock before a change if this process no longer owns it."""
         if self.pid != os.getpid():

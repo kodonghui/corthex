@@ -181,7 +181,7 @@ One line per failure of recording, recall, curation, consolidation, sync, retent
 | `log` | optional raw log file name | The raw log file, for an error about one file |
 | `count` | optional integer | How many, when one line stands for several, such as the damaged lines of one file |
 
-A background reader that skips damaged lines of a raw log file (SPEC-007) or finds entries in the future (SPEC-009) writes one line for the file, with `count`. A hook that cannot take the failure log's lock before its deadline writes nothing.
+A background reader that skips damaged lines of a raw log file (SPEC-007) or finds entries in the future (SPEC-009) writes one line for the file, with `count`. A hook that cannot take the failure log's lock before its deadline, or in the single attempt after it, writes nothing.
 
 ### Hook timings (TBL-005)
 

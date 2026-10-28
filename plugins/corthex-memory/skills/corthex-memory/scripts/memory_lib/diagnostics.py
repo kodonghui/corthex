@@ -59,6 +59,7 @@ def choice(value, allowed):
 class Diagnostics:
     def __init__(self, memory_store):
         self.store = memory_store
+        self._ready = None
 
     @staticmethod
     def _stamp(path):
@@ -68,21 +69,52 @@ class Diagnostics:
             return None
         return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
 
-    def _append(self, name, table, record, deadline):
+    def read_gate(self, deadline, report=None):
+        """Cache a stable, readable header for a later one-attempt deadline log."""
+        self._ready = None
+        path = self.store.folder / "store.json"
+        first = self._stamp(path)
+        header = self.store.record(report, deadline=deadline)
+        stamp = self._stamp(path)
+        if first != stamp:
+            header = self.store.record(report, deadline=deadline)
+            if self._stamp(path) != stamp:
+                raise locks.LostLock()
+        self._ready = header["device"], stamp
+        return header
+
+    def _late_append(self, name, table, record, deadline):
+        # No new budget: recovery/opening get the expired retry deadline.
+        if self._ready is None or record.get("error", record.get("outcome")) != "deadline":
+            return False
+        device, stamp = self._ready
+        header = self.store.folder / "store.json"
+        folder = self.store.folder / "logs"
+        path = folder / (name + "-" + record["at"][:10] + ".jsonl")
+        if self._stamp(header) != stamp:
+            return False
+        lock = locks.Lock(folder / (name + ".lock"), "log", device)
+        lock.try_once()
         try:
-            if (not configuration.number(deadline) or not math.isfinite(deadline) or
-                    time.monotonic() >= deadline):
+            def guard():
+                lock.check()
+                if self._stamp(header) != stamp:
+                    raise locks.LostLock()
+            guard()
+            files.append_jsonl(path, record, table, check=guard, deadline=deadline)
+            return True
+        finally:
+            lock.release()
+
+    def _append(self, name, table, record, deadline, opportunistic=False):
+        try:
+            if not configuration.number(deadline) or not math.isfinite(deadline):
                 return False
+            if time.monotonic() >= deadline:
+                return self._late_append(name, table, record, deadline) if opportunistic else False
             record_path = self.store.folder / "store.json"
-            first = self._stamp(record_path)
-            before = self.store.record(deadline=deadline)
-            stamp = self._stamp(record_path)
-            if first != stamp:
-                # Recovery or a concurrent rewrite changed the header. Validate
-                # its new identity while no log lease is held.
-                before = self.store.record(deadline=deadline)
-                if self._stamp(record_path) != stamp:
-                    return False
+            before = self.read_gate(deadline)
+            stamp = self._ready[1]
             folder = self.store.folder / "logs"
             lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
             def report_release(error, count):
@@ -105,7 +137,7 @@ class Diagnostics:
             return False
 
     def failure(self, error, step, deadline, hook=None, host=None, project=None,
-                log=None, count=None, when=None):
+                log=None, count=None, when=None, opportunistic=False):
         kind = error_kind(error)
         if not kind or not choice(step, STEPS):
             return False
@@ -124,9 +156,9 @@ class Diagnostics:
         record.update({key: value for key, value in (("hook", hook), ("host", host),
                       ("project", project), ("log", log), ("count", int(count) if count is not None else None))
                        if value is not None})
-        return self._append("failures", "TBL-004", record, deadline)
+        return self._append("failures", "TBL-004", record, deadline, opportunistic)
 
-    def timing(self, hook, host, ms, outcome, deadline, when=None):
+    def timing(self, hook, host, ms, outcome, deadline, when=None, opportunistic=False):
         if not choice(hook, HOOKS) or not choice(host, HOSTS) or not choice(outcome, OUTCOMES):
             return False
         if not configuration.integer(ms) or ms < 0:
@@ -136,4 +168,4 @@ class Diagnostics:
                       "ms": int(ms), "outcome": outcome}
         except (ValueError, TypeError, AttributeError, OverflowError):
             return False
-        return self._append("hooks", "TBL-005", record, deadline)
+        return self._append("hooks", "TBL-005", record, deadline, opportunistic)

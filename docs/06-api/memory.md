@@ -216,6 +216,8 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 
 Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 210 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
+After its deadline, a hook makes one attempt without waiting for each failure-log and hook-timing lock: if acquired it writes a deadline line, otherwise it skips that line; there is no new diagnostic budget, and release keeps its separate retry.
+
 Lock release has the separate retry in stage 05 even after the hook deadline: each release can extend the hook by up to about one second, or about two seconds for a refreshed lease that also waits for its heartbeat thread.
 
 ### Session start hook (API-001)
