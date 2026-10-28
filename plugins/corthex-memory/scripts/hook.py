@@ -17,6 +17,6 @@ if __name__ == "__main__":
         from memory_lib.hooks import run
         if len(sys.argv) == 2:
             run(sys.argv[1], STARTED, sys.stdin.buffer, sys.stdout.buffer)
-    except Exception:
-        sys.stderr.write("corthex-memory: hook could not finish\n")
+    except Exception as error:
+        sys.stderr.write("corthex-memory: " + type(error).__name__ + "\n")
     sys.exit(0)

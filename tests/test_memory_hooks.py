@@ -46,7 +46,8 @@ class HookCase(StoreCase):
         env.update(changes or {})
         return env
 
-    def run_hook(self, hook, payload=None, changes=None, patch=None, metadata=None):
+    def run_hook(self, hook, payload=None, changes=None, patch=None, metadata=None,
+                 expected_stderr=b"", expect_start=True):
         payload = self.event(hook) if payload is None else payload
         raw = payload if isinstance(payload, bytes) else json.dumps(payload, ensure_ascii=False).encode("utf-8")
         args = [sys.executable, str(SCRIPT), hook]
@@ -65,9 +66,9 @@ class HookCase(StoreCase):
         run = subprocess.run(args, input=raw, env=self.environment(changes), cwd=str(self.repo),
                              capture_output=True, timeout=15)
         self.assertEqual(run.returncode, 0)
-        self.assertEqual(run.stderr, b"")
+        self.assertEqual(run.stderr, expected_stderr)
         self.assertTrue(all(byte < 128 for byte in run.stdout))
-        if hook == "start":
+        if hook == "start" and expect_start:
             value = json.loads(run.stdout)
             self.assertEqual(set(value), {"hookSpecificOutput"})
             self.assertEqual(value["hookSpecificOutput"]["hookEventName"], "SessionStart")
@@ -138,13 +139,39 @@ class HookFrameworkTest(HookCase):
 
     def test_tc011_blocked_headers_precede_input_error_diagnostics_and_configuration(self):
         record = self.root / "store.json"
-        for content in (b'{"format":2}', b'{"format":1,"migrating":{}}', b"damaged"):
-            record.write_bytes(content)
+        accessed = self.folder / "configuration-accessed"
+        patch = ("from pathlib import Path\nfrom memory_lib import store\n"
+                 "def forbidden(*args, **kwargs):\n    Path(" + repr(str(accessed)) + ").write_text('accessed')\n"
+                 "    raise AssertionError('configuration must follow the store gate')\n"
+                 "store.MemoryStore.configuration = forbidden")
+        for content in (b'{"format":2}', b'{"format":1,"migrating":{}}', b"damaged", None):
+            if content is None:
+                record.unlink()
+            else:
+                record.write_bytes(content)
             before = self.snapshot()
             for hook in hooks.EVENTS:
-                self.run_hook(hook, b"not json")
-                self.run_hook(hook, changes={"CLAUDECODE": ""})
+                self.run_hook(hook, patch=patch)
+                self.run_hook(hook, b"not json", patch=patch)
+                self.run_hook(hook, changes={"CLAUDECODE": ""}, patch=patch)
             self.assertEqual(self.snapshot(), before)
+            self.assertFalse(accessed.exists())
+
+    def test_tc011_each_hook_restores_a_readable_header_backup_and_notes_it(self):
+        record = self.root / "store.json"
+        backup = self.root / "store.json.bak"
+        for hook in hooks.EVENTS:
+            for content in (None, b"damaged"):
+                if content is None:
+                    record.unlink()
+                else:
+                    record.write_bytes(content)
+                backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
+                before = len(self.records("failures"))
+                self.run_hook(hook)
+                self.assertEqual(files.read_json(record, "TBL-001"), self.header)
+                self.assertEqual(len(self.records("failures")), before + 1)
+                self.assertEqual(self.records("failures")[-1]["error"], "restored")
 
     def test_tc012_valid_input_without_configuration_changes_no_file(self):
         (self.root / "configuration.json").unlink()
@@ -180,6 +207,17 @@ class HookFrameworkTest(HookCase):
             self.run_hook(hook, metadata=metadata)
             modules = json.loads(metadata.read_text(encoding="utf-8"))
             self.assertFalse(set(modules) & {"socket", "ssl", "http.client", "urllib.request", "sqlite3"})
+
+    def test_tc035_outer_and_base_errors_print_only_one_exception_class(self):
+        message = "private-fixture-error-text"
+        patch = ("from memory_lib import context\ndef fail(*args):\n"
+                 "    raise RuntimeError(" + repr(message) + ")\ncontext.build_context = fail")
+        self.run_hook("start", patch=patch, expected_stderr=b"corthex-memory: RuntimeError\n",
+                      expect_start=False)
+        patch = "def fail(*args):\n    raise RuntimeError(" + repr(message) + ")\nhooks.run = fail"
+        for hook in hooks.EVENTS:
+            self.run_hook(hook, patch=patch, expected_stderr=b"corthex-memory: RuntimeError\n",
+                          expect_start=False)
 
     def test_tc012_no_store_creates_neither_store_nor_plugin_bytecode(self):
         plugin = self.folder / "plugin-copy"

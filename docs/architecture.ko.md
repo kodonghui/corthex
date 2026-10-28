@@ -35,13 +35,14 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │       └── corthex-uxui/            화면·모션·영상을 만드는 법
 │   │           ├── references/          용어, 값, 영상, 점검과 그 출처
 │   │           └── scripts/             읽기만 하는 점검 둘: 페이지 안의 page-check.js, FFmpeg를 쓰는 media-check.py
-│   ├── corthex-memory/                  세션 시작 문맥, 훅이 있음
+│   ├── corthex-memory/                  세션 문맥과 C1 훅
 │   │   ├── .claude-plugin/plugin.json   Claude Code용 매니페스트
 │   │   ├── .codex-plugin/plugin.json    Codex용 매니페스트, 루트 plugin.json은 없음
-│   │   ├── hooks/hooks.json             세션 시작 훅 하나, 두 도구가 함께 읽음
-│   │   ├── scripts/session_start.py     문맥을 만듦, Python 표준 라이브러리만 씀
+│   │   ├── hooks/hooks.json             C1 훅 네 개, 두 도구가 함께 읽음
+│   │   ├── scripts/hook.py              C1 훅 공통 진입점, Python 표준 라이브러리만 씀
+│   │   ├── scripts/session_start.py     0.1.0 바탕 요약의 호환 진입점
 │   │   ├── context/principles.md        일하는 원칙의 짧은 판
-│   │   ├── skills/corthex-memory/scripts/memory_lib/   C1 공용 저장 라이브러리, 아직 훅에 연결하지 않음
+│   │   ├── skills/corthex-memory/scripts/memory_lib/   C1 공용 저장·문맥·훅 모듈
 │   │   └── LICENSE, NOTICE
 │   └── corthex-nexus/                   프로젝트 허브, 스크립트가 든 스킬
 │       ├── .claude-plugin/plugin.json   Claude Code용 매니페스트

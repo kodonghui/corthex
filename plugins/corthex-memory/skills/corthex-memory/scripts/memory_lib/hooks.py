@@ -145,5 +145,5 @@ def run(hook, started, incoming, output):
         if hook == "start":
             try:
                 print_base(event, output)
-            except Exception:
-                sys.stderr.write("corthex-memory: start context could not be built\n")
+            except Exception as error:
+                sys.stderr.write("corthex-memory: " + type(error).__name__ + "\n")

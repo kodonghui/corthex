@@ -35,13 +35,14 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       └── corthex-uxui/            craft for screens, motion and video
 │   │           ├── references/          names, values, video, checks and their sources
 │   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
-│   ├── corthex-memory/                  session start context, with a hook
+│   ├── corthex-memory/                  session context and C1 hooks
 │   │   ├── .claude-plugin/plugin.json   manifest for Claude Code
 │   │   ├── .codex-plugin/plugin.json    manifest for Codex; no root plugin.json
-│   │   ├── hooks/hooks.json             one SessionStart hook, read by both hosts
-│   │   ├── scripts/session_start.py     builds the context, Python standard library only
+│   │   ├── hooks/hooks.json             four C1 hooks, read by both hosts
+│   │   ├── scripts/hook.py              common C1 hook entry, Python standard library only
+│   │   ├── scripts/session_start.py     compatibility entry for the 0.1.0 base
 │   │   ├── context/principles.md        short form of the working principles
-│   │   ├── skills/corthex-memory/scripts/memory_lib/   shared C1 store library, not yet connected to hooks
+│   │   ├── skills/corthex-memory/scripts/memory_lib/   shared C1 store, context and hook modules
 │   │   └── LICENSE, NOTICE
 │   └── corthex-nexus/                   project hub, a skill with a script
 │       ├── .claude-plugin/plugin.json   manifest for Claude Code
