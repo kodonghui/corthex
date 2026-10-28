@@ -86,7 +86,7 @@ class HookRecordingTest(HookCase):
                  "opened, now = base.private_open, clock.now\noffset = [0.0]\n"
                  "clock.now = lambda: now() + offset[0]\n"
                  "def missing(path, *args, **kwargs):\n    folder = Path(path).parent\n"
-                 "    if folder.name == 'unprocessed':\n        folder.rmdir()\n        offset[0] = 0.06\n"
+                 "    if folder.name == 'unprocessed':\n        folder.rmdir()\n        offset[0] = 1.0\n"
                  "    return opened(path, *args, **kwargs)\nbase.private_open = missing")
         self.run_hook("prompt",patch=patch)
         self.assertEqual(len(self.raw()),1)
@@ -273,13 +273,13 @@ class HookRecordingTest(HookCase):
         patch = ("from memory_lib import projects\noriginal = projects.find\n"
                  "def slow(*args):\n    time.sleep(0.52)\n    return original(*args)\nprojects.find = slow")
         self.run_hook("end", patch=patch)
-        self.assertEqual(len(self.raw()), 1)
+        self.assertEqual(len(self.raw()), 2)
         self.outcome("deadline")
         self.assertEqual(self.records("failures")[-1]["error"], "deadline")
         patch = ("from memory_lib import raw_log\ndef fail(*args, **kwargs):\n"
                  "    raise OSError('private-end-error-fixture')\nraw_log.RawLog.append = fail")
         self.run_hook("end", patch=patch)
-        self.assertEqual(len(self.raw()), 1)
+        self.assertEqual(len(self.raw()), 2)
         self.outcome("error")
 
     def test_tc030_entry_turns_continuation_and_resubmission_through_hooks(self):
@@ -334,6 +334,75 @@ class HookRecordingTest(HookCase):
         self.assertEqual(len(self.markers()), 1)
         self.assertEqual(self.records("failures"), [])
         self.outcome("ok")
+
+    def test_tc322_acquired_recording_finishes_past_each_whole_hook_deadline(self):
+        patch = ("from memory_lib import locks, raw_log\nacquire = locks.Lock.acquire\n"
+                 "def slow(lease, *args, **kwargs):\n    result = acquire(lease, *args, **kwargs)\n"
+                 "    if lease.policy == locks.POLICIES['raw']:\n        time.sleep(1.01)\n"
+                 "    return result\nlocks.Lock.acquire = slow\nappend = raw_log.RawLog.append\n"
+                 "def checked(*args, **kwargs):\n    result = append(*args, **kwargs)\n"
+                 "    assert result.outcome == 'ok' and result.entry is not None\n"
+                 "    return result\nraw_log.RawLog.append = checked")
+        for index,hook in enumerate(("prompt","end-of-turn","end"),1):
+            self.run_hook(hook,patch=patch)
+            self.assertEqual(len(self.raw()),index)
+            self.assertEqual(len(self.markers()),1)
+            self.outcome("deadline")
+            self.assertEqual(self.records("failures")[-1]["error"],"deadline")
+
+    def test_tc323_hook_attempts_a_free_lock_after_the_wait_has_expired(self):
+        patch = ("from memory_lib import raw_log\nprepare = raw_log.prepare\n"
+                 "def expired(*args, **kwargs):\n    value = prepare(*args, **kwargs)\n"
+                 "    return raw_log.Prepared(value.text, value.cut, memory_clock.now()-1)\n"
+                 "raw_log.prepare = expired")
+        self.run_hook("prompt",patch=patch)
+        self.assertEqual(len(self.raw()),1)
+        self.assertEqual(len(self.markers()),1)
+        self.outcome("ok")
+
+    def test_tc324_hook_does_not_append_without_a_complete_tail_sequence(self):
+        log = raw_log.RawLog(self.memory,"sample","claude-code",self.event("prompt")["session_id"])
+        before = b"x"*(8*1024*1024+1)
+        log.path.write_bytes(before)
+        self.run_hook("prompt")
+        self.assertTrue(log.path.read_bytes()==before)
+        self.assertEqual(self.markers(),[])
+        self.assertEqual(self.records("failures")[-1]["error"],"damaged-line")
+        self.outcome("error")
+
+    def test_tc324_hook_answer_with_sequence_but_no_turn_is_an_orphan(self):
+        self.run_hook("prompt")
+        first, = self.raw()
+        boundary = dict(first,kind="end",seq=700)
+        for key in ("text","speaker","turn"): boundary.pop(key)
+        line = base.json_bytes(boundary,"TBL-007",compact=True)
+        log = raw_log.RawLog(self.memory,"sample","claude-code",first["session"])
+        with log.path.open("ab") as output:
+            output.write(line*(raw_log.TAIL_BYTES//len(line)+2))
+        self.run_hook("end-of-turn",dict(self.event("end-of-turn"),stop_hook_active=True))
+        last = self.raw()[-1]
+        self.assertEqual((last["kind"],last["seq"],last["turn"]),("answer",701,701))
+        self.assertEqual(len(self.markers()),2)
+
+    def test_tc046_late_io_failure_keeps_its_code_and_error_timing(self):
+        patch = ("from memory_lib import raw_log, clock\nnow = clock.now\noffset = [0.0]\n"
+                 "clock.now = lambda: now()+offset[0]\n"
+                 "def fail(*args, **kwargs):\n    offset[0] = 1.0\n"
+                 "    raise OSError('private-late-error-fixture')\nraw_log.RawLog.append = fail")
+        self.run_hook("end-of-turn",patch=patch)
+        self.assertEqual(self.raw(),[])
+        self.assertEqual([r["error"] for r in self.records("failures")],["OSError"])
+        self.outcome("error")
+
+    def test_tc031_late_restore_contention_keeps_lock_busy_timing(self):
+        patch = ("from memory_lib import raw_log, locks, clock\nnow = clock.now\noffset = [0.0]\n"
+                 "clock.now = lambda: now()+offset[0]\n"
+                 "def busy(*args, **kwargs):\n    offset[0] = 1.0\n"
+                 "    raise locks.LockBusy()\nraw_log.RawLog.append = busy")
+        self.run_hook("end-of-turn",patch=patch)
+        self.assertEqual(self.raw(),[])
+        self.assertEqual([r["error"] for r in self.records("failures")],["lock-busy"])
+        self.outcome("lock-busy")
 
     def test_tc014_busy_diagnostic_leases_leave_logs_empty(self):
         parent, child = multiprocessing.Pipe()

@@ -70,17 +70,18 @@ class Hook:
 
     def finish(self, outcome):
         late = clock.now() >= self.deadline
-        if late:
+        if late and outcome not in ("error", "lock-busy"):
             outcome = "deadline"
+        if outcome == "deadline":
             self.logger.failure("deadline", "record", self.deadline, hook=self.hook,
-                                host=self.host, project=self.project.name, opportunistic=True)
+                                host=self.host, project=self.project.name, opportunistic=late)
         ms = max(0, int((clock.now() - self.started) * 1000))
         self.logger.timing(self.hook, self.host, ms, outcome, self.deadline, opportunistic=late)
 
     def failure(self, error):
-        if clock.now() < self.deadline:
-            self.logger.failure(error, "record", self.deadline, hook=self.hook,
-                                host=self.host, project=self.project.name)
+        self.logger.failure(error, "record", self.deadline, hook=self.hook,
+                            host=self.host, project=self.project.name,
+                            opportunistic=clock.now() >= self.deadline)
         self.finish("error")
 
 
@@ -102,10 +103,10 @@ def process(frame):
     excluded_kind = "boundary" if kind == "end" else kind
     if kind != "prompt" and frame.project.left_out(frame.configuration, excluded_kind):
         return "left-out"
+    if kind == "end":
+        return record(frame,"end",reason=event.get("reason"))
     if clock.now() >= frame.deadline:
         return "deadline"
-    if kind == "end":
-        return record(frame,"end",reason=event.get("reason"),deadline=frame.deadline)
     try:
         prepared = raw_log.prepare(text)
     except Exception:
@@ -114,7 +115,8 @@ def process(frame):
     if kind == "prompt" and frame.project.left_out(frame.configuration, "prompt"):
         return "left-out"
     # Started redaction finishes, and its entry retains the post-redaction
-    # recording budget even if the whole-hook deadline has since passed.
+    # lock wait even if the whole-hook deadline has since passed. An acquired
+    # raw lease finishes its bounded read, append and marker.
     return record(frame,kind,prepared,stop_hook_active=event.get("stop_hook_active") is True)
 
 
@@ -124,7 +126,8 @@ def record(frame,kind,prepared=None,**options):
     notices = []
     def failure(error,count=None):
         frame.logger.failure(error,"record",frame.deadline,hook=frame.hook,host=frame.host,
-                             project=frame.project.name,log=log.log,count=count)
+                             project=frame.project.name,log=log.log,count=count,
+                             opportunistic=clock.now() >= frame.deadline)
     try:
         result = log.append(kind,prepared,diagnostic_deadline=frame.deadline,notices=notices,**options)
     except FileNotFoundError as error:
@@ -180,7 +183,7 @@ def run(hook, started, incoming, output):
         if project is None:
             return
         frame = Hook(hook, event, host, memory, config, project, logger, started, deadline)
-        if clock.now() >= deadline:
+        if hook != "end" and clock.now() >= deadline:
             frame.finish("deadline")
             return
         outcome = process(frame)
@@ -190,7 +193,8 @@ def run(hook, started, incoming, output):
         if isinstance(error,store.StoreUnavailable):
             pass
         elif frame is not None and isinstance(error,locks.LockBusy):
-            frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name)
+            frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name,
+                                 opportunistic=clock.now() >= deadline)
             frame.finish("lock-busy")
         elif frame is not None:
             frame.failure(error)
