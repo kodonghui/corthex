@@ -120,6 +120,11 @@ class MemoryRedactionTest(StoreCase):
             expected = prefix + "[redacted:jwt]" if prefix in ("", " ", "(", ".", "\n") else source
             self.assertTrue(redaction.redact(source, {}).text == expected)
             self.assertTrue(pattern.sub("[redacted:jwt]", source) == expected)
+        for prefix in ("%3D", "Bearer%20", "%3d", "%41"):
+            source = prefix + token
+            expected = prefix + "[redacted:jwt]"
+            self.assertTrue(redaction.redact(source, {}).text == expected)
+            self.assertTrue(pattern.sub("[redacted:jwt]", source) == expected)
         for a in (7, 8, 9):
             for b in (7, 8, 9):
                 for c in (7, 8, 9):
@@ -135,7 +140,7 @@ class MemoryRedactionTest(StoreCase):
         source = key_block("PRIVATE KEY", random_text(32), False) + "\n-----END " + "A" * 41 + "PRIVATE KEY-----\nafter"
         self.assertTrue(redaction.redact(source, {}).text == "[redacted:private-key]")
 
-    def test_tc028_four_slow_inputs_grow_within_eight_times_for_four_times_bytes(self):
+    def test_tc028_each_pattern_grows_within_eight_times_for_four_times_bytes(self):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
         run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "3"],
                              capture_output=True, text=True, timeout=25)
@@ -145,7 +150,10 @@ class MemoryRedactionTest(StoreCase):
         data = json.loads(marked[0].split("=", 1)[1])
         self.assertEqual(data["mode"], "growth")
         self.assertEqual({row["input"] for row in data["rows"]},
-                         {"pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json"})
+                         {"private-openers", "pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots",
+                          "jwt-base64-json", "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
+                          "github-near-minimum", "gitlab-near-minimum", "slack-near-minimum", "aws-short-body",
+                          "google-short-body", "url-without-at", "authorization-repeat", "password-repeat", "token-repeat"})
         for row in data["rows"]:
             self.assertEqual(row["large_bytes"], row["small_bytes"] * 4)
             self.assertGreater(row["small_ms"], 20)
@@ -280,16 +288,18 @@ class MemoryRedactionTest(StoreCase):
 
     def test_tc320_earlier_shrinking_passes_cannot_expose_the_guard_fragment(self):
         first, second = random_text(64), random_text(64)
-        prefixes=[("<private>"+"p"*20000+"</private>",{}),
-                  (key_block("PRIVATE KEY","p"*20000),{}),
+        prefixes = [("<private>" + "p" * 20000 + "</private>", {}),
+                  (key_block("PRIVATE KEY", "p" * 20000), {}),
                   (((first + " " + second + " ") * 200), {"FIRST_SECRET": first, "SECOND_SECRET": second}),
-                  ("Authorization: "+"p"*20000+"\n",{})]
-        for prefix,environment in prefixes:
+                  ("Authorization: " + "p" * 20000 + "\n", {})]
+        for prefix, environment in prefixes:
             for kind in ("environment", "openai-key"):
                 value = random_text(64) if kind == "environment" else "sk-proj-" + random_text(64)
                 visible = value[:39] if kind == "environment" else value[:20]
                 chosen = dict(environment, DEPLOY_TOKEN=value) if kind == "environment" else environment
-                source = prefix + "z" * (redaction.WINDOW_BYTES - len(prefix) - len(visible)) + value + " tail"
+                padding_bytes = redaction.WINDOW_BYTES - len(prefix.encode("utf-8")) - len(visible)
+                padding = "가" * (padding_bytes // 3) + "z" * (padding_bytes % 3)
+                source = prefix + padding + value + " tail"
                 result = redaction.redact(source, chosen)
                 self.assertFalse(visible in result.text, "guard fragments must not enter output")
                 self.assertFalse(visible[-12:] in result.text)
@@ -297,29 +307,29 @@ class MemoryRedactionTest(StoreCase):
                 # Only step 1 cuts: after replacement and provenance filtering
                 # the result is already below the final byte limit.
                 self.assertLess(len(result.text.encode("utf-8")), redaction.ENTRY_BYTES)
-        value=random_text(32)+"가"+random_text(32)
-        prefix=prefixes[0][0]
-        source=prefix+"z"*(redaction.WINDOW_BYTES-len(prefix)-33)+value+" tail"
-        result=redaction.redact(source,{"DEPLOY_TOKEN":value})
+        value = random_text(32) + "가" + random_text(32)
+        prefix = prefixes[0][0]
+        source = prefix + "z" * (redaction.WINDOW_BYTES - len(prefix) - 33) + value + " tail"
+        result = redaction.redact(source, {"DEPLOY_TOKEN": value})
         self.assertFalse(value[:32] in result.text)
-        self.assertEqual(result.cut,len(source.encode("utf-8")))
+        self.assertEqual(result.cut, len(source.encode("utf-8")))
 
     def test_tc320_cutoff_preserves_only_markers_started_before_the_source_point(self):
-        prefix="<private>"+"p"*20000+"</private>"
-        value=random_text(64)
-        for offset,kept in ((-8,True),(0,False),(8,False)):
-            public=prefix+"z"*(redaction.ENTRY_BYTES+offset-len(prefix))
-            source=public+value+" q"*5000
-            result=redaction.redact(source,{"DEPLOY_TOKEN":value})
-            self.assertEqual("[redacted:environment]" in result.text,kept)
+        prefix = "<private>" + "p" * 20000 + "</private>"
+        value = random_text(64)
+        for offset, kept in ((-8, True), (0, False), (8, False)):
+            public = prefix + "z" * (redaction.ENTRY_BYTES + offset - len(prefix))
+            source = public + value + " q" * 5000
+            result = redaction.redact(source, {"DEPLOY_TOKEN": value})
+            self.assertEqual("[redacted:environment]" in result.text, kept)
             self.assertFalse(value in result.text)
-            self.assertEqual(result.cut,len(source.encode("utf-8")))
-        for value_start,kept in ((redaction.ENTRY_BYTES-4,True),(redaction.ENTRY_BYTES+8,False)):
-            header="Authorization: "
-            public=prefix+"z"*(value_start-len(prefix)-len(header))
-            source=public+header+value+"\n"+" q"*5000
-            result=redaction.redact(source,{})
-            self.assertEqual("[redacted:authorization]" in result.text,kept)
+            self.assertEqual(result.cut, len(source.encode("utf-8")))
+        for value_start, kept in ((redaction.ENTRY_BYTES - 4, True), (redaction.ENTRY_BYTES + 8, False)):
+            header = "Authorization: "
+            public = prefix + "z" * (value_start - len(prefix) - len(header))
+            source = public + header + value + "\n" + " q" * 5000
+            result = redaction.redact(source, {})
+            self.assertEqual("[redacted:authorization]" in result.text, kept)
             self.assertFalse(value in result.text)
 
     def test_tc320_canonical_fragments_and_jwt_markers_use_the_source_point(self):
@@ -340,17 +350,17 @@ class MemoryRedactionTest(StoreCase):
             self.assertFalse(value in result.text)
 
     def test_tc320_unclipped_input_and_character_start_semantics_stay_intact(self):
-        prefix="<private>"+"p"*20000+"</private>"
-        source=prefix+"z"*(redaction.ENTRY_BYTES+1000-len(prefix))+" ordinary tail"
-        result=redaction.redact(source,{})
+        prefix = "<private>" + "p" * 20000 + "</private>"
+        source = prefix + "z" * (redaction.ENTRY_BYTES + 1000 - len(prefix)) + " ordinary tail"
+        result = redaction.redact(source, {})
         self.assertTrue(result.text.endswith(" ordinary tail"))
         self.assertIsNone(result.cut)
-        value="가"+random_text(32)
-        source=prefix+"z"*(redaction.ENTRY_BYTES-1-len(prefix))+value+" q"*5000
-        result=redaction.redact(source,{"DEPLOY_TOKEN":value})
+        value = "가" + random_text(32)
+        source = prefix + "z" * (redaction.ENTRY_BYTES - 1 - len(prefix)) + value + " q" * 5000
+        result = redaction.redact(source, {"DEPLOY_TOKEN": value})
         self.assertTrue(result.text.endswith("[redacted:environment]"))
         self.assertFalse(value in result.text)
-        self.assertEqual(result.cut,len(source.encode("utf-8")))
+        self.assertEqual(result.cut, len(source.encode("utf-8")))
 
     def test_tc028_pass_order_and_recording_imports(self):
         key = "sk-proj-" + random_text(32)

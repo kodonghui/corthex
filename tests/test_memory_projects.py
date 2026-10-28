@@ -173,6 +173,16 @@ class MemoryProjectsTest(StoreCase):
                       {"name": "sample", "path": str(self.repo), "repos": {"missing": []}})
         self.assertEqual(projects.find(self.config, self.repo).name, "sample")
 
+    def test_tc019_clash_keeps_only_names_allowed_in_the_result_schema(self):
+        for name in ("Sample", "evil\nname", "x" * 61, ""):
+            self.register({"name": "sample", "path": str(self.repo)},
+                          {"name": name, "path": str(self.repo)})
+            with self.assertRaises(projects.ProjectError) as caught:
+                projects.find(self.config, self.repo)
+            self.assertEqual(caught.exception.code, "project-clash")
+            self.assertEqual(caught.exception.clash, ("sample",))
+            self.assertEqual(str(caught.exception), "project-clash")
+
     def test_tc015_invalid_deeper_name_never_falls_back_to_enabled_parent(self):
         inner = self.repo / "inner"
         inner.mkdir()

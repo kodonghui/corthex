@@ -20,6 +20,12 @@ from memory_lib import redaction
 
 MARKER = "CORTHEX_REDACTION_BENCH="
 SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
+WORD_INPUTS = ("token", "passwd", "secret", "apikey")
+# Each expression, including the private-span pass, has a hostile input.
+GROWTH = ("private-openers",) + SLOW + (
+    "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
+    "gitlab-near-minimum", "slack-near-minimum", "aws-short-body", "google-short-body",
+    "url-without-at", "authorization-repeat", "password-repeat", "token-repeat", "jwt-percent-repeat")
 
 
 def slow_input(name, size):
@@ -27,9 +33,22 @@ def slow_input(name, size):
         return base64.b64encode(b'{"a":123}' * (size // 8 + 2)).decode("ascii")[:size]
     marker = "-" * 5
     prefix, seed = {
+        "private-openers": ("", "<private>"),
         "pem-begin-name-repeat": (marker + "BEGIN ", "PRIVATE KEY "),
         "pem-end-name-repeat": (marker + "BEGIN PRIVATE KEY" + marker + "\nbody\n" + marker + "END ", "PRIVATE KEY "),
         "jwt-no-dots": ("", "eyJ"),
+        "jwt-percent-repeat": ("", "%41eyJ"),
+        "anthropic-near-minimum": ("", "sk-ant-" + "a" * 19 + " "),
+        "openai-near-minimum": ("", "sk-proj-" + "a" * 19 + " "),
+        "github-near-minimum": ("", "github_pat_" + "a" * 21 + " "),
+        "gitlab-near-minimum": ("", "glpat-" + "a" * 19 + " "),
+        "slack-near-minimum": ("", "xoxb-" + "a" * 9 + " "),
+        "aws-short-body": ("", "AKIA" + "A" * 15 + " "),
+        "google-short-body": ("", "AIza" + "a" * 34 + " "),
+        "url-without-at": ("", "://" + "a" * 256 + ":" + "b" * 256 + "? "),
+        "authorization-repeat": ("", "authorization"),
+        "password-repeat": ("", "password"),
+        "token-repeat": ("", "token"),
     }[name]
     return prefix + (seed * (size // len(seed) + 1))[:size - len(prefix)]
 
@@ -49,6 +68,8 @@ def inputs():
         "token-digits": fill("token=" + "0" * 512 + " "),
         "url-without-at": fill("://" + "a" * 256 + ":" + "b" * 256 + "? "),
         **{name: slow_input(name, redaction.ENTRY_BYTES) for name in SLOW},
+        **{name + "-repeat": fill(name) for name in WORD_INPUTS},
+        "jwt-percent-repeat": slow_input("jwt-percent-repeat", redaction.ENTRY_BYTES),
     }
 
 
@@ -70,30 +91,35 @@ def measure(samples=10):
 
 
 def measure_growth(samples=3):
-    """Measure the same four inputs without a guard hiding regex growth.
+    """Measure every pattern without a guard hiding regex growth.
 
     Runs only in the test's bounded subprocess. Limits are raised in that
     disposable process; production limits and the 512 KiB benchmark stay fixed.
     """
     rows = []
+    started = time.perf_counter()
     saved = redaction.ENTRY_BYTES, redaction.WINDOW_BYTES
     try:
         def timed(text):
-            redaction.redact(text, {})
             times = []
             for _ in range(samples):
                 started = time.perf_counter()
                 redaction.redact(text, {})
                 times.append((time.perf_counter() - started) * 1000)
             return statistics.median(times)
-        for name in SLOW:
+        for name in GROWTH:
             size = 128 * 1024
+            redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size + 1
+            pilot = timed(slow_input(name, size))
+            # Calibrate once near 24 ms, avoiding successive doubling and a
+            # warm-up at every size. The pilot already warms this expression.
+            size = max(1024, min(4 * 1024 * 1024, int(size * 24 / max(pilot, 0.001))))
             while True:
                 redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
                 small = timed(slow_input(name, size))
                 if small > 21:
                     break
-                size *= 2
+                size = int(size * 1.25)
                 if size > 4 * 1024 * 1024:
                     raise RuntimeError("growth timing floor unavailable")
             large = timed(slow_input(name, size * 4))
@@ -102,7 +128,8 @@ def measure_growth(samples=3):
                          "ratio": round(large / small, 4), "samples": samples})
     finally:
         redaction.ENTRY_BYTES, redaction.WINDOW_BYTES = saved
-    return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0}
+    return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0,
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 3)}
 
 
 if __name__ == "__main__":
