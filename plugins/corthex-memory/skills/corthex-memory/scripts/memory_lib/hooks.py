@@ -3,11 +3,11 @@
 import json
 import os
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import base, diagnostics, projects, store
+from . import clock
 
 PLUGIN = Path(__file__).resolve().parents[4]
 EVENTS = {"start": "SessionStart", "prompt": "UserPromptSubmit", "end-of-turn": "Stop", "end": "SessionEnd"}
@@ -69,16 +69,16 @@ class Hook:
     deadline: float
 
     def finish(self, outcome):
-        late = time.monotonic() >= self.deadline
+        late = clock.now() >= self.deadline
         if late:
             outcome = "deadline"
             self.logger.failure("deadline", "record", self.deadline, hook=self.hook,
                                 host=self.host, project=self.project.name, opportunistic=True)
-        ms = max(0, int((time.monotonic() - self.started) * 1000))
+        ms = max(0, int((clock.now() - self.started) * 1000))
         self.logger.timing(self.hook, self.host, ms, outcome, self.deadline, opportunistic=late)
 
     def failure(self, error):
-        if time.monotonic() < self.deadline:
+        if clock.now() < self.deadline:
             self.logger.failure(error, "record", self.deadline, hook=self.hook,
                                 host=self.host, project=self.project.name)
         self.finish("error")
@@ -90,7 +90,7 @@ def process(frame):
 
 
 def note_failure(logger, error, hook, host, deadline):
-    late = time.monotonic() >= deadline
+    late = clock.now() >= deadline
     logger.failure("deadline" if late else error, "record", deadline, hook=hook,
                    host=host, opportunistic=late)
 
@@ -130,7 +130,7 @@ def run(hook, started, incoming, output):
         if project is None:
             return
         frame = Hook(hook, event, host, memory, config, project, logger, started, deadline)
-        if time.monotonic() >= deadline:
+        if clock.now() >= deadline:
             frame.finish("deadline")
             return
         outcome = process(frame)

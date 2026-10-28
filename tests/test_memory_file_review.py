@@ -11,6 +11,7 @@ from unittest import mock
 
 import test_memory_files as fixtures
 from memory_lib import base, files
+from memory_lib import clock as memory_clock
 
 
 class MemoryFileReviewTest(unittest.TestCase):
@@ -95,7 +96,7 @@ class MemoryFileReviewTest(unittest.TestCase):
                     raise PermissionError("made-up sharing failure")
                 clock = itertools.count(0, 0.5)
                 with mock.patch.object(files, "_WINDOWS", windows), mock.patch.object(Path, "read_bytes", denied), \
-                        mock.patch.object(files.time, "monotonic", side_effect=lambda: next(clock)), \
+                        mock.patch.object(files.clock, "now", side_effect=lambda: next(clock)), \
                         mock.patch.object(files.time, "sleep") as sleep:
                     with self.assertRaises(PermissionError):
                         reader(path)
@@ -234,7 +235,7 @@ class MemoryFileReviewTest(unittest.TestCase):
             target.write_bytes(b"whole")
         clock = itertools.count(0, 0.5)
         with mock.patch.object(files, "_WINDOWS", True), mock.patch.object(Path, "unlink", side_effect=PermissionError()), \
-                mock.patch.object(files.time, "monotonic", side_effect=lambda: next(clock)), mock.patch.object(files.time, "sleep"):
+                mock.patch.object(files.clock, "now", side_effect=lambda: next(clock)), mock.patch.object(files.time, "sleep"):
             with self.assertRaises(PermissionError):
                 files.delete_file(path)
         self.assertEqual(path.read_bytes(), b"whole")

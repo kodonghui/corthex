@@ -2,11 +2,11 @@
 
 import json
 import math
-import time
 import re
 from pathlib import Path
 
 from . import base, configuration, files, locks, reading
+from . import clock
 
 TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z\Z")
 DEVICE = re.compile(r"d_[0-9a-hjkmnp-tv-z]{12}\Z")
@@ -78,7 +78,7 @@ class MemoryStore:
     @staticmethod
     def _guard(lock, deadline):
         def check():
-            if time.monotonic() >= deadline:
+            if clock.now() >= deadline:
                 raise locks.LockBusy()
             lock.check()
         return check

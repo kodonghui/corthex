@@ -9,6 +9,7 @@ from unittest import mock
 
 import test_memory_locks as fixtures
 from memory_lib import files, locks, reading
+from memory_lib import clock as memory_clock
 
 
 def writer(connection, folder, device, take_over=False):
@@ -20,7 +21,7 @@ def writer(connection, folder, device, take_over=False):
     if take_over:
         past = time.time() - 11
         os.utime(str(lock.path), (past, past))
-    with lock.held(time.monotonic() + 1):
+    with lock.held(memory_clock.now() + 1):
         if not take_over:
             files.write_json(path, {"seq": 2}, "TBL-007")
         connection.send("held")
@@ -31,7 +32,7 @@ def writer(connection, folder, device, take_over=False):
 def waiting_writer(connection, folder, device):
     root = Path(folder)
     lock = locks.Lock(root / "record.lock", "raw", device)
-    lock.acquire(time.monotonic() + 1)
+    lock.acquire(memory_clock.now() + 1)
     connection.send("ready")
     connection.recv()
     files.write_json(root / "record.json", {"seq": 2}, "TBL-007")
@@ -44,7 +45,7 @@ def recovery_reader(connection, barrier, folder, device):
     barrier.wait(20)
     lock = locks.Lock(root / "record.lock", "raw", device)
     notices = []
-    value = reading.read_json(root / "record.json", lock, time.monotonic() + 1,
+    value = reading.read_json(root / "record.json", lock, memory_clock.now() + 1,
                               lambda *notice: notices.append(notice))
     connection.send((value, notices))
 
@@ -66,10 +67,10 @@ class MemoryReadingTest(unittest.TestCase):
         connection, process = self.start(fixtures.holder, str(lease.path), self.device)
         self.assertTrue(self.receive(connection))
         notices = []
-        started = time.monotonic()
+        started = memory_clock.now()
         with self.assertRaises(locks.LockBusy):
             reading.read_json(path, lease, started + 0.05, lambda *n: notices.append(n))
-        elapsed = time.monotonic() - started
+        elapsed = memory_clock.now() - started
         self.assertGreaterEqual(elapsed, 0.045)
         self.assertLess(elapsed, 0.3)
         self.assertFalse(path.exists())
@@ -80,7 +81,7 @@ class MemoryReadingTest(unittest.TestCase):
         process.join(10)
         self.assertEqual(process.exitcode, 0)
         # This caller is a start-memory read: its deadline is the 1,000ms row.
-        self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1,
+        self.assertEqual(reading.read_json(path, lease, memory_clock.now() + 1,
                                           lambda *n: notices.append(n)), {"seq": 1})
         self.assertEqual(notices, [("restored", None)])
         self.assertFalse(backup.exists())
@@ -97,7 +98,7 @@ class MemoryReadingTest(unittest.TestCase):
             return acquire(deadline)
         notices = []
         with mock.patch.object(lease, "acquire", side_effect=let_writer_finish):
-            self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1,
+            self.assertEqual(reading.read_json(path, lease, memory_clock.now() + 1,
                                               lambda *n: notices.append(n)), {"seq": 2})
         process.join(10)
         self.assertEqual(process.exitcode, 0)
@@ -136,7 +137,7 @@ class MemoryReadingTest(unittest.TestCase):
             return data
         with mock.patch.object(Path, "read_bytes", taken_over):
             with self.assertRaises(locks.LostLock):
-                reading.read_json(path, lease, time.monotonic() + 1)
+                reading.read_json(path, lease, memory_clock.now() + 1)
         self.assertFalse(path.exists())
         self.assertEqual(backup.read_bytes(), b'{"seq":1}\n')
         self.assertTrue(lease.path.exists(), "old owner must leave the new lease alone")
@@ -147,16 +148,16 @@ class MemoryReadingTest(unittest.TestCase):
 
     def test_tc318_jsonl_and_custom_parser_share_the_public_recovery_path(self):
         path, backup, lease = self.prepare()
-        self.assertEqual(reading.read_jsonl(path, lease, time.monotonic() + 1), [{"seq": 1}])
+        self.assertEqual(reading.read_jsonl(path, lease, memory_clock.now() + 1), [{"seq": 1}])
         path.unlink()
         backup.write_bytes(b'{"seq":3}\n')
         def parse(data):
             value = json.loads(data)
             return value["seq"]
-        self.assertEqual(reading.read_record(path, parse, lease, time.monotonic() + 1), 3)
+        self.assertEqual(reading.read_record(path, parse, lease, memory_clock.now() + 1), 3)
         self.assertEqual(files.read_record(path, parse), 3)
         with mock.patch.object(lease, "acquire") as acquire:
-            self.assertEqual(reading.read_json(path, lease, time.monotonic() + 1), {"seq": 3})
+            self.assertEqual(reading.read_json(path, lease, memory_clock.now() + 1), {"seq": 3})
             acquire.assert_not_called()
 
     def test_tc318_permission_and_expired_deadline_never_move_the_backup(self):
@@ -164,10 +165,10 @@ class MemoryReadingTest(unittest.TestCase):
         with mock.patch.object(files, "read_json", side_effect=PermissionError("made-up")), \
                 mock.patch.object(lease, "acquire") as acquire:
             with self.assertRaises(PermissionError):
-                reading.read_json(path, lease, time.monotonic() + 1)
+                reading.read_json(path, lease, memory_clock.now() + 1)
             acquire.assert_not_called()
         with self.assertRaises(locks.LockBusy):
-            reading.read_json(path, lease, time.monotonic() - 1)
+            reading.read_json(path, lease, memory_clock.now() - 1)
         self.assertFalse(path.exists())
         self.assertEqual(backup.read_bytes(), b'{"seq":1}\n')
         self.assertFalse(lease.path.exists())
@@ -193,7 +194,7 @@ class MemoryReadingTest(unittest.TestCase):
                         raise PermissionError("made-up sharing failure")
                     return original(target)
                 notices = []
-                deadline = time.monotonic() + 0.05
+                deadline = memory_clock.now() + 0.05
                 started = time.perf_counter()
                 with mock.patch.object(files, "_WINDOWS", True), \
                         mock.patch.object(Path, "read_bytes", read):

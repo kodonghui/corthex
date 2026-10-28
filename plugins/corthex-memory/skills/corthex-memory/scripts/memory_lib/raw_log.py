@@ -10,10 +10,10 @@ import hashlib
 import math
 import os
 import re
-import time
 from dataclasses import dataclass
 
 from . import base, configuration, diagnostics, files, locks, redaction, store
+from . import clock
 
 RECORD_SECONDS = 0.05
 BLOCK = 64 * 1024
@@ -44,7 +44,7 @@ class RecordingDeadline(RuntimeError):
 def prepare(text, environment=None):
     """Redact once; callers can reuse the returned text for later recall."""
     value = redaction.redact(text, environment)
-    return Prepared(value.text, value.cut, time.monotonic() + RECORD_SECONDS)
+    return Prepared(value.text, value.cut, clock.now() + RECORD_SECONDS)
 
 
 def log_name(host, session):
@@ -169,7 +169,7 @@ class RawLog:
         for path in self.markers.iterdir():
             # Listing is read-only: check the clock without reopening the
             # lease/header for every pending turn. Mutation still uses check.
-            if time.monotonic() >= deadline:
+            if clock.now() >= deadline:
                 raise RecordingDeadline()
             if pattern.fullmatch(path.name):
                 check()
@@ -210,7 +210,7 @@ class RawLog:
         elif prepared is not None:
             raise ValueError("a boundary has no text")
         else:
-            deadline = time.monotonic() + RECORD_SECONDS
+            deadline = clock.now() + RECORD_SECONDS
         if caller_deadline is not None:
             deadline = min(deadline, caller_deadline)
         _deadline(deadline)
@@ -223,7 +223,7 @@ class RawLog:
             for error, count in notices:
                 self.logger.failure(error, "record", diagnostic_deadline, hook=hook,
                                     host=self.host, project=self.project, log=self.log, count=count)
-        if time.monotonic() >= deadline:
+        if clock.now() >= deadline:
             report("lock-busy", None)
             flush()
             return Recorded("lock-busy")
@@ -244,7 +244,7 @@ class RawLog:
             return Recorded("lock-busy")
         try:
             def check():
-                if time.monotonic() >= deadline:
+                if clock.now() >= deadline:
                     raise RecordingDeadline()
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
@@ -275,7 +275,7 @@ class RawLog:
             outcome = "deadline"
             report("deadline", None)
         except (OSError, RuntimeError, ValueError) as error:
-            outcome = "deadline" if isinstance(error, OSError) and time.monotonic() >= deadline else "error"
+            outcome = "deadline" if isinstance(error, OSError) and clock.now() >= deadline else "error"
             report("deadline" if outcome == "deadline" else error, None)
         finally:
             lock.release(report=report)

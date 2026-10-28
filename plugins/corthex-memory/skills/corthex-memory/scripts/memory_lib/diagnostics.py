@@ -8,9 +8,9 @@ logs directory. A blocked store produces no diagnostic write (TBL-001).
 import builtins
 import math
 import re
-import time
 
 from . import base, configuration, files, locks, projects, store
+from . import clock
 
 HOOKS = {"start", "prompt", "end-of-turn", "end"}
 HOSTS = {"claude-code", "codex"}
@@ -110,7 +110,7 @@ class Diagnostics:
         try:
             if not configuration.number(deadline) or not math.isfinite(deadline):
                 return False
-            if time.monotonic() >= deadline:
+            if clock.now() >= deadline:
                 return self._late_append(name, table, record, deadline) if opportunistic else False
             record_path = self.store.folder / "store.json"
             before = self.read_gate(deadline)
@@ -122,7 +122,7 @@ class Diagnostics:
                              host=record.get("host"))
             with lock.held(deadline, report=report_release if name != "failures" else None):
                 def guard():
-                    if time.monotonic() >= deadline:
+                    if clock.now() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
                     # Never read or restore the header under a log lease.

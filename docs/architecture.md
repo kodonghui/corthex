@@ -207,6 +207,8 @@ Recovery readers optionally revalidate caller state after acquisition and before
 `memory_lib/context.py` holds the unchanged 0.1.0 base formatter. The legacy session-start entry remains a compatibility wrapper; the new `scripts/hook.py` dispatches all four documented events through `memory_lib/hooks.py`. Input uses strict UTF-8 with one optional BOM and a single JSON object. Host precedence uses plugin-directory identity, then CLAUDECODE, then turn/prompt field presence. A readable store gate precedes diagnostics; bad-input and unknown-host can log without consent, while raw entries/markers and hook timings retain their enabled-project gates. Recording-only hooks load no network client or SQLite. After expiry, diagnostics use the cached, rechecked store identity, one exclusive-create log-lock attempt and the expired file-operation deadline; no new retry budget is invented, and release retains its independent retry. TC-321 covers contention and header changes. TASK-010–012 add recording to the common dispatcher.
 
 
+Deadlines and hook elapsed time use `memory_lib/clock.py` and its `now()` backed by `time.perf_counter()`. The entry point samples the same counter before product imports so their cost is included. UTC timestamps and lease-age checks retain their wall clock.
+
 ## Project hub
 
 `corthex-nexus` 0.1.0 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The NEXUS server in `nexus/` is optional and puts the same page on the user's own address.

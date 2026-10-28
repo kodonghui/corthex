@@ -9,6 +9,7 @@ from collections import Counter
 
 from test_memory_locks import holder
 from test_memory_raw_log import RawLogTest, raw_log
+from memory_lib import clock as memory_clock
 
 
 class MeasurementFailure(RuntimeError):
@@ -29,9 +30,9 @@ def measure(samples):
                 before = case.log.path.read_bytes() if case.log.path.exists() else b""
                 prepared = raw_log.prepare("a"*size,{})
                 started = time.perf_counter()
-                result = case.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3)
+                result = case.log.append("prompt",prepared,diagnostic_deadline=memory_clock.now()+3)
                 elapsed = (time.perf_counter()-started)*1000
-                ended = time.monotonic()
+                ended = memory_clock.now()
                 valid = (result.outcome == "ok" and result.entry is not None or
                          result.outcome in ("deadline","lock-busy") and ended >= prepared.deadline
                          and (result.outcome != "lock-busy" or result.entry is None))
@@ -63,7 +64,7 @@ def measure(samples):
             for sample in range(samples):
                 prepared = raw_log.prepare("made-up busy sample",{})
                 started = time.perf_counter()
-                result = case.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3)
+                result = case.log.append("prompt",prepared,diagnostic_deadline=memory_clock.now()+3)
                 elapsed = (time.perf_counter()-started)*1000
                 times.append(elapsed)
                 if result.outcome != "lock-busy" or result.entry is not None:
