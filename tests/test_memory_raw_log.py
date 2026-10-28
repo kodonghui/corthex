@@ -52,7 +52,7 @@ def killed_writer(connection, folder, ordinal, count, stop):
                                     diagnostic_deadline=memory_clock.now() + 3)
                 if result.entry is not None:
                     break
-                if result.outcome not in ("lock-busy", "deadline") or memory_clock.now() >= limit:
+                if result.outcome != "lock-busy" or memory_clock.now() >= limit:
                     connection.send(("failed", result.outcome))
                     return
         connection.send(("stop", None))
@@ -76,7 +76,7 @@ def concurrent_writer(connection, folder, count, late_marker=False):
             if result.outcome not in ("ok", "error"):
                 raise AssertionError("unexpected completed writer outcome")
             written.append((result.entry["id"],result.entry["turn"],result.outcome))
-        elif result.outcome not in ("lock-busy", "deadline"):
+        elif result.outcome != "lock-busy":
             raise AssertionError("unexpected writer outcome")
     connection.send(written)
 
@@ -752,6 +752,29 @@ class RawLogTest(StoreCase):
         self.assertEqual(len(self.markers()),1)
         self.assertEqual([row["error"] for row in self.failures()],["restored"])
 
+    def test_tc323_expired_first_attempt_reclaims_stale_raw_lease_only_when_requested(self):
+        path = self.log.path.with_suffix(".lock")
+        seed = {"pid": os.getpid(), "device": self.header["device"], "at": base.utc_time(),
+                "token": locks.secrets.token_hex(16)}
+        path.write_text(json.dumps(seed), encoding="utf-8")
+        past = time.time() - 20
+        os.utime(str(path), (past, past))
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        ordinary = locks.Lock(path, "raw", self.header["device"])
+        with mock.patch.object(ordinary, "_attempt") as attempt:
+            with self.assertRaises(locks.LockBusy):
+                ordinary.acquire(memory_clock.now() - 1)
+        attempt.assert_not_called()
+        self.assertEqual((path.read_bytes(), path.stat().st_mtime_ns), before)
+        recording = locks.Lock(path, "raw", self.header["device"])
+        recording.acquire(memory_clock.now() - 1, at_least_once=True)
+        try:
+            recording.check()
+            self.assertNotEqual(json.loads(path.read_text(encoding="utf-8"))["token"], seed["token"])
+        finally:
+            recording.release()
+        self.assertFalse(path.exists())
+
     def test_tc322_acquired_store_recovery_finishes_after_its_wait_expires(self):
         path = self.root / "store.json"
         path.replace(path.with_name("store.json.bak"))
@@ -769,6 +792,64 @@ class RawLogTest(StoreCase):
         self.assertFalse(path.with_name("store.json.bak").exists())
         self.assertEqual(self.entries(),[result.entry])
         self.assertEqual(len(self.markers()),1)
+
+    def test_tc322_store_recovery_move_retries_sharing_failures_past_wait(self):
+        path = self.root / "store.json"
+        backup = path.with_name("store.json.bak")
+        path.replace(backup)
+        clock, acquire, replace, moves = [memory_clock.now()], locks.Lock.acquire, os.replace, []
+        def slow(lease, *args, **kwargs):
+            result = acquire(lease, *args, **kwargs)
+            clock[0] += 1
+            return result
+        def sharing(source, target):
+            if Path(source) == backup and Path(target) == path:
+                moves.append(clock[0])
+                if len(moves) < 3:
+                    clock[0] += 0.2
+                    raise PermissionError("made-up sharing failure")
+            return replace(source, target)
+        prepared = raw_log.Prepared("made-up", None, clock[0] + 0.05)
+        notices = []
+        with mock.patch.object(files, "_WINDOWS", True), mock.patch.object(os, "replace", sharing), \
+                mock.patch.object(memory_clock, "now", side_effect=lambda: clock[0]), \
+                mock.patch.object(locks.Lock, "acquire", slow):
+            result = self.log.append("prompt", prepared, diagnostic_deadline=clock[0] + 0.3, notices=notices)
+        self.assertEqual(result.outcome, "ok")
+        self.assertEqual(len(moves), 3)
+        self.assertGreater(moves[0], prepared.deadline)
+        self.assertTrue(path.exists())
+        self.assertFalse(backup.exists())
+        self.assertEqual(notices, [("restored", None)])
+        self.assertEqual(self.entries(), [result.entry])
+        self.assertEqual(len(self.markers()), 1)
+
+    def test_tc322_unlocked_recovery_read_retries_sharing_failures_past_wait(self):
+        path = self.root / "store.json"
+        backup = path.with_name("store.json.bak")
+        path.replace(backup)
+        clock, read, calls = [memory_clock.now()], Path.read_bytes, []
+        def sharing(candidate):
+            if candidate == path:
+                calls.append(clock[0])
+                # The first read finds the missing primary. These failures
+                # are in reading._recover's subsequent unlocked read.
+                if len(calls) in (2, 3):
+                    clock[0] += 0.2
+                    raise PermissionError("made-up sharing failure")
+            return read(candidate)
+        prepared = raw_log.Prepared("made-up", None, clock[0] - 1)
+        notices = []
+        with mock.patch.object(files, "_WINDOWS", True), mock.patch.object(Path, "read_bytes", sharing), \
+                mock.patch.object(memory_clock, "now", side_effect=lambda: clock[0]):
+            result = self.log.append("prompt", prepared, diagnostic_deadline=clock[0] + 3, notices=notices)
+        self.assertEqual(result.outcome, "ok")
+        self.assertGreaterEqual(len(calls), 4)
+        self.assertTrue(path.exists())
+        self.assertFalse(backup.exists())
+        self.assertEqual(notices, [("restored", None)])
+        self.assertEqual(self.entries(), [result.entry])
+        self.assertEqual(len(self.markers()), 1)
 
     def test_tc322_boundaries_also_finish_after_acquisition(self):
         for kind in ("start","end"):
@@ -886,13 +967,26 @@ class RawLogTest(StoreCase):
         self.assertEqual((prior,highest),(first,2))
         guard.assert_not_called()
 
-    def test_tc324_nonempty_cut_or_damaged_logs_do_not_guess_sequence_one(self):
+    def test_tc326_small_damaged_logs_restart_at_one_and_count_damage(self):
         for data in (b'{"seq":42}',b'broken\n',b'{"seq":0}\n'):
             with self.subTest(data=data):
                 self.log.path.write_bytes(data)
-                result = self.record()
-                self.assertEqual((result.outcome,result.entry),("error",None))
-                self.assertEqual(self.log.path.read_bytes(),data)
+                notices = []
+                result = self.record(notices=notices)
+                self.assertEqual((result.outcome, result.entry["seq"]), ("ok", 1))
+                self.assertEqual(notices, [("damaged-line", 1)])
+                prefix = data if data.endswith(b"\n") else data + b"\n"
+                self.assertTrue(self.log.path.read_bytes().startswith(prefix + b'{"id":'))
+
+    def test_tc326_damage_at_exactly_eight_mib_still_starts_at_one(self):
+        with self.log.path.open("wb") as stream:
+            stream.truncate(raw_log.TAIL_BYTES)
+        notices = []
+        result = self.record(notices=notices)
+        self.assertEqual((result.outcome, result.entry["seq"]), ("ok", 1))
+        self.assertEqual(notices, [("damaged-line", 1)])
+        self.assertEqual(self.entries(), [result.entry])
+        self.assertEqual(len(self.markers()), 1)
 
     def test_tc029_no_library_error_prints_or_imports_network_or_sqlite(self):
         out, err = io.StringIO(), io.StringIO()

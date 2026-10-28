@@ -128,8 +128,9 @@ class HookFrameworkTest(HookCase):
                     self.assertEqual(self.records("failures")[-1]["error"],"bad-input")
             before = len(self.records("failures"))
             self.run_hook(hook, b"\xef\xbb\xbf" + json.dumps(valid).encode("utf-8"))
-            self.assertNotIn("bad-input", [row["error"] for row in self.records("failures")[before:]])
-        self.assertEqual([row["hook"] for row in self.records("hooks")], ["prompt", "end-of-turn", "end"])
+            self.assertEqual(len(self.records("failures")), before)
+        self.assertEqual([(row["hook"], row["outcome"]) for row in self.records("hooks")],
+                         [("prompt", "ok"), ("end-of-turn", "ok"), ("end", "ok")])
 
     def test_tc033_deep_json_is_bad_input_for_each_hook(self):
         for hook in hooks.EVENTS:
