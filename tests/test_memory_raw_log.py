@@ -335,14 +335,33 @@ class RawLogTest(StoreCase):
     def test_tc029_multiblock_control_character_line_is_read_in_new_blocks(self):
         # JSON escapes expand this legal 512 KiB text to a 3 MiB row. Reducing
         # BLOCK exposes repeated suffix scans without a wall-time assertion.
-        value = self.record(text="\x01"*redaction.ENTRY_BYTES).entry
+        fixture = raw_log.Prepared("\x01"*redaction.ENTRY_BYTES,None,time.monotonic()+10)
+        value = self.log.append("prompt",fixture,diagnostic_deadline=time.monotonic()+11,when=WHEN).entry
         self.assertIsNotNone(value)
         count = self.log.path.stat().st_size
         self.assertGreater(count,3*1024*1024)
+        opened, scanned = Path.open, []
+        class Block(bytes):
+            def __add__(self,other):
+                return Block(super().__add__(other))
+            def split(self,*args,**kwargs):
+                scanned.append(len(self))
+                return super().split(*args,**kwargs)
+        class Reader:
+            def __init__(self,stream): self.stream=stream
+            def __enter__(self): return self
+            def __exit__(self,*args): self.stream.close()
+            def seek(self,*args): return self.stream.seek(*args)
+            def read(self,size): return Block(self.stream.read(size))
+        def opening(path,*args,**kwargs):
+            stream=opened(path,*args,**kwargs)
+            return Reader(stream) if path==self.log.path and args==("rb",) else stream
         prepared = raw_log.Prepared("made-up",None,time.monotonic()+10)
-        with mock.patch.object(raw_log,"BLOCK",1024):
+        with mock.patch.object(raw_log,"BLOCK",1024),mock.patch.object(Path,"open",opening):
             result = self.log.append("answer",prepared,diagnostic_deadline=time.monotonic()+11,when=WHEN)
         self.assertEqual((result.outcome,result.entry["seq"],result.entry["turn"]),("ok",2,1))
+        self.assertEqual(sum(scanned),count)
+        self.assertLessEqual(max(scanned),1024)
 
     def test_tc029_missing_primary_restores_before_assigning_the_next_sequence(self):
         self.record()
