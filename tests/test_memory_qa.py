@@ -106,9 +106,18 @@ class TestPlanTest(unittest.TestCase):
                 self.assertTrue(rows)
                 self.assertTrue(all(len(row) == len(COLUMNS) and all(row) for row in rows))
                 self.assertEqual([row[0] for row in rows], sorted(row[0] for row in rows))
-        # New cases take the next free ID within their release step, keeping
-        # existing IDs intact; their global set still has no gaps.
-        self.assertEqual(sorted(self.cases), ["TC-%03d" % n for n in range(1, len(self.cases) + 1)])
+        # A separately prepared group may reserve an ID. Every gap must be
+        # declared, and a reservation disappears when its case is included.
+        reserved = re.findall(r"^Reserved case numbers: (\d{3}(?:, \d{3})*)\.$", self.doc, re.M)
+        self.assertLessEqual(len(reserved), 1)
+        numbers = reserved[0].split(", ") if reserved else []
+        reserved = ["TC-" + number for number in numbers]
+        self.assertEqual(len(reserved), len(set(reserved)))
+        self.assertFalse(set(reserved) & set(self.cases))
+        all_ids = sorted(list(self.cases) + reserved)
+        self.assertEqual(all_ids, ["TC-%03d" % n for n in range(1, len(all_ids) + 1)])
+        translated = re.findall(r"^예약한 케이스 번호: (\d{3}(?:, \d{3})*)\.$", read_text(TRANSLATION), re.M)
+        self.assertEqual(translated, [", ".join(numbers)] if numbers else [])
         titles = Counter(case["Case"] for case in self.cases.values())
         self.assertEqual([title for title, count in titles.items() if count > 1], [])
         for key, case in self.cases.items():
