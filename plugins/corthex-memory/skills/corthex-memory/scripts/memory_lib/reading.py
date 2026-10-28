@@ -13,35 +13,43 @@ from . import files, locks
 from . import clock
 
 
-def _recover(reader, path, lock, deadline, report, before_locked=None, **options):
+def _recover(reader, path, lock, deadline, report, before_locked=None,
+             finish_recovery=False, **options):
+    operation_deadline = None if finish_recovery else deadline
     try:
-        return reader(path, report=report, deadline=deadline, **options)
+        return reader(path, report=report, deadline=operation_deadline, **options)
     except files.RestoreNeeded:
         pass
-    lock.acquire(deadline)
+    if finish_recovery:
+        lock.acquire(deadline, at_least_once=True)
+    else:
+        lock.acquire(deadline)
     try:
         def check():
-            if clock.now() >= deadline:
+            if not finish_recovery and clock.now() >= deadline:
                 raise locks.LockBusy()
             lock.check()
             if before_locked is not None:
                 before_locked()
         check()
         return reader(path, report=report, holding_lock=True, check=check,
-                      deadline=deadline, **options)
+                      deadline=operation_deadline, **options)
     finally:
         lock.release(report=report)
 
 
-def read_record(path, parse, lock, deadline, report=None, check=None):
+def read_record(path, parse, lock, deadline, report=None, check=None, *, finish_recovery=False):
     """Recheck and recover with a pure parser while holding the matching lease.
 
-    deadline is required: recording uses the 50ms post-redaction deadline,
+    deadline is required: recording uses its 50ms post-redaction lock wait,
     start memory its 1,000ms deadline, and other callers their own operation's
     deadline (05 Locks, 06 Deadlines). A busy lease fails without moving files.
     Optional check revalidates caller state after acquisition and before moves.
+    Recording alone opts into finish_recovery: attempt even after expiry and
+    finish acquired recovery with the ordinary one-second sharing retry.
     """
-    return _recover(files.read_record, path, lock, deadline, report, before_locked=check, parse=parse)
+    return _recover(files.read_record, path, lock, deadline, report, before_locked=check,
+                    finish_recovery=finish_recovery, parse=parse)
 
 
 def read_json(path, lock, deadline, report=None, check=None):

@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import base, diagnostics, projects, store
+from . import base, diagnostics, locks, projects, store
 from . import clock
 
 PLUGIN = Path(__file__).resolve().parents[4]
@@ -84,8 +84,58 @@ class Hook:
 
 
 def process(frame):
-    """Recording is added by TASK-010–012; start memory is TASK-017."""
-    return None
+    """Record only; recall, triggers and start memory belong to later tasks."""
+    if frame.hook == "start":
+        return None
+    from . import raw_log
+    event = frame.event
+    kind = {"prompt": "prompt", "end-of-turn": "answer", "end": "end"}[frame.hook]
+    if kind == "prompt":
+        text = event["prompt"]
+        if text.lstrip().startswith(HOST_PROMPTS):
+            return "left-out"
+    elif kind == "answer":
+        text = event.get("last_assistant_message")
+        if not isinstance(text, str) or not text:
+            return "no-answer"
+    excluded_kind = "boundary" if kind == "end" else kind
+    if kind != "prompt" and frame.project.left_out(frame.configuration, excluded_kind):
+        return "left-out"
+    if kind == "end":
+        return record(frame,"end",reason=event.get("reason"))
+    try:
+        prepared = raw_log.prepare(text)
+    except Exception:
+        frame.failure("redaction")
+        return None
+    if kind == "prompt" and frame.project.left_out(frame.configuration, "prompt"):
+        return "left-out"
+    # Started redaction finishes, and its entry retains the post-redaction
+    # lock wait even if the whole-hook deadline has since passed. An acquired
+    # raw lease finishes its bounded read, append and marker.
+    return record(frame,kind,prepared,stop_hook_active=event.get("stop_hook_active") is True)
+
+
+def record(frame,kind,prepared=None,**options):
+    from . import raw_log
+    log = raw_log.RawLog(frame.memory,frame.project.name,frame.host,frame.event["session_id"])
+    notices = []
+    def failure(error,count=None):
+        frame.logger.failure(error,"record",frame.deadline,hook=frame.hook,host=frame.host,
+                             project=frame.project.name,log=log.log,count=count,
+                             opportunistic=clock.now() >= frame.deadline)
+    try:
+        result = log.append(kind,prepared,diagnostic_deadline=frame.deadline,notices=notices,**options)
+    except FileNotFoundError as error:
+        failure(error)
+        return None
+    missing = next((error for error,_ in notices if isinstance(error,FileNotFoundError)),None)
+    if missing is not None:
+        failure(missing)
+        return None
+    for error,count in notices:
+        failure(error,count)
+    return result.outcome
 
 
 def note_failure(logger, error, hook, host, deadline):
@@ -133,7 +183,13 @@ def run(hook, started, incoming, output):
         if outcome is not None:
             frame.finish(outcome)
     except Exception as error:
-        if frame is not None:
+        if isinstance(error,store.StoreUnavailable):
+            pass
+        elif frame is not None and isinstance(error,locks.LockBusy):
+            frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name,
+                                 opportunistic=clock.now() >= deadline)
+            frame.finish("lock-busy")
+        elif frame is not None:
             frame.failure(error)
         elif logger is not None:
             note_failure(logger, error, hook, host, deadline)

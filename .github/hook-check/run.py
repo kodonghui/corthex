@@ -1,9 +1,9 @@
-"""Runs the corthex-memory session start hook on Windows in Claude Code and Codex.
+"""Runs session context and recording hooks in isolated Claude Code and Codex.
 
 Usage: python run.py LABEL OUTDIR [HOSTS]
 
 Both hosts talk only to a mock model server on 127.0.0.1 that records each
-request and answers 400, with fake keys, so no model is called. Each host gets
+request and streams a fixed Korean answer, with fake keys, so no model is called. Each host gets
 its own home folder, settings folder and demo project. Three test plugins show
 how the host started each hook: a shell, its command line and its parents.
 The script reports what reached the model. It exits 1 when a host named in
@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import re
+import secrets
 import signal
 import shutil
 import subprocess
@@ -32,6 +33,7 @@ DIAG = Path(__file__).resolve().parent / "diag.py"
 GIT_BASH = Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Git" / "bin" / "bash.exe"
 CONTEXT = "CORTHEX session context"
 ASK = "MARK-ASK-7731"
+REPLY = "한국어 최종 답변을 기록합니다."
 KEEP = (
     "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP",
     "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS", "USERNAME", "USERDOMAIN", "COMPUTERNAME",
@@ -51,7 +53,7 @@ stream_max_retries = 0
 
 
 class Mock:
-    """Model API stand-in: writes each request to the current log and answers 400."""
+    """Local-only Messages/Responses stand-in; completes a turn without tools."""
 
     def __init__(self):
         self.log = None
@@ -78,10 +80,14 @@ class Mock:
                     with open(mock.log, "a", encoding="utf-8") as handle:
                         handle.write(json.dumps({"method": self.command, "path": self.path, "encoding": encoding,
                                                  "body": body.decode("utf-8", "replace")}) + "\n")
-                payload = json.dumps({"type": "error", "error": {"type": "invalid_request_error",
-                                                                   "message": "mock server"}}).encode()
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
+                request = json.loads(body) if body else {}
+                if "/messages/count_tokens" in self.path:
+                    payload, content_type = b'{"input_tokens":3}', "application/json"
+                else:
+                    payload = mock.stream(self.path, request.get("model", "mock"))
+                    content_type = "text/event-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(payload)))
                 self.send_header("Connection", "close")
                 self.end_headers()
@@ -95,6 +101,41 @@ class Mock:
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    @staticmethod
+    def stream(path, model):
+        # Protocol shapes: developers.openai.com/api/reference/resources/responses/streaming-events
+        # and platform.claude.com/docs/en/build-with-claude/streaming.
+        if "/responses" in path:
+            part = {"type": "output_text", "text": REPLY, "annotations": [], "logprobs": []}
+            item = {"id": "msg_fixture", "type": "message", "role": "assistant", "status": "completed", "content": [part]}
+            response = {"id": "resp_fixture", "object": "response", "created_at": int(time.time()),
+                        "model": model, "status": "completed", "output": [item], "error": None,
+                        "usage": {"input_tokens": 3, "output_tokens": 8, "total_tokens": 11}}
+            events = [
+                {"type": "response.created", "response": dict(response, status="in_progress", output=[])},
+                {"type": "response.output_item.added", "output_index": 0, "item": dict(item, status="in_progress", content=[])},
+                {"type": "response.content_part.added", "item_id": item["id"], "output_index": 0, "content_index": 0, "part": dict(part, text="")},
+                {"type": "response.output_text.delta", "item_id": item["id"], "output_index": 0, "content_index": 0, "delta": REPLY},
+                {"type": "response.output_text.done", "item_id": item["id"], "output_index": 0, "content_index": 0, "text": REPLY},
+                {"type": "response.content_part.done", "item_id": item["id"], "output_index": 0, "content_index": 0, "part": part},
+                {"type": "response.output_item.done", "output_index": 0, "item": item},
+                {"type": "response.completed", "response": response},
+            ]
+            for number, event in enumerate(events):
+                event["sequence_number"] = number
+        else:
+            events = [
+                {"type": "message_start", "message": {"id": "msg_fixture", "type": "message", "role": "assistant",
+                    "model": model, "content": [], "stop_reason": None, "stop_sequence": None,
+                    "usage": {"input_tokens": 3, "output_tokens": 0}}},
+                {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": REPLY}},
+                {"type": "content_block_stop", "index": 0},
+                {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 8}},
+                {"type": "message_stop"},
+            ]
+        return "".join("event: " + event["type"] + "\ndata: " + json.dumps(event, ensure_ascii=False) + "\n\n" for event in events).encode("utf-8")
 
 
 def run(args, env, cwd=None, stdin="", timeout=180, line=None):
@@ -125,6 +166,16 @@ def short(text, size=300):
     return text if len(text) <= size else text[:size] + "..."
 
 
+def scrub_mock_key(value, key):
+    if isinstance(value, str):
+        return value.replace(key, "[mock-key]")
+    if isinstance(value, list):
+        return [scrub_mock_key(item, key) for item in value]
+    if isinstance(value, dict):
+        return {name: scrub_mock_key(item, key) for name, item in value.items()}
+    return value
+
+
 def base_env(home):
     env = {key: os.environ[key] for key in KEEP if key in os.environ}
     roaming, local = home / "AppData" / "Roaming", home / "AppData" / "Local"
@@ -144,6 +195,19 @@ def prepare(base):
     (home / ".corthex" / "profile.json").write_text(json.dumps(profile, ensure_ascii=False), encoding="utf-8")
     project = {"name": "demo", "stages": {"05-erd": {"human": "erd-editor", "source": "db/schema.sql", "truth": "human"}}}
     (demo / ".corthex" / "project.json").write_text(json.dumps(project), encoding="utf-8")
+    (home / ".corthex/projects.json").write_text(json.dumps({"projects": [{"name": "demo", "path": str(demo)}]}), encoding="utf-8")
+    scripts = MEMORY / "skills/corthex-memory/scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from memory_lib import base as memory_base, files, store, clock as memory_clock
+    memory = store.MemoryStore(home / ".corthex/corthex-memory")
+    memory_base.private_directory(memory.folder / "logs")
+    files.write_json(memory.folder / "store.json", store.new_record("0.2.0"), "TBL-001")
+    at = memory_base.utc_time()
+    memory.write_configuration({"consent": {"at": at, "version": 1},
+        "projects": {"demo": {"enabled": True, "since": at}}}, memory_clock.now() + 2)
+    for name in ("raw", "unprocessed"):
+        memory_base.private_directory(memory.folder / "projects" / memory_base.project_folder_name("demo") / name)
     return home, demo
 
 
@@ -287,7 +351,7 @@ def claude(label, out, mock, folder, plugins):
     base = out / "claude"
     home, demo = prepare(base)
     env = base_env(home)
-    env.update({"CLAUDE_CONFIG_DIR": str(base / "config"), "ANTHROPIC_API_KEY": "sk-ant-dummy-test",
+    env.update({"CLAUDE_CONFIG_DIR": str(base / "config"), "ANTHROPIC_API_KEY": "sk-ant-" + secrets.token_hex(12),
                 "ANTHROPIC_BASE_URL": "http://127.0.0.1:%d" % mock.port,
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1",
                 "HOOKCHECK_LOG": str(base / "diag")})
@@ -301,17 +365,19 @@ def claude(label, out, mock, folder, plugins):
     steps += [("install " + name, ["plugin", "install", name + "@hk"]) for name in plugins]
     result["install"] = install_steps(exe, env, demo, steps)
     mock.log = base / "requests.jsonl"
-    done = run([exe, "-p", "hello CLAUDE-" + label, "--output-format", "json",
+    done = run([exe, "-p", "hello", "--output-format", "json",
                 "--debug-file", str(base / "debug.txt")], env, demo, timeout=180)
-    time.sleep(1)
+    done = scrub_mock_key(done, env["ANTHROPIC_API_KEY"])
+    captured = wait_for_capture(home)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "stdout": short(done["stdout"], 500),
                      "stderr": short(done["stderr"], 500)}
     result["requests"] = requests(base / "requests.jsonl")
+    result["capture"] = captured
     result["hooks"] = diag_records(base / "diag")
     debug = base / "debug.txt"
-    result["debug"] = matching(debug.read_text(encoding="utf-8", errors="replace"), r"hook|bash|powershell|pwsh|shell", 120) if debug.exists() else []
-    return result
+    result["debug"] = matching(debug.read_text(encoding="utf-8", errors="replace").replace(env["ANTHROPIC_API_KEY"], "[mock-key]"), r"hook|bash|powershell|pwsh|shell", 120) if debug.exists() else []
+    return scrub_mock_key(result, env["ANTHROPIC_API_KEY"])
 
 
 def codex(label, out, mock, folder, plugins):
@@ -321,7 +387,7 @@ def codex(label, out, mock, folder, plugins):
     codex_home.mkdir(parents=True, exist_ok=True)
     (codex_home / "config.toml").write_text(CODEX_CONFIG % mock.port, encoding="utf-8")
     env = base_env(home)
-    env.update({"CODEX_HOME": str(codex_home), "MOCK_KEY": "x", "HOOKCHECK_LOG": str(base / "diag")})
+    env.update({"CODEX_HOME": str(codex_home), "MOCK_KEY": "fixture-" + secrets.token_hex(12), "HOOKCHECK_LOG": str(base / "diag")})
     exe = shutil.which("codex", path=env["PATH"])
     if not exe:
         return {"error": "codex not found"}
@@ -334,20 +400,60 @@ def codex(label, out, mock, folder, plugins):
     result["install"] = install_steps(exe, env, demo, steps)
     mock.log = base / "requests.jsonl"
     done = run([exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-hook-trust",
-                "hello CODEX-" + label], env, demo, timeout=180)
-    time.sleep(1)
+                "hello"], env, demo, timeout=180)
+    done = scrub_mock_key(done, env["MOCK_KEY"])
+    captured = wait_for_capture(home)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"]}
     result["requests"] = requests(base / "requests.jsonl")
+    result["capture"] = captured
     result["hooks"] = diag_records(base / "diag")
     result["output"] = matching(done["stdout"] + "\n" + done["stderr"], r"hook|error|warn|shell|powershell", 80)
-    return result
+    return scrub_mock_key(result, env["MOCK_KEY"])
 
 
 def with_context(result):
     """The model requests of a host's run, and how many of them carry the memory context."""
     model = [q for q in result.get("requests", []) if re.search(r"/v1/(messages|responses)(\?|$)", q["path"])]
     return model, sum(1 for q in model if q["context"])
+
+
+def capture(home):
+    """Retain only counts and comparisons of the generated conversation."""
+    memory = home / ".corthex/corthex-memory"
+    rows = [json.loads(line) for path in memory.glob("projects/*/raw/*.jsonl")
+            for line in path.read_text(encoding="utf-8").splitlines()]
+    prompts = [row for row in rows if row.get("kind") == "prompt" and row.get("text") == "hello"]
+    answers = [row for row in rows if row.get("kind") == "answer" and row.get("text", "").strip() == REPLY]
+    endings = [row for row in rows if row.get("kind") == "end" and "text" not in row]
+    joined = any(p["host"] == a["host"] and p["session"] == a["session"] and p["turn"] == a["turn"]
+                 for p in prompts for a in answers)
+    timings = [json.loads(line) for path in memory.glob("logs/hooks-*.jsonl")
+               for line in path.read_text(encoding="utf-8").splitlines()]
+    timing_ok = all(any(row.get("hook") == hook and row.get("outcome") == "ok" for row in timings)
+                    for hook in ("prompt", "end-of-turn", "end"))
+    failures = [json.loads(line) for path in memory.glob("logs/failures-*.jsonl")
+                for line in path.read_text(encoding="utf-8").splitlines()]
+    outcomes = {hook: [row["outcome"] for row in timings if row.get("hook") == hook]
+                for hook in ("prompt", "end-of-turn", "end")}
+    return {"entries": len(rows), "prompt_ok": bool(prompts), "answer_ok": bool(answers),
+            "end_ok": bool(endings), "same_turn": joined, "korean_intact": bool(answers), "timings_ok": timing_ok,
+            "hook_outcomes": outcomes, "failure_errors": sorted({row["error"] for row in failures})}
+
+
+def wait_for_capture(home,timeout=6):
+    """Observe an already launched hook through its final timing line.
+
+    A host can return while its SessionEnd command is still starting. Once all
+    timings exist, retain their verdict even on failure; never rerun a hook.
+    """
+    started = time.perf_counter()
+    value = capture(home)
+    while not all(value["hook_outcomes"].values()) and time.perf_counter()-started < timeout:
+        time.sleep(0.05)
+        value = capture(home)
+    value["capture_wait_ms"] = round((time.perf_counter()-started)*1000,3)
+    return value
 
 
 def summary(report):
@@ -376,6 +482,7 @@ def summary(report):
         lines.append("  model requests %d, with memory context %d, with profile marker %d, hook markers %s" % (
             len(model), context, sum(1 for q in model if q["ask"]),
             sorted({t for q in model for t in q["diag"]})))
+        lines.append("  recording: " + json.dumps(r.get("capture", {}), sort_keys=True))
         for tag, records in sorted(r["hooks"].items()):
             for record in records:
                 chain = " <- ".join(p["name"] or "?" for p in record["parents"])
@@ -404,7 +511,9 @@ def main():
             report[name] = step()
         except Exception:
             report[name] = {"crash": traceback.format_exc()}
-    missing = [host for host in expected if not with_context(report.get(host, {}))[1]]
+    missing = [host for host in expected if not with_context(report.get(host, {}))[1] or
+               not all(report.get(host, {}).get("capture", {}).get(key)
+                       for key in ("prompt_ok", "answer_ok", "end_ok", "same_turn", "korean_intact", "timings_ok"))]
     report["expected"] = {"hosts": expected, "missing": missing}
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     text = summary(report) + "\nmemory context expected from %s: %s" % (

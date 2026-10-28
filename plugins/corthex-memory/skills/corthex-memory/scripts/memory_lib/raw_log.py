@@ -1,8 +1,9 @@
 """TBL-007 appends and TBL-008 markers; no hook or directory provisioning.
 
 The caller gates consent/project exclusions and gives its diagnostic deadline.
-prepare() redacts once and starts the separate 50ms recording budget. A returned
-write is never undone because its marker is late or fails. Hook entry points
+prepare() redacts once and starts the 50ms lock-wait window. Acquired recording
+finishes with an 8MiB tail-read bound, even past a hook deadline. A returned
+write is never undone because its marker fails. Hook entry points
 later use Recorded.outcome for their timing line and always exit quietly.
 """
 
@@ -17,6 +18,7 @@ from . import clock
 
 RECORD_SECONDS = 0.05
 BLOCK = 64 * 1024
+TAIL_BYTES = 8 * 1024 * 1024
 HOSTS = {"claude-code", "codex"}
 KINDS = {"prompt", "answer", "start", "end"}
 EVENTS = {"start", "resume", "clear", "compact", "fork"}
@@ -35,10 +37,6 @@ class Prepared:
 class Recorded:
     outcome: str
     entry: object = None
-
-
-class RecordingDeadline(RuntimeError):
-    pass
 
 
 def prepare(text, environment=None):
@@ -107,26 +105,22 @@ def _parsed_entry(value, host, session):
     return value
 
 
-def _tail(path, host, session, check, deadline, report):
-    """Read backwards in blocks; ignore cut tails and stop after the turn head."""
-    check()
-    try:
-        incoming = files._retry(lambda: path.open("rb"), deadline)
-    except FileNotFoundError:
-        if not path.with_name(path.name + ".bak").exists():
-            return None, 0
-        # Recovery is rare; the existing strict JSONL reader validates the
-        # backup. Healthy appends never read/parse the whole raw log.
-        files.read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
-        return _tail(path, host, session, check, deadline, report)
-    turn, damaged, highest = None, 0, 0
+def _scan_tail(path, host, session):
+    """Read at most 8MiB backwards without changing shared files.
+
+    Empty/new logs begin at one. A nonempty tail needs a complete JSON line
+    with a positive seq; without one its next sequence cannot be inferred.
+    Parsed cut-tail sequences still stay reserved when a complete line exists.
+    """
+    incoming = path.open("rb")
+    turn, damaged, highest, complete_seq = None, 0, 0, False
     def parsed(line, complete=True):
-        nonlocal turn, damaged, highest
-        check()
+        nonlocal turn, damaged, highest, complete_seq
         try:
             value = store.json_document(line)
             if isinstance(value, dict) and _positive(value.get("seq")):
                 highest = max(highest, int(value["seq"]))
+                complete_seq = complete_seq or complete
             if not complete:
                 damaged += bool(line)
                 return
@@ -138,10 +132,11 @@ def _tail(path, host, session, check, deadline, report):
             turn = value
     with incoming:
         position = incoming.seek(0, os.SEEK_END)
+        size = position
+        floor = max(0, size - TAIL_BYTES)
         fragments, first = [], True
-        while position and turn is None:
-            check()
-            start = max(0, position - BLOCK)
+        while position > floor and turn is None:
+            start = max(floor, position - BLOCK)
             incoming.seek(start)
             # Split only the new block. Join accumulated fragments once per
             # line instead of copying and rescanning a growing suffix.
@@ -167,6 +162,31 @@ def _tail(path, host, session, check, deadline, report):
                     parsed(pending, complete=False)
             elif pending:
                 parsed(pending)
+    if size and not complete_seq:
+        return None, None, max(1, damaged)
+    return turn, highest, damaged
+
+
+def _tail(path, host, session, check, report):
+    """Apply the same bounded read to primary and recovery candidates.
+
+    Reuse the locked reader's recheck and guarded move. A missing primary and
+    backup starts a new log; a backup lost after reading must not reset seq.
+    """
+    seen = False
+    def read(candidate):
+        nonlocal seen
+        value = _scan_tail(candidate, host, session)
+        seen = True
+        return value
+    try:
+        turn, highest, damaged = files.read_record(
+            path, lambda value: value, report, holding_lock=True, check=check,
+            reader=read)
+    except FileNotFoundError:
+        if seen:
+            raise
+        return None, 0
     if damaged:
         report("damaged-line", damaged)
     return turn, highest
@@ -182,20 +202,15 @@ class RawLog:
         self.markers = root / "unprocessed"
         self.logger = diagnostics.Diagnostics(memory_store)
 
-    def _marker(self, entry, check, deadline, prior=None):
-        check()
+    def _marker(self, entry, check, prior=None):
         if entry["turn"] != entry["seq"]:
             suffix = "." + self.log + "." + str(entry["turn"])
             if prior is not None and prior["seq"] == prior["turn"] == entry["turn"]:
                 at = prior["at"][:19].replace("-", "").replace(":", "") + "Z"
                 if (self.markers / (at + suffix)).exists():
-                    check()
                     return
             for name in os.listdir(self.markers):
-                if clock.now() >= deadline:
-                    raise RecordingDeadline()
                 if name.endswith(suffix):
-                    check()
                     return
         at = entry["at"][:19].replace("-", "").replace(":", "") + "Z"
         path = self.markers / (at + "." + self.log + "." + str(entry["turn"]))
@@ -206,16 +221,20 @@ class RawLog:
             except FileExistsError:
                 return
             os.close(fd)
-        files._retry(create, deadline)
+        files._retry(create)
 
     def append(self, kind, prepared=None, *, deadline=None, diagnostic_deadline,
-               stop_hook_active=False, source=None, reason=None, when=None):
+               stop_hook_active=False, source=None, reason=None, when=None, notices=None):
         """Record under one raw lease; report only safe metadata after release.
 
-        For text, pass prepare()'s result, retaining its post-redaction deadline.
-        Boundaries use their own 50ms budget. A supplied absolute deadline can
-        only shorten either budget, retaining a caller's earlier hook deadline.
+        For text, prepare() starts the post-redaction 50ms lock wait. Boundaries
+        start their own wait window. An optional absolute deadline only shortens
+        waiting; each lock is attempted once even when that window has passed.
+        Once the raw lease is acquired, reads, append and marker finish without
+        a time limit; ordinary sharing retries remain bounded to one second.
         The diagnostic deadline belongs to the whole hook, never a new retry.
+        A supplied notice list defers logging to the caller after release; it
+        retains FileNotFoundError's kind for the hook's missing-folder policy.
         """
         if not isinstance(kind, str) or kind not in KINDS:
             raise ValueError("invalid recording kind")
@@ -241,69 +260,63 @@ class RawLog:
             deadline = min(deadline, caller_deadline)
         _deadline(deadline)
         at = base.utc_time(when)
-        notices, entry, outcome = [], None, "ok"
+        pending, entry, outcome = [] if notices is None else notices, None, "ok"
         def report(error, count):
-            notices.append((error, count))
+            pending.append((error, count))
         def flush():
+            if notices is not None:
+                return
             hook = {"answer": "end-of-turn"}.get(kind, kind)
-            for error, count in notices:
+            for error, count in pending:
                 self.logger.failure(error, "record", diagnostic_deadline, hook=hook,
                                     host=self.host, project=self.project, log=self.log, count=count)
-        if clock.now() >= deadline:
-            report("lock-busy", None)
-            flush()
-            return Recorded("lock-busy")
         record_path = self.store.folder / "store.json"
-        first = self.logger._stamp(record_path)
-        header = self.store.record(report, deadline=deadline)
-        stamp = self.logger._stamp(record_path)
-        if stamp != first:
-            header = self.store.record(report, deadline=deadline)
-            if self.logger._stamp(record_path) != stamp:
-                raise locks.LostLock()
-        lock = locks.Lock(self.path.with_suffix(".lock"), "raw", header["device"])
         try:
-            lock.acquire(deadline)
+            first = self.logger._stamp(record_path)
+            header = self.store.record(report, deadline=deadline, recording=True)
+            stamp = self.logger._stamp(record_path)
+            if stamp != first:
+                header = self.store.record(report, deadline=deadline, recording=True)
+                if self.logger._stamp(record_path) != stamp:
+                    raise locks.LostLock()
+            lock = locks.Lock(self.path.with_suffix(".lock"), "raw", header["device"])
+            lock.acquire(deadline, at_least_once=True)
         except locks.LockBusy:
             report("lock-busy", None)
             flush()
             return Recorded("lock-busy")
         try:
             def check():
-                if clock.now() >= deadline:
-                    raise RecordingDeadline()
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
-            prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
-            seq = highest + 1
-            value = {"id": base.new_id("e"), "seq": seq, "at": at,
-                     "host": self.host, "session": self.session, "kind": kind}
-            if kind in ("prompt", "answer"):
-                turn = seq
-                if kind == "answer" and prior is not None and (prior["kind"] == "prompt" or stop_hook_active is True):
-                    turn = int(prior["turn"])
-                value.update(turn=turn, speaker="user" if kind == "prompt" else "agent", text=prepared.text)
-                if prepared.cut is not None:
-                    value["cut"] = int(prepared.cut)
-            elif kind == "start":
-                event = "start" if source == "startup" else source
-                if isinstance(event, str) and event in EVENTS:
-                    value["event"] = event
-            elif isinstance(reason, str) and REASON.fullmatch(reason):
-                value["reason"] = reason
-            files.append_jsonl(self.path, value, "TBL-007", report, check=check, deadline=deadline)
-            entry = value
-            check()
-            if "turn" in entry:
-                self._marker(entry, check, deadline, prior)
-        except RecordingDeadline:
-            outcome = "lock-busy" if entry is None else "deadline"
-            report(outcome, None)
+            prior, highest = _tail(self.path, self.host, self.session, check, report)
+            if highest is None:
+                outcome = "error"
+            else:
+                seq = highest + 1
+                value = {"id": base.new_id("e"), "seq": seq, "at": at,
+                         "host": self.host, "session": self.session, "kind": kind}
+                if kind in ("prompt", "answer"):
+                    turn = seq
+                    if kind == "answer" and prior is not None and (prior["kind"] == "prompt" or stop_hook_active is True):
+                        turn = int(prior["turn"])
+                    value.update(turn=turn, speaker="user" if kind == "prompt" else "agent", text=prepared.text)
+                    if prepared.cut is not None:
+                        value["cut"] = int(prepared.cut)
+                elif kind == "start":
+                    event = "start" if source == "startup" else source
+                    if isinstance(event, str) and event in EVENTS:
+                        value["event"] = event
+                elif isinstance(reason, str) and REASON.fullmatch(reason):
+                    value["reason"] = reason
+                files.append_jsonl(self.path, value, "TBL-007", report, check=check)
+                entry = value
+                if "turn" in entry:
+                    self._marker(entry, check, prior)
         except (OSError, RuntimeError, ValueError) as error:
-            expired = isinstance(error, OSError) and clock.now() >= deadline
-            outcome = ("lock-busy" if entry is None else "deadline") if expired else "error"
-            report(outcome if expired else error, None)
+            outcome = "error"
+            report(error, None)
         finally:
             lock.release(report=report)
         flush()
