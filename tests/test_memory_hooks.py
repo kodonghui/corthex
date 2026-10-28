@@ -134,7 +134,7 @@ class HookFrameworkTest(HookCase):
     def test_tc033_deep_json_is_bad_input_for_each_hook(self):
         for hook in hooks.EVENTS:
             before = len(self.records("failures"))
-            self.run_hook(hook,b"["*2000+b"0"+b"]"*2000)
+            self.run_hook(hook,b"["*100000+b"0"+b"]"*100000)
             self.assertEqual(len(self.records("failures")),before+1)
             self.assertEqual(self.records("failures")[-1]["error"],"bad-input")
 
@@ -148,11 +148,42 @@ class HookFrameworkTest(HookCase):
             self.assertEqual(self.records("failures")[-1]["error"],error)
         self.assertEqual(self.records("hooks"),[])
 
+    def test_tc035_late_frames_preserve_outcomes_and_exception_codes(self):
+        for outcome in ("ok","lock-busy","left-out","no-answer","error"):
+            before = len(self.records("failures"))
+            action = ("raise PermissionError('private-frame-fixture')" if outcome=="error"
+                      else "return "+repr(outcome))
+            patch = ("def late(frame):\n    frame.started = memory_clock.now()-2\n"
+                     "    frame.deadline = frame.started+hooks.SECONDS[frame.hook]\n    "+action+
+                     "\nhooks.process = late")
+            self.run_hook("end-of-turn",patch=patch)
+            self.assertEqual(self.records("hooks")[-1]["outcome"],outcome)
+            self.assertGreaterEqual(self.records("hooks")[-1]["ms"],2000)
+            failures = self.records("failures")[before:]
+            self.assertEqual([r["error"] for r in failures],["PermissionError"] if outcome=="error" else [])
+
+    def test_tc035_each_hook_calls_process_when_already_past_its_deadline(self):
+        patch = ("now = memory_clock.now\noffset = [0.0]\n"
+                 "memory_clock.now = lambda: now()+offset[0]\nfind = hooks.projects.find\n"
+                 "def delayed(*args):\n    project = find(*args)\n    offset[0] = 2.0\n    return project\n"
+                 "hooks.projects.find = delayed\nhooks.process = lambda frame: 'ok'")
+        for hook in hooks.EVENTS:
+            self.run_hook(hook,patch=patch)
+            self.assertEqual(self.records("hooks")[-1]["outcome"],"ok")
+            self.assertGreaterEqual(self.records("hooks")[-1]["ms"],2000)
+        self.assertEqual(self.records("failures"),[])
+
     def test_tc036_product_import_time_uses_the_original_entry_deadline(self):
         plugin = self.folder / "slow-plugin"
         shutil.copytree(PLUGIN,plugin,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
         init = plugin / "skills/corthex-memory/scripts/memory_lib/__init__.py"
-        init.write_text("import time\ntime.sleep(0.35)\n"+init.read_text(encoding="utf-8"),encoding="utf-8")
+        # Model a later optional step explicitly skipping work, so the test
+        # checks the deadline origin rather than inventing failure from ms.
+        probe = ("\nfrom . import hooks, clock\n"
+                 "def skip_optional_step(frame):\n"
+                 "    return 'deadline' if clock.now() >= frame.deadline else 'ok'\n"
+                 "hooks.process = skip_optional_step\n")
+        init.write_text("import time\ntime.sleep(0.35)\n"+init.read_text(encoding="utf-8")+probe,encoding="utf-8")
         script = plugin / "scripts/hook.py"
         run = subprocess.run([sys.executable,str(script),"end-of-turn"],input=json.dumps(self.event("end-of-turn")).encode(),
                              env=self.environment(),cwd=str(self.repo),capture_output=True,timeout=15)
@@ -174,7 +205,7 @@ class HookFrameworkTest(HookCase):
             self.assertEqual(len(run.stderr.splitlines()),1)
             self.assertTrue(run.stderr.startswith(b"corthex-memory: "))
 
-    def test_tc014_configuration_notice_precedes_the_consent_gate(self):
+    def test_tc011_configuration_notice_precedes_the_consent_gate(self):
         path = self.root / "configuration.json"
         backup = path.with_name(path.name+".bak")
         if backup.exists():
@@ -320,7 +351,8 @@ class HookFrameworkTest(HookCase):
 
     def test_tc321_expired_hook_attempts_free_logs_once_and_skips_busy_logs(self):
         patch = ("def expire(frame):\n    frame.started = memory_clock.now() - 2\n"
-                 "    frame.deadline = frame.started + hooks.SECONDS[frame.hook]\n    return 'ok'\nhooks.process = expire")
+                 "    frame.deadline = frame.started + hooks.SECONDS[frame.hook]\n"
+                 "    return 'deadline'  # an optional step was skipped\nhooks.process = expire")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(self.records("failures")[-1]["error"], "deadline")
         self.assertEqual(self.records("hooks")[-1]["outcome"], "deadline")
@@ -348,7 +380,7 @@ class HookFrameworkTest(HookCase):
     def test_tc321_late_diagnostic_rechecks_the_cached_store_gate(self):
         patch = ("def change(frame):\n    (frame.memory.folder / 'store.json').write_bytes(b'{\"format\":2}')\n"
                  "    frame.started = memory_clock.now() - 2\n    frame.deadline = frame.started + 0.9\n"
-                 "    return 'ok'\nhooks.process = change")
+                 "    return 'deadline'\nhooks.process = change")
         self.run_hook("prompt", patch=patch)
         self.assertEqual(self.records("failures"), [])
         self.assertEqual(self.records("hooks"), [])

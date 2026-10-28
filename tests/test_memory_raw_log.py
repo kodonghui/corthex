@@ -610,9 +610,13 @@ class RawLogTest(StoreCase):
     def test_tc322_benchmark_late_append_finishes_its_own_marker(self):
         import bench_memory_raw_log as bench
         clock,offset,append,record = memory_clock.now,[0.0],files.append_jsonl,raw_log.RawLog.append
-        frozen = [None]
+        frozen, sleep = [None], time.sleep
         def now():
             return clock()+offset[0] if frozen[0] is None else frozen[0]
+        def ticking_sleep(seconds):
+            sleep(seconds)
+            if frozen[0] is not None:
+                frozen[0] += seconds
         def recording(log,*args,**kwargs):
             # Pin only the expanded-row fixture until its append returns.
             # Other profiles, including the foreign lease, keep a live clock.
@@ -632,6 +636,7 @@ class RawLogTest(StoreCase):
                 frozen[0] += 1.0
             return result
         with mock.patch.object(raw_log.clock,"now",side_effect=now), \
+                mock.patch.object(time,"sleep",ticking_sleep), \
                 mock.patch.object(raw_log.RawLog,"append",recording), \
                 mock.patch.object(files,"append_jsonl",expired), \
                 mock.patch.object(base,"utc_time",return_value="2026-10-27T09:12:03.456Z"):

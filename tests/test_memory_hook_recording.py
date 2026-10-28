@@ -252,8 +252,8 @@ class HookRecordingTest(HookCase):
         self.run_hook("end-of-turn", dict(self.event("end-of-turn"), last_assistant_message=text), patch=patch)
         row, = self.raw()
         self.assertTrue(row["text"] == text)
-        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
-        self.outcome("deadline")
+        self.assertEqual(self.records("failures"), [])
+        self.outcome("ok")
 
     def test_tc048_end_reasons_and_boundary_exclusion(self):
         for reason in ("other", "logout", "x" * 65):
@@ -274,8 +274,8 @@ class HookRecordingTest(HookCase):
                  "def slow(*args):\n    time.sleep(0.52)\n    return original(*args)\nprojects.find = slow")
         self.run_hook("end", patch=patch)
         self.assertEqual(len(self.raw()), 2)
-        self.outcome("deadline")
-        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        self.outcome("ok")
+        self.assertEqual(self.records("failures"), [])
         patch = ("from memory_lib import raw_log\ndef fail(*args, **kwargs):\n"
                  "    raise OSError('private-end-error-fixture')\nraw_log.RawLog.append = fail")
         self.run_hook("end", patch=patch)
@@ -347,8 +347,8 @@ class HookRecordingTest(HookCase):
             self.run_hook(hook,patch=patch)
             self.assertEqual(len(self.raw()),index)
             self.assertEqual(len(self.markers()),1)
-            self.outcome("deadline")
-            self.assertEqual(self.records("failures")[-1]["error"],"deadline")
+            self.outcome("ok")
+            self.assertEqual(self.records("failures"),[])
 
     def test_tc323_hook_attempts_a_free_lock_after_the_wait_has_expired(self):
         patch = ("from memory_lib import raw_log\nprepare = raw_log.prepare\n"

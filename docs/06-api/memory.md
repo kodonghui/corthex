@@ -214,9 +214,9 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The end-of-turn hook | 300 ms | The trigger check and the worker's start are skipped; the next trigger tries again |
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
-Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 450 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+Redaction and recording are attempted even when the whole-hook deadline has passed before those steps are reached; their time counts in the hook timing. Started redaction finishes: a long answer can take the end-of-turn hook past its deadline by up to about 450 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The whole-hook deadline skips only the table's recall, trigger check and worker start, or shortens start memory to its one-line fallback. The hook script imports only what recording needs and loads network and SQLite modules only for recall. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
-After its deadline, a hook makes one attempt without waiting for each failure-log and hook-timing lock: if acquired it writes the failure's own code or the hook outcome, otherwise it skips that line. `deadline` means remaining steps were skipped because their deadline passed. There is no new diagnostic budget, and release keeps its separate retry.
+After its deadline, a hook makes one attempt without waiting for each failure-log and hook-timing lock: if acquired it writes the failure's own code or the hook's supplied outcome, otherwise it skips that line; there is no new diagnostic budget, and release keeps its separate retry. `deadline` is used only when a step named in the deadline table was actually skipped or shortened. A late hook that skipped nothing retains its supplied outcome, such as `ok`, `lock-busy` or `left-out`; a late exception retains its code and the outcome `error`. Elapsed ms show the lateness. The recording-only prompt, end-of-turn and session-end hooks of C1 have no such later recall, trigger or worker stages yet.
 
 Lock release has the separate retry in stage 05 even after the hook deadline: each release can extend the hook by up to about one second, or about two seconds for a refreshed lease that also waits for its heartbeat thread.
 
@@ -817,7 +817,7 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | `no-project-list` | The project list is missing or cannot be read (SPEC-001); memory accepts a single leading UTF-8 BOM when reading this list, and rejects duplicate JSON keys as an unreadable list. | No project |
 | `project-clash` | Two projects have the same folder (SPEC-001) | No project; the memory status shows the clash |
 | `lock-busy` | A lock was not free within the step's deadline | The step is skipped; for recording, the memory status counts the entries skipped |
-| `deadline` | The hook passed its deadline | Its remaining steps are skipped |
+| `deadline` | A step named in the deadline table was skipped or shortened because its deadline passed | Only then do the failure and hook outcome say `deadline`; late completion alone retains the supplied outcome |
 | `damaged-line` | Lines of a file were cut or did not parse (SPEC-007) | They are skipped and counted |
 | `future-entry` | Entries with a time in the future (SPEC-009) | Kept and counted |
 | `restored` | A backup was moved back (stage 05) | The file is whole again |
