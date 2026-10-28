@@ -85,8 +85,41 @@ class Hook:
 
 
 def process(frame):
-    """Recording is added by TASK-010–012; start memory is TASK-017."""
-    return None
+    """Record only; recall, triggers and start memory belong to later tasks."""
+    if frame.hook == "start":
+        return None
+    from . import raw_log
+    event = frame.event
+    kind = {"prompt": "prompt", "end-of-turn": "answer", "end": "end"}[frame.hook]
+    if kind == "prompt":
+        text = event["prompt"]
+        if text.lstrip().startswith(HOST_PROMPTS):
+            return "left-out"
+    elif kind == "answer":
+        text = event.get("last_assistant_message")
+        if not isinstance(text, str) or not text:
+            return "no-answer"
+    excluded_kind = "boundary" if kind == "end" else kind
+    if kind != "prompt" and frame.project.left_out(frame.configuration, excluded_kind):
+        return "left-out"
+    if time.monotonic() >= frame.deadline:
+        return "deadline"
+    if kind == "end":
+        log = raw_log.RawLog(frame.memory, frame.project.name, frame.host, event["session_id"])
+        return log.append("end", reason=event.get("reason"), deadline=frame.deadline,
+                          diagnostic_deadline=frame.deadline).outcome
+    try:
+        prepared = raw_log.prepare(text)
+    except Exception:
+        frame.failure("redaction")
+        return None
+    if kind == "prompt" and frame.project.left_out(frame.configuration, "prompt"):
+        return "left-out"
+    # Started redaction finishes, and its entry retains the post-redaction
+    # recording budget even if the whole-hook deadline has since passed.
+    log = raw_log.RawLog(frame.memory, frame.project.name, frame.host, event["session_id"])
+    return log.append(kind, prepared, stop_hook_active=event.get("stop_hook_active") is True,
+                      diagnostic_deadline=frame.deadline).outcome
 
 
 def note_failure(logger, error, hook, host, deadline):

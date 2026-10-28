@@ -31,6 +31,8 @@ class HookCase(StoreCase):
             {"name": "sample", "path": str(self.repo)}]}), encoding="utf-8")
         self.memory.write_configuration({"consent": {"at": AT, "version": 1},
             "projects": {"sample": {"enabled": True, "since": AT}}}, time.monotonic() + 2)
+        for name in ("raw", "unprocessed"):
+            base.private_directory(self.root / "projects" / base.project_folder_name("sample") / name)
 
     def event(self, hook):
         return {"hook_event_name": hooks.EVENTS[hook], "session_id": "session-fixture",
@@ -100,8 +102,8 @@ class HookFrameworkTest(HookCase):
                 self.assertEqual(self.records("failures")[-1]["error"], "bad-input")
             before = len(self.records("failures"))
             self.run_hook(hook, b"\xef\xbb\xbf" + json.dumps(valid).encode("utf-8"))
-            self.assertEqual(len(self.records("failures")), before)
-        self.assertEqual(self.records("hooks"), [])
+            self.assertNotIn("bad-input", [row["error"] for row in self.records("failures")[before:]])
+        self.assertEqual([row["hook"] for row in self.records("hooks")], ["prompt", "end-of-turn", "end"])
 
     def test_tc033_bad_start_input_uses_process_cwd_for_the_base(self):
         other = self.folder / "other"

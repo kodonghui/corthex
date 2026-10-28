@@ -1,0 +1,417 @@
+"""Recording hooks run as real subprocesses against disposable project stores."""
+
+import copy
+import json
+import multiprocessing
+import os
+import time
+from pathlib import Path
+
+from test_memory_hooks import HookCase
+from test_memory_store import AT
+from test_memory_redaction import key_block, random_text, secret_examples
+from test_memory_locks import holder
+from test_memory_diagnostics import hold_logs
+from memory_lib import base, files, hooks, raw_log
+
+
+class HookRecordingTest(HookCase):
+    def raw(self):
+        return [row for path in sorted((self.root / "projects").glob("*/raw/*.jsonl"))
+                for row in files.read_jsonl(path)]
+
+    def markers(self):
+        return list((self.root / "projects").glob("*/unprocessed/*"))
+
+    def configure(self, **changes):
+        document = copy.deepcopy(self.memory.configuration(deadline=time.monotonic() + 2).document)
+        for key, value in changes.items():
+            if value is None:
+                document.pop(key, None)
+            else:
+                document[key] = value
+        self.memory.write_configuration(document, time.monotonic() + 2)
+
+    def exclude(self, kinds=(), folders=()):
+        document = copy.deepcopy(self.memory.configuration(deadline=time.monotonic() + 2).document)
+        document["projects"]["sample"]["left_out"] = {"kinds": list(kinds), "folders": list(folders)}
+        self.memory.write_configuration(document, time.monotonic() + 2)
+
+    def outcome(self, expected):
+        self.assertEqual(self.records("hooks")[-1]["outcome"], expected)
+
+    def test_tc037_prompt_entry_and_timing(self):
+        self.run_hook("prompt")
+        row, = self.raw()
+        self.assertEqual((row["kind"], row["speaker"], row["text"], row["seq"], row["turn"]),
+                         ("prompt", "user", "hello", 1, 1))
+        self.assertEqual(len(self.markers()), 1)
+        self.outcome("ok")
+
+    def test_tc038_one_mebibyte_korean_prompt_is_cut_on_a_character(self):
+        text = "가" * ((1024 * 1024) // 3) + "x"
+        self.assertEqual(len(text.encode("utf-8")), 1024 * 1024)
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        row, = self.raw()
+        self.assertTrue(row["text"] == text.encode("utf-8")[:512 * 1024].decode("utf-8", "ignore"))
+        self.assertEqual(row["cut"], len(text.encode("utf-8")))
+
+    def test_tc039_whitespace_prompt_has_no_entry_or_marker(self):
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=" \t\r\n  "))
+        self.assertEqual(self.raw(), [])
+        self.assertEqual(self.markers(), [])
+        self.outcome("ok")
+
+    def test_tc040_host_prefixes_and_prompt_exclusion(self):
+        for prefix in hooks.HOST_PROMPTS:
+            self.run_hook("prompt", dict(self.event("prompt"), prompt=" \n\t" + prefix + "fixture"))
+            self.assertEqual(self.raw(), [])
+            self.outcome("left-out")
+        text = "A user quote contains " + hooks.HOST_PROMPTS[0]
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("ok")
+        self.exclude(kinds=["prompt"])
+        self.run_hook("prompt")
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("left-out")
+
+    def test_tc041_redaction_failure_has_no_entry_or_error_text(self):
+        patch = ("from memory_lib import redaction\ndef fail(*args):\n"
+                 "    raise RuntimeError('private-redaction-error-fixture')\nredaction.redact = fail")
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual(self.raw(), [])
+        self.assertEqual(self.records("failures")[-1]["error"], "redaction")
+        self.outcome("error")
+        self.assertFalse(any(b"private-redaction-error-fixture" in p.read_bytes()
+                             for p in self.root.rglob("*") if p.is_file()))
+
+    def test_tc042_deadline_before_redaction_skips_remaining_work(self):
+        patch = ("from memory_lib import projects\noriginal = projects.find\n"
+                 "def slow(*args):\n    time.sleep(0.92)\n    return original(*args)\nprojects.find = slow")
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual(self.raw(), [])
+        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        self.assertGreaterEqual(self.records("hooks")[-1]["ms"], 900)
+        self.outcome("deadline")
+
+    def test_tc012_consent_enabling_and_missing_store_gate_all_four_hooks(self):
+        self.configure(consent=None)
+        before = self.snapshot()
+        for hook in hooks.EVENTS:
+            self.run_hook(hook)
+        self.assertEqual(self.snapshot(), before)
+        self.configure(consent={"at": AT, "version": 1}, projects={"sample": {"enabled": False, "since": AT}})
+        before = self.snapshot()
+        for hook in hooks.EVENTS:
+            self.run_hook(hook)
+        self.assertEqual(self.snapshot(), before)
+        missing = self.folder / "not-provisioned"
+        for hook in hooks.EVENTS:
+            self.run_hook(hook, changes={"CORTHEX_MEMORY_HOME": str(missing)})
+        self.assertFalse(missing.exists())
+        self.assertEqual(self.snapshot(), before)
+
+    def test_tc043_only_the_final_answer_is_recorded_and_transcript_is_not_read(self):
+        marker = "private-tool-transcript-fixture"
+        transcript = self.folder / "transcript.jsonl"
+        transcript.write_text(marker)
+        touched = self.folder / "transcript-was-read"
+        patch = ("from pathlib import Path\noriginal_open = Path.open\ndef guarded(path, *args, **kwargs):\n"
+                 "    if str(path) == " + repr(str(transcript)) + ":\n"
+                 "        Path(" + repr(str(touched)) + ").write_text('read')\n"
+                 "        raise AssertionError('transcript must not be read')\n"
+                 "    return original_open(path, *args, **kwargs)\nPath.open = guarded")
+        self.run_hook("prompt")
+        answer = "한국어 최종 답변입니다."
+        event = dict(self.event("end-of-turn"), last_assistant_message=answer,
+                     transcript_path=str(transcript), tool_inputs=marker, tool_outputs=marker)
+        self.run_hook("end-of-turn", event, patch=patch)
+        self.assertEqual([r["kind"] for r in self.raw()], ["prompt", "answer"])
+        self.assertTrue(self.raw()[-1]["text"] == answer)
+        self.assertFalse(touched.exists())
+        self.assertFalse(any(marker.encode() in p.read_bytes() for p in self.root.rglob("*") if p.is_file()))
+        self.outcome("ok")
+
+    def test_tc044_missing_empty_and_nonstring_answers_have_no_entry(self):
+        variants = [None, "", 5, False, [], {}]
+        event = self.event("end-of-turn")
+        event.pop("last_assistant_message")
+        self.run_hook("end-of-turn", event)
+        for value in variants:
+            self.run_hook("end-of-turn", dict(self.event("end-of-turn"), last_assistant_message=value))
+        self.assertEqual(self.raw(), [])
+        self.assertTrue(all(r["outcome"] == "no-answer" for r in self.records("hooks")))
+
+    def test_tc045_prompt_exclusion_does_not_exclude_answers(self):
+        self.exclude(kinds=["prompt"])
+        self.run_hook("prompt")
+        self.run_hook("end-of-turn")
+        row, = self.raw()
+        self.assertEqual((row["kind"], row["turn"]), ("answer", 1))
+        self.exclude(kinds=["answer"])
+        self.run_hook("end-of-turn")
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("left-out")
+
+    def test_tc046_answer_error_exits_quietly_and_records_only_safe_metadata(self):
+        patch = ("from memory_lib import raw_log\ndef fail(*args, **kwargs):\n"
+                 "    raise OSError('private-answer-error-fixture')\nraw_log.RawLog.append = fail")
+        self.run_hook("end-of-turn", patch=patch)
+        self.assertEqual(self.raw(), [])
+        self.outcome("error")
+        self.assertEqual(self.records("failures")[-1]["error"], "OSError")
+
+    def test_tc047_deadline_after_redaction_preserves_the_entry(self):
+        patch = ("from memory_lib import raw_log\noriginal_process = hooks.process\n"
+                 "def controlled(frame):\n    original_prepare = raw_log.prepare\n"
+                 "    def after(text):\n        prepared = original_prepare(text)\n"
+                 "        frame.deadline = time.monotonic() - 0.001\n"
+                 "        frame.started = frame.deadline - hooks.SECONDS[frame.hook]\n"
+                 "        return prepared\n    raw_log.prepare = after\n    return original_process(frame)\n"
+                 "hooks.process = controlled")
+        text = "a" * (512 * 1024)
+        self.run_hook("end-of-turn", dict(self.event("end-of-turn"), last_assistant_message=text), patch=patch)
+        row, = self.raw()
+        self.assertTrue(row["text"] == text)
+        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        self.outcome("deadline")
+
+    def test_tc048_end_reasons_and_boundary_exclusion(self):
+        for reason in ("other", "logout", "x" * 65):
+            self.run_hook("end", dict(self.event("end"), reason=reason))
+        rows = self.raw()
+        self.assertEqual([r.get("reason") for r in rows], ["other", "logout", None])
+        self.assertTrue(all(r["kind"] == "end" and not {"text", "turn", "speaker"} & set(r) for r in rows))
+        self.assertEqual(self.markers(), [])
+        self.exclude(kinds=["boundary"])
+        self.run_hook("end")
+        self.assertEqual(len(self.raw()), 3)
+        self.outcome("left-out")
+
+    def test_tc049_end_normal_late_and_error_paths(self):
+        self.run_hook("end")
+        self.assertLess(self.records("hooks")[-1]["ms"], 500)
+        patch = ("from memory_lib import projects\noriginal = projects.find\n"
+                 "def slow(*args):\n    time.sleep(0.52)\n    return original(*args)\nprojects.find = slow")
+        self.run_hook("end", patch=patch)
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("deadline")
+        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        patch = ("from memory_lib import raw_log\ndef fail(*args, **kwargs):\n"
+                 "    raise OSError('private-end-error-fixture')\nraw_log.RawLog.append = fail")
+        self.run_hook("end", patch=patch)
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("error")
+
+    def test_tc030_entry_turns_continuation_and_resubmission_through_hooks(self):
+        self.run_hook("prompt")
+        self.run_hook("end-of-turn")
+        self.run_hook("end-of-turn", dict(self.event("end-of-turn"), stop_hook_active=True))
+        self.run_hook("end-of-turn")
+        self.run_hook("prompt")
+        self.assertEqual([(r["seq"], r["turn"]) for r in self.raw()], [(1, 1), (2, 1), (3, 1), (4, 4), (5, 5)])
+        self.assertEqual(len(self.markers()), 3)
+
+    def test_tc031_all_recording_hooks_skip_a_foreign_raw_lease(self):
+        log = raw_log.RawLog(self.memory, "sample", "claude-code", self.event("prompt")["session_id"])
+        parent, child = multiprocessing.Pipe()
+        worker = multiprocessing.Process(target=holder, args=(child, str(log.path.with_suffix(".lock")), self.header["device"]))
+        worker.start()
+        try:
+            self.assertTrue(parent.poll(10))
+            self.assertTrue(parent.recv())
+            for hook in ("prompt", "end-of-turn", "end"):
+                self.run_hook(hook)
+                self.assertEqual(self.records("failures")[-1]["error"], "lock-busy")
+                self.outcome("lock-busy")
+            self.assertEqual(self.raw(), [])
+            self.assertEqual(self.markers(), [])
+        finally:
+            parent.send(True)
+            worker.join(10)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+            parent.close()
+            child.close()
+        self.assertEqual(worker.exitcode, 0)
+
+    def test_tc032_session_path_is_hashed_for_all_recording_entry_points(self):
+        session = "../../outside"
+        for hook in ("prompt", "end-of-turn", "end"):
+            self.run_hook(hook, dict(self.event(hook), session_id=session))
+        name = raw_log.log_name("claude-code", session)
+        paths = list((self.root / "projects").glob("*/raw/*.jsonl"))
+        self.assertEqual([p.name for p in paths], [name + ".jsonl"])
+        self.assertEqual(len(self.raw()), 3)
+        self.assertFalse((self.folder / "outside").exists())
+
+    def test_tc319_late_marker_keeps_the_append_and_reports_deadline_in_both_logs(self):
+        patch = ("from memory_lib import raw_log\ndef late(self, entry, check, deadline):\n"
+                 "    time.sleep(0.055)\n    check()\nraw_log.RawLog._marker = late")
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual(len(self.raw()), 1)
+        self.assertEqual(self.markers(), [])
+        self.assertEqual(self.records("failures")[-1]["error"], "deadline")
+        self.outcome("deadline")
+        self.run_hook("end-of-turn")
+        self.assertEqual([r["turn"] for r in self.raw()], [1, 1])
+        self.assertEqual(len(self.markers()), 1)
+
+    def test_tc014_busy_diagnostic_leases_leave_logs_empty(self):
+        parent, child = multiprocessing.Pipe()
+        worker = multiprocessing.Process(target=hold_logs, args=(child, str(self.root), self.header["device"]))
+        worker.start()
+        try:
+            self.assertTrue(parent.poll(10))
+            self.assertTrue(parent.recv())
+            self.run_hook("prompt")
+            self.assertEqual(self.records("hooks"), [])
+            self.assertEqual(self.records("failures"), [])
+        finally:
+            parent.send(True)
+            worker.join(10)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+            parent.close()
+            child.close()
+        self.assertEqual(worker.exitcode, 0)
+
+    def test_tc015_deepest_enabled_project_receives_the_prompt(self):
+        nested = self.repo / "nested"
+        inside = nested / "inside"
+        inside.mkdir(parents=True)
+        for name in ("raw", "unprocessed"):
+            base.private_directory(self.root / "projects" / base.project_folder_name("nested") / name)
+        self.configure(projects={name: {"enabled": True, "since": AT} for name in ("sample", "nested")})
+        (self.home / ".corthex/projects.json").write_text(json.dumps({"projects": [
+            {"name": "sample", "path": str(self.repo)}, {"name": "nested", "path": str(nested)}]}))
+        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(inside)))
+        paths = list((self.root / "projects").glob("*/raw/*.jsonl"))
+        self.assertEqual([p.parent.parent.name for p in paths], [base.project_folder_name("nested")])
+
+    def test_tc017_unregistered_folder_changes_no_memory_file(self):
+        outside = self.folder / "unregistered"
+        outside.mkdir()
+        before = self.snapshot()
+        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(outside)))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_tc018_directory_case_follows_the_current_volume(self):
+        alternate = self.repo.with_name(self.repo.name.upper())
+        same = alternate.exists() and os.path.samefile(alternate, self.repo)
+        if not alternate.exists():
+            alternate.mkdir()
+        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(alternate)))
+        self.assertEqual(len(self.raw()), int(same))
+
+    def test_tc019_missing_unreadable_and_clashing_project_lists_have_safe_codes(self):
+        registry = self.home / ".corthex/projects.json"
+        registry.unlink()
+        self.run_hook("prompt")
+        self.assertEqual(self.records("failures")[-1]["error"], "no-project-list")
+        patch = ("from pathlib import Path\noriginal_read = Path.read_bytes\ndef denied(path):\n"
+                 "    if str(path) == " + repr(str(registry)) + ":\n        raise PermissionError('fixture')\n"
+                 "    return original_read(path)\nPath.read_bytes = denied")
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual(self.records("failures")[-1]["error"], "no-project-list")
+        registry.write_text(json.dumps({"projects": [{"name": name, "path": str(self.repo)} for name in ("sample", "other")]}))
+        self.run_hook("prompt")
+        self.assertEqual(self.records("failures")[-1]["error"], "project-clash")
+        self.assertEqual(self.records("hooks"), [])
+        self.assertEqual(self.raw(), [])
+
+    def test_tc020_missing_deleted_and_linked_cwd(self):
+        event = self.event("prompt")
+        event.pop("cwd")
+        self.run_hook("prompt", event)
+        self.assertEqual(len(self.raw()), 1)
+        deleted = self.folder / "deleted"
+        deleted.mkdir()
+        deleted.rmdir()
+        self.run_hook("prompt", dict(event, cwd=str(deleted)))
+        self.assertEqual(len(self.raw()), 1)
+        link = self.folder / "linked"
+        try:
+            link.symlink_to(self.repo, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks are unavailable on this volume")
+        self.run_hook("prompt", dict(event, cwd=str(link)))
+        self.assertEqual(len(self.raw()), 2)
+
+    def test_tc022_024_private_spans_never_reach_the_raw_log(self):
+        secret = random_text(32)
+        for source, expected in (("x<PRIVATE>" + secret + "</private>y", "x[redacted:private]y"),
+                                 ("x<private>" + secret, "x[redacted:private]")):
+            self.run_hook("prompt", dict(self.event("prompt"), prompt=source))
+            self.assertTrue(self.raw()[-1]["text"] == expected)
+        self.assertFalse(any(secret.encode() in p.read_bytes() for p in self.root.rglob("*") if p.is_file()))
+
+    def test_tc023_known_key_formats_and_private_keys_are_redacted_through_the_hook(self):
+        examples = secret_examples()
+        text = "\n".join(value for _, value in examples)
+        expected = "\n".join("[redacted:" + kind + "]" for kind, _ in examples)
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        self.assertTrue(self.raw()[-1]["text"] == expected)
+        for name in ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "ENCRYPTED PRIVATE KEY"):
+            for closed in (True, False):
+                self.run_hook("prompt", dict(self.event("prompt"), prompt=key_block(name, random_text(96), closed)))
+                self.assertTrue(self.raw()[-1]["text"] == "[redacted:private-key]")
+        stored = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
+        self.assertTrue(all(value.encode() not in stored for _, value in examples))
+
+    def test_tc025_memory_and_environment_values_are_masked(self):
+        first, second, environment = random_text(32), random_text(32), random_text(16)
+        changes = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": first, "CORTHEX_MEMORY_OPENAI_API_KEY": second,
+                   "BUILD_TOKEN": environment}
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=" ".join((first, second, environment))), changes)
+        self.assertTrue(self.raw()[-1]["text"] == "[redacted:memory-key] [redacted:memory-key] [redacted:environment]")
+
+    def test_tc026_numeric_lookalikes_url_credentials_and_authorization(self):
+        value = random_text(24)
+        source = "max_tokens: 64000\ntoken = 5\nhttps://fixture:" + value + "@example.invalid/x\nAuthorization: Bearer " + value
+        expected = "max_tokens: 64000\ntoken = 5\nhttps://[redacted:url-credentials]@example.invalid/x\nAuthorization: [redacted:authorization]"
+        self.run_hook("prompt", dict(self.event("prompt"), prompt=source))
+        self.assertTrue(self.raw()[-1]["text"] == expected)
+
+    def test_tc021_excluded_folder_and_its_descendants_apply_to_all_recording_kinds(self):
+        excluded = self.repo / "left-out"
+        inside = excluded / "inside"
+        inside.mkdir(parents=True)
+        sibling = self.repo / "left-out-other"
+        sibling.mkdir()
+        self.exclude(folders=["left-out"])
+        for hook in ("prompt", "end-of-turn", "end"):
+            self.run_hook(hook, dict(self.event(hook), cwd=str(inside)))
+            self.outcome("left-out")
+        self.assertEqual(self.raw(), [])
+        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(sibling)))
+        self.assertEqual(len(self.raw()), 1)
+
+    def test_tc040_041_redaction_runs_once_and_prompt_exclusion_follows_it(self):
+        counter = self.folder / "redaction-count"
+        patch = ("from pathlib import Path\nfrom memory_lib import redaction\noriginal = redaction.redact\n"
+                 "def counted(*args, **kwargs):\n    path = Path(" + repr(str(counter)) + ")\n"
+                 "    number = int(path.read_text()) if path.exists() else 0\n"
+                 "    path.write_text(str(number+1))\n    return original(*args, **kwargs)\nredaction.redact = counted")
+        for hook in ("prompt", "end-of-turn"):
+            self.run_hook(hook, patch=patch)
+        self.assertEqual(counter.read_text(), "2")
+        self.exclude(kinds=["prompt"])
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual(counter.read_text(), "3")
+        self.outcome("left-out")
+        self.exclude(kinds=["answer"])
+        self.run_hook("end-of-turn", patch=patch)
+        self.assertEqual(counter.read_text(), "3")
+
+    def test_tc048_recording_never_starts_a_worker_or_emits_recall(self):
+        self.configure(triggers={"turns": 1, "minutes": 1})
+        self.run_hook("prompt")
+        patch = ("import subprocess\ndef forbidden(*args, **kwargs):\n"
+                 "    raise AssertionError('recording must not start a process')\nsubprocess.Popen = forbidden")
+        for hook in ("end-of-turn", "end"):
+            self.run_hook(hook, changes={"CORTHEX_MEMORY_ANTHROPIC_API_KEY": random_text(32)}, patch=patch)
+            self.outcome("ok")
