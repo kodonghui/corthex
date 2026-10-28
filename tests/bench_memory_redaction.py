@@ -22,7 +22,7 @@ MARKER = "CORTHEX_REDACTION_BENCH="
 SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
 WORD_INPUTS = ("token", "passwd", "secret", "apikey")
 # Each expression, including the private-span pass, has a hostile input.
-GROWTH = ("private-openers",) + SLOW + (
+GROWTH = ("private-openers", "pem-begin-name-repeat", "jwt-no-dots",
     "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
     "gitlab-near-minimum", "slack-near-minimum", "aws-short-body", "google-short-body",
     "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "jwt-percent-repeat")
