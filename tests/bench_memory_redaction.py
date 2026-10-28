@@ -25,7 +25,7 @@ WORD_INPUTS = ("token", "passwd", "secret", "apikey")
 GROWTH = ("private-openers",) + SLOW + (
     "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
     "gitlab-near-minimum", "slack-near-minimum", "aws-short-body", "google-short-body",
-    "url-without-at", "authorization-repeat", "password-repeat", "token-repeat", "jwt-percent-repeat")
+    "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "jwt-percent-repeat")
 
 
 def slow_input(name, size):
@@ -47,7 +47,7 @@ def slow_input(name, size):
         "google-short-body": ("", "AIza" + "a" * 34 + " "),
         "url-without-at": ("", "://" + "a" * 256 + ":" + "b" * 256 + "? "),
         "authorization-repeat": ("", "authorization"),
-        "password-repeat": ("", "password"),
+        "passwd-repeat": ("", "passwd"),
         "token-repeat": ("", "token"),
     }[name]
     return prefix + (seed * (size // len(seed) + 1))[:size - len(prefix)]
@@ -101,34 +101,38 @@ def measure_growth(samples=3):
     saved = redaction.ENTRY_BYTES, redaction.WINDOW_BYTES
     try:
         def timed(text):
-            times = []
-            for _ in range(samples):
-                started = time.perf_counter()
-                redaction.redact(text, {})
-                times.append((time.perf_counter() - started) * 1000)
-            return statistics.median(times)
+            started = time.perf_counter()
+            redaction.redact(text, {})
+            return (time.perf_counter() - started) * 1000
         for name in GROWTH:
             size = 128 * 1024
             redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size + 1
-            pilot = timed(slow_input(name, size))
-            # Calibrate once near 24 ms, avoiding successive doubling and a
+            pilot_text = slow_input(name, size)
+            pilot = statistics.median(timed(pilot_text) for _ in range(samples))
+            # Calibrate once near 26 ms, avoiding successive doubling and a
             # warm-up at every size. The pilot already warms this expression.
-            size = max(1024, min(4 * 1024 * 1024, int(size * 24 / max(pilot, 0.001))))
+            size = max(1024, min(4 * 1024 * 1024, int(size * 26 / max(pilot, 0.001))))
             while True:
                 redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
-                small = timed(slow_input(name, size))
-                if small > 21:
-                    break
+                small_text, large_text = slow_input(name, size), slow_input(name, size * 4)
+                # Interleave sizes so their medians do not come from two
+                # separate periods of machine load. Never retry a bad ratio.
+                if timed(small_text) > 21:
+                    pairs = [(timed(small_text), timed(large_text)) for _ in range(samples)]
+                    small = statistics.median(pair[0] for pair in pairs)
+                    large = statistics.median(pair[1] for pair in pairs)
+                    if small > 21:
+                        break
                 size = int(size * 1.25)
                 if size > 4 * 1024 * 1024:
                     raise RuntimeError("growth timing floor unavailable")
-            large = timed(slow_input(name, size * 4))
             rows.append({"input": name, "small_bytes": size, "large_bytes": size * 4,
                          "small_ms": round(small, 3), "large_ms": round(large, 3),
                          "ratio": round(large / small, 4), "samples": samples})
     finally:
         redaction.ENTRY_BYTES, redaction.WINDOW_BYTES = saved
     return {"schema": 1, "mode": "growth", "rows": rows, "environment_values": 0,
+            "clock": "perf_counter", "pairing": "alternating sizes",
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3)}
 
 

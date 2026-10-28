@@ -144,7 +144,7 @@ class MemoryRedactionTest(StoreCase):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
         run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "3"],
                              capture_output=True, text=True, timeout=25)
-        self.assertEqual(run.returncode, 0, "growth worker must complete without printing input")
+        self.assertEqual(run.returncode, 0, "growth worker exit %d; input remains suppressed" % run.returncode)
         marked = [line for line in run.stdout.splitlines() if line.startswith("CORTHEX_REDACTION_BENCH=")]
         self.assertEqual(len(marked), 1)
         data = json.loads(marked[0].split("=", 1)[1])
@@ -153,11 +153,11 @@ class MemoryRedactionTest(StoreCase):
                          {"private-openers", "pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots",
                           "jwt-base64-json", "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
                           "github-near-minimum", "gitlab-near-minimum", "slack-near-minimum", "aws-short-body",
-                          "google-short-body", "url-without-at", "authorization-repeat", "password-repeat", "token-repeat"})
+                          "google-short-body", "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat"})
         for row in data["rows"]:
             self.assertEqual(row["large_bytes"], row["small_bytes"] * 4)
-            self.assertGreater(row["small_ms"], 20)
-            self.assertLessEqual(row["ratio"], 8, row["input"])
+            self.assertGreater(row["small_ms"], 20, json.dumps(row, sort_keys=True))
+            self.assertLessEqual(row["ratio"], 8, json.dumps(row, sort_keys=True))
 
     def test_tc024_unclosed_private_span_removes_everything_after_it(self):
         self.assertEqual(redaction.redact("a <private> b c", {}).text, "a [redacted:private]")
