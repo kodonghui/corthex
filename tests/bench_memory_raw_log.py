@@ -6,9 +6,11 @@ import platform
 import statistics
 import time
 from collections import Counter
+from datetime import timedelta
 
 from test_memory_locks import holder
-from test_memory_raw_log import RawLogTest, raw_log
+from test_memory_raw_log import RawLogTest, WHEN, raw_log
+from memory_lib import clock as memory_clock
 
 
 class MeasurementFailure(RuntimeError):
@@ -24,6 +26,8 @@ def measure(samples, pending_counts=(0,1000,20000)):
     try:
         profiles = [("append-1KiB",1024,{}),("append-512KiB",512*1024,{})]
         profiles += [("markers-%d" % count,1024,{"requested_markers":count}) for count in pending_counts]
+        profiles += [("continued-markers-%d" % count,1024,{"requested_markers":count,"continued_answer":True})
+                     for count in pending_counts]
         profiles.append(("after-control-512KiB",1024,{"control_text_bytes":512*1024}))
         for name, size, metadata in profiles:
             phase = name
@@ -40,6 +44,14 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     if platform.system()=="Windows" and requested==20000 and count==5000 and time.perf_counter()-setup>10:
                         break
                 metadata.update(markers=count,marker_setup_ms=round((time.perf_counter()-setup)*1000,3))
+            if metadata.get("continued_answer"):
+                # N unrelated markers plus this turn's one marker. The prior
+                # entry is an answer, so the second answer must use the scan.
+                case.log.path.write_bytes(b"")
+                assert case.record().outcome=="ok"
+                assert case.record("answer",when=WHEN+timedelta(seconds=1)).outcome=="ok"
+                baseline = case.log.path.read_bytes()
+                metadata["own_markers"] = 1
             if "control_text_bytes" in metadata:
                 # Resetting seq for this fixture must not reuse an earlier
                 # profile's marker, especially when this append expires.
@@ -55,9 +67,11 @@ def measure(samples, pending_counts=(0,1000,20000)):
                 before = case.log.path.read_bytes() if case.log.path.exists() else b""
                 prepared = raw_log.prepare("a"*size,{})
                 started = time.perf_counter()
-                result = case.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3)
+                continued = metadata.get("continued_answer",False)
+                result = case.log.append("answer" if continued else "prompt",prepared,
+                                         stop_hook_active=continued,diagnostic_deadline=memory_clock.now()+3)
                 elapsed = (time.perf_counter()-started)*1000
-                ended = time.monotonic()
+                ended = memory_clock.now()
                 valid = (result.outcome == "ok" and result.entry is not None or
                          result.outcome == "deadline" and result.entry is not None and ended >= prepared.deadline or
                          result.outcome == "lock-busy" and result.entry is None and ended >= prepared.deadline)
@@ -68,11 +82,11 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     assert (case.log.path.read_bytes() if case.log.path.exists() else b"") == before
                 else:
                     assert case.entries()[-1] == result.entry
-                    marker = case.log.markers / (result.entry["at"][:19].replace("-","").replace(":","")+"Z."+
-                                                case.log.log+"."+str(result.entry["turn"]))
-                    assert marker.exists() == (result.outcome == "ok")
+                    at = WHEN.strftime("%Y%m%dT%H%M%SZ") if continued else result.entry["at"][:19].replace("-","").replace(":","")+"Z"
+                    marker = case.log.markers / (at+"."+case.log.log+"."+str(result.entry["turn"]))
+                    assert marker.exists() if continued else marker.exists() == (result.outcome == "ok")
                     # Keep the requested pending count exact before each call.
-                    if ("markers" in metadata or baseline is not None) and marker.exists():
+                    if not continued and ("markers" in metadata or baseline is not None) and marker.exists():
                         marker.unlink()
                 if sample:
                     times.append(elapsed)
@@ -80,7 +94,7 @@ def measure(samples, pending_counts=(0,1000,20000)):
                     entries += result.entry is not None
                 else:
                     warmup = dict(warmup_outcome=result.outcome,warmup_entry=result.entry is not None)
-            rows.append(dict(name=name,samples=samples,deadline_ms=50,bytes=size,
+            rows.append(dict(name=name,samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,bytes=size,
                              outcome="ok" if outcomes=={"ok":samples} else "mixed",outcomes=dict(outcomes),
                              entries=entries,skipped=samples-entries,
                              median_ms=round(statistics.median(times),3),max_ms=round(max(times),3),**warmup,**metadata))
@@ -93,14 +107,14 @@ def measure(samples, pending_counts=(0,1000,20000)):
             for sample in range(samples):
                 prepared = raw_log.prepare("made-up busy sample",{})
                 started = time.perf_counter()
-                result = case.log.append("prompt",prepared,diagnostic_deadline=time.monotonic()+3)
+                result = case.log.append("prompt",prepared,diagnostic_deadline=memory_clock.now()+3)
                 elapsed = (time.perf_counter()-started)*1000
                 times.append(elapsed)
                 if result.outcome != "lock-busy" or result.entry is not None:
                     raise MeasurementFailure(case=phase, sample=sample, outcome=result.outcome,
                                              entry=result.entry is not None, elapsed_ms=round(elapsed,3))
                 assert case.log.path.read_bytes() == before
-            rows.append(dict(name="foreign-lease",samples=samples,deadline_ms=50,bytes=0,
+            rows.append(dict(name="foreign-lease",samples=samples,deadline_ms=raw_log.RECORD_SECONDS*1000,bytes=0,
                              outcome="lock-busy",outcomes={"lock-busy":samples},entries=0,skipped=samples,
                              median_ms=round(statistics.median(times),3),max_ms=round(max(times),3)))
         finally:
@@ -114,7 +128,7 @@ def measure(samples, pending_counts=(0,1000,20000)):
         raise MeasurementFailure(case=phase, error=raw_log.diagnostics.error_kind(error) or "RuntimeError") from None
     finally:
         case.doCleanups()
-    return dict(schema=3,os=platform.system(),python=platform.python_version(),clock="perf_counter",cases=rows)
+    return dict(schema=4,os=platform.system(),python=platform.python_version(),clock="perf_counter",cases=rows)
 
 
 if __name__ == "__main__":

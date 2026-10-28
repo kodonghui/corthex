@@ -18,6 +18,7 @@ from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import base, locks
+from memory_lib import clock as memory_clock
 
 
 def racer(connection, barrier, folder, device):
@@ -25,8 +26,8 @@ def racer(connection, barrier, folder, device):
         barrier.wait(20)
         lock = locks.Lock(Path(folder) / (str(number) + ".lock"), "raw", device)
         acquired = False
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
+        deadline = memory_clock.now() + 2
+        while memory_clock.now() < deadline:
             try:
                 lock.acquire(deadline, wait=False)
                 acquired = True
@@ -58,7 +59,7 @@ def holder(connection, path, device, heartbeat=False):
     if heartbeat:
         locks.POLICIES["store"] = locks.Policy(0, 0.02, 0.2)
     lock = locks.Lock(path, "store" if heartbeat else "raw", device)
-    lock.acquire(time.monotonic() + 2)
+    lock.acquire(memory_clock.now() + 2)
     connection.send(True)
     command = connection.recv()
     try:
@@ -78,7 +79,7 @@ def forked_holder(connection, inherited, path, device):
     try:
         inherited.release()
     except locks.LostLock:
-        with locks.Lock(path, "store", device).held(time.monotonic() + 2):
+        with locks.Lock(path, "store", device).held(memory_clock.now() + 2):
             connection.send(True)
     else:
         connection.send(False)
@@ -181,7 +182,7 @@ class MemoryLocksTest(unittest.TestCase):
         before = locks._snapshot(path)
         # A contender's observed stale owner has already been replaced.
         replacement = self.new_lock()
-        replacement.acquire(time.monotonic() + 2)
+        replacement.acquire(memory_clock.now() + 2)
         self.addCleanup(replacement.release)
         data = path.read_bytes()
         contender = self.new_lock()
@@ -200,7 +201,7 @@ class MemoryLocksTest(unittest.TestCase):
         path.rename(moved)
         snapshot = locks._snapshot(moved)
         replacement = self.new_lock()
-        with replacement.held(time.monotonic() + 2):
+        with replacement.held(memory_clock.now() + 2):
             data = path.read_bytes()
             for use_copy in (False, True):
                 patch = mock.patch.object(locks.os, "link", side_effect=OSError("no hard links")) if use_copy else contextlib.nullcontext()
@@ -226,7 +227,7 @@ class MemoryLocksTest(unittest.TestCase):
         past = time.time() - 11
         os.utime(str(path), (past, past))
         replacement = self.new_lock()
-        with replacement.held(time.monotonic() + 2):
+        with replacement.held(memory_clock.now() + 2):
             connection.send("change")
             self.assertEqual(self.receive(connection), "lost-lock")
             process.join(10)
@@ -239,13 +240,13 @@ class MemoryLocksTest(unittest.TestCase):
         connection, process = self.start(holder, str(path), self.device, True)
         self.assertTrue(self.receive(connection))
         data, before = path.read_bytes(), path.stat().st_mtime_ns
-        limit = time.monotonic() + 2
-        while path.stat().st_mtime_ns <= before and time.monotonic() < limit:
+        limit = memory_clock.now() + 2
+        while path.stat().st_mtime_ns <= before and memory_clock.now() < limit:
             time.sleep(0.01)
         self.assertGreater(path.stat().st_mtime_ns, before)
         self.assertEqual(path.read_bytes(), data)
         replacement = self.new_lock(kind="store")
-        with replacement.held(time.monotonic() + 2, force=True):
+        with replacement.held(memory_clock.now() + 2, force=True):
             data, before = path.read_bytes(), path.stat().st_mtime_ns
             connection.send("refresh")
             self.assertEqual(self.receive(connection), "lost-lock")
@@ -258,12 +259,12 @@ class MemoryLocksTest(unittest.TestCase):
     def test_tc007_a_late_old_heartbeat_failure_cannot_poison_a_reused_lock(self):
         lock = self.new_lock(kind="store")
         with mock.patch.object(lock, "_start_heartbeat"):
-            lock.acquire(time.monotonic() + 2)
+            lock.acquire(memory_clock.now() + 2)
             old_stop = lock._stop
             def delayed_failure():
                 # Model completion of an old refresh after release and reuse.
                 lock.release()
-                lock.acquire(time.monotonic() + 2)
+                lock.acquire(memory_clock.now() + 2)
                 raise OSError("made-up old refresh failure")
             try:
                 with mock.patch.object(old_stop, "wait", side_effect=[False, True]):
@@ -278,15 +279,15 @@ class MemoryLocksTest(unittest.TestCase):
         path = self.folder / "sample.lock"
         connection, process = self.start(holder, str(path), self.device)
         self.assertTrue(self.receive(connection))
-        started = time.monotonic()
+        started = memory_clock.now()
         with self.assertRaises(locks.LockBusy) as error:
             self.new_lock().acquire(started + 0.05)
-        elapsed = time.monotonic() - started
+        elapsed = memory_clock.now() - started
         self.assertEqual(str(error.exception), "lock-busy")
         self.assertGreaterEqual(elapsed, 0.045)
         self.assertLess(elapsed, 0.25)
         with self.assertRaises(locks.LockBusy):
-            self.new_lock().acquire(time.monotonic() + 2, wait=False)
+            self.new_lock().acquire(memory_clock.now() + 2, wait=False)
         connection.send("change")
         self.assertEqual(self.receive(connection), "changed")
         process.join(10)
@@ -309,10 +310,10 @@ class MemoryLocksTest(unittest.TestCase):
                 original = getattr(owner, name)
                 with mock.patch.object(owner, name, side_effect=busy_once(original)):
                     with self.assertRaises(locks.LockBusy):
-                        lock.acquire(time.monotonic() + 2, wait=False)
+                        lock.acquire(memory_clock.now() + 2, wait=False)
                 self.assertTrue(path.exists())
                 with mock.patch.object(owner, name, side_effect=busy_once(original)):
-                    with lock.held(time.monotonic() + 2):
+                    with lock.held(memory_clock.now() + 2):
                         lock.check()
 
     def test_tc008_process_wide_order_and_context_release(self):
@@ -320,17 +321,17 @@ class MemoryLocksTest(unittest.TestCase):
         try:
             for kind in locks.POLICIES:
                 lock = self.new_lock(kind + ".lock", kind)
-                lock.acquire(time.monotonic() + 2)
+                lock.acquire(memory_clock.now() + 2)
                 held.append(lock)
             for kind in list(locks.POLICIES)[:-1]:
                 path = self.folder / (kind + "-earlier.lock")
                 with self.assertRaises(locks.LockOrderError):
-                    locks.Lock(path, kind, self.device).acquire(time.monotonic() + 2)
+                    locks.Lock(path, kind, self.device).acquire(memory_clock.now() + 2)
                 self.assertFalse(path.exists())
             answers = []
             def earlier_thread():
                 try:
-                    self.new_lock("thread.lock", "store").acquire(time.monotonic() + 2)
+                    self.new_lock("thread.lock", "store").acquire(memory_clock.now() + 2)
                 except locks.LockOrderError:
                     answers.append(True)
             thread = threading.Thread(target=earlier_thread)
@@ -342,25 +343,25 @@ class MemoryLocksTest(unittest.TestCase):
                 lock.release()
         lock = self.new_lock()
         with self.assertRaises(ValueError):
-            with lock.held(time.monotonic() + 2):
+            with lock.held(memory_clock.now() + 2):
                 raise ValueError("made-up failure")
         self.assertFalse(lock.path.exists())
 
     def test_tc008_missing_store_bad_deadlines_and_partial_stale_lock(self):
         missing = Path(os.environ["CORTHEX_MEMORY_HOME"])
         with self.assertRaises(FileNotFoundError):
-            locks.Lock(missing / "store.lock", "store", self.device).acquire(time.monotonic() + 2)
+            locks.Lock(missing / "store.lock", "store", self.device).acquire(memory_clock.now() + 2)
         self.assertFalse(missing.exists())
         for deadline in (float("inf"), float("nan")):
             with self.assertRaises(ValueError):
                 self.new_lock().acquire(deadline)
         with self.assertRaises(locks.LockBusy):
-            self.new_lock().acquire(time.monotonic() - 1)
+            self.new_lock().acquire(memory_clock.now() - 1)
         path = self.folder / "partial.lock"
         path.write_bytes(b"{")
         past = time.time() - 11
         os.utime(str(path), (past, past))
-        with self.new_lock("partial.lock").held(time.monotonic() + 2) as lock:
+        with self.new_lock("partial.lock").held(memory_clock.now() + 2) as lock:
             lock.check()
             if os.name != "nt":
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
@@ -369,7 +370,7 @@ class MemoryLocksTest(unittest.TestCase):
             target.write_bytes(b"made-up unrelated content")
             link.symlink_to(target)
             with self.assertRaises(ValueError):
-                self.new_lock(link.name).acquire(time.monotonic() + 2)
+                self.new_lock(link.name).acquire(memory_clock.now() + 2)
             self.assertEqual(target.read_bytes(), b"made-up unrelated content")
 
     def test_tc006_all_six_expiry_limits_follow_the_contract(self):
@@ -381,10 +382,10 @@ class MemoryLocksTest(unittest.TestCase):
                 fresh = time.time() - limit + 1
                 os.utime(str(path), (fresh, fresh))
                 with self.assertRaises(locks.LockBusy):
-                    self.new_lock(path.name, kind).acquire(time.monotonic() + 2, wait=False)
+                    self.new_lock(path.name, kind).acquire(memory_clock.now() + 2, wait=False)
                 expired = time.time() - limit - 1
                 os.utime(str(path), (expired, expired))
-                with self.new_lock(path.name, kind).held(time.monotonic() + 2) as lock:
+                with self.new_lock(path.name, kind).held(memory_clock.now() + 2) as lock:
                     lock.check()
                     stop = mock.Mock()
                     stop.wait.return_value = True
@@ -395,7 +396,7 @@ class MemoryLocksTest(unittest.TestCase):
     @unittest.skipUnless(hasattr(os, "fork"), "fork inheritance applies only on POSIX")
     def test_tc008_forked_child_has_its_own_order_and_cannot_release_parent(self):
         lock = self.new_lock("parent.lock", "log")
-        with lock.held(time.monotonic() + 5):
+        with lock.held(memory_clock.now() + 5):
             self.context = multiprocessing.get_context("fork")
             connection, process = self.start(forked_holder, lock, str(self.folder / "child.lock"), self.device)
             self.assertTrue(self.receive(connection))
@@ -411,7 +412,7 @@ class MemoryLocksTest(unittest.TestCase):
             with lock._mutex:
                 entered.set()
                 finish.wait(10)
-        with lock.held(time.monotonic() + 10):
+        with lock.held(memory_clock.now() + 10):
             thread = threading.Thread(target=own_mutex)
             thread.start()
             try:

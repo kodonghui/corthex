@@ -8,6 +8,7 @@ from unittest import mock
 
 from test_memory_store import AT, StoreCase
 from memory_lib import configuration, diagnostics, files, projects, store
+from memory_lib import clock as memory_clock
 
 
 class MemoryProjectsTest(StoreCase):
@@ -121,7 +122,7 @@ class MemoryProjectsTest(StoreCase):
                 projects.find(self.config, self.repo)
             self.assertEqual((caught.exception.code, caught.exception.clash), ("no-project-list", ()))
             self.assertEqual(str(caught.exception), "no-project-list")
-            self.assertTrue(logger.failure(caught.exception, "record", time.monotonic() + 2))
+            self.assertTrue(logger.failure(caught.exception, "record", memory_clock.now() + 2))
             records = [line for path in sorted((self.root / "logs").glob("failures-*.jsonl"))
                        for line in files.read_jsonl(path)]
             self.assertEqual(records[-1]["error"], "no-project-list")
@@ -146,7 +147,7 @@ class MemoryProjectsTest(StoreCase):
         record = self.root / "store.json"
         record.write_bytes(b"\xef\xbb\xbf" + record.read_bytes())
         with self.assertRaises(store.StoreUnavailable) as caught:
-            self.memory.record(deadline=time.monotonic()+2)
+            self.memory.record(deadline=memory_clock.now()+2)
         self.assertEqual(caught.exception.code,"store-damaged")
 
     def test_tc019_tied_folder_is_a_clash_even_if_one_project_is_disabled(self):
@@ -157,7 +158,7 @@ class MemoryProjectsTest(StoreCase):
         self.assertEqual(caught.exception.code, "project-clash")
         self.assertEqual(caught.exception.clash, ("other", "sample"))
         logger = diagnostics.Diagnostics(self.memory)
-        self.assertTrue(logger.failure(caught.exception, "record", time.monotonic() + 2))
+        self.assertTrue(logger.failure(caught.exception, "record", memory_clock.now() + 2))
         records = [line for path in sorted((self.root / "logs").glob("failures-*.jsonl"))
                    for line in files.read_jsonl(path)]
         self.assertEqual(records[-1]["error"], "project-clash")

@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -101,14 +102,18 @@ def run(args, env, cwd=None, stdin="", timeout=180, line=None):
     start = time.time()
     try:
         process = subprocess.Popen(line or args, env=env, cwd=cwd, stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=os.name != "nt")
     except OSError as error:
         return {"exit": None, "error": str(error), "stdout": "", "stderr": "", "seconds": 0}
     try:
         out, err = process.communicate(stdin.encode("utf-8"), timeout=timeout)
         code = process.returncode
     except subprocess.TimeoutExpired:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
         out, err = process.communicate()
         code = "timeout"
     return {"exit": code, "seconds": round(time.time() - start, 1),
@@ -125,7 +130,7 @@ def base_env(home):
     roaming, local = home / "AppData" / "Roaming", home / "AppData" / "Local"
     for folder in (roaming, local):
         folder.mkdir(parents=True, exist_ok=True)
-    env.update({"USERPROFILE": str(home), "HOMEDRIVE": home.drive, "HOMEPATH": str(home)[len(home.drive):],
+    env.update({"HOME": str(home), "USERPROFILE": str(home), "HOMEDRIVE": home.drive, "HOMEPATH": str(home)[len(home.drive):],
                 "APPDATA": str(roaming), "LOCALAPPDATA": str(local), "NO_PROXY": "127.0.0.1,localhost"})
     return env
 

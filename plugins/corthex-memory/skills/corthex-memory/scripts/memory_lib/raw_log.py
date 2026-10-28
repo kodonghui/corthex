@@ -10,10 +10,10 @@ import hashlib
 import math
 import os
 import re
-import time
 from dataclasses import dataclass
 
 from . import base, configuration, diagnostics, files, locks, redaction, store
+from . import clock
 
 RECORD_SECONDS = 0.05
 BLOCK = 64 * 1024
@@ -44,7 +44,7 @@ class RecordingDeadline(RuntimeError):
 def prepare(text, environment=None):
     """Redact once; callers can reuse the returned text for later recall."""
     value = redaction.redact(text, environment)
-    return Prepared(value.text, value.cut, time.monotonic() + RECORD_SECONDS)
+    return Prepared(value.text, value.cut, clock.now() + RECORD_SECONDS)
 
 
 def log_name(host, session):
@@ -114,14 +114,14 @@ def _tail(path, host, session, check, deadline, report):
         incoming = files._retry(lambda: path.open("rb"), deadline)
     except FileNotFoundError:
         if not path.with_name(path.name + ".bak").exists():
-            return None, None, 0
+            return None, 0
         # Recovery is rare; the existing strict JSONL reader validates the
         # backup. Healthy appends never read/parse the whole raw log.
         files.read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
         return _tail(path, host, session, check, deadline, report)
-    last, turn, damaged, highest = None, None, 0, 0
+    turn, damaged, highest = None, 0, 0
     def parsed(line, complete=True):
-        nonlocal last, turn, damaged, highest
+        nonlocal turn, damaged, highest
         check()
         try:
             value = store.json_document(line)
@@ -134,8 +134,6 @@ def _tail(path, host, session, check, deadline, report):
         except (ValueError, UnicodeError):
             damaged += 1
             return
-        if last is None:
-            last = value
         if value["kind"] in ("prompt", "answer") and turn is None:
             turn = value
     with incoming:
@@ -171,7 +169,7 @@ def _tail(path, host, session, check, deadline, report):
                 parsed(pending)
     if damaged:
         report("damaged-line", damaged)
-    return last, turn, highest
+    return turn, highest
 
 
 class RawLog:
@@ -194,7 +192,7 @@ class RawLog:
                     check()
                     return
             for name in os.listdir(self.markers):
-                if time.monotonic() >= deadline:
+                if clock.now() >= deadline:
                     raise RecordingDeadline()
                 if name.endswith(suffix):
                     check()
@@ -238,7 +236,7 @@ class RawLog:
         elif prepared is not None:
             raise ValueError("a boundary has no text")
         else:
-            deadline = time.monotonic() + RECORD_SECONDS
+            deadline = clock.now() + RECORD_SECONDS
         if caller_deadline is not None:
             deadline = min(deadline, caller_deadline)
         _deadline(deadline)
@@ -251,7 +249,7 @@ class RawLog:
             for error, count in notices:
                 self.logger.failure(error, "record", diagnostic_deadline, hook=hook,
                                     host=self.host, project=self.project, log=self.log, count=count)
-        if time.monotonic() >= deadline:
+        if clock.now() >= deadline:
             report("lock-busy", None)
             flush()
             return Recorded("lock-busy")
@@ -272,12 +270,12 @@ class RawLog:
             return Recorded("lock-busy")
         try:
             def check():
-                if time.monotonic() >= deadline:
+                if clock.now() >= deadline:
                     raise RecordingDeadline()
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
-            last, prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
+            prior, highest = _tail(self.path, self.host, self.session, check, deadline, report)
             seq = highest + 1
             value = {"id": base.new_id("e"), "seq": seq, "at": at,
                      "host": self.host, "session": self.session, "kind": kind}
@@ -303,7 +301,7 @@ class RawLog:
             outcome = "lock-busy" if entry is None else "deadline"
             report(outcome, None)
         except (OSError, RuntimeError, ValueError) as error:
-            expired = isinstance(error, OSError) and time.monotonic() >= deadline
+            expired = isinstance(error, OSError) and clock.now() >= deadline
             outcome = ("lock-busy" if entry is None else "deadline") if expired else "error"
             report(outcome if expired else error, None)
         finally:

@@ -14,13 +14,14 @@ from pathlib import Path
 from _common import PLUGINS, load_json, read_text
 
 PLUGIN = PLUGINS / "corthex-memory"
-SCRIPT = PLUGIN / "scripts" / "session_start.py"
+SCRIPT = PLUGIN / "scripts" / "hook.py"
+CONTEXT = PLUGIN / "skills/corthex-memory/scripts/memory_lib/context.py"
 ENTRY_SKILL = PLUGINS / "corthex" / "skills" / "corthex" / "SKILL.md"
 EXAMPLE_PROFILE = PLUGINS / "corthex" / "skills" / "corthex" / "assets" / "profile.example.json"
 
 
 def load_script():
-    spec = importlib.util.spec_from_file_location("corthex_session_start", SCRIPT)
+    spec = importlib.util.spec_from_file_location("corthex_session_context", CONTEXT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -50,8 +51,8 @@ class HookSettingsTest(unittest.TestCase):
     def setUp(self):
         self.config = load_json(PLUGIN / "hooks" / "hooks.json")
 
-    def test_only_session_start(self):
-        self.assertEqual(set(self.config["hooks"]), {"SessionStart"})
+    def test_four_documented_hooks(self):
+        self.assertEqual(set(self.config["hooks"]), {"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"})
 
     def handler(self):
         (group,) = self.config["hooks"]["SessionStart"]
@@ -64,7 +65,7 @@ class HookSettingsTest(unittest.TestCase):
         self.assertEqual(group["matcher"], "startup|resume|clear|compact|fork")
         self.assertEqual(handler["type"], "command")
         self.assertLessEqual(handler["timeout"], 30)
-        script = '"${CLAUDE_PLUGIN_ROOT}/scripts/session_start.py"'
+        script = '"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py" start'
         self.assertEqual(handler["command"], " || ".join(python + " " + script for python in ("python3", "python", "py -3")))
         self.assertTrue(SCRIPT.is_file())
 
@@ -75,7 +76,7 @@ class HookSettingsTest(unittest.TestCase):
         windows = handler["commandWindows"]
         self.assertNotIn("||", windows)
         self.assertNotIn("&&", windows)
-        self.assertEqual(windows.count('"$env:CLAUDE_PLUGIN_ROOT/scripts/session_start.py"'), 2)
+        self.assertEqual(windows.count('"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py"'), 2)
 
     def test_limits_hold_the_whole_context(self):
         _, handler = self.handler()
@@ -123,7 +124,7 @@ class HookShellTest(unittest.TestCase):
         folder.mkdir()
         for name, role in roles.items():
             if os.name == "nt":
-                args = "%2" if name == "py" else "%*"  # py gets -3 first
+                args = "%2 %3" if name == "py" else "%*"  # py gets -3, then the script and hook argument
                 lines = {"run": '@"%s" %s' % (sys.executable, args), "fail": "@exit /b 9", "junk": "@echo junk"}
                 (folder / (name + ".cmd")).write_text(lines[role] + "\n", encoding="utf-8")
             else:
@@ -139,7 +140,8 @@ class HookShellTest(unittest.TestCase):
         shells = self.shells()
         if not shells:
             self.skipTest("no sh or PowerShell here")
-        event = json.dumps({"cwd": str(self.work), "source": "startup"})
+        event = json.dumps({"hook_event_name": "SessionStart", "session_id": "shell-fixture",
+                            "cwd": str(self.work), "source": "startup"})
         for name, args, command, pythons in shells:
             first, last = pythons[0], pythons[-1]
             cases = {
@@ -151,7 +153,8 @@ class HookShellTest(unittest.TestCase):
                 with self.subTest(shell=name, runs=case):
                     path = self.stand_ins(self.base / ("bin-%d" % len(list(self.base.glob("bin-*")))), roles)
                     env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
-                               CLAUDE_PLUGIN_ROOT=str(PLUGIN), PATH=path)
+                               CORTHEX_MEMORY_HOME=str(self.home / "memory"),
+                               CLAUDE_PLUGIN_ROOT=str(PLUGIN), CLAUDECODE="1", PLUGIN_ROOT="", PATH=path)
                     result = subprocess.run(args + [command], input=event.encode("utf-8"), capture_output=True,
                                             cwd=str(self.work), env=env, timeout=120)
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -184,12 +187,18 @@ class SessionStartTest(unittest.TestCase):
         self.write((folder or self.repo) / ".corthex" / "project.json", project)
 
     def context(self, folder=None):
-        return session_start.build_context(folder or self.repo, self.home)
+        event = {"hook_event_name": "SessionStart", "session_id": "context-fixture",
+                 "cwd": str(folder or self.repo), "source": "startup"}
+        result = self.run_hook(json.dumps(event).encode("utf-8"))
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, b"")
+        return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
 
-    def run_hook(self, stdin):
-        env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home))
+    def run_hook(self, stdin, script=SCRIPT):
+        env = dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
+                   CORTHEX_MEMORY_HOME=str(self.home / "memory"), CLAUDECODE="1", PLUGIN_ROOT="")
         return subprocess.run(
-            [sys.executable, str(SCRIPT)], input=stdin, capture_output=True,
+            [sys.executable, str(script)] + (["start"] if script == SCRIPT else []), input=stdin, capture_output=True,
             cwd=str(self.repo), env=env, timeout=30,
         )
 
@@ -333,6 +342,10 @@ class SessionStartTest(unittest.TestCase):
         self.assertEqual(output["hookEventName"], "SessionStart")
         self.assertIn("- shop, team project", output["additionalContext"])
         self.assertIn(session_start.NO_PROFILE, output["additionalContext"])
+
+    def test_legacy_entry_keeps_the_same_base(self):
+        payload = json.dumps({"hook_event_name": "SessionStart", "session_id": "legacy-fixture"}).encode()
+        self.assertTrue(self.run_hook(payload).stdout == self.run_hook(payload, PLUGIN / "scripts/session_start.py").stdout)
 
     def test_hook_with_bad_input_uses_its_working_directory(self):
         self.write_project()

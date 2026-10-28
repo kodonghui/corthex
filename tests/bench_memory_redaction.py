@@ -90,7 +90,7 @@ def measure(samples=10):
             "warmups": 1, "environment_values": 0, "rows": rows}
 
 
-def measure_growth(samples=3):
+def measure_growth(samples=5):
     """Measure every pattern without a guard hiding regex growth.
 
     Runs only in the test's bounded subprocess. Limits are raised in that
@@ -116,7 +116,7 @@ def measure_growth(samples=3):
             while True:
                 redaction.ENTRY_BYTES = redaction.WINDOW_BYTES = size * 4 + 1
                 small_text, large_text = slow_input(name, size), slow_input(name, size * 4)
-                # Equal-duration samples share scheduling noise. Minima reduce
+                # Equal-duration samples share steady contention. Minima reduce
                 # occasional pauses; they cannot remove every source of noise.
                 # Never retry a bad ratio, only an unavailable timing floor.
                 if timed(small_text,4) > 21:

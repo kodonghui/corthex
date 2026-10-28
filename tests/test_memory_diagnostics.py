@@ -17,13 +17,14 @@ from unittest import mock
 from test_memory_api import errors, section, table
 from test_memory_store import API, SCRIPTS, StoreCase
 from memory_lib import base, configuration, diagnostics, files, locks, store
+from memory_lib import clock as memory_clock
 
 
 def hold_logs(connection, folder, device):
     with contextlib.ExitStack() as stack:
         for name in ("failures", "hooks"):
             lock = locks.Lock(Path(folder) / "logs" / (name + ".lock"), "log", device)
-            stack.enter_context(lock.held(time.monotonic() + 10))
+            stack.enter_context(lock.held(memory_clock.now() + 10))
         connection.send(True)
         connection.recv()
 
@@ -33,9 +34,10 @@ import sys, time
 sys.path.insert(0, sys.argv[1])
 from memory_lib.diagnostics import Diagnostics
 from memory_lib.store import MemoryStore
+from memory_lib import clock as memory_clock
 logger = Diagnostics(MemoryStore(sys.argv[2]))
-logger.failure(PermissionError("made-up private text"), "record", time.monotonic() + 0.05)
-logger.timing("prompt", "codex", 1, "lock-busy", time.monotonic() + 0.05)
+logger.failure(PermissionError("made-up private text"), "record", memory_clock.now() + 0.05)
+logger.timing("prompt", "codex", 1, "lock-busy", memory_clock.now() + 0.05)
 '''
 
 
@@ -51,7 +53,7 @@ class MemoryDiagnosticsTest(StoreCase):
         return [line for path in paths for line in files.read_jsonl(path)]
 
     def test_tc013_failure_fields_order_schema_date_and_count(self):
-        result = self.logger.failure("damaged-line", "record", time.monotonic() + 2,
+        result = self.logger.failure("damaged-line", "record", memory_clock.now() + 2,
                                      hook="prompt", host="codex", project="sample",
                                      log="codex-0123456789abcdef", count=2, when=self.when)
         self.assertTrue(result)
@@ -68,7 +70,7 @@ class MemoryDiagnosticsTest(StoreCase):
     def test_tc013_timings_use_start_utc_day_and_allow_each_outcome(self):
         for outcome in sorted(diagnostics.OUTCOMES):
             self.assertTrue(self.logger.timing("end-of-turn", "claude-code", 12, outcome,
-                                              time.monotonic() + 2, when=self.when))
+                                              memory_clock.now() + 2, when=self.when))
         path = self.root / "logs/hooks-2026-10-27.jsonl"
         lines = files.read_jsonl(path)
         self.assertEqual(len(lines), 6)
@@ -77,7 +79,7 @@ class MemoryDiagnosticsTest(StoreCase):
             self.assertEqual(line["ms"], 12)
             self.assertEqual(line["at"], "2026-10-27T16:02:03.456Z")
         next_day = self.when + timedelta(hours=9)
-        self.assertTrue(self.logger.timing("start", "codex", 0, "ok", time.monotonic() + 2, when=next_day))
+        self.assertTrue(self.logger.timing("start", "codex", 0, "ok", memory_clock.now() + 2, when=next_day))
         self.assertEqual(len(list(path.parent.glob("hooks-*.jsonl"))), 2)
         self.assertTrue((path.parent / "hooks-2026-10-28.jsonl").exists())
         if os.name != "nt":
@@ -94,8 +96,8 @@ class MemoryDiagnosticsTest(StoreCase):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
             for failure in (error, Unprintable(marker), private_class(marker),
                             configuration.ConfigurationInvalid(marker), locks.LockBusy()):
-                self.assertTrue(self.logger.failure(failure, "record", time.monotonic() + 2, when=self.when))
-            self.assertTrue(self.logger.timing("prompt", "codex", 1, "error", time.monotonic() + 2, when=self.when))
+                self.assertTrue(self.logger.failure(failure, "record", memory_clock.now() + 2, when=self.when))
+            self.assertTrue(self.logger.timing("prompt", "codex", 1, "error", memory_clock.now() + 2, when=self.when))
         self.assertEqual(out.getvalue() + err.getvalue(), "")
         contents = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
         self.assertFalse(marker.encode() in contents)
@@ -108,26 +110,26 @@ class MemoryDiagnosticsTest(StoreCase):
         for kwargs in ({"error": "private text"}, {"step": "private text"}, {"hook": "prompt\n"},
                        {"host": "unknown"}, {"project": "../sample"}, {"log": "folder/codex-0123456789abcdef"},
                        {"count": 0}, {"count": True}, {"when": datetime(2026, 10, 27)}):
-            args = {"error": "deadline", "step": "record", "deadline": time.monotonic() + 2, "when": self.when}
+            args = {"error": "deadline", "step": "record", "deadline": memory_clock.now() + 2, "when": self.when}
             args.update(kwargs)
             self.assertFalse(self.logger.failure(**args))
         for kwargs in ({"ms": -1}, {"ms": True}, {"ms": float("inf")}, {"hook": "unknown"},
                        {"host": "unknown"}, {"outcome": "private text"}, {"when": datetime(2026, 10, 27)}):
             args = {"hook": "prompt", "host": "codex", "ms": 1, "outcome": "ok",
-                    "deadline": time.monotonic() + 2, "when": self.when}
+                    "deadline": memory_clock.now() + 2, "when": self.when}
             args.update(kwargs)
             self.assertFalse(self.logger.timing(**args))
         self.assertEqual(self.snapshot(), before)
 
     def test_tc013_codes_and_restore_callbacks_keep_only_allowed_fields(self):
         for code in sorted(diagnostics.CODES):
-            self.assertTrue(self.logger.failure(code, "restore", time.monotonic() + 2, when=self.when))
+            self.assertTrue(self.logger.failure(code, "restore", memory_clock.now() + 2, when=self.when))
         path = self.root / "configuration.json"
         path.write_bytes(b"{")
         path.with_name(path.name + ".bak").write_bytes(b"{}\n")
         def report(code, count):
-            self.logger.failure(code, "restore", time.monotonic() + 2, count=count, when=self.when)
-        self.assertEqual(self.memory.configuration(report, deadline=time.monotonic() + 1).document, {})
+            self.logger.failure(code, "restore", memory_clock.now() + 2, count=count, when=self.when)
+        self.assertEqual(self.memory.configuration(report, deadline=memory_clock.now() + 1).document, {})
         self.assertEqual(self.failures()[-1]["error"], "restored")
         self.assertEqual(set(self.failures()[-1]), {"at", "step", "error"})
 
@@ -145,7 +147,7 @@ class MemoryDiagnosticsTest(StoreCase):
             # appended, whether given as a string or a structured gate error.
             for error in (code, store.StoreUnavailable(code)):
                 self.assertIsNone(diagnostics.error_kind(error))
-                self.assertFalse(self.logger.failure(error, "record", time.monotonic() + 2, when=self.when))
+                self.assertFalse(self.logger.failure(error, "record", memory_clock.now() + 2, when=self.when))
         self.assertEqual(self.snapshot(), before)
 
     def test_tc011_blocked_store_reads_only_its_record_and_writes_nothing(self):
@@ -177,10 +179,10 @@ class MemoryDiagnosticsTest(StoreCase):
                 return read(target)
             with mock.patch.object(Path, "read_bytes", observed), mock.patch.object(locks.Lock, "acquire") as acquire:
                 with self.assertRaises(store.StoreUnavailable) as caught:
-                    self.memory.configuration(deadline=time.monotonic() + 1)
+                    self.memory.configuration(deadline=memory_clock.now() + 1)
                 self.assertEqual(caught.exception.code, code)
-                self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 2, when=self.when))
-                self.assertFalse(self.logger.timing("prompt", "codex", 1, "error", time.monotonic() + 2, when=self.when))
+                self.assertFalse(self.logger.failure("deadline", "record", memory_clock.now() + 2, when=self.when))
+                self.assertFalse(self.logger.timing("prompt", "codex", 1, "error", memory_clock.now() + 2, when=self.when))
                 acquire.assert_not_called()
             self.assertTrue(accessed)
             self.assertEqual(accessed[0], path)
@@ -198,11 +200,11 @@ class MemoryDiagnosticsTest(StoreCase):
             backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
             notices = []
             def report(code, count):
-                self.assertEqual(self.memory.record(deadline=time.monotonic() + 1), self.header)
+                self.assertEqual(self.memory.record(deadline=memory_clock.now() + 1), self.header)
                 self.assertFalse(backup.exists())
                 notices.append((code, count))
-                self.assertTrue(self.logger.failure(code, "restore", time.monotonic() + 2, when=self.when))
-            self.assertEqual(self.memory.configuration(report, deadline=time.monotonic() + 1).document, {})
+                self.assertTrue(self.logger.failure(code, "restore", memory_clock.now() + 2, when=self.when))
+            self.assertEqual(self.memory.configuration(report, deadline=memory_clock.now() + 1).document, {})
             self.assertEqual(notices, [("restored", None)])
             self.assertEqual(self.failures()[-1]["error"], "restored")
         self.assertEqual(len(self.failures()), 2)
@@ -210,24 +212,24 @@ class MemoryDiagnosticsTest(StoreCase):
     def test_tc013_missing_store_or_logs_never_creates_a_directory(self):
         absent = self.folder / "absent"
         self.assertFalse(diagnostics.Diagnostics(store.MemoryStore(absent)).failure(
-            "bad-input", "record", time.monotonic() + 2, when=self.when))
+            "bad-input", "record", memory_clock.now() + 2, when=self.when))
         self.assertFalse(absent.exists())
         (self.root / "logs").rmdir()
         before = self.snapshot()
-        self.assertFalse(self.logger.failure("bad-input", "record", time.monotonic() + 2, when=self.when))
+        self.assertFalse(self.logger.failure("bad-input", "record", memory_clock.now() + 2, when=self.when))
         self.assertEqual(self.snapshot(), before)
         self.assertFalse((self.root / "logs").exists())
 
     def test_tc013_append_errors_are_best_effort(self):
         for error in (PermissionError("made-up"), OSError("made-up"), locks.LostLock()):
             with mock.patch.object(files, "append_jsonl", side_effect=error):
-                self.assertFalse(self.logger.failure(error, "record", time.monotonic() + 2, when=self.when))
+                self.assertFalse(self.logger.failure(error, "record", memory_clock.now() + 2, when=self.when))
         self.assertEqual(self.failures(), [])
         self.assertFalse(list((self.root / "logs").glob("*.lock")))
 
     def test_tc014_expired_and_nonfinite_deadlines_touch_nothing(self):
         before = self.snapshot()
-        for deadline in (time.monotonic() - 1, float("nan"), float("inf"), True, "text"):
+        for deadline in (memory_clock.now() - 1, float("nan"), float("inf"), True, "text"):
             self.assertFalse(self.logger.failure("deadline", "record", deadline, when=self.when))
             self.assertFalse(self.logger.timing("end", "codex", 1, "deadline", deadline, when=self.when))
         self.assertEqual(self.snapshot(), before)
@@ -245,9 +247,9 @@ class MemoryDiagnosticsTest(StoreCase):
             elapsed = []
             for call in (lambda deadline: self.logger.failure("deadline", "record", deadline, when=self.when),
                          lambda deadline: self.logger.timing("end", "codex", 1, "deadline", deadline, when=self.when)):
-                started = time.monotonic()
+                started = memory_clock.now()
                 self.assertFalse(call(started + 0.05))
-                elapsed.append(time.monotonic() - started)
+                elapsed.append(memory_clock.now() - started)
             self.assertLess(max(elapsed), 0.25)
             caller = subprocess.run([sys.executable, "-c", QUIET_CALLER, str(SCRIPTS), str(self.root)],
                                     capture_output=True, timeout=15)
@@ -275,10 +277,10 @@ class MemoryDiagnosticsTest(StoreCase):
         def sharing(target):
             if target == backup: raise PermissionError("made-up backup sharing")
             return read(target)
-        started = time.monotonic()
+        started = memory_clock.now()
         with mock.patch.object(files,"_WINDOWS",True), mock.patch.object(Path,"read_bytes",sharing):
             self.assertFalse(self.logger.failure("deadline","record",started+0.05,when=self.when))
-        self.assertLess(time.monotonic()-started,0.3)
+        self.assertLess(memory_clock.now()-started,0.3)
         self.assertFalse(path.exists())
         self.assertEqual(backup.read_bytes(),before)
 
@@ -288,7 +290,7 @@ class MemoryDiagnosticsTest(StoreCase):
             time.sleep(0.03)
             return original(*args, **kwargs)
         with mock.patch.object(files, "append_jsonl", delayed):
-            self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 0.02, when=self.when))
+            self.assertFalse(self.logger.failure("deadline", "record", memory_clock.now() + 0.02, when=self.when))
         self.assertEqual(self.failures(), [])
 
         def changed(*args, **kwargs):
@@ -296,7 +298,7 @@ class MemoryDiagnosticsTest(StoreCase):
             (self.root / "store.json").write_bytes(base.json_bytes(header, "TBL-001"))
             return original(*args, **kwargs)
         with mock.patch.object(files, "append_jsonl", changed):
-            self.assertFalse(self.logger.failure("deadline", "record", time.monotonic() + 2, when=self.when))
+            self.assertFalse(self.logger.failure("deadline", "record", memory_clock.now() + 2, when=self.when))
         self.assertEqual(self.failures(), [])
 
     def test_tc011_store_recovery_precedes_the_log_lease_and_failure_line(self):
@@ -313,7 +315,7 @@ class MemoryDiagnosticsTest(StoreCase):
             reads.append(holding is not None)
             return original(*args, **kwargs)
         with mock.patch.object(self.memory, "record", before_lock):
-            self.assertTrue(self.logger.failure("deadline", "record", time.monotonic() + 2,
+            self.assertTrue(self.logger.failure("deadline", "record", memory_clock.now() + 2,
                                                 when=self.when))
         self.assertIn(False, reads)
         self.assertIn(True, reads)
@@ -326,7 +328,7 @@ class MemoryDiagnosticsTest(StoreCase):
                   ("LostLock", "lost-lock"), (locks.LostLock(), "lost-lock"), ("lost-lock", "lost-lock"))
         for value, expected in values:
             self.assertEqual(diagnostics.error_kind(value), expected)
-            self.assertTrue(self.logger.failure(value, "record", time.monotonic() + 2,
+            self.assertTrue(self.logger.failure(value, "record", memory_clock.now() + 2,
                                                 when=self.when))
         self.assertEqual([row["error"] for row in self.failures()],
                          ["lock-busy", "lock-busy", "lost-lock", "lost-lock", "lost-lock"])
@@ -345,7 +347,7 @@ class MemoryDiagnosticsTest(StoreCase):
             return rename(source, target)
         with mock.patch.object(locks.os, "rename", sharing):
             self.assertTrue(self.logger.timing("prompt", "codex", 1, "ok",
-                                               time.monotonic() + 3, when=self.when))
+                                               memory_clock.now() + 3, when=self.when))
         self.addCleanup((self.root / "logs/hooks.lock").unlink)
         self.assertEqual(len(files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")), 1)
         failures = self.failures()
@@ -361,7 +363,7 @@ class MemoryDiagnosticsTest(StoreCase):
             return rename(source, target)
         with mock.patch.object(locks.os, "rename", sharing), \
                 mock.patch.object(self.logger, "failure", wraps=self.logger.failure) as calls:
-            self.assertTrue(self.logger.failure("deadline", "record", time.monotonic() + 3,
+            self.assertTrue(self.logger.failure("deadline", "record", memory_clock.now() + 3,
                                                 when=self.when))
         self.addCleanup((self.root / "logs/failures.lock").unlink)
         self.assertEqual(calls.call_count, 1)

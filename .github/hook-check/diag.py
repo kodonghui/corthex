@@ -17,6 +17,8 @@ PARENTS = (
 
 
 def parents():
+    if os.name != "nt":
+        return []
     script = PARENTS.format(pid=os.getppid())
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     try:
