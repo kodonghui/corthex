@@ -17,6 +17,80 @@ from memory_lib import clock as memory_clock
 
 
 class HookRecordingTest(HookCase):
+    def test_tc031_restore_lock_busy_before_raw_lease_reports_contention(self):
+        patch = ("from memory_lib import raw_log, locks\noriginal = raw_log.RawLog.__init__\n"
+                 "def initialize(log, *args):\n    original(log, *args)\n    record = log.store.record\n"
+                 "    def busy(*args, **kwargs):\n        log.store.record = record\n        raise locks.LockBusy()\n"
+                 "    log.store.record = busy\nraw_log.RawLog.__init__ = initialize")
+        self.run_hook("prompt",patch=patch)
+        self.assertEqual(self.raw(),[])
+        self.assertEqual(self.records("failures")[-1]["error"],"lock-busy")
+        self.outcome("lock-busy")
+
+    def test_tc031_lost_header_fence_before_raw_lease_reports_lost_lock(self):
+        patch = ("from memory_lib import raw_log, locks\noriginal = raw_log.RawLog.__init__\n"
+                 "def initialize(log, *args):\n    original(log, *args)\n    record = log.store.record\n"
+                 "    def lost(*args, **kwargs):\n        log.store.record = record\n        raise locks.LostLock()\n"
+                 "    log.store.record = lost\nraw_log.RawLog.__init__ = initialize")
+        self.run_hook("end-of-turn",patch=patch)
+        self.assertEqual(self.raw(),[])
+        self.assertEqual(self.records("failures")[-1]["error"],"lost-lock")
+        self.outcome("error")
+
+    def test_tc011_header_blocked_before_raw_lease_stops_before_diagnostics(self):
+        for content in (b'{"format":2}',b'broken'):
+            for hook in ("prompt","end-of-turn","end"):
+                (self.root / "store.json").write_bytes(base.json_bytes(self.header,"TBL-001"))
+                backup = self.root / "store.json.bak"
+                if backup.exists():
+                    backup.unlink()
+                before = self.snapshot()
+                before.pop("store.json")
+                patch = ("from memory_lib import raw_log, diagnostics\noriginal = raw_log.RawLog.__init__\n"
+                         "def initialize(log, *args):\n    original(log, *args)\n"
+                         "    (log.store.folder / 'store.json').write_bytes("+repr(content)+")\n"
+                         "    def forbidden(*args, **kwargs):\n        raise AssertionError('blocked store diagnostics')\n"
+                         "    diagnostics.Diagnostics.failure = forbidden\n    diagnostics.Diagnostics.timing = forbidden\n"
+                         "raw_log.RawLog.__init__ = initialize")
+                self.run_hook(hook,patch=patch)
+                after = self.snapshot()
+                after.pop("store.json")
+                self.assertEqual(after,before)
+
+    def test_tc046_missing_raw_folder_logs_only_the_class_without_timing(self):
+        folder = self.root / "projects/sample/raw"
+        folder.rmdir()
+        for hook in ("prompt","end-of-turn","end"):
+            self.run_hook(hook)
+        self.assertFalse(folder.exists())
+        self.assertEqual(self.raw(),[])
+        self.assertEqual(self.markers(),[])
+        self.assertEqual(self.records("hooks"),[])
+        self.assertEqual([row["error"] for row in self.records("failures")],["FileNotFoundError"]*3)
+
+    def test_tc046_missing_marker_folder_keeps_entries_and_logs_only_the_class(self):
+        folder = self.root / "projects/sample/unprocessed"
+        folder.rmdir()
+        for hook in ("prompt","end-of-turn"):
+            self.run_hook(hook)
+        self.assertFalse(folder.exists())
+        self.assertEqual([row["seq"] for row in self.raw()],[1,2])
+        self.assertEqual(self.records("hooks"),[])
+        self.assertEqual([row["error"] for row in self.records("failures")],["FileNotFoundError"]*2)
+
+    def test_tc319_marker_folder_lost_during_creation_keeps_append_without_timing(self):
+        patch = ("from pathlib import Path\nfrom memory_lib import base, clock\n"
+                 "opened, now = base.private_open, clock.now\noffset = [0.0]\n"
+                 "clock.now = lambda: now() + offset[0]\n"
+                 "def missing(path, *args, **kwargs):\n    folder = Path(path).parent\n"
+                 "    if folder.name == 'unprocessed':\n        folder.rmdir()\n        offset[0] = 0.06\n"
+                 "    return opened(path, *args, **kwargs)\nbase.private_open = missing")
+        self.run_hook("prompt",patch=patch)
+        self.assertEqual(len(self.raw()),1)
+        self.assertEqual(self.markers(),[])
+        self.assertEqual(self.records("hooks"),[])
+        self.assertEqual([row["error"] for row in self.records("failures")],["FileNotFoundError"])
+
     def raw(self):
         return [row for path in sorted((self.root / "projects").glob("*/raw/*.jsonl"))
                 for row in files.read_jsonl(path)]

@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import base, diagnostics, projects, store
+from . import base, diagnostics, locks, projects, store
 from . import clock
 
 PLUGIN = Path(__file__).resolve().parents[4]
@@ -105,9 +105,7 @@ def process(frame):
     if clock.now() >= frame.deadline:
         return "deadline"
     if kind == "end":
-        log = raw_log.RawLog(frame.memory, frame.project.name, frame.host, event["session_id"])
-        return log.append("end", reason=event.get("reason"), deadline=frame.deadline,
-                          diagnostic_deadline=frame.deadline).outcome
+        return record(frame,"end",reason=event.get("reason"),deadline=frame.deadline)
     try:
         prepared = raw_log.prepare(text)
     except Exception:
@@ -117,9 +115,28 @@ def process(frame):
         return "left-out"
     # Started redaction finishes, and its entry retains the post-redaction
     # recording budget even if the whole-hook deadline has since passed.
-    log = raw_log.RawLog(frame.memory, frame.project.name, frame.host, event["session_id"])
-    return log.append(kind, prepared, stop_hook_active=event.get("stop_hook_active") is True,
-                      diagnostic_deadline=frame.deadline).outcome
+    return record(frame,kind,prepared,stop_hook_active=event.get("stop_hook_active") is True)
+
+
+def record(frame,kind,prepared=None,**options):
+    from . import raw_log
+    log = raw_log.RawLog(frame.memory,frame.project.name,frame.host,frame.event["session_id"])
+    notices = []
+    def failure(error,count=None):
+        frame.logger.failure(error,"record",frame.deadline,hook=frame.hook,host=frame.host,
+                             project=frame.project.name,log=log.log,count=count)
+    try:
+        result = log.append(kind,prepared,diagnostic_deadline=frame.deadline,notices=notices,**options)
+    except FileNotFoundError as error:
+        failure(error)
+        return None
+    missing = next((error for error,_ in notices if isinstance(error,FileNotFoundError)),None)
+    if missing is not None:
+        failure(missing)
+        return None
+    for error,count in notices:
+        failure(error,count)
+    return result.outcome
 
 
 def note_failure(logger, error, hook, host, deadline):
@@ -170,7 +187,12 @@ def run(hook, started, incoming, output):
         if outcome is not None:
             frame.finish(outcome)
     except Exception as error:
-        if frame is not None:
+        if isinstance(error,store.StoreUnavailable):
+            pass
+        elif frame is not None and isinstance(error,locks.LockBusy):
+            frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name)
+            frame.finish("lock-busy")
+        elif frame is not None:
             frame.failure(error)
         elif logger is not None:
             note_failure(logger, error, hook, host, deadline)

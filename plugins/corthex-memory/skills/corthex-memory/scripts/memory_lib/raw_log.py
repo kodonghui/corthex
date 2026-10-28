@@ -183,13 +183,15 @@ class RawLog:
         files._retry(create, deadline)
 
     def append(self, kind, prepared=None, *, deadline=None, diagnostic_deadline,
-               stop_hook_active=False, source=None, reason=None, when=None):
+               stop_hook_active=False, source=None, reason=None, when=None, notices=None):
         """Record under one raw lease; report only safe metadata after release.
 
         For text, pass prepare()'s result, retaining its post-redaction deadline.
         Boundaries use their own 50ms budget. A supplied absolute deadline can
         only shorten either budget, retaining a caller's earlier hook deadline.
         The diagnostic deadline belongs to the whole hook, never a new retry.
+        A supplied notice list defers logging to the caller after release; it
+        retains FileNotFoundError's kind for the hook's missing-folder policy.
         """
         if not isinstance(kind, str) or kind not in KINDS:
             raise ValueError("invalid recording kind")
@@ -215,12 +217,14 @@ class RawLog:
             deadline = min(deadline, caller_deadline)
         _deadline(deadline)
         at = base.utc_time(when)
-        notices, entry, outcome = [], None, "ok"
+        pending, entry, outcome = [] if notices is None else notices, None, "ok"
         def report(error, count):
-            notices.append((error, count))
+            pending.append((error, count))
         def flush():
+            if notices is not None:
+                return
             hook = {"answer": "end-of-turn"}.get(kind, kind)
-            for error, count in notices:
+            for error, count in pending:
                 self.logger.failure(error, "record", diagnostic_deadline, hook=hook,
                                     host=self.host, project=self.project, log=self.log, count=count)
         if clock.now() >= deadline:
@@ -276,7 +280,8 @@ class RawLog:
             report("deadline", None)
         except (OSError, RuntimeError, ValueError) as error:
             outcome = "deadline" if isinstance(error, OSError) and clock.now() >= deadline else "error"
-            report("deadline" if outcome == "deadline" else error, None)
+            report(error if notices is not None and isinstance(error,FileNotFoundError)
+                   else "deadline" if outcome == "deadline" else error, None)
         finally:
             lock.release(report=report)
         flush()

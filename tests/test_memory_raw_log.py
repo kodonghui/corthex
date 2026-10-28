@@ -82,6 +82,19 @@ def concurrent_writer(connection, folder, count, late_marker=False):
 
 
 class RawLogTest(StoreCase):
+    def test_tc031_notice_collection_defers_diagnostics_until_after_release(self):
+        notices = []
+        prepared = raw_log.Prepared("notice fixture",None,memory_clock.now()+3)
+        with mock.patch.object(files,"append_jsonl",side_effect=OSError("private fixture")), \
+                mock.patch.object(self.log.logger,"failure") as failure:
+            result = self.log.append("prompt",prepared,diagnostic_deadline=memory_clock.now()+4,notices=notices)
+        self.assertEqual(result.outcome,"error")
+        failure.assert_not_called()
+        self.assertFalse(self.log.path.with_suffix(".lock").exists())
+        self.assertEqual(len(notices),1)
+        self.assertTrue(isinstance(notices[0][0],OSError))
+        self.assertEqual(self.failures(),[])
+
     def setUp(self):
         super().setUp()
         project = self.root / "projects/sample"
