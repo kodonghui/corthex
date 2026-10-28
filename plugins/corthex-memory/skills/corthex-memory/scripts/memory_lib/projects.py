@@ -18,7 +18,8 @@ KINDS = {"prompt", "answer", "boundary"}
 
 class ProjectError(RuntimeError):
     def __init__(self, code, clash=()):
-        self.code, self.clash = code, tuple(sorted(clash))
+        self.code = code
+        self.clash = tuple(sorted(name for name in clash if isinstance(name, str) and NAME.fullmatch(name)))
         super().__init__(code)
 
 

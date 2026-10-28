@@ -214,7 +214,7 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | The end-of-turn hook | 300 ms | The trigger check and the worker's start are skipped; the next trigger tries again |
 | The session end hook | 500 ms | As for the end-of-turn hook |
 
-Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 210 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
+Redaction runs before recording, within the hook's deadline, and finishes once it has started: a long answer can take the end-of-turn hook past its deadline, by up to about 360 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The hook script imports only what recording needs and loads the network and SQLite modules only for recall, so that a hook that only records starts fast. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
 After its deadline, a hook makes one attempt without waiting for each failure-log and hook-timing lock: if acquired it writes a deadline line, otherwise it skips that line; there is no new diagnostic budget, and release keeps its separate retry.
 
@@ -466,7 +466,7 @@ A release that sends new kinds of data raises the version, and each device asks 
 
 `setup --at <folder>` (API-031) is refused with `no-consent` on a device without consent. It prints a POSIX shell script for the environment setup of a temporary device, such as a cloud environment, whose project is at `<folder>` there. The script runs an embedded Python program, standard library only, which writes each file only when it is missing:
 
-- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself; Memory accepts a single leading UTF-8 BOM when reading this list, and rejects duplicate JSON keys as an unreadable list.
+- the project list `~/.corthex/projects.json` with the project and `<folder>`, since the setup runs before any host and the memory plugin never changes the project list itself.
 - the store record, with a new device ID;
 - the memory configuration, with this device's consent, the project enabled, `temporary` true and the same sync settings;
 - the project's folder and its empty curation record;
@@ -684,7 +684,7 @@ gitlab-token      glpat-[A-Za-z0-9_-]{20,}
 slack-token       xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}
 aws-key           (?:AKIA|ASIA)[A-Z0-9]{16}
 google-key        AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}
-jwt               (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
+jwt               (?:(?<![A-Za-z0-9_-])|(?<=%[0-9A-Fa-f]{2}))eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}
 url-credentials   (?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)
 authorization     (?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+
 assigned-secret   (?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)V
@@ -695,7 +695,7 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 ```
 
 - `V` and `VS` stand for the value after the name: `V` any value, `VS` one of 8 or more characters with a letter in it, so that `max_tokens: 64000` or `token = 5` stays.
-- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded or can start only once per base64url run, so their time grows with the text's length. The private-key name slots on BEGIN and END allow at most 40 characters each. A JWT starts only when the preceding character is not an ASCII letter, digit, underscore or hyphen. Stage 12 records median and maximum times for 512 KB of prose and every slow input, including repeated private-key names in BEGIN and END, repeated eyJ and dot-free base64 JSON, on each available system and Python version.
+- The private key pattern runs in step 3, the others in step 5. Their repeats are bounded, have no required text after the repeat, or can start only once per run, so their time grows with the text's length. The private-key name slots on BEGIN and END allow at most 40 characters each. A JWT starts only when the preceding character is not an ASCII letter, digit, underscore or hyphen, or immediately after a percent-encoded byte such as %3D or %20. Stage 12 records median and maximum times for 512 KB of prose and every slow input, including repeated private-key names in BEGIN and END, repeated eyJ and dot-free base64 JSON, on each available system and Python version.
 - A test makes up a key in each known format while it runs (SPEC-004); none is written in this repository.
 - What the patterns cannot know, the user marks as private or forgets (SPEC-004, SPEC-035).
 
@@ -814,7 +814,7 @@ In the failure log's `error` (TBL-004), next to the exception class names that T
 | --- | --- | --- |
 | `bad-input` | The hook input is not UTF-8, not one JSON object, or not for the hook's event | No memory work; the start summary is the base |
 | `unknown-host` | Neither host can be told | No memory work |
-| `no-project-list` | The project list is missing or cannot be read (SPEC-001) | No project |
+| `no-project-list` | The project list is missing or cannot be read (SPEC-001); memory accepts a single leading UTF-8 BOM when reading this list, and rejects duplicate JSON keys as an unreadable list. | No project |
 | `project-clash` | Two projects have the same folder (SPEC-001) | No project; the memory status shows the clash |
 | `lock-busy` | A lock was not free within the step's deadline | The step is skipped; for recording, the memory status counts the entries skipped |
 | `deadline` | The hook passed its deadline | Its remaining steps are skipped |
