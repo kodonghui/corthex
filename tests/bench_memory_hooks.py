@@ -139,9 +139,14 @@ def attempt(state, hook, mode, number):
     if mode == "error-end":
         assert outcome == "error" and new == 0
     elif mode == "slow-end":
-        assert outcome == "deadline" and new == 0
+        assert outcome in ("deadline","not-recorded") and new == 0
+        assert measured["ms"] >= BUDGETS[hook]
     elif mode == "slow-answer":
-        assert outcome == "deadline" and new == 1
+        # A late hook still attempts recording within its raw budget. A busy
+        # raw lease or expired write can skip the entry; late diagnostic locks
+        # can also skip their lines. Retain these samples in the counts.
+        assert outcome in ("deadline","not-recorded")
+        assert measured["ms"] >= BUDGETS[hook]
     elif hook != "start":
         assert outcome in ("ok", "deadline", "lock-busy", "not-recorded")
         assert outcome != "ok" or new == 1

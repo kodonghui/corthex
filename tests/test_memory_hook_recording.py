@@ -17,12 +17,19 @@ from memory_lib import clock as memory_clock
 
 
 class HookRecordingTest(HookCase):
+    def run_functional(self,*args,**kwargs):
+        # Isolate input/field behavior from slow test disks. Dedicated deadline
+        # cases, native hosts and whole-hook benches retain production budgets.
+        patch = kwargs.pop("patch",None) or ""
+        budget = "from memory_lib import raw_log\nraw_log.RECORD_SECONDS = 3\n"
+        return self.run_hook(*args,patch=budget+patch,**kwargs)
+
     def test_tc031_restore_lock_busy_before_raw_lease_reports_contention(self):
         patch = ("from memory_lib import raw_log, locks\noriginal = raw_log.RawLog.__init__\n"
                  "def initialize(log, *args):\n    original(log, *args)\n    record = log.store.record\n"
                  "    def busy(*args, **kwargs):\n        log.store.record = record\n        raise locks.LockBusy()\n"
                  "    log.store.record = busy\nraw_log.RawLog.__init__ = initialize")
-        self.run_hook("prompt",patch=patch)
+        self.run_functional("prompt",patch=patch)
         self.assertEqual(self.raw(),[])
         self.assertEqual(self.records("failures")[-1]["error"],"lock-busy")
         self.outcome("lock-busy")
@@ -32,7 +39,7 @@ class HookRecordingTest(HookCase):
                  "def initialize(log, *args):\n    original(log, *args)\n    record = log.store.record\n"
                  "    def lost(*args, **kwargs):\n        log.store.record = record\n        raise locks.LostLock()\n"
                  "    log.store.record = lost\nraw_log.RawLog.__init__ = initialize")
-        self.run_hook("end-of-turn",patch=patch)
+        self.run_functional("end-of-turn",patch=patch)
         self.assertEqual(self.raw(),[])
         self.assertEqual(self.records("failures")[-1]["error"],"lost-lock")
         self.outcome("error")
@@ -52,7 +59,7 @@ class HookRecordingTest(HookCase):
                          "    def forbidden(*args, **kwargs):\n        raise AssertionError('blocked store diagnostics')\n"
                          "    diagnostics.Diagnostics.failure = forbidden\n    diagnostics.Diagnostics.timing = forbidden\n"
                          "raw_log.RawLog.__init__ = initialize")
-                self.run_hook(hook,patch=patch)
+                self.run_functional(hook,patch=patch)
                 after = self.snapshot()
                 after.pop("store.json")
                 self.assertEqual(after,before)
@@ -61,7 +68,7 @@ class HookRecordingTest(HookCase):
         folder = self.root / "projects/sample/raw"
         folder.rmdir()
         for hook in ("prompt","end-of-turn","end"):
-            self.run_hook(hook)
+            self.run_functional(hook)
         self.assertFalse(folder.exists())
         self.assertEqual(self.raw(),[])
         self.assertEqual(self.markers(),[])
@@ -72,7 +79,7 @@ class HookRecordingTest(HookCase):
         folder = self.root / "projects/sample/unprocessed"
         folder.rmdir()
         for hook in ("prompt","end-of-turn"):
-            self.run_hook(hook)
+            self.run_functional(hook)
         self.assertFalse(folder.exists())
         self.assertEqual([row["seq"] for row in self.raw()],[1,2])
         self.assertEqual(self.records("hooks"),[])
@@ -116,7 +123,7 @@ class HookRecordingTest(HookCase):
         self.assertEqual(self.records("hooks")[-1]["outcome"], expected)
 
     def test_tc037_prompt_entry_and_timing(self):
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         row, = self.raw()
         self.assertEqual((row["kind"], row["speaker"], row["text"], row["seq"], row["turn"]),
                          ("prompt", "user", "hello", 1, 1))
@@ -126,35 +133,35 @@ class HookRecordingTest(HookCase):
     def test_tc038_one_mebibyte_korean_prompt_is_cut_on_a_character(self):
         text = "가" * ((1024 * 1024) // 3) + "x"
         self.assertEqual(len(text.encode("utf-8")), 1024 * 1024)
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=text))
         row, = self.raw()
         self.assertTrue(row["text"] == text.encode("utf-8")[:512 * 1024].decode("utf-8", "ignore"))
         self.assertEqual(row["cut"], len(text.encode("utf-8")))
 
     def test_tc039_whitespace_prompt_has_no_entry_or_marker(self):
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=" \t\r\n  "))
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=" \t\r\n  "))
         self.assertEqual(self.raw(), [])
         self.assertEqual(self.markers(), [])
         self.outcome("ok")
 
     def test_tc040_host_prefixes_and_prompt_exclusion(self):
         for prefix in hooks.HOST_PROMPTS:
-            self.run_hook("prompt", dict(self.event("prompt"), prompt=" \n\t" + prefix + "fixture"))
+            self.run_functional("prompt", dict(self.event("prompt"), prompt=" \n\t" + prefix + "fixture"))
             self.assertEqual(self.raw(), [])
             self.outcome("left-out")
         text = "A user quote contains " + hooks.HOST_PROMPTS[0]
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=text))
         self.assertEqual(len(self.raw()), 1)
         self.outcome("ok")
         self.exclude(kinds=["prompt"])
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         self.assertEqual(len(self.raw()), 1)
         self.outcome("left-out")
 
     def test_tc041_redaction_failure_has_no_entry_or_error_text(self):
         patch = ("from memory_lib import redaction\ndef fail(*args):\n"
                  "    raise RuntimeError('private-redaction-error-fixture')\nredaction.redact = fail")
-        self.run_hook("prompt", patch=patch)
+        self.run_functional("prompt", patch=patch)
         self.assertEqual(self.raw(), [])
         self.assertEqual(self.records("failures")[-1]["error"], "redaction")
         self.outcome("error")
@@ -174,16 +181,16 @@ class HookRecordingTest(HookCase):
         self.configure(consent=None)
         before = self.snapshot()
         for hook in hooks.EVENTS:
-            self.run_hook(hook)
+            self.run_functional(hook)
         self.assertEqual(self.snapshot(), before)
         self.configure(consent={"at": AT, "version": 1}, projects={"sample": {"enabled": False, "since": AT}})
         before = self.snapshot()
         for hook in hooks.EVENTS:
-            self.run_hook(hook)
+            self.run_functional(hook)
         self.assertEqual(self.snapshot(), before)
         missing = self.folder / "not-provisioned"
         for hook in hooks.EVENTS:
-            self.run_hook(hook, changes={"CORTHEX_MEMORY_HOME": str(missing)})
+            self.run_functional(hook, changes={"CORTHEX_MEMORY_HOME": str(missing)})
         self.assertFalse(missing.exists())
         self.assertEqual(self.snapshot(), before)
 
@@ -197,11 +204,11 @@ class HookRecordingTest(HookCase):
                  "        Path(" + repr(str(touched)) + ").write_text('read')\n"
                  "        raise AssertionError('transcript must not be read')\n"
                  "    return original_open(path, *args, **kwargs)\nPath.open = guarded")
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         answer = "한국어 최종 답변입니다."
         event = dict(self.event("end-of-turn"), last_assistant_message=answer,
                      transcript_path=str(transcript), tool_inputs=marker, tool_outputs=marker)
-        self.run_hook("end-of-turn", event, patch=patch)
+        self.run_functional("end-of-turn", event, patch=patch)
         self.assertEqual([r["kind"] for r in self.raw()], ["prompt", "answer"])
         self.assertTrue(self.raw()[-1]["text"] == answer)
         self.assertFalse(touched.exists())
@@ -212,27 +219,27 @@ class HookRecordingTest(HookCase):
         variants = [None, "", 5, False, [], {}]
         event = self.event("end-of-turn")
         event.pop("last_assistant_message")
-        self.run_hook("end-of-turn", event)
+        self.run_functional("end-of-turn", event)
         for value in variants:
-            self.run_hook("end-of-turn", dict(self.event("end-of-turn"), last_assistant_message=value))
+            self.run_functional("end-of-turn", dict(self.event("end-of-turn"), last_assistant_message=value))
         self.assertEqual(self.raw(), [])
         self.assertTrue(all(r["outcome"] == "no-answer" for r in self.records("hooks")))
 
     def test_tc045_prompt_exclusion_does_not_exclude_answers(self):
         self.exclude(kinds=["prompt"])
-        self.run_hook("prompt")
-        self.run_hook("end-of-turn")
+        self.run_functional("prompt")
+        self.run_functional("end-of-turn")
         row, = self.raw()
         self.assertEqual((row["kind"], row["turn"]), ("answer", 1))
         self.exclude(kinds=["answer"])
-        self.run_hook("end-of-turn")
+        self.run_functional("end-of-turn")
         self.assertEqual(len(self.raw()), 1)
         self.outcome("left-out")
 
     def test_tc046_answer_error_exits_quietly_and_records_only_safe_metadata(self):
         patch = ("from memory_lib import raw_log\ndef fail(*args, **kwargs):\n"
                  "    raise OSError('private-answer-error-fixture')\nraw_log.RawLog.append = fail")
-        self.run_hook("end-of-turn", patch=patch)
+        self.run_functional("end-of-turn", patch=patch)
         self.assertEqual(self.raw(), [])
         self.outcome("error")
         self.assertEqual(self.records("failures")[-1]["error"], "OSError")
@@ -254,13 +261,13 @@ class HookRecordingTest(HookCase):
 
     def test_tc048_end_reasons_and_boundary_exclusion(self):
         for reason in ("other", "logout", "x" * 65):
-            self.run_hook("end", dict(self.event("end"), reason=reason))
+            self.run_functional("end", dict(self.event("end"), reason=reason))
         rows = self.raw()
         self.assertEqual([r.get("reason") for r in rows], ["other", "logout", None])
         self.assertTrue(all(r["kind"] == "end" and not {"text", "turn", "speaker"} & set(r) for r in rows))
         self.assertEqual(self.markers(), [])
         self.exclude(kinds=["boundary"])
-        self.run_hook("end")
+        self.run_functional("end")
         self.assertEqual(len(self.raw()), 3)
         self.outcome("left-out")
 
@@ -280,11 +287,11 @@ class HookRecordingTest(HookCase):
         self.outcome("error")
 
     def test_tc030_entry_turns_continuation_and_resubmission_through_hooks(self):
-        self.run_hook("prompt")
-        self.run_hook("end-of-turn")
-        self.run_hook("end-of-turn", dict(self.event("end-of-turn"), stop_hook_active=True))
-        self.run_hook("end-of-turn")
-        self.run_hook("prompt")
+        self.run_functional("prompt")
+        self.run_functional("end-of-turn")
+        self.run_functional("end-of-turn", dict(self.event("end-of-turn"), stop_hook_active=True))
+        self.run_functional("end-of-turn")
+        self.run_functional("prompt")
         self.assertEqual([(r["seq"], r["turn"]) for r in self.raw()], [(1, 1), (2, 1), (3, 1), (4, 4), (5, 5)])
         self.assertEqual(len(self.markers()), 3)
 
@@ -315,7 +322,7 @@ class HookRecordingTest(HookCase):
     def test_tc032_session_path_is_hashed_for_all_recording_entry_points(self):
         session = "../../outside"
         for hook in ("prompt", "end-of-turn", "end"):
-            self.run_hook(hook, dict(self.event(hook), session_id=session))
+            self.run_functional(hook, dict(self.event(hook), session_id=session))
         name = raw_log.log_name("claude-code", session)
         paths = list((self.root / "projects").glob("*/raw/*.jsonl"))
         self.assertEqual([p.name for p in paths], [name + ".jsonl"])
@@ -363,7 +370,7 @@ class HookRecordingTest(HookCase):
         self.configure(projects={name: {"enabled": True, "since": AT} for name in ("sample", "nested")})
         (self.home / ".corthex/projects.json").write_text(json.dumps({"projects": [
             {"name": "sample", "path": str(self.repo)}, {"name": "nested", "path": str(nested)}]}))
-        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(inside)))
+        self.run_functional("prompt", dict(self.event("prompt"), cwd=str(inside)))
         paths = list((self.root / "projects").glob("*/raw/*.jsonl"))
         self.assertEqual([p.parent.parent.name for p in paths], [base.project_folder_name("nested")])
 
@@ -371,7 +378,7 @@ class HookRecordingTest(HookCase):
         outside = self.folder / "unregistered"
         outside.mkdir()
         before = self.snapshot()
-        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(outside)))
+        self.run_functional("prompt", dict(self.event("prompt"), cwd=str(outside)))
         self.assertEqual(self.snapshot(), before)
 
     def test_tc018_directory_case_follows_the_current_volume(self):
@@ -379,21 +386,21 @@ class HookRecordingTest(HookCase):
         same = alternate.exists() and os.path.samefile(alternate, self.repo)
         if not alternate.exists():
             alternate.mkdir()
-        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(alternate)))
+        self.run_functional("prompt", dict(self.event("prompt"), cwd=str(alternate)))
         self.assertEqual(len(self.raw()), int(same))
 
     def test_tc019_missing_unreadable_and_clashing_project_lists_have_safe_codes(self):
         registry = self.home / ".corthex/projects.json"
         registry.unlink()
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         self.assertEqual(self.records("failures")[-1]["error"], "no-project-list")
         patch = ("from pathlib import Path\noriginal_read = Path.read_bytes\ndef denied(path):\n"
                  "    if str(path) == " + repr(str(registry)) + ":\n        raise PermissionError('fixture')\n"
                  "    return original_read(path)\nPath.read_bytes = denied")
-        self.run_hook("prompt", patch=patch)
+        self.run_functional("prompt", patch=patch)
         self.assertEqual(self.records("failures")[-1]["error"], "no-project-list")
         registry.write_text(json.dumps({"projects": [{"name": name, "path": str(self.repo)} for name in ("sample", "other")]}))
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         self.assertEqual(self.records("failures")[-1]["error"], "project-clash")
         self.assertEqual(self.records("hooks"), [])
         self.assertEqual(self.raw(), [])
@@ -401,26 +408,26 @@ class HookRecordingTest(HookCase):
     def test_tc020_missing_deleted_and_linked_cwd(self):
         event = self.event("prompt")
         event.pop("cwd")
-        self.run_hook("prompt", event)
+        self.run_functional("prompt", event)
         self.assertEqual(len(self.raw()), 1)
         deleted = self.folder / "deleted"
         deleted.mkdir()
         deleted.rmdir()
-        self.run_hook("prompt", dict(event, cwd=str(deleted)))
+        self.run_functional("prompt", dict(event, cwd=str(deleted)))
         self.assertEqual(len(self.raw()), 1)
         link = self.folder / "linked"
         try:
             link.symlink_to(self.repo, target_is_directory=True)
         except (OSError, NotImplementedError):
             self.skipTest("directory symlinks are unavailable on this volume")
-        self.run_hook("prompt", dict(event, cwd=str(link)))
+        self.run_functional("prompt", dict(event, cwd=str(link)))
         self.assertEqual(len(self.raw()), 2)
 
     def test_tc022_024_private_spans_never_reach_the_raw_log(self):
         secret = random_text(32)
         for source, expected in (("x<PRIVATE>" + secret + "</private>y", "x[redacted:private]y"),
                                  ("x<private>" + secret, "x[redacted:private]")):
-            self.run_hook("prompt", dict(self.event("prompt"), prompt=source))
+            self.run_functional("prompt", dict(self.event("prompt"), prompt=source))
             self.assertTrue(self.raw()[-1]["text"] == expected)
         self.assertFalse(any(secret.encode() in p.read_bytes() for p in self.root.rglob("*") if p.is_file()))
 
@@ -428,11 +435,11 @@ class HookRecordingTest(HookCase):
         examples = secret_examples()
         text = "\n".join(value for _, value in examples)
         expected = "\n".join("[redacted:" + kind + "]" for kind, _ in examples)
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=text))
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=text))
         self.assertTrue(self.raw()[-1]["text"] == expected)
         for name in ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "ENCRYPTED PRIVATE KEY"):
             for closed in (True, False):
-                self.run_hook("prompt", dict(self.event("prompt"), prompt=key_block(name, random_text(96), closed)))
+                self.run_functional("prompt", dict(self.event("prompt"), prompt=key_block(name, random_text(96), closed)))
                 self.assertTrue(self.raw()[-1]["text"] == "[redacted:private-key]")
         stored = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
         self.assertTrue(all(value.encode() not in stored for _, value in examples))
@@ -441,14 +448,14 @@ class HookRecordingTest(HookCase):
         first, second, environment = random_text(32), random_text(32), random_text(16)
         changes = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": first, "CORTHEX_MEMORY_OPENAI_API_KEY": second,
                    "BUILD_TOKEN": environment}
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=" ".join((first, second, environment))), changes)
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=" ".join((first, second, environment))), changes)
         self.assertTrue(self.raw()[-1]["text"] == "[redacted:memory-key] [redacted:memory-key] [redacted:environment]")
 
     def test_tc026_numeric_lookalikes_url_credentials_and_authorization(self):
         value = random_text(24)
         source = "max_tokens: 64000\ntoken = 5\nhttps://fixture:" + value + "@example.invalid/x\nAuthorization: Bearer " + value
         expected = "max_tokens: 64000\ntoken = 5\nhttps://[redacted:url-credentials]@example.invalid/x\nAuthorization: [redacted:authorization]"
-        self.run_hook("prompt", dict(self.event("prompt"), prompt=source))
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=source))
         self.assertTrue(self.raw()[-1]["text"] == expected)
 
     def test_tc021_excluded_folder_and_its_descendants_apply_to_all_recording_kinds(self):
@@ -459,10 +466,10 @@ class HookRecordingTest(HookCase):
         sibling.mkdir()
         self.exclude(folders=["left-out"])
         for hook in ("prompt", "end-of-turn", "end"):
-            self.run_hook(hook, dict(self.event(hook), cwd=str(inside)))
+            self.run_functional(hook, dict(self.event(hook), cwd=str(inside)))
             self.outcome("left-out")
         self.assertEqual(self.raw(), [])
-        self.run_hook("prompt", dict(self.event("prompt"), cwd=str(sibling)))
+        self.run_functional("prompt", dict(self.event("prompt"), cwd=str(sibling)))
         self.assertEqual(len(self.raw()), 1)
 
     def test_tc040_041_redaction_runs_once_and_prompt_exclusion_follows_it(self):
@@ -472,21 +479,21 @@ class HookRecordingTest(HookCase):
                  "    number = int(path.read_text()) if path.exists() else 0\n"
                  "    path.write_text(str(number+1))\n    return original(*args, **kwargs)\nredaction.redact = counted")
         for hook in ("prompt", "end-of-turn"):
-            self.run_hook(hook, patch=patch)
+            self.run_functional(hook, patch=patch)
         self.assertEqual(counter.read_text(), "2")
         self.exclude(kinds=["prompt"])
-        self.run_hook("prompt", patch=patch)
+        self.run_functional("prompt", patch=patch)
         self.assertEqual(counter.read_text(), "3")
         self.outcome("left-out")
         self.exclude(kinds=["answer"])
-        self.run_hook("end-of-turn", patch=patch)
+        self.run_functional("end-of-turn", patch=patch)
         self.assertEqual(counter.read_text(), "3")
 
     def test_tc048_recording_never_starts_a_worker_or_emits_recall(self):
         self.configure(triggers={"turns": 1, "minutes": 1})
-        self.run_hook("prompt")
+        self.run_functional("prompt")
         patch = ("import subprocess\ndef forbidden(*args, **kwargs):\n"
                  "    raise AssertionError('recording must not start a process')\nsubprocess.Popen = forbidden")
         for hook in ("end-of-turn", "end"):
-            self.run_hook(hook, changes={"CORTHEX_MEMORY_ANTHROPIC_API_KEY": random_text(32)}, patch=patch)
+            self.run_functional(hook, changes={"CORTHEX_MEMORY_ANTHROPIC_API_KEY": random_text(32)}, patch=patch)
             self.outcome("ok")

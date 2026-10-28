@@ -368,12 +368,12 @@ def claude(label, out, mock, folder, plugins):
     done = run([exe, "-p", "hello", "--output-format", "json",
                 "--debug-file", str(base / "debug.txt")], env, demo, timeout=180)
     done = scrub_mock_key(done, env["ANTHROPIC_API_KEY"])
-    time.sleep(1)
+    captured = wait_for_capture(home)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "stdout": short(done["stdout"], 500),
                      "stderr": short(done["stderr"], 500)}
     result["requests"] = requests(base / "requests.jsonl")
-    result["capture"] = capture(home)
+    result["capture"] = captured
     result["hooks"] = diag_records(base / "diag")
     debug = base / "debug.txt"
     result["debug"] = matching(debug.read_text(encoding="utf-8", errors="replace").replace(env["ANTHROPIC_API_KEY"], "[mock-key]"), r"hook|bash|powershell|pwsh|shell", 120) if debug.exists() else []
@@ -402,11 +402,11 @@ def codex(label, out, mock, folder, plugins):
     done = run([exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-hook-trust",
                 "hello"], env, demo, timeout=180)
     done = scrub_mock_key(done, env["MOCK_KEY"])
-    time.sleep(1)
+    captured = wait_for_capture(home)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"]}
     result["requests"] = requests(base / "requests.jsonl")
-    result["capture"] = capture(home)
+    result["capture"] = captured
     result["hooks"] = diag_records(base / "diag")
     result["output"] = matching(done["stdout"] + "\n" + done["stderr"], r"hook|error|warn|shell|powershell", 80)
     return scrub_mock_key(result, env["MOCK_KEY"])
@@ -432,8 +432,28 @@ def capture(home):
                for line in path.read_text(encoding="utf-8").splitlines()]
     timing_ok = all(any(row.get("hook") == hook and row.get("outcome") == "ok" for row in timings)
                     for hook in ("prompt", "end-of-turn", "end"))
+    failures = [json.loads(line) for path in memory.glob("logs/failures-*.jsonl")
+                for line in path.read_text(encoding="utf-8").splitlines()]
+    outcomes = {hook: [row["outcome"] for row in timings if row.get("hook") == hook]
+                for hook in ("prompt", "end-of-turn", "end")}
     return {"entries": len(rows), "prompt_ok": bool(prompts), "answer_ok": bool(answers),
-            "end_ok": bool(endings), "same_turn": joined, "korean_intact": bool(answers), "timings_ok": timing_ok}
+            "end_ok": bool(endings), "same_turn": joined, "korean_intact": bool(answers), "timings_ok": timing_ok,
+            "hook_outcomes": outcomes, "failure_errors": sorted({row["error"] for row in failures})}
+
+
+def wait_for_capture(home,timeout=6):
+    """Observe an already launched hook through its final timing line.
+
+    A host can return while its SessionEnd command is still starting. Once all
+    timings exist, retain their verdict even on failure; never rerun a hook.
+    """
+    started = time.perf_counter()
+    value = capture(home)
+    while not all(value["hook_outcomes"].values()) and time.perf_counter()-started < timeout:
+        time.sleep(0.05)
+        value = capture(home)
+    value["capture_wait_ms"] = round((time.perf_counter()-started)*1000,3)
+    return value
 
 
 def summary(report):
