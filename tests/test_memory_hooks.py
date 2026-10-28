@@ -181,6 +181,11 @@ class HookFrameworkTest(HookCase):
         self.run_hook("prompt")
         self.assertEqual([row["error"] for row in self.records("failures")],["configuration-invalid"])
         self.assertEqual(self.records("hooks"),[])
+        backup.write_bytes(base.json_bytes({},"TBL-002"))
+        path.write_bytes(b"broken")
+        self.run_hook("prompt")
+        self.assertEqual([row["error"] for row in self.records("failures")],["configuration-invalid","restored"])
+        self.assertEqual(self.records("hooks"),[])
 
     def test_tc033_bad_start_input_uses_process_cwd_for_the_base(self):
         other = self.folder / "other"
