@@ -27,7 +27,7 @@ PATTERNS = (
     ("slack-token", r"xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}"),
     ("aws-key", r"(?:AKIA|ASIA)[A-Z0-9]{16}"),
     ("google-key", r"AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}"),
-    ("jwt", r"(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
+    ("jwt", r"(?:(?<![A-Za-z0-9_-])|(?<=%[0-9A-Fa-f]{2}))eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("url-credentials", r"(?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)"),
     ("authorization", r"(?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+"),
     ("assigned-secret", r'''(?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)(?:''' + VALUE + ")"),

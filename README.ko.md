@@ -36,8 +36,6 @@ codex plugin add corthex@corthex
 
 `corthex-memory`는 세션이 시작될 때 일하는 원칙, 프로필, 현재 프로젝트 설정을 넣습니다. 로컬 파일만 읽고 네트워크에 연결하지 않습니다. PATH에서 Python 3을 찾을 수 있어야 하고(`python3`, `python`, Windows의 `py` 실행기를 차례로 찾습니다), Windows의 Claude Code에서는 Git for Windows나 PowerShell 7도 있어야 합니다.
 
-대화 기록은 C1(0.2.0)을 위해 개발 중입니다. [인터페이스 명세](docs/06-api/memory.md)는 기록 전에 적용하는 프로젝트 선택, 제외 목록, 가리기를 정하며, 현재 훅은 아직 대화를 기록하지 않습니다.
-
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code, corthex도 함께 설치
 codex plugin add corthex-memory@corthex        # Codex, corthex를 추가한 뒤
