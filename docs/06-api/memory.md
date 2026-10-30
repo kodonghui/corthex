@@ -285,28 +285,42 @@ Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. A session can end 
 
 The memory worker, `scripts/worker.py`, is the one process that curates, consolidates, syncs and applies retention (SPEC-013). A hook or a command starts it, detached, and it goes on after the hook and the session have ended. It never runs inside a hook.
 
+In C1 the worker performs only the project-lease gate, retention and clean-up (steps 1, 5 and 7). Retention is the implemented TASK-016 helper; a missing retention implementation is not a successful worker run. Curation, consolidation, embeddings and sync are not run in C1. The start maintenance applies to every existing project in the store, including disabled projects and devices without current consent or memory keys. A missing, newer, migrating or unrecoverably damaged store record, an invalid memory home, or invalid configuration stops maintenance before data changes; blocked store identities produce no diagnostics.
+
 ```text
-<the hook's Python> -I <plugin>/scripts/worker.py --reason <start|end-of-turn|end|skill> --project <name>
+<the hook's Python> -I <plugin>/scripts/worker.py --reason <start|end-of-turn|end|skill> --project <name> [--expect-device <device-id>]
 ```
 
 - `<the hook's Python>` is the interpreter that runs the hook (`sys.executable`). `-I` keeps out the `PYTHON*` variables, the user's site packages and the working folder; the worker adds its own folder to the module path itself.
 - Its standard input, output and error go to the null device, and its working folder is the memory store.
-- Linux and macOS: it starts in a session of its own (`start_new_session`) and lowers its priority by 10 (nice). Windows: `DETACHED_PROCESS`, `CREATE_NEW_PROCESS_GROUP` and `CREATE_BREAKAWAY_FROM_JOB`, started again without the last flag when the host's job does not allow breaking away, at below-normal priority.
+- Linux and macOS: start in a new session (`start_new_session`) and lower the worker's priority by 10 (nice). Windows: initially use `DETACHED_PROCESS`, `CREATE_NEW_PROCESS_GROUP` and `CREATE_BREAKAWAY_FROM_JOB`, at below-normal priority; use only the conditional single retry specified below. The retry does not change the host's job policy.
 - It inherits the hook's environment, which is how the memory keys reach it; nothing secret goes on its command line or into a file (SPEC-013, SPEC-031).
 - No hook starts a worker while the project's curation lock is fresh; the worker that holds it curates the new turns before it ends (SPEC-012). When the start fails, the failure log notes `worker-start` and the next trigger tries again.
 - The commands `resume`, `forget`, `delete-project` and `sync on` start it with `--reason skill`.
+
+The launcher records a final start failure once as worker-start with step trigger; a retry that starts successfully is not a failed start. Cleanup failures use step restore and retention failures use step retention. Diagnostics contain only supported metadata and safe error classes, never arguments, paths, exception text or environment values, and are attempted after releasing the data lease. A fresh-lock skip is quiet and makes no diagnostic write. The worker prints no command-result JSON or traceback; its exit status is not a success report. The parent neither waits for worker completion nor uses a Popen context manager that waits on exit.
+
+On Windows, after the first Popen fails, retry once with only CREATE_BREAKAWAY_FROM_JOB removed if its winerror is 5 and IsProcessInJob with a NULL JobHandle succeeds and reports that the parent is in a job. If the query fails, reports no job, or the error differs, do not retry. This conditional compatibility retry does not classify every access-denied error as a job restriction. It changes no existing host job or job limit. The fallback child's survival after its job closes is not guaranteed.
 
 It works in this order:
 
 | Step | When | Behaviours |
 | --- | --- | --- |
-| 1. Take the project's curation lock | always; when the lock is held and fresh, the worker ends | SPEC-012 |
+| 1. Take the project's curation lock | for an existing project folder; a fresh lock ends the worker without changes. With reason start only, a registered project whose memory folder does not exist skips this project phase and proceeds to all-project maintenance without creating a folder | SPEC-012 |
 | 2. Curate until no unprocessed turn is left | the project is enabled, the fault guard has not stopped it, consent is given and the Anthropic memory key is there | SPEC-012, SPEC-014 to SPEC-018 |
 | 3. Consolidate | under the same conditions, when consolidation is due | SPEC-019 |
 | 4. Sync | sync is on, and the reason is `start` or `skill`, or step 2 or 3 applied something; on a temporary device after every curation | SPEC-011, SPEC-027 to SPEC-029 |
 | 5. Retention | the reason is `start`: every project of the memory store, each under its own curation lock; a project whose lock another process holds waits for the next session start | SPEC-009 |
 | 6. Embed items without a vector | consent is given and the OpenAI memory key is there | SPEC-016, SPEC-019, SPEC-027 |
-| 7. Clean up | the reason is `start`: `.tmp` files older than ten minutes, and the backups of files that can be read | stage 05, Restoring |
+| 7. Clean up | the reason is start: owned temporary and stale artifacts older than ten minutes, and backups whose supported primary passes the strict readability checks below | stage 05, Restoring |
+
+Before the all-project maintenance sweep, release the initial project's curation lease. Keep retention before clean-up as in the step table; within each project sweep, process existing store projects in the relative-path order defined in stage 05, holding at most one curation lease at a time. Acquire it without waiting; leave a busy project for the next session start. Finish or release the current project's leases before moving to the next project or to global store/log clean-up. No cleanup path may acquire an earlier store lock while holding a later lease. Ordinary healthy reads take no write lease. Check the current lease token and the pinned store fingerprint immediately before every shared mutation and recheck the token after fingerprint I/O. The fingerprint must still belong to the file currently named by the store-record path, including after atomic replacement.
+
+Clean-up recognizes only known generated sidecar names owned by the plugin for supported C1 records inside the resolved memory root. It does not follow symlinks or paths outside that root, and preserves unowned and unknown C2 record families. Recheck file identity, age, the record's write leases and the pinned store before unlinking. Keep temporary and stale files aged exactly 600 seconds or dated in the future; only an age greater than 600 seconds qualifies. Delete a backup only after its current primary is completely read by the actually implemented C1 typed pure parser or schema; for JSONL this requires complete, valid record lines rather than the damaged-line-tolerant reader. A missing, inaccessible, damaged, schema-invalid or unsupported primary keeps its backup. Cleanup itself does not restore a backup. C2 tasks extend the supported parser families when implemented. Raw rewrite artifacts are protected by the layer lease as well as the matching raw lease, so an active rewrite's temporary file is not removed. No directory is provisioned and no raw entry, marker, curation progress or usage log is removed as cleanup instead of retention.
+
+The initial worker store gate, configuration gate and each worker diagnostic attempt get separate new absolute monotonic operation deadlines 1.0 second ahead. Each project maintenance phase and each separate global store/log cleanup phase gets a new cooperative deadline 300 seconds ahead; operations within a phase use its remaining deadline and do not renew it. Curation leases are attempted with wait=False. These are explicit CT operational choices, not observed performance. A blocking operating-system call is not forcibly interrupted: expiry stops work at the next guard and unfinished work is left for the next start, never reported as completed. Windows sharing retries and lease release retain the existing one-second rules; a phase deadline does not remove release cleanup. Parent-hook diagnostics keep the parent's original deadline and its one opportunistic attempt after expiry: worker budgets never extend a hook, and an expired hook deadline is not the detached worker's lifetime.
+
+When --expect-device is supplied, the worker compares it with its first readable store record before other store work and stops without data or diagnostic writes if it differs. Hook-created launches supply the device the parent just verified; direct launches may omit it and bind only to the worker's first readable gate. This nonsecret comparison is not authentication and does not replace fingerprint or lease checks. It does not bind every header byte across spawn when the device itself is unchanged.
 
 While it waits for a model or for Git, a second thread refreshes its locks as often as stage 05 says. A worker that finds its lock token gone applies nothing more and ends (`lost-lock`). Its failures go to the failure log; it prints nothing, and its exit status means nothing.
 
@@ -391,9 +405,13 @@ python3 "<skill folder>/scripts/memory.py" <command> [arguments]
 
 with `python` or `py -3` in place of `python3` where that is missing, as on Windows. The script finds the plugin's library from its own place. Every command takes `--folder <path>`, the session's folder, by default the working folder, and finds the project as the hooks do (SPEC-001). It reads the memory keys from its own environment, which is the host's. The commands for a project are all but `status`, `purge`, `retention`, `sync` and `repair`, which work for the whole device; `status` shows the folder's project when there is one.
 
+After the store, configuration and project-list gates, project commands use the configuration's project enabled boolean for the not-enabled check; they do not use a helper that also requires current consent. On bypasses this check so it can enable a disabled project and obtain current consent. Missing consent still blocks recording and sending, setup still refuses without consent to carry, and local search can use words without consent as specified. A status project's lookup is optional and does not turn the device-level status into a project-only command.
+
 ### The result
 
 Every command prints one JSON object, in ASCII, that [memory-result.schema.json](memory-result.schema.json) checks:
+
+The common result boundary validates the complete object against the packaged byte-identical copy of memory-result.schema.json, including command-specific and common data, required fields, nested types, additional properties and conditional branches. This applies to handler dictionaries as well as results made by a builder. Validate a confirmation preview before checking its token or invoking apply, then validate the apply result too. A malformed result or unusable validation resource yields one fixed internal/failed object with exit status 1, containing only a recognized command, a fixed English say and an allowed built-in error class. Construct this fallback without reusing a failed loader or validator. It never echoes candidate data, exception text or unknown arguments and never claims rollback or a successful log. Failure-log writing is best effort and obeys the readable-store identity gate.
 
 | Field | Value |
 | --- | --- |
@@ -414,7 +432,15 @@ The exit status is 0 for `done`, `confirm` and `nothing`, 1 for `refused` and `f
 
 A command that deletes, sends or stops something asks first. Run without `--confirm`, it changes nothing and returns `confirm`, with what it would do in `data` and a code of 8 characters in `confirm`. The agent shows `data` to the user and asks, and only after the user's yes runs the same command again with `--confirm <code>`.
 
-The code is the first 40 bits, in lowercase Crockford base32, of the SHA-256 of the device ID (or `none` when no store record can be read), the command, its arguments, `data` as canonical JSON (keys sorted, no spaces, ASCII) and the number of the ten-minute period since 1970. The current and the previous period are accepted, so a code lasts ten to twenty minutes. A code that does not match, because time passed or because what the command would do changed, gets `confirm-stale`, with the new `data` and a new code. The code is not a security token, since anyone who can read the memory store can compute it: it makes sure that what happens is what the user said yes to. The user's yes itself is what the memory skill requires.
+Build one canonical JSON array [device, command, arguments, data, period], with sorted object keys, no insignificant spaces, ASCII escapes and no non-finite numbers, and hash its ASCII bytes with SHA-256. Device is the readable store's device ID, or the literal string none when no record can be read; period is the integer floor of Unix time divided by 600. Arguments are the parsed option/positional mapping with documented defaults materialized and folder expanded and resolved to an absolute path; omit command and the confirm token itself, preserve positional/repeated-argument order, and include the sync mode when present. Encode the first five digest bytes, in order, as eight lowercase Crockford base32 characters, without padding. The current and the previous period are accepted, so a code lasts ten to twenty minutes. A code that does not match, because time passed or because what the command would do changed, gets `confirm-stale`, with the new `data` and a new code. The code is not a security token, since anyone who can read the memory store can compute it: it makes sure that what happens is what the user said yes to. The user's yes itself is what the memory skill requires.
+
+The following unit vector checks JSON framing and base32 encoding with the supplied argument mapping. A command invocation first normalizes its arguments as above, including the absolute folder and defaults, so its mapping and code differ from this vector.
+
+```text
+["none","retention",{"days":7},{"days":7,"entries":3,"was":100},2]
+SHA-256 = aec9fedabb3a99b52d6e140cc7f66777a26221551063cb859e50a547fe1a7a0a
+confirm = nv4zxpnv
+```
 
 ### Commands
 
@@ -890,7 +916,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `configuration-invalid` | refused | all but `status`, `purge` and `repair` for a schema-invalid configuration; every command for an invalid `CORTHEX_MEMORY_HOME` | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion; `data.field` names the field or environment variable. When it is `CORTHEX_MEMORY_HOME`, `status`, `purge` and `repair` are also refused: there is no store to act on, no command falls back to the default folder, and `say` explains the refusal without changing the result schema |
 | `no-project-list` | refused | the commands for a project | The project list is missing or cannot be read |
 | `not-in-project` | refused | the commands for a project | The folder is in no project, or in two (`data.clash`); the corthex skill adds projects |
-| `not-enabled` | nothing for `off`, else refused | the commands for a project | Memory is off for the project; `on` turns it on |
+| `not-enabled` | nothing for `off`, else refused | the commands for a project other than `on` | The project's enabled setting is false; `on` bypasses this gate so it can enable it. Consent is checked separately for actions that require it |
 | `no-consent` | refused | `setup` | The device has no consent to carry |
 | `confirm-stale` | confirm | the commands that ask first | The code does not match what would happen now; `data` and `confirm` are new |
 | `item-not-found` | refused | `open`, `pin`, `unpin`, `forget` | No such item; `data.matches` holds the closest lines of the item list |
@@ -898,7 +924,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `pin-no-room` | refused | `pin` | The start summary would not fit; `data.pins` lists the pins |
 | `folder-outside` | refused | `leave-out` | The folder is outside the project; `data.outside` names it |
 | `files-left` | failed | `delete-project`, `purge` | Files that another program holds could not be deleted; `data.left` names them, and `say` how to delete them by hand |
-| `lock-busy` | failed | the commands that change memory | A lock stayed busy for 10 seconds; trying again later works |
+| `lock-busy` | failed | the commands that change memory, including read commands while restoring a backup | A required write or recovery lock stayed busy for 10 seconds. A healthy read takes no write lock. Preserve this failure for every command, including `status`, `purge` and `repair`; their store/configuration exemptions do not turn a busy recovery into `internal`, `nothing` or a repair confirmation |
 | `git-missing` | refused | `sync` | No `git` program |
 | `credentials-in-address` | refused | `sync` | The address holds a user name or password |
 | `public` | refused | `sync` | The repository can be read without credentials |
