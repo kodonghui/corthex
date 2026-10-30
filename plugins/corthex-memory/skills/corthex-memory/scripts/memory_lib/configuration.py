@@ -14,6 +14,7 @@ KEYWORDS = {"$schema", "title", "description", "$defs", "$ref", "type", "propert
             "default", "enum", "minLength", "maxLength", "pattern", "minItems",
             "maxItems", "uniqueItems", "items", "minProperties"}
 MISSING = object()
+CONSENT_VERSION = 1
 
 
 class ConfigurationInvalid(RuntimeError):
@@ -145,7 +146,7 @@ class Configuration:
     values: dict
 
     def consented(self):
-        return self.values.get("consent", {}).get("version") == 1
+        return self.values.get("consent", {}).get("version") == CONSENT_VERSION
 
     def enabled(self, project):
         return self.consented() and self.values["projects"].get(project, {}).get("enabled", False)
