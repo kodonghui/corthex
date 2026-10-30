@@ -326,12 +326,19 @@ def project_section(folder, home):
     return lines
 
 
-def build_context(folder, home, principles=PRINCIPLES):
-    """The context text for a session that starts in folder."""
-    sections = [[HEADER], principles_section(principles), profile_section(home), project_section(folder, home)]
-    text = "\n\n".join("\n".join(section) for section in sections if section)
-    if fits(text):
+def shorten(text, limit=MAX_BYTES):
+    """Use the 0.1.0 cut, optionally leaving room for the memory section."""
+    if limit < len(SHORTENED.encode("utf-8")):
+        raise ValueError("base limit cannot hold the shortening line")
+    if len(text.encode("utf-8")) <= limit:
         return text
-    while text and not fits(text + SHORTENED):
+    while text and len((text + SHORTENED).encode("utf-8")) > limit:
         text = text[: len(text) * 9 // 10].rstrip()
     return text + SHORTENED
+
+
+def build_context(folder, home, principles=PRINCIPLES, limit=MAX_BYTES):
+    """Unchanged by default; limit=None gives the unshortened base to memory."""
+    sections = [[HEADER], principles_section(principles), profile_section(home), project_section(folder, home)]
+    text = "\n\n".join("\n".join(section) for section in sections if section)
+    return text if limit is None else shorten(text, limit)
