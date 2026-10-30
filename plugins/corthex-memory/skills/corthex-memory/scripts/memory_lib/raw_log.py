@@ -108,8 +108,9 @@ def _parsed_entry(value, host, session):
 def _scan_tail(path, host, session):
     """Read at most 8MiB backwards without changing shared files.
 
-    Empty/new logs begin at one. A nonempty tail needs a complete JSON line
-    with a positive seq; without one its next sequence cannot be inferred.
+    Empty/new logs begin at one. If the whole file was read without a complete
+    positive-seq line, skip/count its damage and begin at one as well. A window
+    that does not reach the start cannot infer seq without a complete line.
     Parsed cut-tail sequences still stay reserved when a complete line exists.
     """
     incoming = path.open("rb")
@@ -163,7 +164,7 @@ def _scan_tail(path, host, session):
             elif pending:
                 parsed(pending)
     if size and not complete_seq:
-        return None, None, max(1, damaged)
+        return None, None if floor else 0, max(1, damaged)
     return turn, highest, damaged
 
 
@@ -290,6 +291,7 @@ class RawLog:
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
+                lock.check()
             prior, highest = _tail(self.path, self.host, self.session, check, report)
             if highest is None:
                 outcome = "error"

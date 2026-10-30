@@ -52,6 +52,114 @@ class MemoryDiagnosticsTest(StoreCase):
         paths = list((self.root / "logs").glob("failures-*.jsonl"))
         return [line for path in paths for line in files.read_jsonl(path)]
 
+    def test_tc327_same_metadata_header_change_fences_early_and_late_logs(self):
+        path, original = self.root / "store.json", files.append_jsonl
+        def metadata(info):
+            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+        for late in (False, True):
+            with self.subTest(late=late):
+                path.write_bytes(base.json_bytes(self.header, "TBL-001"))
+                logger = diagnostics.Diagnostics(self.memory)
+                logger.read_gate(memory_clock.now() + 2)
+                before = path.stat()
+                def changed(*args, **kwargs):
+                    if args[2] == "TBL-004":
+                        value = dict(self.header, device=base.new_id("d"))
+                        path.write_bytes(base.json_bytes(value, "TBL-001"))
+                        os.utime(str(path), ns=(before.st_atime_ns, before.st_mtime_ns))
+                        self.assertEqual(metadata(path.stat()), metadata(before))
+                    return original(*args, **kwargs)
+                with mock.patch.object(files, "append_jsonl", changed):
+                    deadline = memory_clock.now() + (-1 if late else 2)
+                    result = logger.failure("deadline", "record", deadline,
+                                            opportunistic=True, when=self.when)
+                self.assertFalse(result)
+                self.assertEqual(self.failures(), [])
+
+    def test_tc327_header_fingerprint_keeps_the_callers_sharing_retry_budget(self):
+        path, opened = self.root / "store.json", Path.open
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                calls = []
+                def sharing(target, *args, **kwargs):
+                    calls.append(target == path)
+                    if len(calls) == 1:
+                        raise PermissionError("made-up header sharing")
+                    return opened(target, *args, **kwargs)
+                with mock.patch.object(files, "_WINDOWS", True), \
+                        mock.patch.object(Path, "open", sharing):
+                    if expired:
+                        with self.assertRaises(PermissionError):
+                            diagnostics.Diagnostics._stamp(path, memory_clock.now() - 1)
+                    else:
+                        self.assertIsNotNone(diagnostics.Diagnostics._stamp(path))
+                self.assertEqual(calls, [True] if expired else [True, True])
+
+    def test_tc327_fingerprint_crossing_expiry_keeps_ordinary_writes_strict(self):
+        now, opened, write = memory_clock.now(), files.private_open, files.os.write
+        for opportunistic in (False, True):
+            with self.subTest(opportunistic=opportunistic):
+                offset, daily_open, written = [0], [False], []
+                logger = diagnostics.Diagnostics(self.memory)
+                fingerprint = logger._stamp
+                def opening(path, *args):
+                    fd = opened(path, *args)
+                    daily_open[0] = Path(path).suffix == ".jsonl"
+                    return fd
+                def reading(*args, **kwargs):
+                    value = fingerprint(*args, **kwargs)
+                    if daily_open[0]:
+                        offset[0] = 3
+                    return value
+                def writing(fd, data):
+                    if b'"error"' in data:
+                        written.append(memory_clock.now())
+                    return write(fd, data)
+                with mock.patch.object(memory_clock, "now", side_effect=lambda: now + offset[0]), \
+                        mock.patch.object(files, "private_open", opening), \
+                        mock.patch.object(logger, "_stamp", reading), \
+                        mock.patch.object(files.os, "write", writing):
+                    result = logger.failure("deadline", "record", now + 2,
+                                            opportunistic=opportunistic, when=self.when)
+                self.assertEqual(result, opportunistic)
+                self.assertEqual(written, [now + 3] if opportunistic else [])
+                self.assertEqual(len(self.failures()), int(opportunistic))
+
+    def test_tc327_lease_lost_inside_fingerprint_fences_early_and_late_logs(self):
+        opened = files.private_open
+        for late in (False, True):
+            with self.subTest(late=late):
+                logger = diagnostics.Diagnostics(self.memory)
+                logger.read_gate(memory_clock.now() + 2)
+                fingerprint = logger._stamp
+                daily_open, displaced = [False], [False]
+                path = self.root / "logs/failures.lock"
+                def opening(target, *args):
+                    fd = opened(target, *args)
+                    daily_open[0] = daily_open[0] or Path(target).suffix == ".jsonl"
+                    return fd
+                def reading(*args, **kwargs):
+                    value = fingerprint(*args, **kwargs)
+                    if daily_open[0] and not displaced[0]:
+                        payload = json.loads(path.read_bytes())
+                        payload["token"] = "b" * 32
+                        path.write_text(json.dumps(payload), encoding="utf-8")
+                        displaced[0] = True
+                    return value
+                try:
+                    with mock.patch.object(files, "private_open", opening), \
+                            mock.patch.object(logger, "_stamp", reading):
+                        deadline = memory_clock.now() + (-1 if late else 2)
+                        result = logger.failure("deadline", "record", deadline,
+                                                opportunistic=True, when=self.when)
+                    self.assertTrue(displaced[0])
+                    self.assertFalse(result)
+                    self.assertEqual(self.failures(), [])
+                    self.assertEqual(json.loads(path.read_bytes())["token"], "b" * 32)
+                finally:
+                    if displaced[0]:
+                        path.unlink()
+
     def test_tc013_failure_fields_order_schema_date_and_count(self):
         result = self.logger.failure("damaged-line", "record", memory_clock.now() + 2,
                                      hook="prompt", host="codex", project="sample",
@@ -84,6 +192,88 @@ class MemoryDiagnosticsTest(StoreCase):
         self.assertTrue((path.parent / "hooks-2026-10-28.jsonl").exists())
         if os.name != "nt":
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def diagnostic_transition(self, stage, opportunistic=True):
+        for name in ("failures", "hooks"):
+            logger = diagnostics.Diagnostics(self.memory)
+            now, offset, attempts = memory_clock.now, [0.0], []
+            deadline = now() + 2
+            read_gate, create = logger.read_gate, locks.Lock._create
+            def gated(*args, **kwargs):
+                value = read_gate(*args, **kwargs)
+                if stage == "gate":
+                    offset[0] = 3.0
+                return value
+            def creating(lock):
+                attempts.append(lock.path.name)
+                value = create(lock)
+                if stage == "acquired":
+                    offset[0] = 3.0
+                return value
+            before = self.snapshot()
+            with mock.patch.object(memory_clock, "now", side_effect=lambda: now()+offset[0]), \
+                    mock.patch.object(logger, "read_gate", gated), \
+                    mock.patch.object(locks.Lock, "_create", creating):
+                if name == "failures":
+                    result = logger.failure("deadline", "record", deadline, hook="end-of-turn",
+                                            host="codex", opportunistic=opportunistic, when=self.when)
+                else:
+                    result = logger.timing("end-of-turn", "codex", 1, "deadline", deadline,
+                                           opportunistic=opportunistic, when=self.when)
+            self.assertEqual(result, opportunistic)
+            self.assertEqual(attempts, [name+".lock"] if opportunistic else [])
+            if opportunistic:
+                path = self.root / ("logs/"+name+"-2026-10-27.jsonl")
+                rows = files.read_jsonl(path)
+                self.assertEqual(rows[-1].get("error", rows[-1].get("outcome")),
+                                 "deadline")
+            else:
+                self.assertEqual(self.snapshot(), before)
+
+    def test_tc321_expiry_during_the_diagnostic_gate_still_attempts_free_locks(self):
+        self.diagnostic_transition("gate")
+
+    def test_tc321_acquired_diagnostic_locks_finish_one_line_after_expiry(self):
+        self.diagnostic_transition("acquired")
+
+    def test_tc321_ordinary_logger_callers_keep_their_strict_deadline(self):
+        self.diagnostic_transition("gate", opportunistic=False)
+
+    def test_tc321_gate_expiry_tries_a_busy_lock_once_without_waiting(self):
+        parent, child = multiprocessing.Pipe()
+        worker = multiprocessing.Process(target=hold_logs, args=(child, str(self.root), self.header["device"]))
+        worker.start()
+        try:
+            self.assertTrue(parent.poll(10))
+            self.assertTrue(parent.recv())
+            now, offset, attempts = memory_clock.now, [0.0], []
+            deadline, read_gate = now()+2, self.logger.read_gate
+            original_try = locks.Lock.try_once
+            def gated(*args, **kwargs):
+                value = read_gate(*args, **kwargs)
+                offset[0] = 3.0
+                return value
+            def tried(lock):
+                attempts.append(lock.path.name)
+                return original_try(lock)
+            before = self.snapshot()
+            with mock.patch.object(memory_clock, "now", side_effect=lambda: now()+offset[0]), \
+                    mock.patch.object(self.logger, "read_gate", gated), \
+                    mock.patch.object(locks.Lock, "try_once", tried), \
+                    mock.patch.object(locks.Lock, "acquire", side_effect=AssertionError("must not wait")):
+                self.assertFalse(self.logger.failure("deadline", "record", deadline,
+                                                     hook="end-of-turn", opportunistic=True))
+            self.assertEqual(attempts, ["failures.lock"])
+            self.assertEqual(self.snapshot(), before)
+        finally:
+            parent.send(True)
+            worker.join(10)
+            if worker.is_alive():
+                worker.terminate()
+                worker.join()
+            parent.close()
+            child.close()
+        self.assertEqual(worker.exitcode, 0)
 
     def test_tc013_never_serializes_error_text_filename_or_generated_key(self):
         marker = "made-up-private-" + secrets.token_hex(16)

@@ -6,8 +6,11 @@ logs directory. A blocked store produces no diagnostic write (TBL-001).
 """
 
 import builtins
+import hashlib
 import math
+import os
 import re
+from contextlib import contextmanager
 
 from . import base, configuration, files, locks, projects, store
 from . import clock
@@ -56,29 +59,63 @@ def choice(value, allowed):
     return isinstance(value, str) and value in allowed
 
 
+@contextmanager
+def _log_lease(lock, deadline, opportunistic, report):
+    if opportunistic:
+        # A hook may cross its deadline during the header read or this create.
+        # Try once before any optional waiting, never reclaiming a late lock.
+        try:
+            lock.try_once()
+        except locks.LockBusy:
+            if clock.now() >= deadline:
+                raise
+            lock.acquire(deadline)
+    else:
+        lock.acquire(deadline)
+    try:
+        yield
+    finally:
+        lock.release(report=report)
+
+
 class Diagnostics:
     def __init__(self, memory_store):
         self.store = memory_store
         self._ready = None
 
     @staticmethod
-    def _stamp(path):
+    def _stamp(path, deadline=None):
+        # Same-size in-place writes can retain all four stat fields. Bind the
+        # snapshot to the header bytes too, using the same open file's identity.
+        # This never parses/restores a record or acquires another lock.
+        def read():
+            with path.open("rb") as source:
+                info = os.fstat(source.fileno())
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: source.read(8192), b""):
+                    digest.update(chunk)
+            stamp = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+            current = path.stat()
+            if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != stamp:
+                # A POSIX writer can replace the path while the old FD stays
+                # readable. Never return that retired file's coherent digest.
+                raise locks.LostLock()
+            return stamp + (digest.digest(),)
         try:
-            info = path.stat()
+            return files._retry(read, deadline)
         except FileNotFoundError:
             return None
-        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
 
     def read_gate(self, deadline, report=None):
         """Cache a stable, readable header for a later one-attempt deadline log."""
         self._ready = None
         path = self.store.folder / "store.json"
-        first = self._stamp(path)
+        first = self._stamp(path, deadline)
         header = self.store.record(report, deadline=deadline)
-        stamp = self._stamp(path)
+        stamp = self._stamp(path, deadline)
         if first != stamp:
             header = self.store.record(report, deadline=deadline)
-            if self._stamp(path) != stamp:
+            if self._stamp(path, deadline) != stamp:
                 raise locks.LostLock()
         self._ready = header["device"], stamp
         return header
@@ -91,15 +128,16 @@ class Diagnostics:
         header = self.store.folder / "store.json"
         folder = self.store.folder / "logs"
         path = folder / (name + "-" + record["at"][:10] + ".jsonl")
-        if self._stamp(header) != stamp:
+        if self._stamp(header, deadline) != stamp:
             return False
         lock = locks.Lock(folder / (name + ".lock"), "log", device)
         lock.try_once()
         try:
             def guard():
                 lock.check()
-                if self._stamp(header) != stamp:
+                if self._stamp(header, deadline) != stamp:
                     raise locks.LostLock()
+                lock.check()
             guard()
             files.append_jsonl(path, record, table, check=guard, deadline=deadline)
             return True
@@ -119,15 +157,20 @@ class Diagnostics:
             lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
             def report_release(error, count):
                 self.failure(error, "record", deadline, hook=record.get("hook"),
-                             host=record.get("host"))
-            with lock.held(deadline, report=report_release if name != "failures" else None):
+                             host=record.get("host"), opportunistic=opportunistic)
+            with _log_lease(lock, deadline, opportunistic,
+                            report_release if name != "failures" else None):
                 def guard():
-                    if clock.now() >= deadline:
+                    if not opportunistic and clock.now() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
-                    # Never read or restore the header under a log lease.
-                    if self._stamp(record_path) != stamp:
+                    # Fingerprint only: never parse/restore the header or take
+                    # its earlier store lock while holding a log lease.
+                    if self._stamp(record_path, deadline) != stamp:
                         raise locks.LostLock()
+                    lock.check()
+                    if not opportunistic and clock.now() >= deadline:
+                        raise locks.LockBusy()
                 guard()
                 path = folder / (name + "-" + record["at"][:10] + ".jsonl")
                 files.append_jsonl(path, record, table, check=guard, deadline=deadline)

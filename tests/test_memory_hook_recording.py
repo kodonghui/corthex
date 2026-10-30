@@ -21,6 +21,85 @@ class HookRecordingTest(HookCase):
     def run_functional(self,*args,**kwargs):
         return self.run_hook(*args,**kwargs)
 
+    @staticmethod
+    def crossing_diagnostic_gate():
+        return ("from memory_lib import diagnostics,clock\ngate=diagnostics.Diagnostics.read_gate\n"
+                "now=clock.now\noffset=[0.0]\nclock.now=lambda:now()+offset[0]\ncalls=[0]\n"
+                "def crossing(self,deadline,*args,**kwargs):\n    calls[0]+=1\n"
+                "    if calls[0]==2:\n        offset[0]+=max(0,deadline-clock.now())+0.02\n"
+                "    return gate(self,deadline,*args,**kwargs)\ndiagnostics.Diagnostics.read_gate=crossing\n")
+
+    def test_tc326_small_cut_nul_or_damaged_first_line_does_not_stop_real_hooks(self):
+        for name, data in (("cut", b'{"seq":1,"text":"cut'), ("nul", b"\0" * 180),
+                           ("damaged", b"broken\n")):
+            with self.subTest(kind=name):
+                prompt = dict(self.event("prompt"), session_id="small-damaged-" + name)
+                answer = dict(self.event("end-of-turn"), session_id=prompt["session_id"])
+                log = raw_log.RawLog(self.memory, "sample", "claude-code", prompt["session_id"])
+                log.path.write_bytes(data)
+                before = len(self.records("failures"))
+                self.run_hook("prompt", prompt)
+                self.run_hook("end-of-turn", answer)
+                rows = files.read_jsonl(log.path)
+                self.assertEqual([(row["seq"], row["turn"], row["kind"]) for row in rows],
+                                 [(1, 1, "prompt"), (2, 1, "answer")])
+                prefix = data if data.endswith(b"\n") else data + b"\n"
+                self.assertTrue(log.path.read_bytes().startswith(prefix + b'{"id":'))
+                failures = self.records("failures")[before:]
+                self.assertEqual([(row["error"], row.get("count")) for row in failures], [("damaged-line", 1)])
+                self.assertEqual([(row["hook"], row["outcome"]) for row in self.records("hooks")[-2:]],
+                                 [("prompt", "ok"), ("end-of-turn", "ok")])
+                self.assertEqual(len(list(log.markers.glob("*." + log.log + ".*"))), 1)
+
+    def test_tc323_expired_recording_wait_reclaims_a_stale_raw_lease(self):
+        log = raw_log.RawLog(self.memory, "sample", "claude-code", self.event("prompt")["session_id"])
+        path = log.path.with_suffix(".lock")
+        from memory_lib import locks
+        path.write_text(json.dumps({"pid": os.getpid(), "device": self.header["device"], "at": AT,
+                                    "token": locks.secrets.token_hex(16)}), encoding="utf-8")
+        past = time.time() - 20
+        os.utime(str(path), (past, past))
+        patch = ("from memory_lib import raw_log\nprepare=raw_log.prepare\n"
+                 "def expired(*args,**kwargs):\n    value=prepare(*args,**kwargs)\n"
+                 "    return raw_log.Prepared(value.text,value.cut,memory_clock.now()-1)\nraw_log.prepare=expired")
+        self.run_hook("prompt", patch=patch)
+        self.assertEqual([(row["seq"], row["kind"]) for row in self.raw()], [(1, "prompt")])
+        self.assertEqual(len(self.markers()), 1)
+        self.assertFalse(path.exists())
+        self.assertEqual(self.records("failures"), [])
+        self.outcome("ok")
+
+    def test_tc046_exception_diagnostic_survives_crossing_its_deadline_in_read_gate(self):
+        patch = self.crossing_diagnostic_gate() + ("from memory_lib import raw_log\n"
+                 "def fail(*args,**kwargs):\n    raise OSError('private-error-fixture')\nraw_log.RawLog.append=fail")
+        self.run_hook("end-of-turn", patch=patch)
+        self.assertEqual(self.raw(), [])
+        self.assertEqual([row["error"] for row in self.records("failures")], ["OSError"])
+        self.outcome("error")
+        self.assertGreaterEqual(self.records("hooks")[-1]["ms"], 300)
+
+    def test_tc046_missing_folder_diagnostic_survives_crossing_deadline_without_timing(self):
+        folder = self.root / "projects/sample/raw"
+        folder.rmdir()
+        self.run_hook("end-of-turn", patch=self.crossing_diagnostic_gate())
+        self.assertFalse(folder.exists())
+        self.assertEqual(self.raw(), [])
+        self.assertEqual(self.markers(), [])
+        self.assertEqual([row["error"] for row in self.records("failures")], ["FileNotFoundError"])
+        self.assertEqual(self.records("hooks"), [])
+
+    def test_tc010_configuration_restore_notice_survives_late_diagnostic_read_gate(self):
+        path = self.root / "configuration.json"
+        backup = path.with_name("configuration.json.bak")
+        path.replace(backup)
+        self.run_hook("end-of-turn", patch=self.crossing_diagnostic_gate())
+        self.assertTrue(path.exists())
+        self.assertFalse(backup.exists())
+        self.assertEqual([row["error"] for row in self.records("failures")], ["restored"])
+        self.assertEqual(len(self.raw()), 1)
+        self.outcome("ok")
+        self.assertGreaterEqual(self.records("hooks")[-1]["ms"], 300)
+
     def late_recording(self, phase):
         counter = self.folder / "late-redaction-count"
         patch = ("from pathlib import Path\nfrom memory_lib import clock, projects, redaction\n"
