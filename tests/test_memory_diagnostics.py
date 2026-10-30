@@ -52,6 +52,114 @@ class MemoryDiagnosticsTest(StoreCase):
         paths = list((self.root / "logs").glob("failures-*.jsonl"))
         return [line for path in paths for line in files.read_jsonl(path)]
 
+    def test_tc327_same_metadata_header_change_fences_early_and_late_logs(self):
+        path, original = self.root / "store.json", files.append_jsonl
+        def metadata(info):
+            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+        for late in (False, True):
+            with self.subTest(late=late):
+                path.write_bytes(base.json_bytes(self.header, "TBL-001"))
+                logger = diagnostics.Diagnostics(self.memory)
+                logger.read_gate(memory_clock.now() + 2)
+                before = path.stat()
+                def changed(*args, **kwargs):
+                    if args[2] == "TBL-004":
+                        value = dict(self.header, device=base.new_id("d"))
+                        path.write_bytes(base.json_bytes(value, "TBL-001"))
+                        os.utime(str(path), ns=(before.st_atime_ns, before.st_mtime_ns))
+                        self.assertEqual(metadata(path.stat()), metadata(before))
+                    return original(*args, **kwargs)
+                with mock.patch.object(files, "append_jsonl", changed):
+                    deadline = memory_clock.now() + (-1 if late else 2)
+                    result = logger.failure("deadline", "record", deadline,
+                                            opportunistic=True, when=self.when)
+                self.assertFalse(result)
+                self.assertEqual(self.failures(), [])
+
+    def test_tc327_header_fingerprint_keeps_the_callers_sharing_retry_budget(self):
+        path, opened = self.root / "store.json", Path.open
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                calls = []
+                def sharing(target, *args, **kwargs):
+                    calls.append(target == path)
+                    if len(calls) == 1:
+                        raise PermissionError("made-up header sharing")
+                    return opened(target, *args, **kwargs)
+                with mock.patch.object(files, "_WINDOWS", True), \
+                        mock.patch.object(Path, "open", sharing):
+                    if expired:
+                        with self.assertRaises(PermissionError):
+                            diagnostics.Diagnostics._stamp(path, memory_clock.now() - 1)
+                    else:
+                        self.assertIsNotNone(diagnostics.Diagnostics._stamp(path))
+                self.assertEqual(calls, [True] if expired else [True, True])
+
+    def test_tc327_fingerprint_crossing_expiry_keeps_ordinary_writes_strict(self):
+        now, opened, write = memory_clock.now(), files.private_open, files.os.write
+        for opportunistic in (False, True):
+            with self.subTest(opportunistic=opportunistic):
+                offset, daily_open, written = [0], [False], []
+                logger = diagnostics.Diagnostics(self.memory)
+                fingerprint = logger._stamp
+                def opening(path, *args):
+                    fd = opened(path, *args)
+                    daily_open[0] = Path(path).suffix == ".jsonl"
+                    return fd
+                def reading(*args, **kwargs):
+                    value = fingerprint(*args, **kwargs)
+                    if daily_open[0]:
+                        offset[0] = 3
+                    return value
+                def writing(fd, data):
+                    if b'"error"' in data:
+                        written.append(memory_clock.now())
+                    return write(fd, data)
+                with mock.patch.object(memory_clock, "now", side_effect=lambda: now + offset[0]), \
+                        mock.patch.object(files, "private_open", opening), \
+                        mock.patch.object(logger, "_stamp", reading), \
+                        mock.patch.object(files.os, "write", writing):
+                    result = logger.failure("deadline", "record", now + 2,
+                                            opportunistic=opportunistic, when=self.when)
+                self.assertEqual(result, opportunistic)
+                self.assertEqual(written, [now + 3] if opportunistic else [])
+                self.assertEqual(len(self.failures()), int(opportunistic))
+
+    def test_tc327_lease_lost_inside_fingerprint_fences_early_and_late_logs(self):
+        opened = files.private_open
+        for late in (False, True):
+            with self.subTest(late=late):
+                logger = diagnostics.Diagnostics(self.memory)
+                logger.read_gate(memory_clock.now() + 2)
+                fingerprint = logger._stamp
+                daily_open, displaced = [False], [False]
+                path = self.root / "logs/failures.lock"
+                def opening(target, *args):
+                    fd = opened(target, *args)
+                    daily_open[0] = daily_open[0] or Path(target).suffix == ".jsonl"
+                    return fd
+                def reading(*args, **kwargs):
+                    value = fingerprint(*args, **kwargs)
+                    if daily_open[0] and not displaced[0]:
+                        payload = json.loads(path.read_bytes())
+                        payload["token"] = "b" * 32
+                        path.write_text(json.dumps(payload), encoding="utf-8")
+                        displaced[0] = True
+                    return value
+                try:
+                    with mock.patch.object(files, "private_open", opening), \
+                            mock.patch.object(logger, "_stamp", reading):
+                        deadline = memory_clock.now() + (-1 if late else 2)
+                        result = logger.failure("deadline", "record", deadline,
+                                                opportunistic=True, when=self.when)
+                    self.assertTrue(displaced[0])
+                    self.assertFalse(result)
+                    self.assertEqual(self.failures(), [])
+                    self.assertEqual(json.loads(path.read_bytes())["token"], "b" * 32)
+                finally:
+                    if displaced[0]:
+                        path.unlink()
+
     def test_tc013_failure_fields_order_schema_date_and_count(self):
         result = self.logger.failure("damaged-line", "record", memory_clock.now() + 2,
                                      hook="prompt", host="codex", project="sample",

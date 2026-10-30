@@ -474,6 +474,51 @@ class RawLogTest(StoreCase):
         self.assertFalse(self.log.path.exists())
         self.assertEqual(self.markers(),[])
 
+    def test_tc327_same_metadata_store_device_change_fences_the_raw_append(self):
+        append, path = files.append_jsonl, self.root / "store.json"
+        before = path.stat()
+        def metadata(info):
+            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+        def changed(*args, **kwargs):
+            if args[2] == "TBL-007":
+                header = dict(self.header, device=base.new_id("d"))
+                path.write_bytes(base.json_bytes(header, "TBL-001"))
+                os.utime(str(path), ns=(before.st_atime_ns, before.st_mtime_ns))
+                self.assertEqual(metadata(path.stat()), metadata(before))
+            return append(*args, **kwargs)
+        with mock.patch.object(files, "append_jsonl", changed):
+            result = self.record()
+        self.assertEqual(result.outcome, "error")
+        self.assertIsNone(result.entry)
+        self.assertFalse(self.log.path.exists())
+        self.assertEqual(self.markers(), [])
+
+    def test_tc327_lease_lost_inside_header_fingerprint_prevents_raw_write(self):
+        opened, fingerprint = files.private_open, self.log.logger._stamp
+        raw_open, displaced = [False], [False]
+        path = self.log.path.with_suffix(".lock")
+        def opening(target, *args):
+            fd = opened(target, *args)
+            raw_open[0] = raw_open[0] or Path(target) == self.log.path
+            return fd
+        def reading(*args, **kwargs):
+            value = fingerprint(*args, **kwargs)
+            if raw_open[0] and not displaced[0]:
+                payload = json.loads(path.read_bytes())
+                payload["token"] = "b" * 32
+                path.write_text(json.dumps(payload), encoding="utf-8")
+                displaced[0] = True
+            return value
+        with mock.patch.object(files, "private_open", opening), \
+                mock.patch.object(self.log.logger, "_stamp", reading):
+            result = self.record()
+        self.assertTrue(displaced[0])
+        self.assertEqual(result.outcome, "error")
+        self.assertIsNone(result.entry)
+        self.assertEqual(self.entries(), [])
+        self.assertEqual(self.markers(), [])
+        self.assertEqual(json.loads(path.read_bytes())["token"], "b" * 32)
+
     def test_tc029_short_write_after_takeover_never_truncates_the_new_owner(self):
         self.record()
         write, path = files.os.write, self.log.path.with_suffix(".lock")

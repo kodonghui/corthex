@@ -291,6 +291,7 @@ class RawLog:
                 lock.check()
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
+                lock.check()
             prior, highest = _tail(self.path, self.host, self.session, check, report)
             if highest is None:
                 outcome = "error"
