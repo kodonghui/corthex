@@ -94,7 +94,13 @@ class Diagnostics:
                 digest = hashlib.sha256()
                 for chunk in iter(lambda: source.read(8192), b""):
                     digest.update(chunk)
-            return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, digest.digest()
+            stamp = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+            current = path.stat()
+            if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != stamp:
+                # A POSIX writer can replace the path while the old FD stays
+                # readable. Never return that retired file's coherent digest.
+                raise locks.LostLock()
+            return stamp + (digest.digest(),)
         try:
             return files._retry(read, deadline)
         except FileNotFoundError:
