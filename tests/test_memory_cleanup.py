@@ -42,8 +42,8 @@ class CleanupTest(StoreCase):
         os.utime(str(path), ns=(when, when))
         return path
 
-    def project_cleanup(self):
-        deadline = memory_clock.now() + 5
+    def project_cleanup(self, seconds=5):
+        deadline = memory_clock.now() + seconds
         with self.worker.lease(self.project / "curation.lock", "curation", deadline) as lease:
             return cleanup.clean_project(self.worker, "sample", lease, deadline)
 
@@ -72,6 +72,27 @@ class CleanupTest(StoreCase):
         self.assertEqual(cleanup.clean_store(self.worker, memory_clock.now() + 5), 1)
         self.assertEqual([p.exists() for p in paths], [True, True, False, True])
         self.assertTrue(all(p.exists() for p in unknown))
+
+    def test_tc330_raw_inventory_is_linear_and_still_cleans_all_logs(self):
+        raw = self.project / "raw"
+        healthy = {raw / (raw_log.log_name("codex", "healthy-%d" % n) + ".jsonl")
+                   for n in range(200)}
+        for path in healthy:
+            self.artifact(path.relative_to(self.root).as_posix(), data=b"")
+        for number in range(20):
+            name = raw_log.log_name("codex", "made-up-%d" % number)
+            self.artifact("projects/sample/raw/" + name + ".jsonl.abcdefgh.tmp")
+            self.artifact("projects/sample/raw/" + name + ".jsonl.bak.abcdefgh.tmp")
+            self.artifact("projects/sample/raw/" + name + ".lock." + "a" * 32 + ".stale")
+        original, scans = Path.iterdir, []
+        def inventory(path):
+            if path == self.project / "raw":
+                scans.append(path)
+            return original(path)
+        with mock.patch.object(Path, "iterdir", inventory):
+            self.project_cleanup(30)
+        self.assertLessEqual(len(scans), 2)
+        self.assertEqual(set(raw.iterdir()), healthy)
 
     def test_tc330_only_valid_supported_primary_allows_backup_deletion(self):
         configuration = self.root / "configuration.json"

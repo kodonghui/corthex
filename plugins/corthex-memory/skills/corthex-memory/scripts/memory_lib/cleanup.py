@@ -60,7 +60,7 @@ def readable(memory, primary, parse, guard, deadline):
         return None
 
 
-def artifacts(memory, primary, leases, deadline, parse=None):
+def artifacts(memory, primary, leases, deadline, parse=None, *, candidates=None):
     """parse=None cleans only this known lease's old detached stale files."""
     guard = lambda: memory.check(deadline, leases)
     guard()
@@ -69,7 +69,8 @@ def artifacts(memory, primary, leases, deadline, parse=None):
     temporary = re.compile(re.escape(primary.name) + r"(?:\.bak)?\.[a-z0-9_]{8}\.tmp\Z")
     stale = re.compile(re.escape(primary.name) + r"\.[0-9a-f]{32}\.stale\Z")
     count = 0
-    for path in primary.parent.iterdir():
+    paths = primary.parent.iterdir() if candidates is None else candidates
+    for path in paths:
         guard()
         backup = parse is not None and path.name == primary.name + ".bak"
         if not (backup or (temporary if parse is not None else stale).fullmatch(path.name)):
@@ -132,13 +133,17 @@ def clean_project(memory, project, curation, deadline):
     raw = root / "raw"
     if memory.fence.check(raw) is None:
         return count
-    names = set()
+    names = {}
     for path in raw.iterdir():
-        memory.check(deadline, (curation,))
-        memory.fence.check(raw)
-        match = re.fullmatch("(" + LOG + r")\.(?:jsonl|lock)(?:\..*)?", path.name)
+        if clock.now() >= deadline:
+            raise locks.LockBusy()
+        match = re.fullmatch("(" + LOG + r")\.(?:jsonl\.(?:bak|(?:bak\.)?[a-z0-9_]{8}\.tmp)|"
+                             r"lock\.[0-9a-f]{32}\.stale)", path.name)
         if match:
-            names.add(match.group(1))
+            memory.check(deadline, (curation,))
+            memory.fence.check(raw)
+            names.setdefault(match.group(1), []).append(path)
+    memory.check(deadline, (curation,))
     try:
         with memory.lease(root / "layer.lock", "layer", deadline) as layer:
             count += artifacts(memory, layer.path, (curation, layer), deadline)
@@ -146,8 +151,9 @@ def clean_project(memory, project, curation, deadline):
                 try:
                     with memory.lease(raw / (name + ".lock"), "raw", deadline) as lease:
                         held = (curation, layer, lease)
-                        count += artifacts(memory, raw / (name + ".jsonl"), held, deadline, raw_primary)
-                        count += artifacts(memory, lease.path, held, deadline)
+                        count += artifacts(memory, raw / (name + ".jsonl"), held, deadline,
+                                           raw_primary, candidates=names[name])
+                        count += artifacts(memory, lease.path, held, deadline, candidates=names[name])
                 except locks.LockBusy:
                     memory.check(deadline, (curation, layer))
     except locks.LockBusy:
