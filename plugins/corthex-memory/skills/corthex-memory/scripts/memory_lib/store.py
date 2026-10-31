@@ -70,6 +70,12 @@ class MemoryStore:
     def __init__(self, folder=None):
         self.folder = Path(folder) if folder is not None else base.memory_home()
 
+    def _path_check(self, path):
+        """Optional caller policy, including recovery destinations."""
+
+    def _lock(self, path, kind, device):
+        return locks.Lock(path, kind, device)
+
     @staticmethod
     def _deadline(deadline):
         if not configuration.number(deadline) or not math.isfinite(deadline):
@@ -84,37 +90,44 @@ class MemoryStore:
         return check
 
     def _read_record(self, path, parse, deadline, report, device=None, holding_lock=None,
-                     recording=False):
+                     recording=False, reader=None):
         operation_deadline = None if recording else deadline
+        def paths():
+            self._path_check(path)
+            self._path_check(path.with_name(path.name + ".bak"))
         if holding_lock is not None:
-            check = self._guard(holding_lock, deadline, recording)
+            def check():
+                self._guard(holding_lock, deadline, recording)()
+                paths()
             check()
             return files.read_record(path, parse, report, holding_lock=True, check=check,
-                                     deadline=operation_deadline)
+                                     deadline=operation_deadline, reader=reader)
         if device is not None:
-            lock = locks.Lock(self.folder / "store.lock", "store", device)
+            lock = self._lock(self.folder / "store.lock", "store", device)
             def gate():
                 self.record(report, deadline=deadline, holding_lock=lock)
-            return reading.read_record(path, parse, lock, deadline, report, check=gate)
+                paths()
+            return reading.read_record(path, parse, lock, deadline, report, check=gate, reader=reader)
         try:
-            return files.read_record(path, parse, report, deadline=operation_deadline)
+            return files.read_record(path, parse, report, deadline=operation_deadline, reader=reader)
         except files.RestoreNeeded:
             # A damaged store has no usable primary device ID. Validate the
             # readable backup before creating a lock, keeping opaque headers
             # completely read-only. Never manufacture another device identity.
             backup = path.with_name(path.name + ".bak")
             try:
-                header = files.read_record(backup, _record, deadline=operation_deadline)
+                header = files.read_record(backup, parse, deadline=operation_deadline, reader=reader)
             except FileNotFoundError:
                 # Another reader may already have restored the same backup.
-                return files.read_record(path, parse, report, deadline=operation_deadline)
-            lock = locks.Lock(self.folder / "store.lock", "store", header["device"])
+                return files.read_record(path, parse, report, deadline=operation_deadline, reader=reader)
+            lock = self._lock(self.folder / "store.lock", "store", header["device"])
             def gate():
                 self.record(report, deadline=deadline, holding_lock=lock, recording=recording)
+                paths()
             return reading.read_record(path, parse, lock, deadline, report, check=gate,
-                                       finish_recovery=recording)
+                                       finish_recovery=recording, reader=reader)
 
-    def record(self, report=None, *, deadline, holding_lock=None, recording=False):
+    def record(self, report=None, *, deadline, holding_lock=None, recording=False, precondition=None):
         """Read the gate; recovery borrows the caller's operation deadline.
 
         Malformed/missing records without recovery are store-damaged. Ordinary
@@ -128,6 +141,8 @@ class MemoryStore:
             raise StoreUnavailable("no-store")
         def parse(data):
             value = _record(data)
+            if precondition is not None:
+                precondition(value)
             if holding_lock is not None and value["device"] != holding_lock.device:
                 # Policy refusal must precede restoration, including a backup.
                 raise locks.LostLock()
@@ -154,7 +169,7 @@ class MemoryStore:
     def write_configuration(self, document, deadline):
         before = self.record(deadline=deadline)
         checked = configuration.prepare(document)
-        lock = locks.Lock(self.folder / "store.lock", "store", before["device"])
+        lock = self._lock(self.folder / "store.lock", "store", before["device"])
         def report_release(error, count):
             from .diagnostics import Diagnostics
             Diagnostics(self).failure(error, "skill", deadline)

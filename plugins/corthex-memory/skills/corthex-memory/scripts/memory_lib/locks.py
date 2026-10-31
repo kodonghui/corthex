@@ -93,9 +93,16 @@ def _touch(fd, mtime=None):
             raise OSError("lock refresh failed")
 
 
-def _discard(path, deadline):
+def _paths(check, *paths):
+    if check is not None:
+        for path in paths:
+            check(path)
+
+
+def _discard(path, deadline, check=None):
     while True:
         try:
+            _paths(check, path)
             path.unlink()
             return
         except FileNotFoundError:
@@ -107,19 +114,23 @@ def _discard(path, deadline):
             time.sleep(min(0.005, left))
 
 
-def _restore(source, target, snapshot):
+def _restore(source, target, snapshot, check=None):
     """Restore without replacing a lock another contender has already made."""
     try:
+        _paths(check, source, target)
         os.link(str(source), str(target))
     except FileExistsError:
         return
     except OSError:
         try:
+            _paths(check, target)
             fd = private_open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         except FileExistsError:
             return
-        with os.fdopen(fd, "wb") as output, source.open("rb") as incoming:
-            shutil.copyfileobj(incoming, output)
+        with os.fdopen(fd, "wb") as output:
+            _paths(check, source)
+            with source.open("rb") as incoming:
+                shutil.copyfileobj(incoming, output)
             output.flush()
             _touch(output.fileno(), snapshot.mtime)
 
@@ -127,17 +138,25 @@ def _restore(source, target, snapshot):
 class Lock:
     """Stage 05 lease; its lock path must be inside the memory folder."""
 
-    def __init__(self, path, kind, device):
+    def __init__(self, path, kind, device, *, path_check=None):
         if kind not in POLICIES or not re.fullmatch(r"d_[0-9a-hjkmnp-tv-z]{12}", device):
             raise ValueError("invalid lock kind or device")
         path = Path(path)
+        self._path_check = path_check
+        _paths(path_check, path)
         self.path = path.parent.resolve() / path.name
+        _paths(path_check, self.path)
         self.policy, self.device = POLICIES[kind], device
         relative = os.path.relpath(str(self.path), str(memory_home().resolve())).replace(os.sep, "/")
         self._order = (self.policy.rank, relative.casefold() if os.name == "nt" else relative)
         self.pid, self.token = os.getpid(), None
         self._stop, self._mutex = threading.Event(), threading.RLock()
         self._thread = None
+
+    def _snapshot(self, path=None):
+        path = self.path if path is None else path
+        _paths(self._path_check, path)
+        return _snapshot(path)
 
     def _reserve(self):
         global _registry_pid
@@ -158,6 +177,7 @@ class Lock:
 
     def _create(self):
         try:
+            _paths(self._path_check, self.path)
             fd = private_open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
         except FileExistsError:
             return False
@@ -171,25 +191,26 @@ class Lock:
         moved = self.path.with_name(self.path.name + "." + secrets.token_hex(16) + ".stale")
         cleanup = False
         try:
+            _paths(self._path_check, self.path, moved)
             os.rename(str(self.path), str(moved))
         except FileNotFoundError:
             return None
         try:
-            actual = _snapshot(moved)
+            actual = self._snapshot(moved)
             same = actual and actual.token == expected.token and actual.identity == expected.identity
             if actual and actual.token is None:
                 same = same and actual.mtime == expected.mtime
             expired = actual and (time.time_ns() - actual.mtime) / 1e9 > self.policy.stale
             if not same or (stale and not force and not expired):
                 if actual:
-                    _restore(moved, self.path, actual)
+                    _restore(moved, self.path, actual, check=self._path_check)
                 cleanup = True
                 return False
             cleanup = True
             return True
         finally:
             if cleanup:
-                _discard(moved, deadline)
+                _discard(moved, deadline, check=self._path_check)
 
     def _start_heartbeat(self):
         if self.policy.refresh is not None:
@@ -199,7 +220,7 @@ class Lock:
     def _attempt(self, deadline, force, finish=False):
         if self._create():
             return True
-        previous = _snapshot(self.path)
+        previous = self._snapshot()
         if previous and (force or (time.time_ns() - previous.mtime) / 1e9 > self.policy.stale):
             detached = self._detach(previous, stale=True, force=force, deadline=deadline)
             if detached is False:
@@ -270,7 +291,7 @@ class Lock:
         if self.pid != os.getpid():
             raise LostLock()
         with self._mutex:
-            current = _snapshot(self.path)
+            current = self._snapshot()
             if self._stop.is_set() or not self.token or not current or current.token != self.token:
                 raise LostLock()
         return True
@@ -281,6 +302,7 @@ class Lock:
         with self._mutex:
             self.check()
             try:
+                _paths(self._path_check, self.path)
                 fd = os.open(str(self.path), os.O_RDWR | getattr(os, "O_BINARY", 0))
             except FileNotFoundError:
                 raise LostLock() from None
@@ -288,6 +310,7 @@ class Lock:
                 record = json.loads(os.read(fd, 4096).decode("utf-8"))
                 if not isinstance(record, dict) or record.get("token") != self.token:
                     raise LostLock()
+                _paths(self._path_check, self.path)
                 _touch(fd)
             finally:
                 os.close(fd)
@@ -305,7 +328,7 @@ class Lock:
         with self._mutex:
             while self.token:
                 try:
-                    current = _snapshot(self.path)
+                    current = self._snapshot()
                     if not current or current.token != self.token:
                         return
                     if self._detach(current, stale=False, deadline=deadline) is not None:

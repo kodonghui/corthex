@@ -298,7 +298,8 @@ class HookFrameworkTest(HookCase):
                     record.write_bytes(content)
                 backup.write_bytes(base.json_bytes(self.header, "TBL-001"))
                 before = len(self.records("failures"))
-                self.run_hook(hook)
+                # Use a controlled counter for this functional recovery test.
+                self.run_hook(hook, patch="time.perf_counter = lambda: 0.0")
                 self.assertEqual(files.read_json(record, "TBL-001"), self.header)
                 self.assertEqual(len(self.records("failures")), before + 1)
                 self.assertEqual(self.records("failures")[-1]["error"], "restored")
