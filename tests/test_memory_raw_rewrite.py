@@ -1,0 +1,387 @@
+"""TC-336 direct foundation evidence; retention and actual starts stay later."""
+import copy
+import json
+import multiprocessing
+import os
+from pathlib import Path
+from unittest import mock
+
+from test_memory_store import AT, StoreCase
+import test_memory_cleanup as cleanup_tests
+from memory_lib import base, cleanup, curation, files, locks, raw_log, raw_rewrite, worker_support
+from memory_lib import clock
+
+
+def append_once(connection, folder):
+    memory = worker_support.WorkerStore(Path(folder))
+    recorded = raw_log.RawLog(memory, "sample", "codex", "fixture").append(
+        "prompt", raw_log.prepare("late 가나다"), diagnostic_deadline=clock.now() + 5)
+    connection.send((recorded.outcome, recorded.entry))
+    connection.close()
+
+
+class RawRewriteTest(StoreCase):
+    def setUp(self):
+        super().setUp()
+        self.worker = worker_support.WorkerStore()
+        self.root = self.worker.folder
+        self.project = self.root / "projects" / "sample"
+        base.private_directory(self.project / "raw")
+        base.private_directory(self.project / "unprocessed")
+        self.log = raw_log.log_name("codex", "fixture")
+        self.path = self.project / "raw" / (self.log + ".jsonl")
+        self.record = self.project / "curation.json"
+        self.document = {"logs": {self.log: 6, "codex-0000000000000000": 4}, "applies": 8,
+                         "recent": [{"at": AT, "kind": "curate", "result": "ok", "applied": 3,
+                                     "dropped": 1, "state": "kept"},
+                                    {"at": AT, "kind": "consolidate", "result": "failed", "error": "network"}],
+                         "failures": {"count": 2, "log": self.log, "turn": 1},
+                         "consolidation": {"last": AT, "due": AT, "failures": 2},
+                         "stopped": {"at": AT, "by": "curate", "errors": ["refusal", "PermissionError"]},
+                         "rebuilt": AT}
+        self.original_record = base.json_bytes(self.document, "TBL-009")
+        self.record.write_bytes(self.original_record)
+        self.entries = [self.entry(n) for n in (1, 2, 3)]
+        self.original = b"".join(self.encoded(e) for e in self.entries)
+        self.path.write_bytes(self.original)
+
+    def entry(self, seq):
+        return {"id": "e_" + str(seq).zfill(12), "seq": seq, "turn": seq, "at": AT,
+                "host": "codex", "session": "fixture", "kind": "prompt", "speaker": "user",
+                "text": "entry-%d" % seq}
+
+    @staticmethod
+    def encoded(entry):
+        return base.json_bytes(entry, "TBL-007", compact=True)
+
+    def rewrite(self, keep, after=None):
+        deadline = clock.now() + 30
+        with self.worker.lease(self.project / "curation.lock", "curation", deadline) as owner:
+            return raw_rewrite.rewrite(self.worker, "sample", owner, self.log, keep, deadline, after)
+
+    def progress(self):
+        return curation.parse(self.record.read_bytes())
+
+    def unchanged_metadata(self, expected):
+        actual = self.progress()
+        actual["logs"] = expected["logs"]
+        self.assertEqual(actual, expected)
+
+    def test_tc336_nonempty_typed_metadata_round_trips_without_defaults(self):
+        self.assertEqual(curation.parse(self.original_record), self.document)
+        minimum = {"logs": {}, "applies": 0, "recent": [], "consolidation": {"failures": 0}}
+        self.assertEqual(curation.parse(base.json_bytes(minimum, "TBL-009")), minimum)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_invalid_nested_records_and_unknown_fields_are_rejected(self):
+        variants = [("applies", True), ("applies", -1), ("logs", []),
+                    ("logs", {"../outside": 1}), ("recent", self.document["recent"] * 6),
+                    ("recent", [{"at": AT, "kind": "curate"}]),
+                    ("recent", [{"at": AT, "kind": "curate", "result": "ok", "applied": False}]),
+                    ("recent", [{"at": AT, "kind": "curate", "result": "ok", "error": "private text"}]),
+                    ("consolidation", {"failures": 0, "last": "2026-99-99T00:00:00.000Z"}),
+                    ("failures", {"count": 1, "log": self.log, "turn": 0}),
+                    ("stopped", {"at": AT, "by": "curate", "errors": "refusal"}),
+                    ("rebuilt", AT[:-1]), ("unknown", 1)]
+        for field, value in variants:
+            with self.subTest(field=field, value=value):
+                document = copy.deepcopy(self.document)
+                document[field] = value
+                with self.assertRaises(ValueError):
+                    curation.parse(base.json_bytes(document, "TBL-009"))
+        for invalid in (b'{}', b'{"applies":NaN}', b'{"logs":{},"logs":{}}'):
+            with self.assertRaises(ValueError):
+                curation.parse(invalid)
+
+    def test_tc336_filter_preserves_bytes_fields_and_lowers_progress(self):
+        result = self.rewrite(lambda e: e["seq"] == 1)
+        self.assertEqual(self.path.read_bytes(), self.encoded(self.entries[0]))
+        self.assertEqual((result.kept, result.removed, result.damaged, result.deleted), (1, 2, 0, False))
+        self.assertEqual(result.turns, frozenset({1}))
+        self.assertEqual(self.progress()["logs"][self.log], 1)
+        self.unchanged_metadata(self.document)
+        self.assertFalse(list(self.project.rglob("*.bak")))
+        self.assertFalse(list(self.project.rglob("*.tmp")))
+
+    def test_tc336_readable_curation_backup_restores_under_matching_leases(self):
+        self.record.with_name("curation.json.bak").write_bytes(self.original_record)
+        self.record.write_bytes(b"{")
+        result = self.rewrite(lambda e: True)
+        self.assertEqual(result.kept, 3)
+        self.assertEqual(self.progress()["logs"][self.log], 3)
+        self.unchanged_metadata(self.document)
+        self.assertFalse(self.record.with_name("curation.json.bak").exists())
+        self.assertEqual(self.path.read_bytes(), self.original)
+
+    def test_tc336_unrecoverable_progress_never_guesses_or_creates_directories(self):
+        for value in (None, b"{", b'{"logs":{}}'):
+            with self.subTest(value=value):
+                if value is None:
+                    self.record.unlink()
+                else:
+                    self.record.write_bytes(value)
+                before = {p.relative_to(self.root) for p in self.root.rglob("*") if p.is_dir()}
+                with self.assertRaises((FileNotFoundError, ValueError)):
+                    self.rewrite(lambda e: False)
+                self.assertEqual(self.path.read_bytes(), self.original)
+                self.assertEqual(self.record.exists(), value is not None)
+                self.assertEqual(before, {p.relative_to(self.root) for p in self.root.rglob("*") if p.is_dir()})
+
+    def test_tc336_deletion_lowers_to_zero_before_unlink_and_only_then_removes_key(self):
+        original, observed = Path.unlink, []
+        unowned = self.path.with_name(self.path.name + ".unowned.tmp")
+        unowned.write_bytes(b"keep")
+        def unlink(path, *args, **kwargs):
+            if path == self.path:
+                observed.append(self.progress()["logs"][self.log])
+                self.assertTrue(path.exists())
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, "unlink", unlink):
+            result = self.rewrite(lambda e: False)
+        self.assertEqual(observed, [0])
+        self.assertTrue(result.deleted)
+        self.assertNotIn(self.log, self.progress()["logs"])
+        self.assertFalse(self.path.exists())
+        self.assertEqual(unowned.read_bytes(), b"keep")
+
+    def test_tc336_interruption_after_progress_before_move_only_recurates(self):
+        backup = files._backup
+        def stop(path, *args, **kwargs):
+            if path == self.path:
+                self.assertEqual(self.progress()["logs"][self.log], 1)
+                raise RuntimeError("fixture stop")
+            return backup(path, *args, **kwargs)
+        with mock.patch.object(files, "_backup", stop), self.assertRaises(RuntimeError):
+            self.rewrite(lambda e: e["seq"] == 1)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.progress()["logs"][self.log], 1)
+        self.assertFalse(list(self.project.rglob("*.tmp")))
+
+    def test_tc336_interruption_after_deletion_cannot_count_reused_seq_as_processed(self):
+        write, calls = curation.write, []
+        def stop(*args, **kwargs):
+            calls.append(True)
+            if len(calls) == 2:
+                self.assertFalse(self.path.exists())
+                raise RuntimeError("fixture stop")
+            return write(*args, **kwargs)
+        with mock.patch.object(curation, "write", stop), self.assertRaises(RuntimeError):
+            self.rewrite(lambda e: False)
+        self.assertEqual(self.progress()["logs"][self.log], 0)
+        added = raw_log.RawLog(self.worker, "sample", "codex", "fixture").append(
+            "prompt", raw_log.prepare("new"), diagnostic_deadline=clock.now() + 5)
+        self.assertEqual(added.outcome, "ok")
+        self.assertEqual(added.entry["seq"], 1)
+        self.assertGreater(added.entry["seq"], self.progress()["logs"][self.log])
+
+    def test_tc336_actual_child_append_during_build_is_carried_byte_for_byte(self):
+        context = multiprocessing.get_context("spawn")
+        parent, child = context.Pipe()
+        process = context.Process(target=append_once, args=(child, str(self.root)))
+        received = []
+        def keep(entry):
+            if not received:
+                process.start()
+                self.assertTrue(parent.poll(15))
+                received.append(parent.recv())
+                process.join(15)
+                self.assertEqual(process.exitcode, 0)
+            return False
+        try:
+            result = self.rewrite(keep)
+            self.assertEqual(received[0][0], "ok")
+            self.assertEqual(received[0][1]["seq"], 4)
+            self.assertEqual(self.path.read_bytes(), self.encoded(received[0][1]))
+            self.assertEqual((result.kept, result.removed, result.deleted), (1, 3, False))
+            self.assertEqual(self.progress()["logs"][self.log], 0)
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+            parent.close()
+            child.close()
+
+    def test_tc336_snapshot_in_the_middle_of_an_append_keeps_its_original_tail(self):
+        late = self.encoded(self.entry(4))
+        half = len(late) // 2
+        self.path.write_bytes(self.original + late[:half])
+        finished = []
+        def keep(entry):
+            if not finished:
+                with self.worker.lease(self.path.with_suffix(".lock"), "raw", clock.now() + 5):
+                    with self.path.open("ab") as stream:
+                        stream.write(late[half:])
+                finished.append(True)
+            return False
+        result = self.rewrite(keep)
+        self.assertEqual(self.path.read_bytes(), late)
+        self.assertEqual((result.kept, result.damaged, result.deleted), (1, 0, False))
+
+    def test_tc336_changed_prefix_with_identical_stat_is_refused(self):
+        info, changed = self.path.stat(), []
+        replaced = self.original.replace(b"entry-1", b"alter-1")
+        def keep(entry):
+            if not changed:
+                self.path.write_bytes(replaced)
+                os.utime(str(self.path), ns=(info.st_atime_ns, info.st_mtime_ns))
+                changed.append(True)
+            return True
+        with self.assertRaises(locks.LostLock):
+            self.rewrite(keep)
+        self.assertEqual(self.path.read_bytes(), replaced)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_same_bytes_atomic_replacement_is_refused(self):
+        changed, chunks = [], raw_rewrite._chunks
+        def read(*args, **kwargs):
+            yield from chunks(*args, **kwargs)
+            # Windows forbids replacing an open file. Inject after this first
+            # snapshot reader closes, before the final raw-lease verification.
+            if not changed and kwargs.get("digest") is not None:
+                other = self.path.with_name("external")
+                other.write_bytes(self.original)
+                os.replace(str(other), str(self.path))
+                changed.append(True)
+        with mock.patch.object(raw_rewrite, "_chunks", read), self.assertRaises(locks.LostLock):
+            self.rewrite(lambda e: True)
+        self.assertTrue(changed)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_store_replacement_during_temp_flush_stops_before_progress(self):
+        sync, changed = files._sync, []
+        def replace(fd):
+            sync(fd)
+            if not changed:
+                (self.root / "store.json").write_bytes(base.json_bytes({**self.header, "device": "d_zzzzzzzzzzzz"}, "TBL-001"))
+                changed.append(True)
+        with mock.patch.object(files, "_sync", replace), self.assertRaises(locks.LostLock):
+            self.rewrite(lambda e: True)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_copy_fallback_rechecks_lease_after_open(self):
+        opened, original = [], Path.open
+        def replaced(path, *args, **kwargs):
+            if path == self.path and args and args[0] == "rb":
+                opened.append(True)
+                if len(opened) == 3:
+                    (self.project / "curation.lock").unlink()
+            return original(path, *args, **kwargs)
+        with mock.patch.object(files.os, "link", side_effect=OSError), mock.patch.object(Path, "open", replaced), self.assertRaises(locks.LostLock):
+            self.rewrite(lambda e: e["seq"] == 1)
+        self.assertEqual(len(opened), 3)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.progress()["logs"][self.log], 1)
+
+    def test_tc336_expiry_during_last_temporary_path_check_stops_the_write(self):
+        original, now = self.worker.fence.check, clock.now
+        expired, limit = [], now() + 1
+        def check(path):
+            result = original(path)
+            if path.name.endswith(".tmp"):
+                expired.append(True)
+            return result
+        with mock.patch.object(self.worker.fence, "check", check), mock.patch.object(clock, "now", side_effect=lambda: limit + 100 if expired else now()), self.assertRaises(locks.LockBusy):
+            self.rewrite(lambda e: True)
+        self.assertTrue(expired)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_directory_alias_and_untracked_curation_are_refused(self):
+        outside = self.root / "outside"
+        self.project.rename(outside)
+        cleanup_tests.CleanupTest.alias(self, self.project, outside, directory=True)
+        with self.assertRaises(worker_support.UnsafePath):
+            self.rewrite(lambda e: False)
+        self.assertEqual((outside / "raw" / self.path.name).read_bytes(), self.original)
+        deadline = clock.now() + 5
+        foreign = locks.Lock(self.root / "foreign.lock", "curation", self.header["device"])
+        with self.assertRaises(locks.LostLock):
+            raw_rewrite.rewrite(self.worker, "other", foreign, self.log, lambda e: False, deadline)
+        self.assertFalse((self.root / "projects" / "other").exists())
+
+    def test_tc336_oversized_line_is_preserved_instead_of_classified_as_damage(self):
+        huge = b"x" * (cleanup.LINE_BYTES + 1) + b"\n"
+        self.path.write_bytes(huge)
+        with self.assertRaises(raw_rewrite.OversizedLine):
+            self.rewrite(lambda e: False)
+        self.assertEqual(self.path.read_bytes(), huge)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_missing_raw_restores_backup_and_copy_fallback_remains_durable(self):
+        backup = self.path.with_name(self.path.name + ".bak")
+        self.path.rename(backup)
+        with mock.patch.object(files.os, "link", side_effect=OSError):
+            result = self.rewrite(lambda e: e["seq"] == 2)
+        self.assertEqual(self.path.read_bytes(), self.encoded(self.entries[1]))
+        self.assertEqual(result.kept, 1)
+        self.assertFalse(backup.exists())
+        self.assertFalse(list(self.project.rglob("*.tmp")))
+
+    def test_tc336_after_callback_still_holds_all_matching_leases(self):
+        calls = []
+        def after(result, check):
+            check()
+            calls.append(result)
+            self.assertEqual([lease.policy.rank for lease in self.worker.held], [1, 3, 4])
+            self.assertFalse(self.path.with_name(self.path.name + ".bak").exists())
+        result = self.rewrite(lambda e: True, after)
+        self.assertEqual(calls, [result])
+        self.assertEqual(self.worker.held, [])
+
+    def test_tc336_failed_delete_keeps_zero_progress_until_a_real_deletion(self):
+        unlink = Path.unlink
+        def denied(path, *args, **kwargs):
+            if path == self.path:
+                raise PermissionError("fixture")
+            return unlink(path, *args, **kwargs)
+        with mock.patch.object(Path, "unlink", denied), mock.patch.object(files, "_WINDOWS", False), self.assertRaises(PermissionError):
+            self.rewrite(lambda e: False)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.progress()["logs"][self.log], 0)
+        self.assertTrue(self.rewrite(lambda e: False).deleted)
+        self.assertNotIn(self.log, self.progress()["logs"])
+
+    def test_tc336_bad_lines_are_counted_without_rolling_back_valid_raw_content(self):
+        backup = self.path.with_name(self.path.name + ".bak")
+        backup.write_bytes(self.encoded(self.entry(9)))
+        self.path.write_bytes(b"not-json\n" + self.original + b'{"seq":NaN}\ncut')
+        result = self.rewrite(lambda e: True)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual((result.kept, result.damaged), (3, 3))
+        self.assertFalse(backup.exists())
+
+    def test_tc336_lost_guard_cannot_flush_buffered_bytes_on_close(self):
+        lost, observed = [], []
+        def check():
+            if lost:
+                raise locks.LostLock()
+        def chunks():
+            yield b"synthetic payload"
+            temporary = next(self.path.parent.glob(self.path.name + ".*.tmp"))
+            observed.append((temporary, temporary.read_bytes()))
+            lost.append(True)
+            raise locks.LostLock()
+        with self.assertRaises(locks.LostLock):
+            files._temporary(self.path, chunks(), True, check, self.worker.fence.check)
+        self.assertEqual(observed[0][1], b"synthetic payload")
+        self.assertEqual(observed[0][0].read_bytes(), observed[0][1])
+
+    def test_tc336_staging_replacement_after_progress_cannot_be_committed(self):
+        for content in (b"foreign staging bytes", b""):
+            with self.subTest(content=content):
+                write, changed = curation.write, []
+                def replaced(*args, **kwargs):
+                    write(*args, **kwargs)
+                    temporary = next(self.path.parent.glob(self.path.name + ".*.tmp"))
+                    other = temporary.with_name("foreign-stage")
+                    other.write_bytes(content)
+                    os.replace(str(other), str(temporary))
+                    changed.append(temporary)
+                with mock.patch.object(curation, "write", replaced), self.assertRaises(RuntimeError):
+                    self.rewrite(lambda e: e["seq"] == 1)
+                self.assertEqual(self.path.read_bytes(), self.original)
+                self.assertEqual(self.progress()["logs"][self.log], 1)
+                self.assertEqual(changed[0].read_bytes(), content)
+                changed[0].unlink()

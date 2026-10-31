@@ -85,39 +85,81 @@ def _sync(fd):
     os.fsync(fd)
 
 
-def _temporary(path, data, durable):
+def _access(check, path_check, *paths):
+    if check is not None:
+        check()
+    if path_check is not None:
+        for path in paths:
+            path_check(path)
+        if check is not None:
+            check()
+
+
+def _temporary(path, data, durable, check=None, path_check=None, ready=None):
+    _access(check, path_check, path)
     fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     temporary = Path(name)
+    def guard(policy=check):
+        _access(policy, path_check, temporary)
+        info = temporary.lstat()
+        if (info.st_dev, info.st_ino) != identity:
+            raise RuntimeError("temporary identity changed")
+    identity = (os.fstat(fd).st_dev, os.fstat(fd).st_ino)
     try:
-        with os.fdopen(fd, "wb") as stream:
+        with os.fdopen(fd, "wb", buffering=0) as stream:
             if os.name != "nt":
+                guard()
                 os.fchmod(stream.fileno(), 0o600)
-            stream.write(data)
+            chunks = iter((data,)) if isinstance(data, (bytes, bytearray, memoryview)) else iter(data)
+            try:
+                for chunk in chunks:
+                    guard()
+                    if stream.write(chunk) != len(chunk):
+                        raise OSError("short temporary write")
+            finally:
+                if hasattr(chunks, "close"):
+                    chunks.close()
+            guard()
             stream.flush()
             if durable:
+                guard()
                 _sync(stream.fileno())
+        guard()
+        if ready is not None:
+            ready(guard)
         return temporary
     except BaseException:
-        _unlink(temporary)
+        _unlink(temporary, guard if path_check is not None else None)
         raise
 
 
-def _backup(path, backup, check=None):
-    _unlink(backup, check)
+def _backup(path, backup, check=None, path_check=None):
+    guard = lambda: _access(check, path_check, path, backup)
+    _unlink(backup, guard)
     try:
-        _checked(check, lambda: os.link(str(path), str(backup)))
+        _checked(guard, lambda: os.link(str(path), str(backup)))
     except OSError:
         # A copied backup becomes visible only after it is complete and durable.
-        temporary = _checked(check, lambda: _temporary(backup, _retry(path.read_bytes), True))
+        def chunks():
+            guard()
+            with _retry(lambda: _checked(guard, lambda: path.open("rb"))) as source:
+                while True:
+                    guard()
+                    chunk = source.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+        ready = []
+        temporary = _temporary(backup, chunks(), True, check=guard, path_check=path_check, ready=ready.append)
         try:
-            _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(backup))))
+            _retry(lambda: _checked(ready[0], lambda: os.replace(str(temporary), str(backup))))
         finally:
-            _unlink(temporary)
+            _unlink(temporary, None if path_check is None else ready[0])
     if os.name != "nt":
-        _checked(check, lambda: backup.chmod(0o600))
+        _checked(guard, lambda: backup.chmod(0o600))
 
 
-def replace_bytes(path, data, rebuildable=False, check=None):
+def replace_bytes(path, data, rebuildable=False, check=None, *, path_check=None):
     """Replace using a same-directory temporary, then backup, move, cleanup.
 
     A failed replacement preserves the old target and its backup. A process
@@ -125,20 +167,24 @@ def replace_bytes(path, data, rebuildable=False, check=None):
     Rebuildable files omit fsync and the backup, as stage 05 specifies.
     """
     path = Path(path)
-    temporary = _checked(check, lambda: _temporary(path, data, not rebuildable))
+    ready = []
+    temporary = _temporary(path, data, not rebuildable, check=check, path_check=path_check, ready=ready.append)
     backup = path.with_name(path.name + ".bak")
+    def guard():
+        _access(check, path_check, path, backup)
+        ready[0]()
     try:
         if not rebuildable and path.exists():
-            _backup(path, backup, check=check)
-        _retry(lambda: _checked(check, lambda: os.replace(str(temporary), str(path))))
+            _backup(path, backup, check=check, path_check=path_check)
+        _retry(lambda: _checked(guard, lambda: os.replace(str(temporary), str(path))))
         if not rebuildable:
-            _unlink(backup, check)
+            _unlink(backup, lambda: _access(check, path_check, backup))
     finally:
-        _unlink(temporary)
+        _unlink(temporary, None if path_check is None else ready[0])
 
 
-def write_json(path, record, table, rebuildable=False, check=None):
-    replace_bytes(path, json_bytes(record, table), rebuildable, check=check)
+def write_json(path, record, table, rebuildable=False, check=None, *, path_check=None):
+    replace_bytes(path, json_bytes(record, table), rebuildable, check=check, path_check=path_check)
 
 
 def append_jsonl(path, record, table, report=None, check=None, deadline=None, *, reader=None):
