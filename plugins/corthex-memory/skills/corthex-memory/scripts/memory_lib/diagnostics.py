@@ -83,18 +83,31 @@ class Diagnostics:
         self.store = memory_store
         self._ready = None
 
+    def _path_check(self, path):
+        """Optional caller policy for diagnostic paths."""
+
+    def _reader(self, path, deadline):
+        return path.read_bytes()
+
+    def _lock(self, path, device):
+        return locks.Lock(path, "log", device)
+
     @staticmethod
-    def _stamp(path, deadline=None):
+    def _stamp(path, deadline=None, check=None):
         # Same-size in-place writes can retain all four stat fields. Bind the
         # snapshot to the header bytes too, using the same open file's identity.
         # This never parses/restores a record or acquires another lock.
         def read():
+            if check is not None:
+                check(path)
             with path.open("rb") as source:
                 info = os.fstat(source.fileno())
                 digest = hashlib.sha256()
                 for chunk in iter(lambda: source.read(8192), b""):
                     digest.update(chunk)
             stamp = info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns
+            if check is not None:
+                check(path)
             current = path.stat()
             if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != stamp:
                 # A POSIX writer can replace the path while the old FD stays
@@ -130,16 +143,19 @@ class Diagnostics:
         path = folder / (name + "-" + record["at"][:10] + ".jsonl")
         if self._stamp(header, deadline) != stamp:
             return False
-        lock = locks.Lock(folder / (name + ".lock"), "log", device)
+        lock = self._lock(folder / (name + ".lock"), device)
         lock.try_once()
         try:
             def guard():
+                self._path_check(path)
+                self._path_check(path.with_name(path.name + ".bak"))
                 lock.check()
                 if self._stamp(header, deadline) != stamp:
                     raise locks.LostLock()
                 lock.check()
             guard()
-            files.append_jsonl(path, record, table, check=guard, deadline=deadline)
+            files.append_jsonl(path, record, table, check=guard, deadline=deadline,
+                               reader=lambda p: self._reader(p, deadline))
             return True
         finally:
             lock.release()
@@ -154,13 +170,16 @@ class Diagnostics:
             before = self.read_gate(deadline)
             stamp = self._ready[1]
             folder = self.store.folder / "logs"
-            lock = locks.Lock(folder / (name + ".lock"), "log", before["device"])
+            lock = self._lock(folder / (name + ".lock"), before["device"])
+            path = folder / (name + "-" + record["at"][:10] + ".jsonl")
             def report_release(error, count):
                 self.failure(error, "record", deadline, hook=record.get("hook"),
                              host=record.get("host"), opportunistic=opportunistic)
             with _log_lease(lock, deadline, opportunistic,
                             report_release if name != "failures" else None):
                 def guard():
+                    self._path_check(path)
+                    self._path_check(path.with_name(path.name + ".bak"))
                     if not opportunistic and clock.now() >= deadline:
                         raise locks.LockBusy()
                     lock.check()
@@ -172,8 +191,8 @@ class Diagnostics:
                     if not opportunistic and clock.now() >= deadline:
                         raise locks.LockBusy()
                 guard()
-                path = folder / (name + "-" + record["at"][:10] + ".jsonl")
-                files.append_jsonl(path, record, table, check=guard, deadline=deadline)
+                files.append_jsonl(path, record, table, check=guard, deadline=deadline,
+                                   reader=lambda p: self._reader(p, deadline))
             return True
         except (OSError, RuntimeError, ValueError, TypeError, OverflowError):
             # The caller's hook stays quiet and continues even if logging fails.

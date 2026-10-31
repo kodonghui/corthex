@@ -141,7 +141,7 @@ def write_json(path, record, table, rebuildable=False, check=None):
     replace_bytes(path, json_bytes(record, table), rebuildable, check=check)
 
 
-def append_jsonl(path, record, table, report=None, check=None, deadline=None):
+def append_jsonl(path, record, table, report=None, check=None, deadline=None, *, reader=None):
     """Append an already-redacted object with exactly one unbuffered write.
 
     Caller holds the file lock through recovery, the size/last-byte read, write
@@ -154,7 +154,7 @@ def append_jsonl(path, record, table, report=None, check=None, deadline=None):
     data = json_bytes(record, table, compact=True)
     path = Path(path)
     if not path.exists() and path.with_name(path.name + ".bak").exists():
-        read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline)
+        read_jsonl(path, report, holding_lock=True, check=check, deadline=deadline, reader=reader)
     fd = _retry(lambda: _checked(check, lambda: private_open(path, os.O_CREAT | os.O_RDWR | os.O_APPEND)), deadline)
     try:
         size = os.fstat(fd).st_size
@@ -248,7 +248,7 @@ def _lines(data):
     return entries, damaged
 
 
-def read_jsonl(path, report=None, holding_lock=False, check=None, deadline=None):
+def read_jsonl(path, report=None, holding_lock=False, check=None, deadline=None, *, reader=None):
     """Keep complete object lines, skip/count bad lines without guessing.
 
     Damaged JSONL lines are not a reason to roll the file back to a backup,
@@ -257,7 +257,7 @@ def read_jsonl(path, report=None, holding_lock=False, check=None, deadline=None)
     Without that lock a readable backup raises RestoreNeeded without moving
     files. Permission and other I/O errors never roll back to older content.
     """
-    entries, damaged = read_record(path, _lines, report, holding_lock, check, deadline)
+    entries, damaged = read_record(path, _lines, report, holding_lock, check, deadline, reader=reader)
     if damaged and report:
         report("damaged-line", damaged)
     return entries

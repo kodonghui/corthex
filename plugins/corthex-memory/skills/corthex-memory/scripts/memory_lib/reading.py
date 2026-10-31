@@ -13,11 +13,11 @@ from . import files, locks
 from . import clock
 
 
-def _recover(reader, path, lock, deadline, report, before_locked=None,
+def _recover(read, path, lock, deadline, report, before_locked=None,
              finish_recovery=False, **options):
     operation_deadline = None if finish_recovery else deadline
     try:
-        return reader(path, report=report, deadline=operation_deadline, **options)
+        return read(path, report=report, deadline=operation_deadline, **options)
     except files.RestoreNeeded:
         pass
     if finish_recovery:
@@ -31,14 +31,16 @@ def _recover(reader, path, lock, deadline, report, before_locked=None,
             lock.check()
             if before_locked is not None:
                 before_locked()
+                lock.check()
         check()
-        return reader(path, report=report, holding_lock=True, check=check,
+        return read(path, report=report, holding_lock=True, check=check,
                       deadline=operation_deadline, **options)
     finally:
         lock.release(report=report)
 
 
-def read_record(path, parse, lock, deadline, report=None, check=None, *, finish_recovery=False):
+def read_record(path, parse, lock, deadline, report=None, check=None, *, finish_recovery=False,
+                reader=None):
     """Recheck and recover with a pure parser while holding the matching lease.
 
     deadline is required: recording uses its 50ms post-redaction lock wait,
@@ -49,7 +51,7 @@ def read_record(path, parse, lock, deadline, report=None, check=None, *, finish_
     finish acquired recovery with the ordinary one-second sharing retry.
     """
     return _recover(files.read_record, path, lock, deadline, report, before_locked=check,
-                    finish_recovery=finish_recovery, parse=parse)
+                    finish_recovery=finish_recovery, parse=parse, reader=reader)
 
 
 def read_json(path, lock, deadline, report=None, check=None):
