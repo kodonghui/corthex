@@ -70,6 +70,28 @@ def _entry(line, log):
     return value
 
 
+def _batches(chunks):
+    """Batch pure selected bytes; an empty chunk flushes before taking raw."""
+    pending = bytearray()
+    try:
+        for chunk in chunks:
+            if not chunk:
+                if pending:
+                    yield bytes(pending)
+                    pending.clear()
+                continue
+            view = memoryview(chunk)
+            for offset in range(0, len(view), worker_support.CHUNK):
+                pending.extend(view[offset:offset + worker_support.CHUNK])
+                if len(pending) >= worker_support.CHUNK:
+                    yield bytes(pending[:worker_support.CHUNK])
+                    del pending[:worker_support.CHUNK]
+        if pending:
+            yield bytes(pending)
+    finally:
+        chunks.close()
+
+
 def rewrite(memory, project, owner, log, keep, deadline, after=None):
     """Filter the first snapshot; carry every later byte unchanged under raw.
 
@@ -136,6 +158,7 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                     yield line
                 else:
                     removed += 1
+            yield b""
             stack.enter_context(memory.lease(path.with_suffix(".lock"), "raw", deadline))
             current = memory.fence.check(path)
             if current is None or current.st_size < original.st_size:
@@ -165,7 +188,7 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
             check()
         temporary = None
         ready = []
-        stream = content()
+        stream = _batches(content())
         try:
             temporary = files._temporary(path, stream, True, check=check, path_check=memory.fence.check, ready=ready.append)
             check()
@@ -180,8 +203,6 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                         files._unlink(candidate, lambda p=candidate: files._access(ready[0], memory.fence.check, p))
                 files._unlink(path, ready[0])
                 expected = None
-                progress["logs"].pop(log, None)
-                curation.write(memory, root, progress, deadline)
             else:
                 backup = path.with_name(path.name + ".bak")
                 files._backup(path, backup, check=check, path_check=memory.fence.check)
@@ -191,6 +212,9 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
             result = Rewritten(kept, removed, damaged, frozenset(turns), deleted)
             if after is not None:
                 after(result, basic)
+            if deleted:
+                progress["logs"].pop(log, None)
+                curation.write(memory, root, progress, deadline)
             return result
         finally:
             stream.close()
