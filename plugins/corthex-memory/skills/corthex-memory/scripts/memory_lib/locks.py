@@ -17,7 +17,7 @@ import time
 from collections import namedtuple
 from pathlib import Path
 
-from .base import memory_home, private_open, utc_time
+from .base import private_open, utc_time
 from . import clock
 
 Policy = namedtuple("Policy", "rank refresh stale")
@@ -147,8 +147,8 @@ class Lock:
         self.path = path.parent.resolve() / path.name
         _paths(path_check, self.path)
         self.policy, self.device = POLICIES[kind], device
-        relative = os.path.relpath(str(self.path), str(memory_home().resolve())).replace(os.sep, "/")
-        self._order = (self.policy.rank, relative.casefold() if os.name == "nt" else relative)
+        ordering_path = self.path.as_posix()
+        self._order = (self.policy.rank, ordering_path.casefold() if os.name == "nt" else ordering_path)
         self.pid, self.token = os.getpid(), None
         self._stop, self._mutex = threading.Event(), threading.RLock()
         self._thread = None

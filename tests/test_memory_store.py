@@ -28,7 +28,7 @@ class StoreCase(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.folder = Path(temporary.name)
+        self.folder = Path(temporary.name).resolve()
         self.root = self.folder / "memory"
         environment = mock.patch.dict(os.environ, {
             "HOME": str(self.folder / "home"), "USERPROFILE": str(self.folder / "home"),

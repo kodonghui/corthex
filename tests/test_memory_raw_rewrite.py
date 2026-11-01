@@ -9,7 +9,7 @@ from unittest import mock
 
 from test_memory_store import AT, StoreCase
 import test_memory_cleanup as cleanup_tests
-from memory_lib import base, cleanup, curation, files, locks, raw_log, raw_rewrite, worker_support
+from memory_lib import base, cleanup, curation, files, locks, raw_log, raw_rewrite, store, worker_support
 from memory_lib import clock
 
 
@@ -125,6 +125,57 @@ class RawRewriteTest(StoreCase):
         self.assertLess(current[0] - started, 5)
         self.assertEqual(self.path.read_bytes(), self.original)
         self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_canonical_lease_order_is_process_wide_across_roots(self):
+        other = self.folder / "other-memory"
+        base.private_directory(other / "logs")
+        files.write_json(other / "store.json", self.header, "TBL-001")
+        earlier, later = sorted((self.root, other), key=lambda path: path.as_posix().casefold())
+        makers = (
+            lambda folder: store.MemoryStore(folder)._lock(folder / "store.lock", "store", self.header["device"]),
+            lambda folder: worker_support.WorkerStore(folder)._lock(folder / "store.lock", "store", self.header["device"]),
+            lambda folder: locks.Lock(folder / "store.lock", "store", self.header["device"]),
+        )
+        for number, make in enumerate(makers):
+            with self.subTest(constructor=number):
+                with make(later).held(clock.now() + 5):
+                    with self.assertRaises(locks.LockOrderError):
+                        with make(earlier).held(clock.now() + 5):
+                            pass
+                    self.assertFalse((earlier / "store.lock").exists())
+                with make(earlier).held(clock.now() + 5):
+                    with make(later).held(clock.now() + 5):
+                        self.assertTrue((earlier / "store.lock").exists())
+                        self.assertTrue((later / "store.lock").exists())
+
+    def test_tc336_canonical_lease_order_preserves_relative_separator_order(self):
+        earlier = self.root / "a" / "x.lock"
+        later = self.root / "a0" / "y.lock"
+        base.private_directory(earlier.parent)
+        base.private_directory(later.parent)
+        make = lambda path: self.worker._lock(path, "raw", self.header["device"])
+        with make(later).held(clock.now() + 5):
+            with self.assertRaises(locks.LockOrderError):
+                with make(earlier).held(clock.now() + 5):
+                    pass
+        with make(earlier).held(clock.now() + 5):
+            with make(later).held(clock.now() + 5):
+                self.assertTrue(earlier.exists())
+                self.assertTrue(later.exists())
+
+    def test_tc336_explicit_store_root_is_independent_of_invalid_default(self):
+        with mock.patch.dict(os.environ, {"CORTHEX_MEMORY_HOME": "relative"}):
+            with self.assertRaises(base.MemoryHomeInvalid):
+                store.MemoryStore()
+            supplied = store.MemoryStore(self.root)
+            supplied.write_configuration({"temporary": True}, clock.now() + 5)
+            bound = worker_support.WorkerStore(self.root)
+            deadline = clock.now() + 5
+            with bound.lease(self.project / "curation.lock", "curation", deadline) as owner:
+                result = raw_rewrite.rewrite(bound, "sample", owner, self.log,
+                                             lambda entry: entry["seq"] > 1, deadline)
+        self.assertEqual((result.kept, result.removed), (2, 1))
+        self.assertEqual(self.path.read_bytes(), b"".join(self.encoded(e) for e in self.entries[1:]))
 
     def test_tc336_nonempty_typed_metadata_round_trips_without_defaults(self):
         self.assertEqual(curation.parse(self.original_record), self.document)
