@@ -12,7 +12,7 @@ from unittest import mock
 
 from test_memory_store import AT, SCRIPTS, StoreCase
 from test_memory_cleanup import hold
-from test_memory_worker_launch import PARENT
+from test_memory_worker_launch import PARENT, fixture_child_exit
 from memory_lib import base, cleanup, clock, curation, locks, raw_log, retention
 from memory_lib import worker_launch, worker_runtime, worker_support
 
@@ -46,6 +46,8 @@ if os.name != "nt":
 temporary = root / "fixture-finished.tmp"
 temporary.write_text(json.dumps(evidence), encoding="utf-8")
 temporary.replace(root / "fixture-finished.json")
+if os.name == "nt":
+    time.sleep(.25)  # Completion evidence precedes process exit; exercise the cleanup barrier.
 '''
 
 
@@ -400,11 +402,13 @@ class WorkerRuntimeTest(StoreCase):
         parent = subprocess.Popen([sys.executable, "-I", "-c", code], cwd=self.folder, env=env,
                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         finished = self.root / "fixture-finished.json"
+        child_exit = contextlib.ExitStack()
         try:
             output, error = parent.communicate(timeout=15)
             self.assertEqual((parent.returncode, error), (0, b""))
             result = json.loads(output)
             self.assertTrue(result["started"])
+            child_exit.enter_context(fixture_child_exit(self, result))
             self.assertFalse(finished.exists())
             self.assertTrue(old.exists())
             self.assertEqual([x["seq"] for x in self.rows()], [1, 2])
@@ -434,12 +438,17 @@ class WorkerRuntimeTest(StoreCase):
                 self.assertEqual(len(result["events"]), 2)
             self.assertNotIn(MARKER, finished.read_text(encoding="utf-8"))
         finally:
-            (self.root / "fixture-go").touch()
-            if parent.poll() is None:
-                parent.kill()
-                parent.communicate(timeout=5)
-            parent.stdout.close()
-            parent.stderr.close()
+            try:
+                (self.root / "fixture-go").touch()
+                if parent.poll() is None:
+                    parent.kill()
+                    parent.communicate(timeout=5)
+            finally:
+                try:
+                    child_exit.close()
+                finally:
+                    parent.stdout.close()
+                    parent.stderr.close()
 
     def test_tc056_real_worker_finishes_after_actual_fixture_parent_exits(self):
         self.fixture()

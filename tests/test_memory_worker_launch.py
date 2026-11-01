@@ -1,4 +1,5 @@
 """TC-338 direct launch fixtures; no real worker or session-hook evidence."""
+import contextlib
 import ctypes
 import json
 import os
@@ -35,6 +36,8 @@ if os.name != "nt":
 temporary = root / "fixture-child.tmp"
 temporary.write_text(json.dumps(result), encoding="utf-8")
 temporary.replace(root / "fixture-child.json")
+if os.name == "nt":
+    time.sleep(.25)  # Keep the completion/exit gap visible to the cleanup barrier.
 '''
 
 PARENT = '''import ctypes, json, os, subprocess, sys
@@ -84,6 +87,38 @@ if job:
     kernel.CloseHandle(job)
 os._exit(0 if started else 21)
 '''
+
+
+@contextlib.contextmanager
+def fixture_child_exit(case, result):
+    """Keep the created Windows child observed until it releases its fixture cwd."""
+    if os.name != "nt":
+        yield
+        return
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel.WaitForSingleObject.restype = wintypes.DWORD
+    kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel.TerminateProcess.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    # fixture-go still holds the successful launch's exact child alive.
+    handle = kernel.OpenProcess(0x00100001, False, result["events"][-1]["pid"])
+    case.assertTrue(handle, "Cannot observe the owned Windows worker exit")
+    try:
+        yield
+    finally:
+        try:
+            exited = kernel.WaitForSingleObject(handle, 15000)
+            if exited == 0x102:
+                case.assertTrue(kernel.TerminateProcess(handle, 1))
+                case.assertEqual(kernel.WaitForSingleObject(handle, 5000), 0)
+            case.assertEqual(exited, 0, "Owned Windows worker did not exit")
+        finally:
+            kernel.CloseHandle(handle)
 
 
 def denied(number=5):
@@ -280,12 +315,14 @@ class WorkerLaunchTest(StoreCase):
         env = dict(os.environ, CORTHEX_MEMORY_TEST_TOKEN=MARKER, PYTHONPATH=str(self.folder / "ignored"))
         parent = subprocess.Popen([sys.executable, "-I", "-c", code], cwd=self.folder,
                                   env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        child_exit = contextlib.ExitStack()
         try:
             output, error = parent.communicate(timeout=10)
             self.assertEqual(parent.returncode, 0, error.decode("utf-8", "replace"))
             self.assertEqual(error, b"")
             result = json.loads(output)
             self.assertTrue(result["started"])
+            child_exit.enter_context(fixture_child_exit(self, result))
             self.assertIsNotNone(parent.returncode)
             # The child cannot finish its evidence until this test sees the parent exit.
             self.assertFalse((self.root / "fixture-child.json").exists())
@@ -312,12 +349,17 @@ class WorkerLaunchTest(StoreCase):
                 self.assertEqual(result["events"][1]["flags"],
                                  worker_launch.WINDOWS_FLAGS & ~worker_launch.CREATE_BREAKAWAY_FROM_JOB)
         finally:
-            (self.root / "fixture-go").touch()
-            if parent.poll() is None:
-                parent.kill()
-                parent.communicate(timeout=5)
-            parent.stdout.close()
-            parent.stderr.close()
+            try:
+                (self.root / "fixture-go").touch()
+                if parent.poll() is None:
+                    parent.kill()
+                    parent.communicate(timeout=5)
+            finally:
+                try:
+                    child_exit.close()
+                finally:
+                    parent.stdout.close()
+                    parent.stderr.close()
 
     def test_tc338_synthetic_child_outlives_parent_with_null_streams_and_isolation(self):
         self.fixture()
