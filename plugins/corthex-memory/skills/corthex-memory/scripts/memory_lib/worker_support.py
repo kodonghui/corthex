@@ -1,5 +1,6 @@
 """Bound C1 maintenance reads, leases and metadata-only diagnostics. No provisioning."""
 import contextlib
+import os
 import stat
 from pathlib import Path
 
@@ -20,6 +21,10 @@ class PathFence:
             raise base.MemoryHomeInvalid()
         self.root = root.resolve()
         self.identity = self._identity(self.root.lstat())
+        self._windows = os.name == "nt"
+        self._root_parts = self.root.parts
+        if self._windows:
+            self._root_parts = tuple(part.lower() for part in self._root_parts)
 
     @staticmethod
     def _identity(info):
@@ -28,10 +33,13 @@ class PathFence:
     def check(self, path):
         if self._identity(self.root.lstat()) != self.identity:
             raise locks.LostLock()
-        try:
-            parts = Path(path).relative_to(self.root).parts
-        except ValueError:
+        parts = Path(path).parts
+        prefix = parts[:len(self._root_parts)]
+        if self._windows:
+            prefix = tuple(part.lower() for part in prefix)
+        if prefix != self._root_parts:
             raise UnsafePath() from None
+        parts = parts[len(self._root_parts):]
         if ".." in parts:
             raise UnsafePath()
         current, info = self.root, self.root.lstat()
@@ -134,9 +142,14 @@ class WorkerStore(store.MemoryStore):
         return lambda: self.check(deadline, (lock,))
 
     @contextlib.contextmanager
-    def lease(self, path, kind, deadline, step="restore"):
+    def lease(self, path, kind, deadline, step="restore", *, acquire_deadline=None):
         self.check(deadline)
-        lease = self._lock(path, kind, self.device).acquire(deadline, wait=False)
+        if acquire_deadline is not None:
+            self._deadline(acquire_deadline)
+            acquire_deadline = min(deadline, acquire_deadline)
+        lease = self._lock(path, kind, self.device).acquire(
+            deadline if acquire_deadline is None else acquire_deadline,
+            wait=acquire_deadline is not None)
         self.held.append(lease)
         try:
             self.check(deadline, self.held)
