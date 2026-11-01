@@ -1,4 +1,5 @@
 """TC-336 direct foundation evidence; retention and actual starts stay later."""
+import contextlib
 import copy
 import json
 import multiprocessing
@@ -66,6 +67,64 @@ class RawRewriteTest(StoreCase):
         actual = self.progress()
         actual["logs"] = expected["logs"]
         self.assertEqual(actual, expected)
+
+    @contextlib.contextmanager
+    def held_raw(self):
+        context = multiprocessing.get_context("spawn")
+        connection, child = context.Pipe()
+        process = context.Process(target=cleanup_tests.hold, args=(
+            child, str(self.path.with_suffix(".lock")), "raw", self.worker.device))
+        process.start()
+        child.close()
+        try:
+            self.assertTrue(connection.poll(10))
+            self.assertTrue(connection.recv())
+            yield connection, process
+        finally:
+            if process.is_alive():
+                try:
+                    connection.send("release")
+                except (BrokenPipeError, EOFError, OSError):
+                    pass
+            process.join(10)
+            if process.is_alive():
+                process.terminate()
+                process.join(10)
+            connection.close()
+
+    def test_tc336_staged_rewrite_retries_a_transient_raw_holder(self):
+        create, attempted = locks.Lock._create, []
+        with self.held_raw() as (connection, process):
+            def release_after_collision(lease):
+                result = create(lease)
+                if lease.path == self.path.with_suffix(".lock") and not result and not attempted:
+                    attempted.append(True)
+                    connection.send("release")
+                    process.join(10)
+                    self.assertEqual(process.exitcode, 0)
+                return result
+            # Freeze only the parent clock while the real child hands off;
+            # scheduler latency must not decide this retry behaviour check.
+            with mock.patch.object(locks.Lock, "_create", release_after_collision), mock.patch.object(
+                    clock, "now", return_value=clock.now()):
+                result = self.rewrite(lambda entry: entry["seq"] > 1)
+        self.assertTrue(attempted)
+        self.assertEqual((result.kept, result.removed), (2, 1))
+        self.assertEqual(self.path.read_bytes(), b"".join(self.encoded(e) for e in self.entries[1:]))
+
+    def test_tc336_busy_raw_defers_with_phase_time_remaining(self):
+        started = clock.now()
+        current = [started]
+        def now():
+            current[0] += 0.001
+            return current[0]
+        with self.held_raw(), mock.patch.object(clock, "now", side_effect=now), mock.patch.object(
+                locks.time, "sleep"):
+            with self.assertRaises(locks.LockBusy):
+                self.rewrite(lambda entry: entry["seq"] > 1)
+        self.assertLess(current[0] - started, 5)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
 
     def test_tc336_nonempty_typed_metadata_round_trips_without_defaults(self):
         self.assertEqual(curation.parse(self.original_record), self.document)
@@ -259,6 +318,68 @@ class RawRewriteTest(StoreCase):
             self.rewrite(lambda e: True)
         self.assertEqual(self.path.read_bytes(), self.original)
         self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def _metadata_change_stops_raw_io(self, change):
+        original, opened, now = self.worker.fence.check, Path.open, clock.now
+        changed, payload_opens, expired = [], [], now() + 100
+        def check(path):
+            result = original(path)
+            if (path == self.path and not changed and
+                    any(lease.policy == locks.POLICIES["raw"] for lease in self.worker.held)):
+                changed.append(True)
+                if change == "lease":
+                    (self.project / "curation.lock").unlink()
+                elif change == "store":
+                    other = self.root / "external-store"
+                    other.write_bytes(base.json_bytes(self.header, "TBL-001"))
+                    os.replace(str(other), str(self.root / "store.json"))
+            return result
+        def open_raw(path, *args, **kwargs):
+            if changed and path == self.path:
+                payload_opens.append(True)
+            return opened(path, *args, **kwargs)
+        expected = locks.LockBusy if change == "deadline" else locks.LostLock
+        with mock.patch.object(self.worker.fence, "check", check), mock.patch.object(
+                Path, "open", open_raw), mock.patch.object(
+                clock, "now", side_effect=lambda: expired if changed and change == "deadline" else now()):
+            with self.assertRaises(expected):
+                self.rewrite(lambda entry: True)
+        self.assertTrue(changed)
+        self.assertEqual(payload_opens, [])
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
+
+    def test_tc336_lease_loss_during_raw_metadata_stops_before_raw_io(self):
+        self._metadata_change_stops_raw_io("lease")
+
+    def test_tc336_same_bytes_store_swap_during_raw_metadata_stops_before_raw_io(self):
+        self._metadata_change_stops_raw_io("store")
+
+    def test_tc336_expiry_during_raw_metadata_stops_before_raw_io(self):
+        self._metadata_change_stops_raw_io("deadline")
+
+    def test_tc336_path_prefix_cache_preserves_spelling_and_rechecks_root_identity(self):
+        fence = self.worker.fence
+        target = self.root / "KeepCASE"
+        target.write_bytes(b"fixture")
+        original, observed = Path.lstat, []
+        def lstat(path, *args, **kwargs):
+            observed.append(path)
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, "lstat", lstat):
+            for _ in range(2):
+                self.assertEqual(fence.check(target).st_ino, target.stat().st_ino)
+                self.assertEqual(observed[-1], target)
+        for path in (self.root.with_name(self.root.name + "-other") / target.name,
+                     Path("relative"), self.root / "nested" / ".." / target.name):
+            with self.subTest(path=path), self.assertRaises(worker_support.UnsafePath):
+                fence.check(path)
+        retired = self.folder / "retired-memory"
+        self.root.rename(retired)
+        self.root.mkdir()
+        with self.assertRaises(locks.LostLock):
+            fence.check(target)
+        self.assertEqual((retired / target.name).read_bytes(), b"fixture")
 
     def test_tc336_copy_fallback_rechecks_lease_after_open(self):
         opened, original = [], Path.open

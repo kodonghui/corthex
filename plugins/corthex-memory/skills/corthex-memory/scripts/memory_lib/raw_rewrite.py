@@ -7,7 +7,9 @@ import re
 import stat
 from dataclasses import dataclass
 
-from . import base, cleanup, curation, files, locks, raw_log, store, worker_support
+from . import base, cleanup, clock, curation, files, locks, raw_log, store, worker_support
+
+RAW_LEASE_WAIT_SECONDS = 0.05
 
 
 class OversizedLine(RuntimeError):
@@ -127,7 +129,10 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
         identity = (original.st_dev, original.st_ino)
         expected = None
         def check():
-            basic()
+            # Validate the deadline before metadata, then all leases/store
+            # after metadata and before the caller's payload I/O.
+            if clock.now() >= deadline:
+                raise locks.LockBusy()
             current = memory.fence.check(path)
             if (current is None or (current.st_dev, current.st_ino) != identity or
                     expected is not None and cleanup.stamp(current) != expected):
@@ -159,7 +164,8 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                 else:
                     removed += 1
             yield b""
-            stack.enter_context(memory.lease(path.with_suffix(".lock"), "raw", deadline))
+            stack.enter_context(memory.lease(path.with_suffix(".lock"), "raw", deadline,
+                                            acquire_deadline=clock.now() + RAW_LEASE_WAIT_SECONDS))
             current = memory.fence.check(path)
             if current is None or current.st_size < original.st_size:
                 raise locks.LostLock()
