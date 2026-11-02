@@ -6,7 +6,7 @@ Stage 04 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the
 
 Inputs: the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md) (REQ-066 to REQ-193, REQ-197 and REQ-198), the user flows in [docs/03-user-flow/nexus/](../03-user-flow/nexus/README.md) (FL-101 to FL-115) and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps. This stage adds six words to the glossary (see [New words](#new-words)). The IDs of these rows start at SPEC-101, apart from memory's SPEC-001 to SPEC-039, so that both parts can add rows at the same time.
 
-Two choices of the flows' checkpoint are still open: which version the pictures show, and how a project with several parts keeps its pictures and records. The rows follow the AI's recommendation for each, marked "checkpoint choice 1" and "checkpoint choice 2", and [For the checkpoint](#for-the-checkpoint) lists the rows that the other choices would change.
+The maintainer made the two choices of the flows' checkpoint on 2026-11-02, both as recommended: which version the pictures show, and how a project with several parts keeps its pictures and records. The rows that follow them are marked "checkpoint choice 1" and "checkpoint choice 2", and [For the checkpoint](#for-the-checkpoint) keeps the rows that the other choices would have changed.
 
 ## How to read this file
 
@@ -179,7 +179,7 @@ Added to the [glossary](../01-domain/nexus.md#7-glossary) on 2026-11-02 as TERM-
 
 Waiting, together with the checkpoint of the user flows. The maintainer checks the main behaviour and the main failures of the rows; most worth a look:
 
-1. The two choices of the flows' checkpoint, which the rows follow as recommended: pictures and records only from the default branch's commit (choice 1), and a picture and a record for each part (choice 2). With the other choice for 1, a pull request's version as a second picture, SPEC-105, SPEC-109, SPEC-114, SPEC-118 and SPEC-119 change, and comments need a version each. With the other choice for 2, one picture and one record for each stage, SPEC-105, SPEC-109, SPEC-123 and SPEC-137 lose their parts, and this repository's memory and NEXUS share one state for each stage.
+1. Made on 2026-11-02, as recommended: the two choices of the flows' checkpoint, which the rows follow: pictures and records only from the default branch's commit (choice 1), and a picture and a record for each part (choice 2). With the other choice for 1, a pull request's version as a second picture, SPEC-105, SPEC-109, SPEC-114, SPEC-118 and SPEC-119 would have changed, and comments would have needed a version each. With the other choice for 2, one picture and one record for each stage, SPEC-105, SPEC-109, SPEC-123 and SPEC-137 would have lost their parts, and this repository's memory and NEXUS would have shared one state for each stage.
 2. The answers to points 1 (where the drawing runs), 7 (what disagreeing means), 9 (replies), 12 (claims) and 18 (what the page shows of the actions to ask about first).
 3. The changes to the requirements in [Behaviour no requirement asks for](#behaviour-no-requirement-asks-for).
 4. Two risks to measure before the views are built: whether the view, with Excalidraw, React and ERD Editor served by the server, meets REQ-149's 3 seconds on a phone, and whether a push of the largest snapshot stays within the free plan's CPU time. If either fails, the choice of D11 or the way a push is split comes back to the maintainer.
