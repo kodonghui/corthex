@@ -767,9 +767,9 @@ CREATE TABLE pictures (
 2026-11-02에 계약과 이 파일에 대해:
 
 - openapi-spec-validator 0.7.1: 계약은 올바른 OpenAPI 3.1입니다.
-- 저장소 밖에 두는, PyYAML과 jsonschema로 쓴 이 단계의 Python 검사: 모든 작업에 API ID, 그 SPEC ID, 상태가 있고, 단계의 표가 적는 응답마다 그것을 적거나 `omit`에 까닭과 함께 적으며, 모든 응답에 그 스키마가 받는 이름 붙은 예시가 있고, 모든 오류 예시의 코드가 같은 상태로 목록에 있으며, 모든 쓰기가 쓰기 ID를 받습니다. 문제 없음.
+- 저장소 밖에 두는, PyYAML과 jsonschema로 쓴 이 단계의 Python 검사: 모든 작업에 API ID, 그 SPEC ID, 상태가 있고, 단계의 표가 적는 응답마다 그것을 적거나 `omit`에 까닭과 함께 적으며, 모든 응답에 그 스키마가 받는 이름 붙은 예시가 있고, 모든 오류 예시의 코드가 같은 상태로 목록에 있으며, 모든 쓰기가 쓰기 ID를 받고 다른 요청이 가져간 ID에는 `409` `write_id_reused`로 답합니다. 문제 없음.
 - Prism 5.16.0, `prism mock`: 계약이 그 32개 작업과 함께 불러와집니다. 큰따옴표 안의 쓰기 ID는 통과하고, 따옴표가 없는 것은 `400`을 받습니다.
-- 그 모의 서버에 대한 Schemathesis 3.39.16, 검사 `not_a_server_error`, `status_code_conformance`, `content_type_conformance`, `response_schema_conformance`와 작업마다 예시 25개: 32개 작업이 모두 요청 857개에서 통과합니다. 도구의 두 버릇은 저장소 밖에 두는 훅으로 비켜 두었고, 실행마다 그것을 셉니다: 도구는 `CF_Authorization` 쿠키를 아무 글자로나 만드는데 Node의 HTTP 서버가 모의 서버가 보기 전에 그것을 맨 `400`으로 거절하므로, 훅이 쿠키에 출력할 수 있는 대신 값을 줍니다. 그리고 도구는 경로 값을 응답 예시의 같은 이름 멤버로, 이를테면 `{edit}`을 `edit` 객체로 채우므로, 훅이 매개변수 자신의 예시를 되돌려 놓습니다. 스냅샷의 큰 본문 때문에 그 상태 검사 `data_too_large`는 껐습니다.
+- 그 모의 서버에 대한 Schemathesis 3.39.16, 검사 `not_a_server_error`, `status_code_conformance`, `content_type_conformance`, `response_schema_conformance`와 작업마다 예시 25개: 32개 작업이 모두 요청 858개에서 통과합니다. 도구의 두 버릇은 저장소 밖에 두는 훅으로 비켜 두었고, 실행마다 그것을 셉니다: 도구는 `CF_Authorization` 쿠키를 아무 글자로나 만드는데 Node의 HTTP 서버가 모의 서버가 보기 전에 그것을 맨 `400`으로 거절하므로, 훅이 쿠키에 출력할 수 있는 대신 값을 줍니다. 그리고 도구는 경로 값을 응답 예시의 같은 이름 멤버로, 이를테면 `{edit}`을 `edit` 객체로 채우므로, 훅이 매개변수 자신의 예시를 되돌려 놓습니다. 스냅샷의 큰 본문 때문에 그 상태 검사 `data_too_large`는 껐습니다.
 - 모의 서버는 이것들 대부분을 설계상 통과하므로, 계약을 증명하는 것은 실제 서버뿐입니다: 11단계는 같은 도구를 사용자 자신의 서버가 아니라 Access 뒤의 개발 서버에 돌립니다.
 - 이 파일들을 둔 채로 돌린 저장소의 검사: `python -m unittest discover -s tests`(시험 725개, 건너뜀 12개), 마켓플레이스와 그 세 플러그인의 `claude plugin validate --strict`, `node --test nexus/test/*.test.js`(시험 15개)가 통과합니다. 허브가 찍은 이 저장소의 스냅샷은 API-101\~API-150을 한 번씩 읽고 점검이 없으며, 이 파일과 영어 원문의 링크는 모두 이어집니다.
 

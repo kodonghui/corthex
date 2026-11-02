@@ -1277,7 +1277,6 @@ paths:
         status: active
         omit:
           "401": answered by Cloudflare Access before the Worker sees the request (Sign-in in nexus.md)
-          "409": a checkpoint passed again with another write ID is a second checkpoint, so only the write ID can clash
       requestBody:
         required: true
         content:
@@ -1304,6 +1303,15 @@ paths:
               examples:
                 part-not-found: {$ref: "#/components/examples/part_not_found"}
                 space-not-found: {$ref: "#/components/examples/space_not_found"}
+        "409":
+          description: >-
+            The write ID was taken by another request. A checkpoint passed again with another
+            write ID is a second checkpoint, so nothing else clashes.
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
+              examples:
+                write-id-reused: {$ref: "#/components/examples/write_id_reused"}
         "413": {$ref: "#/components/responses/TooLarge"}
         "415": {$ref: "#/components/responses/NeedsJson"}
         default: {$ref: "#/components/responses/Unexpected"}
