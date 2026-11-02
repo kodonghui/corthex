@@ -47,6 +47,12 @@
       "truth": "source",
       "note": "Sitemap of NEXUS only: the memory plugin has no screens, so this stage has no file for it. NEXUS's screens are in nexus.yaml, in the form of the stage 07 template with the terms that NEXUS's cross-check reads and a status for each, and nexus.md explains them (drafted on 2026-11-03 while the memory plugin is built, as the maintainer chose on 2026-11-02; its SCR IDs start at SCR-101, and it waits for its checkpoint together with the NEXUS user flows, functional spec, server data and interfaces). Not the stage's default page of three views: nexus.md holds the board and the list, drawn from nexus.yaml, and people read them in a Korean copy in the project's Notion records, with the list as a database; there are no slides, since one person checks the sitemap, and from NEXUS 0.2 NEXUS draws it itself. Translations beside them are not read as sources."
     },
+    "08-screen-states": {
+      "human": "wireframes",
+      "source": "docs/08-screens/",
+      "truth": "source",
+      "note": "Screen states of NEXUS only: the memory plugin has no screens, so this stage has no file for it. NEXUS's screen definitions are in nexus/, one file for each of the sitemap's screens, SCR-101 to SCR-109, named by its ID and a short name, with README.md for the rules of every screen and the final words of the messages (drafted on 2026-11-03 while the memory plugin is built, as the maintainer chose on 2026-11-02; it waits for its checkpoint together with the NEXUS user flows, functional spec, server data, interfaces and sitemap). The human view is the stage's default, grayscale wireframes drawn from the definitions: one page, nexus/wireframes.html, with a frame for each state at 320 and 1440 pixels, drawn again in the same change as the definitions, and looked at as a private published page whose link is in the project's records, not in `link`, since the repository is public. The definitions are read in a Korean copy in the project's Notion records, with the tables as databases. Translations beside them are not read as sources."
+    },
     "10-wbs": {
       "human": "notion",
       "source": "docs/10-wbs/",
