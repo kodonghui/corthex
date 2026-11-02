@@ -1,0 +1,56 @@
+name: Bug report / 버그 신고
+description: Report a reproducible problem / 재현할 수 있는 문제를 알려 주세요.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security vulnerabilities, use [private reporting](https://github.com/kodonghui/corthex/security/advisories/new).
+        This issue is public. Remove credentials, personal data, private links and conversation records from examples and logs.
+        보안 취약점은 위 비공개 신고로 보냅니다. 이 이슈는 공개되므로 인증정보·개인 정보·비공개 링크·대화 기록은 지워 주세요.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 구성 요소
+      options:
+        - corthex (core skills)
+        - corthex-memory
+        - corthex-nexus (local hub)
+        - NEXUS server
+        - Installation or other / 설치 또는 기타
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit / 버전 또는 커밋
+      description: Include the plugin or server version, or the commit you tested.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 실행 환경
+      description: Operating system, Claude Code or Codex version, and relevant Python or Node version. Omit personal paths and account details.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce / 재현 순서
+      description: Use a minimal example with synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result / 기대한 결과
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result / 실제 결과
+      description: Include only sanitized error messages or logs, if needed.
+    validations:
+      required: true
