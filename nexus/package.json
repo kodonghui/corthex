@@ -11,6 +11,6 @@
     "deploy": "wrangler deploy -c wrangler.local.jsonc"
   },
   "devDependencies": {
-    "wrangler": "4.153.0"
+    "wrangler": "4.156.0"
   }
 }
