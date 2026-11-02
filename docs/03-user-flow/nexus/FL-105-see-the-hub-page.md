@@ -14,19 +14,19 @@ flowchart TD
   D -->|no| D1["The request is refused"]
   D1 --> Z(["End"])
   D -->|yes| E{"Does the server hold a snapshot?"}
-  E -->|no| E1["Say what the hub shows and<br/>how a project gets pushed to it<br/>REQ-102"]
+  E -->|no| E1["Say what the hub shows and<br/>how a project gets pushed to it<br/>REQ-102 · SCR-101"]
   E1 --> Z
-  E -->|yes| F["Show each project's open comments, proposals<br/>and discrepancies, and link each stage that<br/>has a picture to its picture view<br/>REQ-189, REQ-190"]
+  E -->|yes| F["Show each project's open comments, proposals<br/>and discrepancies, and link each stage that<br/>has a picture to its picture view<br/>REQ-189, REQ-190 · SCR-101, SCR-104"]
   C --> G
-  F --> G["Show every project, its current stage and next action<br/>first, then its 13 stages with their states, item<br/>counts and checks, and when and from which<br/>commit each snapshot was made<br/>REQ-091, REQ-092, REQ-096"]
-  G --> G1["Show what the agent asks about first in each project,<br/>whether the list is the project's own or the profile's,<br/>and that anything that cannot be undone is asked in any case<br/>REQ-197"]
+  F --> G["Show every project, its current stage and next action<br/>first, then its 13 stages with their states, item<br/>counts and checks, and when and from which<br/>commit each snapshot was made<br/>REQ-091, REQ-092, REQ-096 · SCR-101"]
+  G --> G1["Show what the agent asks about first in each project,<br/>whether the list is the project's own or the profile's,<br/>and that anything that cannot be undone is asked in any case<br/>REQ-197 · SCR-101"]
   G1 --> H{"Has the project recorded progress?"}
-  H -->|no| H1["Say how progress gets recorded<br/>REQ-103"]
+  H -->|no| H1["Say how progress gets recorded<br/>REQ-103 · SCR-101"]
   H -->|yes| I
   H1 --> I{"What does the user do?"}
-  I -->|selects an ID| J["Show what the item comes from and<br/>what it leads to, through all stages<br/>REQ-093"]
-  I -->|searches| K["List the items that match the ID<br/>or the words of a title<br/>REQ-094"]
-  I -->|opens a stage's tool| L["Open the stage's human view<br/>from its link in the settings<br/>REQ-095"]
+  I -->|selects an ID| J["Show what the item comes from and<br/>what it leads to, through all stages<br/>REQ-093 · SCR-103"]
+  I -->|searches| K["List the items that match the ID<br/>or the words of a title<br/>REQ-094 · SCR-102"]
+  I -->|opens a stage's tool| L["Open the stage's human view<br/>from its link in the settings<br/>REQ-095 · SCR-104"]
   I -->|opens a picture| M["Open the picture view, FL-106<br/>REQ-189"]
   I -->|leaves| Z
   J --> I

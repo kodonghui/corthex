@@ -557,23 +557,25 @@ CREATE TABLE pictures (
 - A comment line `-- without a table:` followed by TERM IDs, anywhere in the part's SQL, lists the aggregates that the part keeps outside tables.
 - The markers `terms: none`, `without a table:` and `without a screen:` are the same in every language, as the code around them is.
 
-**Sitemap (`07-sitemap`).** The YAML of the stage 07 template, [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md), with `terms`:
+**Sitemap (`07-sitemap`).** The YAML of the stage 07 template, [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md), with `terms`, here two screens of NEXUS's own [nexus.yaml](../07-sitemap/nexus.yaml):
 
 ```yaml
-- id: SCR-001
-  name: Home
-  path: /
-  access: everyone
-  flows: [FL-001, FL-002]
-  terms: []
+- id: SCR-104
+  name: Stage detail
+  path: "/#p={project}&s={stage}"
+  access: anyone Cloudflare Access lets in, or the device's user
+  flows: [FL-105, FL-113]
+  terms: none
+  status: active
   children:
-    - id: SCR-002
-      name: Order detail
-      path: /orders/:id
-      access: signed-in customer
-      flows: [FL-002]
-      terms: [CTX-001, TERM-012]
-# without a screen: TERM-020, TERM-021
+    - id: SCR-109
+      name: Stage overview
+      path: "/overview/{project}/{part}/{stage}"
+      access: anyone Cloudflare Access lets in, on the server
+      flows: [FL-113]
+      terms: [CTX-007, TERM-120]
+      status: active
+# without a screen: TERM-121
 ```
 
 - Each screen keeps `id`, `name`, `path`, `access`, `flows` and, from the nesting under `children`, `parent`, the place of its parent in `screens`. A parent that the part does not hold puts the screen at the top, with a `picture-partial` check.

@@ -1,0 +1,72 @@
+# The sitemap of NEXUS 0.2, stage 07 of CORTHEX's own project: the screens of the hub page
+# and of the NEXUS server, in the form of the stage 07 template, with the terms that NEXUS's
+# cross-check reads and a status for each. nexus.md explains them and draws the board and
+# the list from this file. Paths are written as the contract ../06-api/nexus.openapi.yaml
+# writes them, and the part after "#" is the page's own address of a view or a panel.
+- id: SCR-101
+  name: Hub page
+  path: /
+  access: anyone Cloudflare Access lets in, or the device's user
+  flows: [FL-105, FL-113]
+  terms: none
+  status: active
+  children:
+    - id: SCR-102
+      name: Search results
+      path: "/#q={words}"
+      access: anyone Cloudflare Access lets in, or the device's user
+      flows: [FL-105]
+      terms: none
+      status: built
+    - id: SCR-103
+      name: Trace view
+      path: "/#p={project}&id={id}"
+      access: anyone Cloudflare Access lets in, or the device's user
+      flows: [FL-105]
+      terms: none
+      status: built
+    - id: SCR-104
+      name: Stage detail
+      path: "/#p={project}&s={stage}"
+      access: anyone Cloudflare Access lets in, or the device's user
+      flows: [FL-105, FL-113]
+      terms: none
+      status: active
+      children:
+        - id: SCR-105
+          name: Picture view
+          path: "/pictures/{project}/{part}/{stage}"
+          access: anyone Cloudflare Access lets in, on the server
+          flows: [FL-106, FL-110, FL-115]
+          terms: [CTX-014, TERM-111]
+          status: active
+          children:
+            - id: SCR-106
+              name: Item
+              path: "/pictures/{project}/{part}/{stage}#item={id}"
+              access: anyone Cloudflare Access lets in, on the server
+              flows: [FL-106, FL-107]
+              terms: [CTX-014, TERM-111]
+              status: active
+            - id: SCR-107
+              name: Comment
+              path: "/pictures/{project}/{part}/{stage}#comment={comment}"
+              access: anyone Cloudflare Access lets in, on the server
+              flows: [FL-109]
+              terms: [CTX-014, TERM-111]
+              status: active
+            - id: SCR-108
+              name: Proposal
+              path: "/pictures/{project}/{part}/{stage}#proposal={proposal}"
+              access: anyone Cloudflare Access lets in, on the server
+              flows: [FL-110]
+              terms: [CTX-014, TERM-111]
+              status: active
+        - id: SCR-109
+          name: Stage overview
+          path: "/overview/{project}/{part}/{stage}"
+          access: anyone Cloudflare Access lets in, on the server
+          flows: [FL-113]
+          terms: [CTX-007, TERM-120]
+          status: active
+# without a screen: TERM-121

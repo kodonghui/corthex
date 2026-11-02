@@ -9,7 +9,7 @@ Context: CTX-014 Discussion. Starts when the agent takes an open comment from it
 ```mermaid
 flowchart TD
   A(["The agent takes the next open comment<br/>from its agent to-do, FL-108"]) --> B{"What does the comment need?"}
-  B -->|an answer| C["Answer it on the comment through the hub;<br/>the server marks the agent as its author<br/>REQ-163, REQ-184"]
+  B -->|an answer| C["Answer it on the comment through the hub;<br/>the server marks the agent as its author<br/>REQ-163, REQ-184 · SCR-107"]
   C --> C1["Mark the comment answered,<br/>and NEXUS closes it<br/>REQ-166"]
   C1 --> Z(["End"])
   B -->|a change to a picture| D["Make a proposal with its reason,<br/>through the hub<br/>REQ-128, REQ-184"]
@@ -24,7 +24,7 @@ flowchart TD
   F1 --> Z
   B -->|the user's reply settles it| G
   F -->|yes| G["Write the decision where the project's rules put it:<br/>changes to the stage sources by pull request,<br/>the user's choices in the project's records<br/>REQ-167"]
-  G --> H["Record the decision on the comment,<br/>with a link to where it was written<br/>REQ-164, REQ-168"]
+  G --> H["Record the decision on the comment,<br/>with a link to where it was written<br/>REQ-164, REQ-168 · SCR-107"]
   H --> I["NEXUS closes the comment<br/>REQ-165"]
   I --> Z
 ```
