@@ -16,7 +16,8 @@
 -- The newest snapshot of each project, as phase 1 keeps it. From schema 2 the body is the
 -- snapshot without its picture sources, which pictures keeps, and default_commit is the
 -- default branch commit that its pictures and stage records came from: the held commit, which
--- a snapshot of another commit must name as the one it replaces.
+-- a snapshot of another commit must name as the one it replaces. push_id is random for each
+-- push, and a push's later statements write only while the snapshot holds its push_id.
 CREATE TABLE snapshots (
   name           TEXT    PRIMARY KEY,
   revision       INTEGER NOT NULL,
@@ -25,7 +26,8 @@ CREATE TABLE snapshots (
   received_at    TEXT    NOT NULL,
   bytes          INTEGER NOT NULL,
   body           TEXT    NOT NULL,
-  default_commit TEXT
+  default_commit TEXT,
+  push_id        TEXT
 );
 
 -- TBL-102 project_spaces (CTX-012, TERM-109) ← SPEC-114, SPEC-115, SPEC-117, SPEC-121, SPEC-126, SPEC-127, SPEC-130, SPEC-132, SPEC-133, SPEC-134
@@ -250,9 +252,11 @@ CREATE INDEX writes_received ON writes (received_at);
 
 -- TBL-113 migrations (CTX-009, terms: none) ← SPEC-114
 -- The schema versions that store.js applied to the database, one row each; 1 and 2 give the
--- schema of this file. This file records none, so the server's database is always set up by
--- store.js, and one made from this file alone serves only to compare the schemas.
-CREATE TABLE migrations (
+-- schema of this file. store.js runs this statement before any migration, so it makes the
+-- table only when it is missing. This file records no version, so the server's database is
+-- always set up by store.js, and one made from this file alone serves only to compare the
+-- schemas.
+CREATE TABLE IF NOT EXISTS migrations (
   version    INTEGER PRIMARY KEY,
   applied_at TEXT    NOT NULL
 );

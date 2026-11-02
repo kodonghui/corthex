@@ -59,7 +59,7 @@ The server's tables are in [nexus.sql](nexus.sql):
 
 | Table | Name | Holds | Kept | Status |
 | --- | --- | --- | --- | --- |
-| TBL-101 | `snapshots` | The newest snapshot of each project, without its picture sources, and the default branch commit that it came from | until the next snapshot or a removal | built; 0.2 adds `default_commit` |
+| TBL-101 | `snapshots` | The newest snapshot of each project, without its picture sources, and the default branch commit that it came from | until the next snapshot or a removal | built; 0.2 adds `default_commit` and `push_id` |
 | TBL-102 | `project_spaces` | One space for each project, bound to its repository's address | until a removal | active |
 | TBL-103 | `pictures` | The last picture of each part and pictured stage, current or not | until a removal | active |
 | TBL-104 | `discrepancies` | What the cross-checks found, open and resolved | until a removal | active |
@@ -88,7 +88,7 @@ The server's tables are in [nexus.sql](nexus.sql):
 
 ### Snapshots (TBL-101)
 
-Phase 1's table, with one column more. A push replaces the row as [A push](#a-push) says; a removal deletes it, and with it the project's space.
+Phase 1's table, with two columns more. A push replaces the row as [A push](#a-push) says; a removal deletes it, and with it the project's space.
 
 | Column | Value | Meaning |
 | --- | --- | --- |
@@ -100,6 +100,7 @@ Phase 1's table, with one column more. A push replaces the row as [A push](#a-pu
 | `bytes` | integer | The snapshot's size as sent, at most 1 MiB (SPEC-114) |
 | `body` | JSON | The snapshot (TBL-114) without its `pictures`, whose sources the pictures keep (TBL-103). The hub page reads every body, so the body stays as small as in phase 1 |
 | `default_commit` | commit, or NULL | The default branch commit that the snapshot's pictures and stage records came from (SPEC-105, SPEC-109): the held commit. NULL for a snapshot of 0.1 or one without a default branch |
+| `push_id` | 12 random characters, or NULL | The ID that the Worker made, as it makes the random part of the server's IDs, for the push that stored the snapshot. That push's later statements write only while the snapshot holds it ([A push](#a-push)). NULL for a snapshot that phase 1's server stored |
 
 ### Project spaces (TBL-102)
 
@@ -405,13 +406,13 @@ A push stores the snapshot, the space, the pictures, the discrepancies that its 
 
 1. One batch of reads: the stored snapshot's revision, made time and default commit; the space's address; the pictures' digests and marks; the open discrepancies of the parts; and the space's checkpoints that the to-do still lists or that a record names.
 2. The Worker checks the commit rule (SPEC-114) and the address (SPEC-117). It finds the pictures to draw, to make current again and to mark as not current (SPEC-118), cross-checks the parts whose pictures changed or became current again (SPEC-120, SPEC-121), and finds the checkpoints that the stage records name.
-3. One batch of writes, which D1 runs as one transaction. Its first statement stores the snapshot only while the stored revision and default commit are still those that the reads found, and, for a new project, only while the server holds fewer than 30. Every later statement writes only when the snapshot's revision is the one that the first statement gave it. So a push that another push overtook between its two batches writes nothing, and is refused with `409` as SPEC-114 refuses the second of two pushes.
+3. One batch of writes, which D1 runs as one transaction. Its first statement stores the snapshot, with a new `push_id` that is random for each push, only while the stored revision and default commit are still those that the reads found, and, for a new project, only while the server holds fewer than 30. Every later statement writes only while the snapshot holds that `push_id`. The revision would not do, since two pushes that read the same revision give the same next one. So a push that another push overtook between its two batches writes nothing, and the Worker, finding that the first statement changed no row, refuses it with `409` as SPEC-114 refuses the second of two pushes.
 
 D1 counts a batch as one query against the free plan's 50 for each request, while each statement keeps its own limits, such as 100 bound parameters ([D1 limits](https://developers.cloudflare.com/d1/platform/limits/), read on 2026-11-02). So each statement takes its rows as one JSON parameter, which SQLite reads with `json_each`, and a push of any size stays within both. A push writes only the rows that change, since the free plan writes 100,000 rows a day and counts the row of each index too ([D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)): a push that changes nothing but the snapshot, such as the same snapshot sent twice, writes one row.
 
 ### The writes of the user and the agent
 
-Each write is one batch, which checks and records its write ID, the claim, the space's limits and the state that it changes in one transaction, so that two writes at once are taken one after the other (SPEC-127, SPEC-136). A write whose ID the space holds changes nothing and gets the first answer. A write of the agent's on an entry that another session claims is refused, and one by the session that holds the claim moves the claim's end to 60 minutes later. A write that adds text adds its UTF-8 bytes to the space's `text_bytes`, and is refused when that would pass 8 MiB. The same batch deletes the space's ended claims and its write IDs older than 7 days, so that they are kept only while they are needed (REQ-118).
+Each write is one batch, which D1 runs as one transaction, so that two writes at once are taken one after the other (SPEC-127, SPEC-136). Its first statement records the write ID only while the write passes its checks of the claim, the space's limits and the state that it changes, and every later statement writes only while that ID is recorded. A write whose ID the space holds fails at that first statement, so that its batch changes nothing, and gets the first answer. A write of the agent's on an entry that another session claims is refused, and one by the session that holds the claim moves the claim's end to 60 minutes later. A write that adds text adds its UTF-8 bytes to the space's `text_bytes`, and is refused when that would pass 8 MiB. The same batch deletes the space's ended claims and its write IDs older than 7 days, so that they are kept only while they are needed (REQ-118).
 
 ### A removal
 
@@ -427,7 +428,7 @@ One statement, `DELETE FROM snapshots WHERE name = ?`, deletes the snapshot, and
 ## Format version and migrations
 
 - The schema's version is in `migrations` (TBL-113). Phase 1's server made `snapshots` at its first use and kept no version: that is version 1. Version 2, for NEXUS 0.2, is [nexus.sql](nexus.sql). nexus.sql records no version, so the server's database is always set up by store.js, and one made from nexus.sql alone serves only to compare the schemas.
-- store.js keeps every migration. At its first use of a database it makes `migrations` when it is missing, and then runs, in order, each migration whose version the table does not hold, each in one batch with the row that records it. A batch that fails, as when another instance applied the same version first, changes nothing, and store.js reads the versions again.
+- store.js keeps every migration. At its first use of a database it runs nexus.sql's statement for `migrations`, which makes the table only when it is missing, and then runs, in order, each migration whose version the table does not hold, each in one batch with the row that records it. A batch that fails, as when another instance applied the same version first, changes nothing, and store.js reads the versions again.
 - Migration 1 is phase 1's statement, which changes nothing in a database that already holds the table:
 
   ```sql
@@ -442,13 +443,14 @@ One statement, `DELETE FROM snapshots WHERE name = ?`, deletes the snapshot, and
   );
   ```
 
-- Migration 2 adds the default branch commit to `snapshots`, and then makes the other tables and their indexes with the statements of nexus.sql from `CREATE TABLE project_spaces` to the end, as they are there:
+- Migration 2 adds the default branch commit and the push ID to `snapshots`, and then makes the other tables and their indexes with the statements of nexus.sql from `CREATE TABLE project_spaces` to the end, as they are there:
 
   ```sql
   ALTER TABLE snapshots ADD COLUMN default_commit TEXT;
+  ALTER TABLE snapshots ADD COLUMN push_id TEXT;
   ```
 
-  A database of phase 1 thus keeps its snapshots, with their revisions and bodies and no default commit, until each project's next push. An empty database that store.js sets up has the schema of nexus.sql: checked on 2026-11-02 with SQLite, migration 2 on phase 1's table gives the same tables, columns, keys, foreign keys and indexes as nexus.sql, and deleting a snapshot leaves no row of its project.
+  The last of those statements, for `migrations`, finds the table that store.js made and changes nothing. A database of phase 1 thus keeps its snapshots, with their revisions and bodies and no default commit or push ID, until each project's next push. An empty database that store.js sets up has the schema of nexus.sql: checked on 2026-11-02 with SQLite, these steps give the same tables, columns, keys, foreign keys and indexes as nexus.sql on an empty database and on phase 1's table alike, and deleting a snapshot leaves no row of its project.
 - A migration, once released, is never changed. A change of the schema is a new version, with its migration and the same change to nexus.sql.
 - The files have their own formats: the snapshot's `schema`, and the `format` of picture sources, stage records and outbox files. The server takes the snapshot formats that it knows (SPEC-114). A picture keeps the format of its picture source, and the view draws each format that it knows.
 - After the checkpoint, a breaking change of a table or a file needs the maintainer's decision, as the stage contract says.
@@ -562,6 +564,7 @@ erDiagram
     string name PK
     int revision
     string default_commit "the held commit"
+    string push_id "the push that stored it"
   }
   PROJECT_SPACES {
     string project PK, FK
@@ -623,7 +626,7 @@ The functional spec left these to stage 05. Each can change at the checkpoint.
 1. The server's data in its D1 database, in tables in SQL that SQLite and Postgres share but for the two differences that the notes for stage 11 name, all of it run by store.js (REQ-123), with the limits in the code and constraints only for what is always true.
 2. One picture for each part and pictured stage: the last one drawn, current or not, which each new document version replaces. The comments, proposals and edits keep the commit that they were made on, so no earlier picture is kept, and a space's pictures stay within the size of its stage sources.
 3. The snapshot stored without its picture sources, which the pictures keep with a digest, so that the hub page, which loads every snapshot, does not carry the pictures, and a push compares each picture by its digest.
-4. A push in two batches, the second one transaction guarded by the snapshot's revision, with its lists as one JSON parameter for each statement and only the changed rows written, for the free plan's limits.
+4. A push in two batches, the second one transaction guarded by the snapshot's revision and push ID, with its lists as one JSON parameter for each statement and only the changed rows written, for the free plan's limits.
 5. Whether an item is still in its picture is found when the picture is read, so that a redraw writes no row of comments, proposals or discrepancies.
 6. The IDs of the server's entries in the form of memory's IDs, with `n` and a letter for the kind, and replies and decisions numbered within their comment.
 7. Tables that name only the terms of the board's aggregates: `terms: none` for the snapshots of the hub's contexts and for the claims, writes and migrations, and Tool link kept without a table until phase ③.
@@ -669,5 +672,6 @@ store.js first: migrations 1 and 2, the push with its two batches, then the writ
 - nexus.sql on an empty database in D1, as Wrangler runs it locally, gives the schema that store.js makes, and a database of phase 1 with stored snapshots keeps them through the migration.
 - A removal leaves no row of the project in any table.
 - The largest push: its queries, the rows that it writes and its CPU time on the free plan (REQ-124).
+- Two pushes of one project whose batches interleave: the one that the other overtook writes nothing and gets `409`.
 - A write sent twice, and again after 7 days; two sessions that claim one entry, and a claim that ends; two hubs of one device that send one outbox; and a space at its text limit.
 - The stage records of two parts changed by two pull requests merged one after the other.
