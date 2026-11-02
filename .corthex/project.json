@@ -27,7 +27,7 @@
       "human": "notion",
       "source": "docs/04-functional-spec/",
       "truth": "source",
-      "note": "Functional spec, one file per part of the project: CORTHEX-MEMORY in memory.md (confirmed on 2026-10-27, checked together with the user flows). Translations beside them are not read as sources. A Korean copy, with the tables as databases, is in the project's Notion records (2026-10-24); the copy follows these files. MEMORY spec confirmed on 2026-10-27: D1, D2 and D4 as recommended; D3 uses a user-operated HTTPS sync gateway and Postgres/pgvector, with device-local files and SQLite; default raw retention 100 days. Git sync design status: superseded (D3, 2026-10-27); server sync design is required before C3."
+      "note": "Functional spec, one file per part of the project: CORTHEX-MEMORY in memory.md (confirmed on 2026-10-27, checked together with the user flows), NEXUS in nexus.md (drafted on 2026-11-02 while the memory plugin is built, as the maintainer chose that day; its SPEC IDs start at SPEC-101, and it waits for its checkpoint together with the NEXUS user flows). Translations beside them are not read as sources. Korean copies, with the tables as databases, are in the project's Notion records (memory on 2026-10-24, NEXUS on 2026-11-02); the copies follow these files. MEMORY spec confirmed on 2026-10-27: D1, D2 and D4 as recommended; D3 uses a user-operated HTTPS sync gateway and Postgres/pgvector, with device-local files and SQLite; default raw retention 100 days. Git sync design status: superseded (D3, 2026-10-27); server sync design is required before C3."
     },
     "05-erd": {
       "human": "notion",
