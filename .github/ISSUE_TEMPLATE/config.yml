@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability privately / 보안 취약점 비공개 신고
+    url: https://github.com/kodonghui/corthex/security/advisories/new
+    about: Use private reporting for security vulnerabilities / 보안 취약점은 비공개로 알려 주세요.
