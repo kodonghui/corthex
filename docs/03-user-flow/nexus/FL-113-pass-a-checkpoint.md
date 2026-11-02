@@ -9,7 +9,7 @@ Context: CTX-007 Stage progress. Starts when the user looks at whether a stage i
 ```mermaid
 flowchart TD
   A(["The user looks at whether a stage is ready"]) --> B{"Where?"}
-  B -->|in NEXUS| C["Open the stage overview: the stage's open<br/>discrepancies, comments and pending<br/>reflections, together<br/>REQ-176"]
+  B -->|in NEXUS| C["Open the stage overview: the stage's open<br/>discrepancies, comments and pending<br/>reflections, together<br/>REQ-176 · SCR-109"]
   C --> D{"Does the user pass the checkpoint,<br/>with or without what is left?<br/>REQ-177"}
   D -->|no| D1["The stage stays as it is, and the user<br/>may leave a comment, FL-107"]
   D1 --> Z(["End"])
@@ -22,7 +22,7 @@ flowchart TD
   B -->|in the session| I["The agent writes the checkpoint into the<br/>stage record, with a reference to the record<br/>that holds the user's approval<br/>REQ-086, REQ-090"]
   H --> J["The pull request is merged, and the agent<br/>pushes the new snapshot, FL-102<br/>REQ-125"]
   I --> J
-  J --> K["The hub reads the record from the repository and<br/>shows the stage as recorded, the same on<br/>every device and on the server<br/>REQ-084, REQ-089, REQ-173"]
+  J --> K["The hub reads the record from the repository and<br/>shows the stage as recorded, the same on<br/>every device and on the server<br/>REQ-084, REQ-089, REQ-173 · SCR-101, SCR-104"]
   K --> Z
 ```
 

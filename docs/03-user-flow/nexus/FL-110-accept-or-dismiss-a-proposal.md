@@ -8,12 +8,12 @@ Context: CTX-014 Discussion, and CTX-010 Editing for an accepted proposal. Start
 
 ```mermaid
 flowchart TD
-  A(["The user opens a proposal on a picture,<br/>with its reason, FL-106<br/>REQ-145"]) --> B["The user accepts or dismisses it<br/>REQ-159"]
+  A(["The user opens a proposal on a picture,<br/>with its reason, FL-106<br/>REQ-145 · SCR-108"]) --> B["The user accepts or dismisses it<br/>REQ-159 · SCR-108"]
   B --> C{"Does the request come from the user's own<br/>sign-in, and not from another site?<br/>REQ-117, REQ-129"}
   C -->|no| R["Refuse it<br/>REQ-129"]
   R --> Z(["End"])
   C -->|yes, accepted| E["Record the edit that it proposes<br/>as a pending reflection<br/>REQ-169"]
-  E --> F["Show the picture as proposed,<br/>marked as not yet reflected"]
+  E --> F["Show the picture as proposed,<br/>marked as not yet reflected<br/>SCR-105"]
   F --> G["It waits in the agent to-do until<br/>the agent reflects it, FL-111"]
   G --> Z
   C -->|yes, dismissed| H["Close the proposal as dismissed;<br/>the comment that it answered stays open"]

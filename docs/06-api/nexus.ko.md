@@ -558,23 +558,25 @@ CREATE TABLE pictures (
 - 부분의 SQL 어디에든 있는, TERM ID가 뒤따르는 주석 줄 `-- without a table:`은 부분이 표 밖에 두는 애그리거트를 적습니다.
 - 표지 `terms: none`, `without a table:`, `without a screen:`은 둘레의 코드처럼 모든 언어에서 같습니다.
 
-**사이트맵(`07-sitemap`).** 07단계 양식 [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md)의 YAML에 `terms`를 더한 것입니다:
+**사이트맵(`07-sitemap`).** 07단계 양식 [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md)의 YAML에 `terms`를 더한 것입니다. 아래는 NEXUS 자신의 [nexus.yaml](../07-sitemap/nexus.yaml)에 있는 화면 둘입니다:
 
 ```yaml
-- id: SCR-001
-  name: 홈
-  path: /
-  access: 모두
-  flows: [FL-001, FL-002]
-  terms: []
+- id: SCR-104
+  name: Stage detail
+  path: "/#p={project}&s={stage}"
+  access: anyone Cloudflare Access lets in, or the device's user
+  flows: [FL-105, FL-113]
+  terms: none
+  status: active
   children:
-    - id: SCR-002
-      name: 주문 상세
-      path: /orders/:id
-      access: 로그인한 고객
-      flows: [FL-002]
-      terms: [CTX-001, TERM-012]
-# without a screen: TERM-020, TERM-021
+    - id: SCR-109
+      name: Stage overview
+      path: "/overview/{project}/{part}/{stage}"
+      access: anyone Cloudflare Access lets in, on the server
+      flows: [FL-113]
+      terms: [CTX-007, TERM-120]
+      status: active
+# without a screen: TERM-121
 ```
 
 - 화면마다 `id`, `name`, `path`, `access`, `flows`, 그리고 `children` 아래의 중첩에서 오는 `parent`, 곧 `screens`에서 그 부모의 자리를 지닙니다. 부분이 갖지 않은 부모는 화면을 맨 위에 두고 `picture-partial` 점검을 냅니다.

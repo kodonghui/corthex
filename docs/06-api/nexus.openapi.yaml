@@ -2303,7 +2303,7 @@ components:
         discrepancies:
           - {id: nd_4h8r2t6w9z3c, part: nexus, compares: aggregate-table, term: TERM-122, item: "", reasons: [{kind: no-table}], level: info, state: open, waiting: false, opened_commit: c0ffee5e7a1b2c3d4e5f60718293a4b5c6d7e8f9, opened_at: "2026-11-02T14:20:01.950Z", resolved_commit: null, resolved_at: null, earlier: null}
     picture_data_sitemap:
-      summary: The sitemap of a project without parts, from the stage 07 template's example without its flows and with terms added, drawn before its source was removed
+      summary: The sitemap of a project without parts, from the stage 07 template's example with terms added and without its IDs and flows, drawn before its source was removed
       value:
         project: shop
         part: ""
@@ -2316,8 +2316,8 @@ components:
           source:
             format: 1
             screens:
-              - {id: SCR-001, name: Home, path: /, access: everyone, flows: [], context: "", terms: [], removed: false, where: "docs/07-sitemap/sitemap.yaml:1"}
-              - {id: SCR-002, name: Order detail, path: "/orders/:id", access: signed-in customer, flows: [], parent: 0, context: "", terms: [TERM-085], removed: false, where: "docs/07-sitemap/sitemap.yaml:7"}
+              - {id: "", name: Home, path: /, access: everyone, flows: [], context: "", terms: [], removed: false, where: "docs/07-sitemap/sitemap.yaml:1"}
+              - {id: "", name: Order detail, path: "/orders/:id", access: signed-in customer, flows: [], parent: 0, context: "", terms: [TERM-085], removed: false, where: "docs/07-sitemap/sitemap.yaml:6"}
             without_screen: []
         comments: {total: 0, entries: []}
         closed_comments: {total: 0, entries: []}

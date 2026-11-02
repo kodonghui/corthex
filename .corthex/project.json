@@ -41,6 +41,12 @@
       "truth": "source",
       "note": "Interfaces, one file per part of the project: CORTHEX-MEMORY in memory.md (confirmed on 2026-10-27, checked together with the functional spec and the memory store), with its JSON Schemas and their examples beside it; NEXUS in nexus.md, with the NEXUS server's requests in the OpenAPI 3.1 contract nexus.openapi.yaml (drafted on 2026-11-02 while the memory plugin is built, as the maintainer chose that day; its API IDs start at API-101, and it waits for its checkpoint together with the NEXUS user flows, functional spec and server data). The memory plugin has no HTTP API, so its interfaces are not OpenAPI in Swagger UI, the stage's default: they are hooks, a background process, the memory skill's commands and calls to the model APIs and Git. The NEXUS server has one, so its contract is OpenAPI, kept beside the other interfaces instead of in api/openapi.yaml, and read in an OpenAPI viewer such as Swagger UI; the hub's commands are in nexus.md, in memory.md's form. Translations beside them are not read as sources. Korean copies, with the tables as databases, go in the project's Notion records and follow these files. MEMORY spec confirmed on 2026-10-27: D1, D2 and D4 as recommended; D3 uses a user-operated HTTPS sync gateway and Postgres/pgvector, with device-local files and SQLite; default raw retention 100 days. Git sync design status: superseded (D3, 2026-10-27); server sync design is required before C3."
     },
+    "07-sitemap": {
+      "human": "notion",
+      "source": "docs/07-sitemap/",
+      "truth": "source",
+      "note": "Sitemap of NEXUS only: the memory plugin has no screens, so this stage has no file for it. NEXUS's screens are in nexus.yaml, in the form of the stage 07 template with the terms that NEXUS's cross-check reads and a status for each, and nexus.md explains them (drafted on 2026-11-03 while the memory plugin is built, as the maintainer chose on 2026-11-02; its SCR IDs start at SCR-101, and it waits for its checkpoint together with the NEXUS user flows, functional spec, server data and interfaces). Not the stage's default page of three views: nexus.md holds the board and the list, drawn from nexus.yaml, and people read them in a Korean copy in the project's Notion records, with the list as a database; there are no slides, since one person checks the sitemap, and from NEXUS 0.2 NEXUS draws it itself. Translations beside them are not read as sources."
+    },
     "10-wbs": {
       "human": "notion",
       "source": "docs/10-wbs/",
