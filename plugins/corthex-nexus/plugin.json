@@ -17,7 +17,9 @@
         "displayName": "CORTHEX Nexus",
         "shortDescription": "One page for the stages and trace links of all your projects",
         "developerName": "kodonghui",
-        "category": "Productivity"
+        "category": "Productivity",
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png"
       }
     }
   }

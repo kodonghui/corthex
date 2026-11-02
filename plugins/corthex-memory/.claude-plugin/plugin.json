@@ -10,6 +10,7 @@
   "homepage": "https://github.com/kodonghui/corthex",
   "repository": "https://github.com/kodonghui/corthex",
   "license": "Apache-2.0",
+  "icon": "./assets/icon.png",
   "keywords": ["memory", "context", "hooks", "session-start", "profile", "projects"],
   "dependencies": ["corthex"]
 }

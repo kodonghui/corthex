@@ -14,6 +14,8 @@
     "displayName": "CORTHEX Memory",
     "shortDescription": "Session context from your CORTHEX profile and project",
     "developerName": "kodonghui",
-    "category": "Productivity"
+    "category": "Productivity",
+    "logo": "./assets/icon.png",
+    "composerIcon": "./assets/icon.png"
   }
 }
