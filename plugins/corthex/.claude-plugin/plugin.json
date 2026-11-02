@@ -10,5 +10,6 @@
   "homepage": "https://github.com/kodonghui/corthex",
   "repository": "https://github.com/kodonghui/corthex",
   "license": "Apache-2.0",
+  "icon": "./assets/icon.png",
   "keywords": ["workflow", "project-management", "requirements", "ddd", "prd", "erd", "openapi", "sitemap", "qa", "records"]
 }

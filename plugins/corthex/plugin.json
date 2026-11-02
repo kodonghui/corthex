@@ -17,7 +17,9 @@
         "displayName": "CORTHEX",
         "shortDescription": "Stage-by-stage AI collaboration for software projects",
         "developerName": "kodonghui",
-        "category": "Productivity"
+        "category": "Productivity",
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png"
       }
     }
   }
