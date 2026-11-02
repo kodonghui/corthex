@@ -251,7 +251,7 @@ An accepted proposal makes one, in the same write as the acceptance (SPEC-131); 
 
 ### Checkpoints (TBL-110)
 
-Passed by the user in a stage's overview (SPEC-139), never by the agent (REQ-179). A checkpoint leaves the agent to-do once a stored stage record names it, or once it is withdrawn while neither an open pull request nor a stored stage record names it (SPEC-135, SPEC-140).
+Passed by the user in a stage's overview (SPEC-139), never by the agent (REQ-179). A passed checkpoint stays in the agent to-do until a stored stage record names it. A withdrawn one stays there while an open pull request or a stored stage record still names it, so that the agent closes the pull request or corrects the record, and leaves once neither does (SPEC-135, SPEC-140).
 
 | Column | Value | Meaning |
 | --- | --- | --- |
@@ -422,7 +422,7 @@ One statement, `DELETE FROM snapshots WHERE name = ?`, deletes the snapshot, and
 
 - The hub page reads every snapshot's body, and for each project the counts of open comments, open proposals and open discrepancies and of the checkpoints that wait for their records (SPEC-123), in one batch.
 - The picture view reads the picture; its open comments, with their replies and decisions; its open proposals; its edits that are not closed, with their proposals; and the open discrepancies of its part (SPEC-119).
-- The agent to-do reads, in its order, the open comments that wait for the agent, the open discrepancies, the edits that are neither closed nor dismissed, and the checkpoints that wait for their records or for a withdrawal's pull request to close, each list up to 50 with its total, and the space's claims (SPEC-135).
+- The agent to-do reads, in its order, the open comments that wait for the agent, the open discrepancies, the edits that are neither closed nor dismissed, and the checkpoints: the passed ones that no stored record names, and the withdrawn ones that an open pull request or a stored record still names. Each list holds up to 50 with its total, and the to-do also reads the space's claims (SPEC-135).
 - The stage overview reads the same for one part and stage, with the snapshot's records and checks (SPEC-138).
 
 ## Format version and migrations
@@ -673,5 +673,6 @@ store.js first: migrations 1 and 2, the push with its two batches, then the writ
 - A removal leaves no row of the project in any table.
 - The largest push: its queries, the rows that it writes and its CPU time on the free plan (REQ-124).
 - Two pushes of one project whose batches interleave: the one that the other overtook writes nothing and gets `409`.
+- A checkpoint withdrawn while its record's pull request is open, and that record merged and pushed anyway: the to-do keeps the checkpoint, and its stage has the `checkpoint-withdrawn` warning, until a push whose records no longer name it.
 - A write sent twice, and again after 7 days; two sessions that claim one entry, and a claim that ends; two hubs of one device that send one outbox; and a space at its text limit.
 - The stage records of two parts changed by two pull requests merged one after the other.
