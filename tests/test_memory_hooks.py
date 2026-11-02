@@ -50,15 +50,19 @@ class HookCase(StoreCase):
         return env
 
     def run_hook(self, hook, payload=None, changes=None, patch=None, metadata=None,
-                 expected_stderr=b"", expect_start=True):
+                 expected_stderr=b"", expect_start=True, worker=False):
         payload = self.event(hook) if payload is None else payload
         raw = payload if isinstance(payload, bytes) else json.dumps(payload, ensure_ascii=False).encode("utf-8")
         args = [sys.executable, str(SCRIPT), hook]
-        if patch is not None or metadata is not None:
+        if patch is not None or metadata is not None or hook == "start" and not worker:
             shim = self.folder / "caller.py"
             text = "import json, runpy, sys, time\n"
             text += "sys.path.insert(0, " + repr(str(SCRIPTS)) + ")\n"
             text += "from memory_lib import clock as memory_clock\n"
+            if hook == "start" and not worker:
+                # Framework-only cases own no detached child. Dedicated start
+                # integration tests explicitly opt into the real launcher.
+                text += "from memory_lib import worker_launch\nworker_launch.launch = lambda *a, **k: False\n"
             if patch is not None:
                 text += "from memory_lib import hooks\n" + patch + "\n"
             text += "sys.argv = [" + repr(str(SCRIPT)) + ", " + repr(hook) + "]\n"
@@ -130,7 +134,7 @@ class HookFrameworkTest(HookCase):
             self.run_hook(hook, b"\xef\xbb\xbf" + json.dumps(valid).encode("utf-8"))
             self.assertEqual(len(self.records("failures")), before)
         self.assertEqual([(row["hook"], row["outcome"]) for row in self.records("hooks")],
-                         [("prompt", "ok"), ("end-of-turn", "ok"), ("end", "ok")])
+                         [("start", "ok"), ("prompt", "ok"), ("end-of-turn", "ok"), ("end", "ok")])
 
     def test_tc033_deep_json_is_bad_input_for_each_hook(self):
         for hook in hooks.EVENTS:
@@ -182,9 +186,9 @@ class HookFrameworkTest(HookCase):
                  "hooks.projects.find = delayed\nhooks.process = lambda frame: 'ok'")
         for hook in hooks.EVENTS:
             self.run_hook(hook,patch=patch)
-            self.assertEqual(self.records("hooks")[-1]["outcome"],"ok")
+            self.assertEqual(self.records("hooks")[-1]["outcome"],"deadline" if hook=="start" else "ok")
             self.assertGreaterEqual(self.records("hooks")[-1]["ms"],2000)
-        self.assertEqual(self.records("failures"),[])
+        self.assertEqual([row["error"] for row in self.records("failures")],["deadline"])
 
     def test_tc036_product_import_time_uses_the_original_entry_deadline(self):
         plugin = self.folder / "slow-plugin"
@@ -341,7 +345,7 @@ class HookFrameworkTest(HookCase):
 
     def test_tc035_outer_and_base_errors_print_only_one_exception_class(self):
         message = "private-fixture-error-text"
-        patch = ("from memory_lib import context\ndef fail(*args):\n"
+        patch = ("from memory_lib import context\ndef fail(*args, **kwargs):\n"
                  "    raise RuntimeError(" + repr(message) + ")\ncontext.build_context = fail")
         self.run_hook("start", patch=patch, expected_stderr=b"corthex-memory: RuntimeError\n",
                       expect_start=False)
