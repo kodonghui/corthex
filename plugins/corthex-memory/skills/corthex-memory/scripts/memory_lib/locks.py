@@ -263,11 +263,13 @@ class Lock:
             self._unreserve()
             raise
 
-    def try_once(self):
+    def try_once(self, *, fail_on_permission=False):
         """One exclusive-create attempt; no waiting or stale-lock takeover.
 
         Used by expired hooks for their best-effort deadline diagnostics.
         Unlike acquire(wait=False), this has no future operation budget.
+        Early opportunistic logs may keep permission denial distinct from an
+        existing lease, so they do not spend the hook's budget waiting for it.
         """
         self._reserve()
         self.token = secrets.token_hex(16)
@@ -276,6 +278,8 @@ class Lock:
             try:
                 acquired = self._create()
             except PermissionError:
+                if fail_on_permission:
+                    raise
                 acquired = False
             if not acquired:
                 raise LockBusy()

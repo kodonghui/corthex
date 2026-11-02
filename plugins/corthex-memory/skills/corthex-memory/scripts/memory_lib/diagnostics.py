@@ -65,7 +65,7 @@ def _log_lease(lock, deadline, opportunistic, report):
         # A hook may cross its deadline during the header read or this create.
         # Try once before any optional waiting, never reclaiming a late lock.
         try:
-            lock.try_once()
+            lock.try_once(fail_on_permission=True)
         except locks.LockBusy:
             if clock.now() >= deadline:
                 raise

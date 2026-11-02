@@ -232,7 +232,9 @@ Linux·Windows의 Python 3.12.16·3.8.20 제품 기록을 24개 글·부하 조�
 
 ### 세션 시작 훅 (API-001)
 
-1. 입력을 읽고 도구를 가려냅니다. 0.1.0처럼 `cwd`에 대한 기본 부분을 만듭니다.
+훅의 기회성 진단에서 처음 시도한 로그 임대의 배타 생성이 `PermissionError`로 거부되면 그 진단 줄을 즉시 건너뜁니다. 다른 프로세스가 쥔 기존 임대와의 경합은 원래 기한까지 기다릴 수 있습니다. 원문 기록·저장소 복구·Windows의 획득 후 쓰기 공유 재시도·임대 해제 예산은 바꾸지 않습니다.
+
+1. 입력을 읽고 도구를 가려냅니다. 0.1.0과 같은 기본 부분에 쓸 `cwd`를 정합니다. 처음의 기억 폴더·설정 gate와 필요한 복구는 기본 부분 생성보다 먼저 하므로, 느린 기본 부분 생성이 그 읽기 예산을 소모해 필수 경계 기록을 건너뛰게 하지 않습니다. gate가 기억을 거절해도 기본 부분은 만듭니다.
 2. `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아니면 기본 부분을 내보냅니다. 세션의 폴더가 프로젝트 목록의 프로젝트 안일 때만 `## Memory` 아래에 `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.`를 더합니다. 아무것도 쓰지 않고 끝내며 그 값은 보여 주지 않습니다. 기억 폴더가 없으면 기본 부분을 내보내고 끝냅니다. 기억 폴더 정보가 없거나 읽을 수 없고 되살릴 백업도 없을 때, 더 새로운 형식일 때, 또는 기억 설정이 올바르지 않을 때는, 세션의 폴더가 프로젝트 목록의 프로젝트 안에 있으면 무엇이 잘못됐는지 적은 한 줄을 `## Memory` 아래에 붙여 기본 부분을 내보내고([알림](#알림)) 끝냅니다.
 3. 세션의 프로젝트를 찾습니다(SPEC-001). 켠 프로젝트가 없으면 기본 부분을 내보내고, 폴더가 프로젝트 목록의 프로젝트 안에 있으면 보관 기간 처리를 위해 기억 작업 프로세스를 띄운 뒤(아래 8번) 끝냅니다. 보관 기간은 모든 프로젝트에 적용되기 때문입니다(SPEC-009, SPEC-036).
 4. 폴더나 세션 경계를 빼 두지 않았으면(SPEC-006) 시작 경계를 덧붙입니다(SPEC-005).
@@ -815,7 +817,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 
 | 알림 | 보여 주는 때 | 글 |
 | --- | --- | --- |
-| 기억을 읽을 수 없음 | 이어지는 동안 | `Memory could not be read: <reason>. The memory status says more.` 이유는 더 새로운 형식이나 마이그레이션이면 `the store format is not supported`, 기록이 없으면 `the store record is missing`, 망가졌으면 `the store record is damaged`, 설정 오류면 `configuration is invalid at <field>`입니다. 필드는 status의 설정 검사와 같은 처음 틀린 필드로 정제하며 값·경로·오류 원문은 넣지 않습니다. `CORTHEX_MEMORY_HOME`이 절대 경로가 아니면 그 값 없이 `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.`를 씁니다. 위 설명대로 `## Memory` 아래에는 이 한 줄만 있음 |
+| 기억을 읽을 수 없음 | 이어지는 동안 | `Memory could not be read: <reason>. The memory status says more.` 이유는 더 새로운 형식이나 마이그레이션이면 `the store format is not supported`, 기록이 없으면 `the store record is missing`, 망가졌으면 `the store record is damaged`, 설정 오류면 `configuration is invalid at <field>`입니다. 예상하지 못한 I/O·요약 생성 예외에서 그 원인 중 하나가 확인되지 않았으면 고정 이유 `an internal memory error occurred`를 쓰며 저장소 손상을 추정하지 않습니다. 필드는 status의 설정 검사와 같은 처음 틀린 필드로 정제하며 값·경로·오류 원문은 넣지 않습니다. `CORTHEX_MEMORY_HOME`이 절대 경로가 아니면 그 값 없이 `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.`를 씁니다. 위 설명대로 `## Memory` 아래에는 이 한 줄만 있음 |
 | 멈춤 | 이어지는 동안 | `Curation is stopped for this project after three failed attempts in a row (<error>). The memory status can resume it.` |
 | 동의를 기다림 | 이어지는 동안 | `Memory records nothing on this device until the user consents to version <n> of the consent text.` |
 | 키를 기다림 | 이어지는 동안, 키마다 | `Curation is waiting for CORTHEX_MEMORY_ANTHROPIC_API_KEY, which the hook's environment does not have.` OpenAI 키는 `Recall and search by meaning are waiting for CORTHEX_MEMORY_OPENAI_API_KEY, which the hook's environment does not have.` 둘 다 `Memory keys are read only from the environment that the host starts in, such as a shell profile or a cloud environment's secret settings.`를 더하며, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`가 설정되어 있으면 `Claude Code's CLAUDE_CODE_SUBPROCESS_ENV_SCRUB setting can remove it from hooks.`도 더함 |

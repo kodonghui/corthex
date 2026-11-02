@@ -42,6 +42,14 @@ logger.timing("prompt", "codex", 1, "lock-busy", memory_clock.now() + 0.05)
 
 
 class MemoryDiagnosticsTest(StoreCase):
+    def test_permission_denied_hook_log_does_not_wait_for_a_contended_lease(self):
+        with mock.patch.object(locks.Lock, "_create", side_effect=PermissionError("private-fixture")), \
+                mock.patch.object(locks.Lock, "acquire", side_effect=AssertionError("permission denial must not wait")):
+            self.assertFalse(self.logger.failure("redaction", "record", memory_clock.now()+2,
+                             hook="start", host="codex", opportunistic=True))
+        self.assertEqual(self.failures(), [])
+        self.assertFalse((self.root / "logs/failures.lock").exists())
+
     def setUp(self):
         super().setUp()
         self.logger = diagnostics.Diagnostics(self.memory)
@@ -253,9 +261,9 @@ class MemoryDiagnosticsTest(StoreCase):
                 value = read_gate(*args, **kwargs)
                 offset[0] = 3.0
                 return value
-            def tried(lock):
+            def tried(lock, **options):
                 attempts.append(lock.path.name)
-                return original_try(lock)
+                return original_try(lock, **options)
             before = self.snapshot()
             with mock.patch.object(memory_clock, "now", side_effect=lambda: now()+offset[0]), \
                     mock.patch.object(self.logger, "read_gate", gated), \

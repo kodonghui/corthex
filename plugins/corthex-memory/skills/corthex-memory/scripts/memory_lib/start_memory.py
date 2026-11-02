@@ -68,6 +68,11 @@ def c1_notices(memory=None, *, deadline):
         return (unreadable(reason),)
     except configuration.ConfigurationInvalid as error:
         return (unreadable("configuration is invalid at " + error.field),)
+    return consent_notices(settings)
+
+
+def consent_notices(settings):
+    """Use the start hook's already-validated settings without another read."""
     if not settings.consented():
         return (Notice("consent", "Memory records nothing on this device until the user consents to version %d "
                        "of the consent text." % configuration.CONSENT_VERSION),)

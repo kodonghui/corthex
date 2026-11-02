@@ -83,9 +83,12 @@ class Hook:
 
 
 def process(frame):
-    """Record only; recall, triggers and start memory belong to later tasks."""
+    """Record without allowing a whole-hook deadline to skip recording."""
     if frame.hook == "start":
-        return None
+        if frame.project.left_out(frame.configuration, "boundary"):
+            return "left-out"
+        outcome = record(frame, "start", source=frame.event.get("source"))
+        return "error" if outcome == "lock-busy" else outcome
     from . import raw_log
     event = frame.event
     kind = {"prompt": "prompt", "end-of-turn": "answer", "end": "end"}[frame.hook]
@@ -146,14 +149,24 @@ def run(hook, started, incoming, output):
     if hook not in EVENTS:
         return
     event, host, logger, frame = None, None, None, None
+    start = None
+    if hook == "start":
+        from .start_hook import Start
+        start = Start(started)
     deadline = started + SECONDS[hook]
     notices = []
     try:
         try:
             memory = store.MemoryStore()
+            if start is not None:
+                start.memory = memory
             logger = diagnostics.Diagnostics(memory)
-            logger.read_gate(deadline, lambda error, count: notices.append((error, count)))
-        except (OSError, RuntimeError, ValueError):
+            header = logger.read_gate(deadline, lambda error, count: notices.append((error, count)))
+            if start is not None:
+                start.header, start.logger = header, logger
+        except (OSError, RuntimeError, ValueError) as error:
+            if start is not None:
+                start.error = error
             logger = None
         try:
             event = read_input(incoming, hook)
@@ -169,6 +182,9 @@ def run(hook, started, incoming, output):
         if logger is None:
             return
         config = memory.configuration(lambda error, count: notices.append((error, count)), deadline=deadline)
+        if start is not None:
+            start.configuration = config
+            start.prepare(event)
         for error, count in notices:
             logger.failure(error, "record", deadline, hook=hook, host=host, count=count,
                            opportunistic=True)
@@ -179,22 +195,31 @@ def run(hook, started, incoming, output):
             return
         frame = Hook(hook, event, host, memory, config, project, logger, started, deadline)
         outcome = process(frame)
-        if outcome is not None:
+        if start is not None:
+            start.outcome = outcome
+        elif outcome is not None:
             frame.finish(outcome)
     except Exception as error:
+        if start is not None:
+            start.error, start.outcome = error, "error"
         if isinstance(error,store.StoreUnavailable):
             pass
         elif frame is not None and isinstance(error,locks.LockBusy):
             frame.logger.failure(error,"record",deadline,hook=hook,host=host,project=frame.project.name,
                                  opportunistic=True)
-            frame.finish("lock-busy")
+            if start is None:
+                frame.finish("lock-busy")
         elif frame is not None:
-            frame.failure(error)
+            if start is None:
+                frame.failure(error)
+            else:
+                frame.logger.failure(error, "record", deadline, hook=hook, host=host,
+                                     project=frame.project.name, opportunistic=True)
         elif logger is not None:
             note_failure(logger, error, hook, host, deadline)
     finally:
         if hook == "start":
             try:
-                print_base(event, output)
+                start.finish(event, host, frame, output, print_base)
             except Exception as error:
                 sys.stderr.write("corthex-memory: " + type(error).__name__ + "\n")
