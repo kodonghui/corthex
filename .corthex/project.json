@@ -53,6 +53,12 @@
       "truth": "source",
       "note": "Screen states of NEXUS only: the memory plugin has no screens, so this stage has no file for it. NEXUS's screen definitions are in nexus/, one file for each of the sitemap's screens, SCR-101 to SCR-109, named by its ID and a short name, with README.md for the rules of every screen and the final words of the messages (drafted on 2026-11-03 while the memory plugin is built, as the maintainer chose on 2026-11-02; it waits for its checkpoint together with the NEXUS user flows, functional spec, server data, interfaces and sitemap). The human view is the stage's default, grayscale wireframes drawn from the definitions: one page, nexus/wireframes.html, with a frame for each state at 320 and 1440 pixels, drawn again in the same change as the definitions, and looked at as a private published page whose link is in the project's records, not in `link`, since the repository is public. The definitions are read in a Korean copy in the project's Notion records, with the tables as databases. Translations beside them are not read as sources."
     },
+    "09-mockup": {
+      "human": "mockup page",
+      "source": "design/nexus/",
+      "truth": "source",
+      "note": "Mockups of NEXUS only: the memory plugin has no screens, so this stage has no file for it. NEXUS's design tokens are in design/nexus/, in the Design Tokens Community Group format 2025.10: base.tokens.json, one file for each theme under theme/, and tokens.resolver.json, which chooses between them (drafted on 2026-11-03 while the memory plugin is built, as the maintainer chose on 2026-11-02, on the recommendations of stages 03 to 08, whose checkpoint is still open). Not Figma or Claude Design, the stage's defaults: Figma is not connected to this project, and a page drawn from the tokens keeps a token name in every value and can be measured in a browser. The two candidates for the new screens SCR-105 to SCR-109 are one page, docs/09-mockup/nexus/candidates.html, explained in docs/09-mockup/nexus/README.md, and looked at as a private published page whose link is in the project's records, not in `link`, since the repository is public. The stage waits for its first checkpoint, the choice of one direction. Translations beside them are not read as sources."
+    },
     "10-wbs": {
       "human": "notion",
       "source": "docs/10-wbs/",
