@@ -1,0 +1,266 @@
+{
+  "$description": "NEXUS 0.2: the dark theme's colours and shadows, under the same names in each theme file (stage 09 draft of 2026-11-03).",
+  "color": {
+    "$type": "color",
+    "bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0588, 0.0706, 0.0863],
+        "hex": "#0f1216"
+      },
+      "$description": "The page's ground"
+    },
+    "surface": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0902, 0.1059, 0.1294],
+        "hex": "#171b21"
+      },
+      "$description": "Cards, bars, sheets and panels"
+    },
+    "sunken": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1216, 0.1451, 0.1765],
+        "hex": "#1f252d"
+      },
+      "$description": "Wells inside a surface"
+    },
+    "text": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8941, 0.9098, 0.9294],
+        "hex": "#e4e8ed"
+      },
+      "$description": "Text"
+    },
+    "muted": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6078, 0.651, 0.698],
+        "hex": "#9ba6b2"
+      },
+      "$description": "Meta text, legends and placeholders' labels"
+    },
+    "line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1922, 0.2235, 0.2588],
+        "hex": "#313942"
+      },
+      "$description": "Dividers and the borders of controls"
+    },
+    "accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.4784, 0.7059, 1.0],
+        "hex": "#7ab4ff"
+      },
+      "$description": "Links, the primary button and a proposal's mark"
+    },
+    "on-accent": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0588, 0.0706, 0.0863],
+        "hex": "#0f1216"
+      },
+      "$description": "Text on the accent"
+    },
+    "focus": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.4784, 0.7059, 1.0],
+        "hex": "#7ab4ff"
+      },
+      "$description": "The focus ring"
+    },
+    "error": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [1.0, 0.5412, 0.502],
+        "hex": "#ff8a80"
+      },
+      "$description": "Error text"
+    },
+    "error-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.2275, 0.102, 0.0941],
+        "hex": "#3a1a18"
+      },
+      "$description": "An error's notice"
+    },
+    "warn": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.9529, 0.7529, 0.3843],
+        "hex": "#f3c062"
+      },
+      "$description": "Warning text and a discrepancy's mark"
+    },
+    "warn-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.2, 0.1529, 0.0588],
+        "hex": "#33270f"
+      },
+      "$description": "A warning's notice"
+    },
+    "on-warn": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0588, 0.0706, 0.0863],
+        "hex": "#0f1216"
+      },
+      "$description": "Text on the warning colour"
+    },
+    "info": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6118, 0.7529, 0.9255],
+        "hex": "#9cc0ec"
+      },
+      "$description": "Information text"
+    },
+    "info-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0941, 0.149, 0.2275],
+        "hex": "#18263a"
+      },
+      "$description": "An information notice and the user's replies in candidate B"
+    },
+    "done-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0784, 0.1961, 0.1333],
+        "hex": "#143222"
+      },
+      "$description": "A done stage, as phase 1"
+    },
+    "done-fg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.5608, 0.8784, 0.6588],
+        "hex": "#8fe0a8"
+      },
+      "$description": "A done stage's text"
+    },
+    "done-line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.1843, 0.5412, 0.298],
+        "hex": "#2f8a4c"
+      },
+      "$description": "A done stage's border"
+    },
+    "control-line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.4196, 0.4627, 0.5098],
+        "hex": "#6b7682"
+      },
+      "$description": "The border of a field, a chip or a check box: 3:1 against the page and a surface (WCAG 1.4.11), where phase 1's line is lighter"
+    },
+    "mark": {
+      "ink": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.8941, 0.9098, 0.9294],
+          "hex": "#e4e8ed"
+        },
+        "$description": "A comment's mark, and a merged mark"
+      },
+      "on-ink": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0588, 0.0706, 0.0863],
+          "hex": "#0f1216"
+        },
+        "$description": "The count on a mark"
+      },
+      "halo": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0588, 0.0706, 0.0863],
+          "hex": "#0f1216"
+        },
+        "$description": "The ring that keeps a mark apart from the picture's colours"
+      }
+    },
+    "scrim": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0, 0.0, 0.0],
+        "alpha": 0.55,
+        "hex": "#000000"
+      },
+      "$description": "Over the picture behind a bottom sheet"
+    },
+    "picture-ground": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0706, 0.0706, 0.0706],
+        "hex": "#121212"
+      },
+      "$description": "Around the drawing inside the picture's frame, as the editor's own ground"
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "sheet": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [0.0, 0.0, 0.0],
+          "alpha": 0.6,
+          "hex": "#000000"
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": -4,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 16,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "A bottom sheet's edge"
+    },
+    "float": {
+      "$value": {
+        "color": {
+          "colorSpace": "srgb",
+          "components": [0.0, 0.0, 0.0],
+          "alpha": 0.5,
+          "hex": "#000000"
+        },
+        "offsetX": {
+          "value": 0,
+          "unit": "px"
+        },
+        "offsetY": {
+          "value": 8,
+          "unit": "px"
+        },
+        "blur": {
+          "value": 24,
+          "unit": "px"
+        },
+        "spread": {
+          "value": 0,
+          "unit": "px"
+        }
+      },
+      "$description": "What floats over the picture: candidate B's zoom buttons and version chip"
+    }
+  }
+}
