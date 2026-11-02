@@ -19,8 +19,8 @@ class Start:
         folder = Path(cwd if isinstance(cwd, str) and cwd else os.getcwd()).expanduser().resolve()
         self.base = context.build_context(folder, Path.home(), limit=None)
 
-    def _notice(self):
-        error = self.error
+    def _notice(self, error=None):
+        error = self.error if error is None else error
         if isinstance(error, base.MemoryHomeInvalid):
             return (start_memory.Notice("unreadable", "Memory could not be read: "
                                         "CORTHEX_MEMORY_HOME is not an absolute path."),)
@@ -45,7 +45,7 @@ class Start:
         return context.shorten(self.base, limit) + "\n\n" + memory
 
     def _failure(self, error, host, project):
-        self.error = error
+        # Presentation errors do not invalidate the previously read gates.
         try:
             self.logger.failure(error, "record", self.deadline, hook="start", host=host,
                                 project=project, opportunistic=True)
@@ -73,7 +73,7 @@ class Start:
             return composed.text, outcome
         except Exception as error:
             self._failure(error, host, registered.name)
-            return self._fixed(self._notice()[0]), "error" if frame is not None else outcome
+            return self._fixed(self._notice(error)[0]), "error" if frame is not None else outcome
 
     def finish(self, event, host, frame, output, print_base):
         if self.base is None:

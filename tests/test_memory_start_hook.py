@@ -179,14 +179,23 @@ class StartHookTest(HookCase):
 
     def test_tc069_composition_errors_keep_base_fixed_notice_and_safe_diagnostics(self):
         for name, error in [("build_summary", "ValueError"), ("consent_notices", "PermissionError")]:
+            receipt = self.folder / (name + "-maintenance.jsonl")
             patch = ("from memory_lib import start_memory\ndef fail(*a,**k):\n    raise " + error + "('private-fixture-value')\nstart_memory." + name + "=fail")
-            text = self.text(patch=patch)
+            patch += ("\nfrom pathlib import Path\nfrom memory_lib import worker_launch\n"
+                      "def captured(memory,project,reason,deadline,logger,**options):\n"
+                      "    with Path(" + repr(str(receipt)) + ").open('a',encoding='utf-8') as target:\n"
+                      "        target.write(json.dumps({'project':project,'reason':reason,'device':options['expected_device']})+'\\n')\n"
+                      "    return False\nworker_launch.launch=captured")
+            text = self.text(patch=patch, worker=True)
             self.assertIn("- sample", text)
             self.assertIn("## Memory\n\nMemory could not be read: an internal memory error occurred. The memory status says more.", text)
             self.assertNotIn(start_memory.REFERENCE, text)
             self.assertNotIn("private-fixture-value", text)
             self.assertEqual(self.records("failures")[-1]["error"], error)
             self.assertEqual(self.records("hooks")[-1]["outcome"], "error")
+            self.assertTrue(receipt.exists(), "Summary failure skipped required maintenance")
+            self.assertEqual([json.loads(line) for line in receipt.read_text().splitlines()],
+                             [{"project": "sample", "reason": "start", "device": self.header["device"]}])
 
     def test_failed_output_never_starts_a_worker_and_keeps_safe_failure(self):
         class Output(io.BytesIO):
@@ -290,6 +299,12 @@ class StartHookTest(HookCase):
         other = self.folder / "other"
         other.mkdir()
         self.assertEqual(self.text(payload=dict(self.event("start"), cwd=str(other))), context.build_context(other, self.home))
+        output = io.BytesIO()
+        event = dict(self.event("start"), cwd=str(other))
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "PLUGIN_ROOT": ""}), mock.patch.object(worker_launch, "launch") as launch:
+            hooks.run("start", clock.now(), io.BytesIO(json.dumps(event).encode()), output)
+        launch.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["hookSpecificOutput"]["additionalContext"], context.build_context(other, self.home))
         self.assertEqual(self.records("hooks"), [])
 
     def test_disabled_registered_project_is_base_only_but_attempts_worker_after_flush(self):
