@@ -2,9 +2,9 @@
 
 [한국어](FL-101-read-a-project.ko.md)
 
-Serves: REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-076, REQ-077, REQ-078, REQ-079, REQ-080, REQ-081, REQ-084, REQ-085, REQ-087, REQ-173, REQ-174, REQ-175, REQ-191, REQ-192
+Serves: REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-076, REQ-077, REQ-078, REQ-079, REQ-080, REQ-081, REQ-084, REQ-085, REQ-087, REQ-173, REQ-174, REQ-175, REQ-191, REQ-192, REQ-198
 
-Context: CTX-006 Reading, with the stage records of CTX-007 Stage progress. Starts when the agent or the user takes a snapshot of a project, or the hub refreshes one to build the hub page or before a push. Built in phase 1; NEXUS 0.2 adds the parts of the stage sources that pictures show (REQ-076, REQ-191, REQ-192) and the stage records in the repository (REQ-173 to REQ-175).
+Context: CTX-006 Reading, with the stage records of CTX-007 Stage progress. Starts when the agent or the user takes a snapshot of a project, or the hub refreshes one to build the hub page or before a push. Built in phase 1; NEXUS 0.2 adds the parts of the stage sources that pictures show (REQ-076, REQ-191, REQ-192) and the stage records in the repository (REQ-173 to REQ-175), and R4 of 2026-11-02 adds each project's actions to ask about first (REQ-198).
 
 ```mermaid
 flowchart TD
@@ -30,12 +30,16 @@ flowchart TD
   J -->|no| J2["Read them from the device's status file,<br/>with a check that they should move<br/>to the repository<br/>REQ-174, REQ-175"]
   J1 --> K["Take each stage's state only as recorded: done<br/>without a checkpoint and its date stays in_progress<br/>with a check, and review findings become checks<br/>REQ-084, REQ-085, REQ-087"]
   J2 --> K
-  K --> L["Add a check for each broken check rule,<br/>redact secrets and email addresses in titles<br/>and fields, and leave out links that hold one<br/>REQ-078, REQ-079, REQ-080"]
+  K --> K1{"Do the project's settings set their own<br/>actions to ask about first, ask_before?<br/>REQ-198"}
+  K1 -->|yes| K2["Take the project's list,<br/>in place of the profile's<br/>REQ-198"]
+  K1 -->|no| K3["Take the profile's list<br/>REQ-198"]
+  K2 --> L["Add a check for each broken check rule, redact<br/>secrets and email addresses in titles, fields and<br/>that list, and leave out links that hold one<br/>REQ-078, REQ-079, REQ-080, REQ-198"]
+  K3 --> L
   L --> M{"Over 1,000,000 bytes, 3,000 items<br/>or 2,000 checks?"}
   M -->|yes| M1["Leave out whole pictures first, with a check<br/>that names them; if it is still too large, cut it<br/>with a check that says how much was kept<br/>REQ-081, REQ-192"]
-  M -->|no| N["Save the snapshot: items, links, checks, stage settings<br/>and records, with no other file contents and no<br/>local paths; nothing is written into the repository<br/>REQ-069, REQ-070, REQ-076, REQ-077"]
+  M -->|no| N["Save the snapshot: items, links, checks, stage settings,<br/>records and the actions to ask about first, with no<br/>other file contents and no local paths; nothing is<br/>written into the repository<br/>REQ-069, REQ-070, REQ-076, REQ-077"]
   M1 --> N
   N --> Z
 ```
 
-The snapshot records each repository's commit, its branch and whether it has uncommitted changes. Which of them may give pictures is point 2 of the [README](README.md#points-for-the-functional-spec), and how a project with several parts keeps its stage records is point 4.
+The snapshot records each repository's commit, its branch and whether it has uncommitted changes. Which of them may give pictures is point 2 of the [README](README.md#points-for-the-functional-spec), and how a project with several parts keeps its stage records is point 4. What the snapshot holds when a list is not a list of strings, or when neither the settings nor the profile set one, is point 18.
