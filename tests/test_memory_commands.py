@@ -82,7 +82,7 @@ class CommandsTest(unittest.TestCase):
             calls.append(context)
             return handler(context) if handler else commands.result(command, copy.deepcopy(self.data[command]), "Completed.")
         argv = ["--folder", str(self.project), command] + ARGV[command] + list(extra)
-        value, status = commands.run(argv, {command: probe} if registered else None)
+        value, status = commands.run(argv, {command: probe} if registered else {})
         self.assertEqual(fits(self.schema, value), [], value)
         self.assertEqual(status, 2 if value["code"] == "usage" else int(value["outcome"] in ("refused", "failed")))
         self.assertNotIn(MARKER, commands.canonical(value))
@@ -465,6 +465,20 @@ class CommandsTest(unittest.TestCase):
         with mock.patch.object(sys, "stdout", new_callable=io.StringIO) as out:
             self.assertEqual(commands.main(["unknown"]), 2)
             self.assertEqual(json.loads(out.getvalue())["command"], "none")
+
+    def test_tc077_error_logging_never_adopts_another_device_from_backup(self):
+        before = self.snapshot()
+        def fail(context):
+            foreign = dict(self.header, device="d_000000000000")
+            (self.root / "store.json.bak").write_bytes(json.dumps(foreign).encode("utf-8"))
+            (self.root / "store.json").write_bytes(b"{")
+            raise KeyError(MARKER)
+        value, status, _ = self.invoke("off", handler=fail)
+        self.assertEqual((value["code"], value["data"], status), ("internal", {"error": "KeyError"}, 1))
+        self.assertEqual((self.root / "store.json").read_bytes(), b"{")
+        self.assertEqual(json.loads((self.root / "store.json.bak").read_bytes())["device"], "d_000000000000")
+        others = lambda entries: {name: item for name, item in entries.items() if name not in ("store.json", "store.json.bak")}
+        self.assertEqual(others(self.snapshot()), others(before))
 
 
 if __name__ == "__main__":
