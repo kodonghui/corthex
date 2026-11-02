@@ -16,7 +16,7 @@ Path `/pictures/{project}/{part}/{stage}`, on the NEXUS server only (API-102), l
 | The open comments, the most recently active first, each with its count of replies and its last reply, and the closed comments by ID | API-111 (`comments`, `closed_comments`) |
 | The open proposals, without their stage source text, and the reflections that are not closed | API-111 (`proposals`, `reflections`) |
 | The open discrepancies of the part that concern the picture, each marked when it waits for a current picture | API-111 (`discrepancies`) |
-| The comments, proposals and discrepancies whose item the picture no longer holds | Found by the view from API-111's entries and the picture's items (SPEC-119) |
+| The comments, proposals and discrepancies whose item the picture no longer holds, and the comments on the picture itself whose part it no longer draws | Found by the view from API-111's entries and the picture's items (SPEC-119) |
 | The panel to open | The page's address after `#`: `item=`, `comment=` or `proposal=` |
 
 ## Actions
@@ -24,10 +24,11 @@ Path `/pictures/{project}/{part}/{stage}`, on the NEXUS server only (API-102), l
 | Action | Result | Failure |
 | --- | --- | --- |
 | Select an item, or open an address with `#item=` | The item's panel, SCR-106 | An ID that the picture does not hold: SCR-106#gone |
+| Select a part drawn without an ID | The item panel, SCR-106, for the picture itself, with the part's name ([choice 12](README.md#choices-this-stage-made)) | none |
 | Select a comment's mark, or open `#comment=` | The comment's panel, SCR-107 | SCR-107#gone |
 | Select a proposal's mark, or open `#proposal=` | The proposal's panel, SCR-108 | SCR-108#gone |
 | Move or zoom the picture | The picture moves inside its frame, and the page does not scroll sideways (REQ-146) | none |
-| Show the items as a list | Every item of the picture in a list with its marks, from which the panels open; a screen reader reads the same list | none |
+| Show the items as a list | Every item of the picture, and each part drawn without an ID by its name, in a list with its marks, from which the panels open; a screen reader reads the same list | none |
 | Show a newer version | The picture drawn again from the newer data | The read fails: SCR-105#error |
 | Open the stage overview, or the hub page | SCR-109 for the part and stage, or SCR-101 | Their own refusals |
 | Load again | The page from the server | SCR-105#error |
@@ -37,7 +38,7 @@ Path `/pictures/{project}/{part}/{stage}`, on the NEXUS server only (API-102), l
 | State | What the user sees and can do | From responses |
 | --- | --- | --- |
 | SCR-105#loading | The top bar with the project, part and stage, and in the picture's frame a grey placeholder with "Drawing the picture…"; the marks and the panels wait for the drawing. Before the view's code runs, the page shows only its static line, "Loading the picture view. If it does not appear, load the page again.", with a link that loads it again | API-102#200, API-104#200 |
-| SCR-105#normal | The top bar: Hub page, the project, part and stage, and Stage overview. Under it the document version, "Commit {commit} of {time}". The picture, read-only and laid out the same way each time (SPEC-119), moving inside its frame; on each item that has them, marks with the counts of its open comments, proposals and discrepancies, and "Accepted, not yet reflected" on the items of an accepted proposal whose reflection is not closed (SPEC-131). Under the picture, or beside it from 1,024 pixels: "Apart: comments whose item is gone ({n})", Items as a list and the legend of the marks | API-102#200, API-111#200 |
+| SCR-105#normal | The top bar: Hub page, the project, part and stage, and Stage overview. Under it the document version, "Commit {commit} of {time}". The picture, read-only and laid out the same way each time (SPEC-119), moving inside its frame; on each item that has them, marks with the counts of its open comments, proposals and discrepancies; on each part drawn without an ID whose name open comments on the picture itself quote, a mark with their count; and "Accepted, not yet reflected" on the items of an accepted proposal whose reflection is not closed (SPEC-131). Under the picture, or beside it from 1,024 pixels: "Apart: comments whose item is gone ({n})", Items as a list and the legend of the marks | API-102#200, API-111#200 |
 | SCR-105#large | As SCR-105#normal, with "This picture is large ({n} elements), so drawing it may take longer." above the frame; it is drawn without the 3-second target (SPEC-119) | API-111#200 with more than 300 elements |
 | SCR-105#empty | No picture: the message of `picture_not_found` for its `why`, not drawn yet, left out for its size, or its source in another repository ([Messages](README.md#messages)), with links to the stage overview and the hub page | API-102#200 with the problem `picture_not_found`, API-111#404 (`picture_not_found`) |
 | SCR-105#stale | A picture that is not current: a notice above the frame with the commit that it shows and why, from `not_current`: its newest source is larger than a snapshot may hold, gone from the repository, or in another repository; the picture stays usable. A discrepancy that waits for a current picture: its mark says so (`waiting`). After a write or a reading again, a picture of a newer commit than the one drawn: "A newer version of this picture is on the server." with Show it, while the drawn picture stays ([choice 6](README.md#choices-this-stage-made)) | API-111#200 |

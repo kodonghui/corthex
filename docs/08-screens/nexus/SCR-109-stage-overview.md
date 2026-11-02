@@ -48,7 +48,7 @@ Every state of the stage applies. The overview has no editor, so a failed core f
 | Kind | What the user sees |
 | --- | --- |
 | Access | Only a person's own sign-in passes or withdraws (SPEC-139): `user_only`, the Worker's `403` and a sign-in that expired: SCR-109#permission |
-| Input | The words are optional, up to 2,000 characters: past it the box counts down and Pass waits; `invalid_request` and `text_too_long` show by the box. The words are kept |
+| Input | The words are optional, up to 2,000 characters: words that are empty or only spaces are left out, and the checkpoint passes without words; past the limit the box counts down and Pass waits; `invalid_request` and `text_too_long` show by the box. The words are kept |
 | Target | A project or part that the snapshot does not hold, or a stage that is not one of the 13: SCR-109#error. An entry gone since the overview was read: its panel says so (SCR-106#gone, SCR-107#gone, SCR-108#gone) |
 | State changes | A checkpoint that waits for its record, or one recorded or withdrawn meanwhile: SCR-109#stale |
 | Repeats | Pass and Withdraw are disabled while they run; a pass sent again with its write ID leaves one checkpoint, while Pass again later makes a second one, and both show (SPEC-139) |
