@@ -508,7 +508,7 @@ The fields that `corthex-hub/0.2` adds to phase 1's format are those of TBL-114 
 - `repos.".".url` is the `origin` remote's address in the form of [A push](#a-push), and `repos.".".default` the default branch as SPEC-105 finds it. Without them, the snapshot has no picture sources and a `pictures-not-sent` check.
 - `replaces` is the held commit that the push replaces ([A push](#a-push)); `hub.py snapshot` writes none.
 - `records` says where the stage records came from: `repository`, with the commit and its time, or `status-file`.
-- The server stores the snapshot without `pictures`, which the pictures keep (stage 05's choice 3), so `API-107` returns none.
+- The server stores the snapshot without `pictures`, whose sources the pictures keep (stage 05's choice 3), so `API-107` returns the snapshot without them, the contract's `StoredSnapshot02`.
 
 ### Picture sources
 

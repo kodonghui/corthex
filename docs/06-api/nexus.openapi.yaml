@@ -320,8 +320,8 @@ paths:
       tags: [Snapshots]
       summary: The stored snapshot of a project
       description: >-
-        The snapshot as stored. From 0.2 it holds no picture sources, which the pictures keep
-        (getPicture reads them).
+        The snapshot as stored. From 0.2 it is the pushed snapshot without its pictures
+        (StoredSnapshot02), whose sources the pictures keep (getPicture reads them).
       x-corthex:
         id: API-107
         spec: [SPEC-113, SPEC-122]
@@ -338,8 +338,14 @@ paths:
               schema:
                 oneOf:
                   - $ref: "#/components/schemas/Snapshot01"
-                  - $ref: "#/components/schemas/Snapshot02"
+                  - $ref: "#/components/schemas/StoredSnapshot02"
+                discriminator:
+                  propertyName: schema
+                  mapping:
+                    corthex-hub/0.1: "#/components/schemas/Snapshot01"
+                    corthex-hub/0.2: "#/components/schemas/StoredSnapshot02"
               examples:
+                stored-0-2: {$ref: "#/components/examples/snapshot_02_stored"}
                 stored-0-1: {$ref: "#/components/examples/snapshot_01"}
         "403": {$ref: "#/components/responses/ReadRefused"}
         "404": {$ref: "#/components/responses/ProjectNotFound"}
@@ -2197,6 +2203,59 @@ components:
           entries: [external messages, deploys, payments, deletions, publishing]
           source: default
           left_out: []
+    snapshot_02_stored:
+      summary: The snapshot of 0.2 above as the server stores it, without its pictures
+      value:
+        schema: corthex-hub/0.2
+        generator: corthex-nexus 0.2.0
+        generated_at: "2026-11-03T10:00:00+09:00"
+        project: {name: corthex, title: CORTHEX, team: false, language: en, records: {kind: notion}, parts: [memory, nexus]}
+        ids: {TBL: table}
+        repos:
+          ".":
+            commit: a7d2e4f6081b3c5d7e9fa1b2c3d4e5f607182930
+            branch: claude/project-thread-ji1a31
+            dirty: false
+            web: "https://github.com/kodonghui/corthex"
+            url: "https://github.com/kodonghui/corthex"
+            default: {branch: main, commit: 3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a, time: "2026-11-03T09:40:00+09:00"}
+        replaces: c0ffee5e7a1b2c3d4e5f60718293a4b5c6d7e8f9
+        records: {from: repository, commit: 3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a, time: "2026-11-03T09:40:00+09:00"}
+        stages:
+          05-erd:
+            name: ERD
+            human: notion
+            truth: source
+            source: docs/05-erd/
+            source_state: found
+            read: true
+            files: 6
+            items: 1
+            state: in_progress
+            next: Write the API contract
+            parts:
+              memory:
+                state: done
+                checkpoints:
+                  - {approved: The memory store as drafted, by: the maintainer, where: "https://example.com/records/memory-05", date: "2026-10-27"}
+                next: Build C1
+                updated: "2026-10-27T18:00:00+09:00"
+              nexus:
+                state: in_progress
+                checkpoints: []
+                next: Write the API contract
+                updated: "2026-11-02T23:10:00+09:00"
+        items:
+          - {id: TBL-111, kind: table, stage: 05-erd, where: "docs/05-erd/nexus.sql:226", title: claims, links: [CTX-007, SPEC-136]}
+        checks: []
+        summary: {items: 1, kinds: {table: 1}, checks: {error: 0, warn: 0, info: 0}, states: {in_progress: 1}}
+        truncated: false
+        left_out:
+          - {part: memory, stage: 01-domain, why: size}
+        ask_before:
+          entries: [external messages, deploys, payments, deletions, publishing]
+          source: default
+          left_out: []
     picture_data_domain:
       summary: The DDD board of nexus, shortened to one context, with an open discrepancy and nothing else open
       value:
@@ -2509,11 +2568,28 @@ components:
           properties:
             schema: {const: corthex-hub/0.1}
     Snapshot02:
-      description: The snapshot of NEXUS 0.2 (TBL-114, Snapshot 0.2 in nexus.md)
+      description: The snapshot of NEXUS 0.2 as the hub pushes it (TBL-114, Snapshot 0.2 in nexus.md)
+      allOf:
+        - $ref: "#/components/schemas/Snapshot02Fields"
+        - type: object
+          required: [pictures]
+          properties:
+            pictures:
+              type: array
+              items: {$ref: "#/components/schemas/PictureEntry"}
+    StoredSnapshot02:
+      description: >-
+        A snapshot of 0.2 as the server stores it and getSnapshot returns it (TBL-101's body): the
+        pushed snapshot without its pictures, whose sources the pictures keep (TBL-103)
+      allOf:
+        - $ref: "#/components/schemas/Snapshot02Fields"
+        - not: {required: [pictures]}
+    Snapshot02Fields:
+      description: The fields of 0.2 that a pushed and a stored snapshot share
       allOf:
         - $ref: "#/components/schemas/SnapshotFields"
         - type: object
-          required: [records, pictures, ask_before]
+          required: [records, ask_before]
           properties:
             schema: {const: corthex-hub/0.2}
             replaces: {$ref: "#/components/schemas/Commit"}
@@ -2525,9 +2601,6 @@ components:
                 from: {type: string, enum: [repository, status-file]}
                 commit: {$ref: "#/components/schemas/Commit"}
                 time: {$ref: "#/components/schemas/ZonedTime"}
-            pictures:
-              type: array
-              items: {$ref: "#/components/schemas/PictureEntry"}
             left_out:
               type: array
               items:

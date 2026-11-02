@@ -509,7 +509,7 @@ hub.py outbox [PROJECT ...] [--send]
 - `repos.".".url`은 [보내기](#보내기)의 꼴로 맞춘 `origin` 원격의 주소이고, `repos.".".default`는 SPEC-105가 찾는 대로의 기본 브랜치입니다. 그것이 없으면 스냅샷에는 그림 자료가 없고 `pictures-not-sent` 점검이 있습니다.
 - `replaces`는 보내기가 대신하는 쥔 커밋입니다([보내기](#보내기)). `hub.py snapshot`은 이것을 쓰지 않습니다.
 - `records`는 단계 기록을 가져온 곳을 말합니다: 그 커밋과 시각이 있는 `repository`, 또는 `status-file`.
-- 서버는 스냅샷을 `pictures` 없이 저장하고 그것은 그림이 간직하므로(05단계의 고른 것 3), `API-107`은 그것을 돌려주지 않습니다.
+- 서버는 스냅샷을 `pictures` 없이 저장하고 그 원본은 그림이 간직하므로(05단계의 고른 것 3), `API-107`은 그것이 빠진 스냅샷, 곧 계약의 `StoredSnapshot02`를 돌려줍니다.
 
 ### 그림 자료
 
