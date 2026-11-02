@@ -2,7 +2,7 @@
 
 [한국어](nexus.ko.md)
 
-Stage 02 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: rewritten on 2026-10-24 from the event storming board and the new stage 01. The maintainer checked the scope on 2026-10-25 and approved the recommendations of D8 to D13, without changes (the stage's first checkpoint). It replaces the draft of 2026-10-24, which planned the next release around the hub of phase 1. The draft's rows keep their IDs: the rows marked `built` describe phase 1 as it runs now, in `corthex-nexus` 0.1.0 and the server deployed on 2026-10-24, and the rows that the board changed or removed say so. When this file and its Korean translation differ, this file is the source.
+Stage 02 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: rewritten on 2026-10-24 from the event storming board and the new stage 01. The maintainer checked the scope on 2026-10-25 and approved the recommendations of D8 to D13, without changes (the stage's first checkpoint). R4 of the harness review, which the maintainer approved on 2026-11-02, added REQ-197 and REQ-198 and widened REQ-076. It replaces the draft of 2026-10-24, which planned the next release around the hub of phase 1. The draft's rows keep their IDs: the rows marked `built` describe phase 1 as it runs now, in `corthex-nexus` 0.1.0 and the server deployed on 2026-10-24, and the rows that the board changed or removed say so. When this file and its Korean translation differ, this file is the source.
 
 Inputs: the contexts and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md) (CTX-006 to CTX-015, TERM-047 to TERM-123), with the shared terms of [docs/01-domain/memory.md](../01-domain/memory.md). Words in this file have the meanings given there.
 
@@ -32,8 +32,8 @@ Problems 8 to 12 come from the maintainer's words of 2026-10-24 and the board, a
 The next release, NEXUS 0.2, as decided in D13: phase ①, discussion over pictures, with the hub of phase 1 as each project's home. Building starts after the memory plugin.
 
 - In: drawing the DDD board, the ERD and the sitemap from the stage sources, each once a project has its stage source (CTX-012); the picture view, on a phone for viewing and comments, and on a PC; cross-checking the pictures in the pairs of D10 (CTX-013); comments, proposals and decisions between the user and the agent (CTX-014); accepted proposals as pending reflections, which the agent reflects by pull request (CTX-010, without the editor); the stage overview, checkpoints passed in NEXUS and stage records in the repository (CTX-007, D12); the agent to-do through the hub (D9); pushes that carry what the pictures show (D8); this repository as the first project.
-- Later: editing pictures on a PC with the embedded editor (phase ②, D11); links to Notion records and Jira work items (phase ③, CTX-015, hotspot 12); team members; earlier snapshots on the server; reading human views through their APIs; serving as memory's sync remote (memory's decision D3).
-- Never built: a picture editor of NEXUS's own, since it embeds an open-source one; Notion or Jira again, since it links to them; an ERD editor, since new projects use ERD Editor; mockup or presentation tools; AI inside the server; writes to Git by NEXUS, since the agent reflects by pull request; memory, which is CORTHEX-MEMORY.
+- Later: editing pictures on a PC with the embedded editor (phase ②, D11); links to Notion records and Jira work items (phase ③, CTX-015, hotspot 12); team members; earlier snapshots on the server; reading human views through their APIs.
+- Never built: a picture editor of NEXUS's own, since it embeds an open-source one; Notion or Jira again, since it links to them; an ERD editor, since new projects use ERD Editor; mockup or presentation tools; AI inside the server; writes to Git by NEXUS, since the agent reflects by pull request; memory, which is CORTHEX-MEMORY, and its sync, which goes through memory's own HTTPS sync gateway (memory's decision D3).
 - Projects with protected data, such as answer keys or student records, and team projects whose members have not agreed, are not pushed.
 
 ## Decisions in force
@@ -51,6 +51,8 @@ The next release, NEXUS 0.2, as decided in D13: phase ①, discussion over pictu
 | 2026-10-24 | Checkpoint 1 of the board: the DDD board, the ERD and the sitemap first; the user and the AI first; the pictures come from the stage sources in Git, and the AI reflects edits in them; discussion in comments and in the conversation; viewing on a phone too, and editing on a PC first; Notion and Jira linked, not moved. The server therefore keeps what the project spaces hold, besides the snapshots. | REQ-118, REQ-120, REQ-136 to REQ-150, REQ-158 to REQ-168, REQ-186 to REQ-190 |
 | 2026-10-24 | Checkpoints 2 and 3 of the board: the six contexts; the answers to hotspots 1, 3, 5, 6, 7, 9, 10 and 11; the five policies and the command rows. Assistant access (CTX-011) is removed. | REQ-128 to REQ-131, REQ-133 to REQ-135, REQ-143 to REQ-185 |
 | 2026-10-25 | The scope check, the stage's first checkpoint: the scope above, without changes, and D8 to D13 as recommended, as listed under the open decisions. | Scope; REQ-076, REQ-085 to REQ-087, REQ-089, REQ-105, REQ-125, REQ-127, REQ-130, REQ-141, REQ-142, REQ-152 to REQ-154, REQ-170 to REQ-175, REQ-180, REQ-183 to REQ-188, REQ-191 to REQ-193 |
+| 2026-10-27 | Memory's decision D3: memory syncs through an HTTPS sync gateway in front of the user's own Postgres server, not through NEXUS, so serving as memory's sync remote left the later scope. Corrected here on 2026-11-02. | Scope |
+| 2026-11-02 | Each project's own rule for asking first (R4 of the harness review of 2026-11-02, which the maintainer approved that day): a project's settings may set their own `ask_before`, which replaces the profile's for that project, while anything that cannot be undone is still asked. The core plugin's project settings define the field, and the hub shows each project's list. | REQ-076, REQ-197, REQ-198 |
 
 The maintainer's own words and where they were said are in the maintainer's records, not in this repository.
 
@@ -91,7 +93,7 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in phase 1 already) 
 | REQ-073 | If a stage is not read, then the hub shall say why: no text source, a missing source, no checkout, or settings that need a fix. | functional | Should | CTX-006 | Phase 1 | built |
 | REQ-074 | The hub shall skip files whose names, or whose folders' names, look like secrets, also when a link leads to them. | functional | Must | CTX-006 | Problem 5 | built |
 | REQ-075 | In a folder source, the hub shall skip a translation that defines only the IDs of its original. | functional | Must | CTX-006 | Hub change of 2026-10-24, before a second part of this project added its stage files | built |
-| REQ-076 | The snapshot shall hold no file contents other than IDs, titles, the status, type, priority and link fields, and the parts of the stage sources that pictures show. | non-functional | Must | CTX-006 | Problem 5; decision D8 (pictures need their content) | active |
+| REQ-076 | The snapshot shall hold no file contents other than IDs, titles, the status, type, priority and link fields, the parts of the stage sources that pictures show, and the kinds of actions to ask about first that apply to the project. | non-functional | Must | CTX-006 | Problem 5; decision D8 (pictures need their content); R4 of the harness review (each project's rule for asking first) | active |
 | REQ-077 | The snapshot shall hold no local paths. | non-functional | Must | CTX-006 | Problem 5 | built |
 | REQ-078 | The hub shall replace secrets and email addresses in titles and fields with `[redacted]`. | functional | Must | CTX-006 | Problem 5 | built |
 | REQ-079 | If a link holds a secret or an email address, then the hub shall leave the link out of the snapshot. | functional | Must | CTX-006 | Review of the hub, 2026-10-24 | built |
@@ -204,6 +206,8 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in phase 1 already) 
 | REQ-191 | The hub shall replace secrets and email addresses in the parts of the stage sources that pictures show with `[redacted]`. | functional | Must | CTX-006 | Problem 5; decision D8 | active |
 | REQ-192 | If the parts of the stage sources that pictures show would make a snapshot exceed its size limit, then the hub shall leave out whole pictures, with a check that names them. | functional | Should | CTX-006 | Phase 1 (the server's size limit); decision D8 | active |
 | REQ-193 | While a project in the push list has a stage source newer than its pushed snapshot, when the agent starts its work on the project, the hub skill shall have the agent push the project's snapshot. | functional | Should | CTX-009 | Problem 4; hotspot 2; decision D8 | active |
+| REQ-197 | The hub page shall show, for each project, the kinds of actions that the agent asks the user about first, whether they come from the project's settings or from the profile, and that anything that cannot be undone is asked in any case. | functional | Should | CTX-008 | R4 of the harness review, approved on 2026-11-02 (each project's rule for asking first, shown in the hub) | active |
+| REQ-198 | When the hub reads a project, the hub shall save in the snapshot the kinds of actions to ask about first that apply to the project, from the project's settings when they set them and otherwise from the profile, with secrets and email addresses replaced by `[redacted]`. | functional | Should | CTX-006 | R4 of the harness review, approved on 2026-11-02; problem 5 | active |
 
 Removed, with their IDs kept:
 
@@ -215,7 +219,7 @@ Removed, with their IDs kept:
 | REQ-134 | Where assistant access is included, the MCP server shall answer only chat clients that signed in through Cloudflare Access. | removed 2026-10-24 | As for REQ-133 |
 | REQ-135 | Where assistant access is included, the MCP server shall show a project's stages as an in-chat view in chat clients that support MCP Apps. | removed 2026-10-24 | As for REQ-133 |
 
-Changed with the board on 2026-10-24: REQ-076, REQ-085 to REQ-087, REQ-105, REQ-118, REQ-120 and REQ-127 to REQ-131 have new wording under the same IDs; REQ-089 and REQ-125 depend on D12 and D8 instead of D6 and D7; REQ-136 to REQ-193 are new.
+Changed with the board on 2026-10-24: REQ-076, REQ-085 to REQ-087, REQ-105, REQ-118, REQ-120 and REQ-127 to REQ-131 have new wording under the same IDs; REQ-089 and REQ-125 depend on D12 and D8 instead of D6 and D7; REQ-136 to REQ-193 are new. With R4 on 2026-11-02, REQ-076 also allows the kinds of actions to ask about first, and REQ-197 and REQ-198 are new.
 
 ## Success measures
 

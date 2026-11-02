@@ -21,7 +21,7 @@
       "human": "notion",
       "source": "docs/03-user-flow/",
       "truth": "source",
-      "note": "User flows, one Mermaid file per flow, in one folder per part of the project: CORTHEX-MEMORY in memory/ (confirmed on 2026-10-27, reviewed together with the functional spec). The README there lists the flows; translations beside them are not read as sources. Korean copies of the flows, with their diagrams, are in the project's Notion records (2026-10-24). MEMORY spec confirmed on 2026-10-27: D1, D2 and D4 as recommended; D3 uses a user-operated HTTPS sync gateway and Postgres/pgvector, with device-local files and SQLite; default raw retention 100 days. Git sync design status: superseded (D3, 2026-10-27); server sync design is required before C3."
+      "note": "User flows, one Mermaid file per flow, in one folder per part of the project: CORTHEX-MEMORY in memory/ (confirmed on 2026-10-27, reviewed together with the functional spec), NEXUS in nexus/ (drafted on 2026-11-02 while the memory plugin is built, as the maintainer chose that day; its flow IDs start at FL-101). The README of each folder lists its flows; translations beside them are not read as sources. Korean copies of the flows, with their diagrams, are in the project's Notion records (memory on 2026-10-24, NEXUS on 2026-11-02). MEMORY spec confirmed on 2026-10-27: D1, D2 and D4 as recommended; D3 uses a user-operated HTTPS sync gateway and Postgres/pgvector, with device-local files and SQLite; default raw retention 100 days. Git sync design status: superseded (D3, 2026-10-27); server sync design is required before C3."
     },
     "04-functional-spec": {
       "human": "notion",
