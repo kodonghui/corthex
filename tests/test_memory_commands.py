@@ -32,7 +32,7 @@ class CommandsTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.folder = Path(temporary.name)
+        self.folder = Path(temporary.name).resolve()
         self.root, self.home, self.project = (self.folder / name for name in ("memory", "home", "project"))
         self.project.mkdir()
         self.registry = self.home / ".corthex/projects.json"
@@ -82,7 +82,7 @@ class CommandsTest(unittest.TestCase):
             calls.append(context)
             return handler(context) if handler else commands.result(command, copy.deepcopy(self.data[command]), "Completed.")
         argv = ["--folder", str(self.project), command] + ARGV[command] + list(extra)
-        value, status = commands.run(argv, {command: probe} if registered else None)
+        value, status = commands.run(argv, {command: probe} if registered else {})
         self.assertEqual(fits(self.schema, value), [], value)
         self.assertEqual(status, 2 if value["code"] == "usage" else int(value["outcome"] in ("refused", "failed")))
         self.assertNotIn(MARKER, commands.canonical(value))
@@ -465,6 +465,63 @@ class CommandsTest(unittest.TestCase):
         with mock.patch.object(sys, "stdout", new_callable=io.StringIO) as out:
             self.assertEqual(commands.main(["unknown"]), 2)
             self.assertEqual(json.loads(out.getvalue())["command"], "none")
+
+    def test_tc077_gate_backup_restores_are_logged_once_after_release(self):
+        for name in ("store.json", "configuration.json"):
+            with self.subTest(record=name):
+                self.reset_store()
+                before = sum(len(p.read_text(encoding="utf-8").splitlines())
+                             for p in (self.root / "logs").glob("failures-*.jsonl"))
+                path = self.root / name
+                path.rename(path.with_name(path.name + ".bak"))
+                value, status, calls = self.invoke("off")
+                self.assertEqual((value["code"], status, len(calls)), ("ok", 0, 1))
+                self.assertTrue(path.is_file())
+                self.assertFalse(path.with_name(path.name + ".bak").exists())
+                rows = [json.loads(line) for p in (self.root / "logs").glob("failures-*.jsonl")
+                        for line in p.read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(len(rows), before + 1)
+                self.assertEqual((rows[-1]["step"], rows[-1]["error"]), ("restore", "restored"))
+                self.assertFalse((self.root / "store.lock").exists())
+                self.assertFalse((self.root / "logs/failures.lock").exists())
+
+    def test_tc077_gate_backup_notices_never_follow_device_or_root_replacement(self):
+        original = store.MemoryStore.configuration
+        for mode in ("device", "root"):
+            with self.subTest(replacement=mode):
+                self.reset_store()
+                path = self.root / "store.json"
+                path.rename(path.with_name(path.name + ".bak"))
+                after = {}
+
+                def replace(memory, *args, **kwargs):
+                    config = original(memory, *args, **kwargs)
+                    if mode == "device":
+                        files.write_json(path, dict(self.header, device=base.new_id("d")), "TBL-001")
+                    else:
+                        self.root.rename(self.folder / "moved-memory")
+                        self.reset_store()
+                    after.update(self.snapshot())
+                    return config
+
+                with mock.patch.object(store.MemoryStore, "configuration", replace):
+                    self.invoke("off")
+                self.assertEqual(self.snapshot(), after)
+                self.assertEqual(list((self.root / "logs").glob("failures-*.jsonl")), [])
+
+    def test_tc077_error_logging_never_adopts_another_device_from_backup(self):
+        before = self.snapshot()
+        def fail(context):
+            foreign = dict(self.header, device="d_000000000000")
+            (self.root / "store.json.bak").write_bytes(json.dumps(foreign).encode("utf-8"))
+            (self.root / "store.json").write_bytes(b"{")
+            raise KeyError(MARKER)
+        value, status, _ = self.invoke("off", handler=fail)
+        self.assertEqual((value["code"], value["data"], status), ("internal", {"error": "KeyError"}, 1))
+        self.assertEqual((self.root / "store.json").read_bytes(), b"{")
+        self.assertEqual(json.loads((self.root / "store.json.bak").read_bytes())["device"], "d_000000000000")
+        others = lambda entries: {name: item for name, item in entries.items() if name not in ("store.json", "store.json.bak")}
+        self.assertEqual(others(self.snapshot()), others(before))
 
 
 if __name__ == "__main__":
