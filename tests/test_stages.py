@@ -135,6 +135,32 @@ class StageContractTest(unittest.TestCase):
         # One colour per kind, so the kind of a sticky can be read from its colour.
         self.assertEqual(len(set(colours.values())), len(colours))
 
+    def test_domain_context_tables_start_with_aggregate_rules(self):
+        domain = read_text(SKILLS / "corthex-discover" / "references" / "01-domain.md")
+        contexts = re.split(r"(?m)^### (CTX-[0-9]{3}[^\n]*)\n", section(domain, "## 4. Context tables"))
+        self.assertGreater(len(contexts), 1, "the template has context examples")
+        for title, body in zip(contexts[1::2], contexts[2::2]):
+            with self.subTest(context=title):
+                lines = body.splitlines()
+                rows = [i for i, line in enumerate(lines) if line.startswith("|")]
+                self.assertTrue(rows, "the context has its table")
+                first_after = next((line for line in lines[rows[-1] + 1:] if line.strip()), "")
+                self.assertTrue(first_after.startswith("- Aggregate rules:"), first_after)
+                self.assertTrue(first_after.partition(":")[2].strip(), "the rules are not empty")
+
+    def test_domain_checks_keep_aggregate_rules_and_external_patterns(self):
+        domain = read_text(SKILLS / "corthex-discover" / "references" / "01-domain.md")
+        checks = section(domain, "## Checks")
+        self.assertRegex(checks, r"Every aggregate.*at least one rule or a hotspot")
+        self.assertRegex(checks, r"Every link to or from an external system.*relationship pattern")
+
+    def test_domain_confidence_labels_are_documented_for_steps_and_board(self):
+        for reference in ("01-domain", "event-storming-board"):
+            text = read_text(SKILLS / "corthex-discover" / "references" / (reference + ".md"))
+            with self.subTest(reference=reference):
+                for label in ("sure", "inferred", "guess"):
+                    self.assertIn("`[%s]`" % label, text)
+
     def test_entry_skill_routes_every_stage(self):
         entry = read_text(SKILLS / "corthex" / "SKILL.md")
         for skill in STAGE_SKILLS + ["corthex-record", "corthex-uxui"]:

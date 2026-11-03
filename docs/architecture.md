@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.2.0; optional plugins 0.1.0. The core plugin exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub and a NEXUS server to deploy yourself). The rest of both is planned (see [Roadmap](#roadmap)).
+Status: core `corthex` 0.3.0; optional plugins 0.1.0. The core plugin exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub and a NEXUS server to deploy yourself). The rest of both is planned (see [Roadmap](#roadmap)).
 
 ## Goals
 
@@ -125,6 +125,8 @@ The `corthex-memory` plugin adds a short version at the start of each session wi
 Every stage fills six slots: inputs, outputs, human view, sync, human checkpoints and trace IDs. Each stage's text source stays in the product repository. The human view (Notion, Miro, an ERD tool, Figma and so on) can differ from team to team, and the project's settings say which side is the truth for each stage.
 
 The AI reaches a human view through an MCP server, a connector or an API when the tool has one. A tool with only import and export depends on a person's exports, so the AI says how old its copy is. For the ERD, CORTHEX suggests ERD Editor to new projects, because it keeps the diagram in the repository and has an MCP server. For domain discovery, the AI and the user run event storming on a Miro board through Miro's MCP server, one frame per step. By default the AI drafts each step and people correct it on the board, and the result goes into one domain design document.
+
+Stage 01 marks the AI's confidence and keeps checkpoint notes to guesses, two or three questions and, at checkpoints 2 and 3, core aggregate rules. The document records each aggregate's rules, with sources and Given–When–Then examples for core contexts, and a Mermaid context map whose external links name their relationship patterns. For an addition to an existing product, only the changed contexts go through the steps again.
 
 - The contract, the stage keys and the trace ID rules: [stage-contract.md](../plugins/corthex/skills/corthex/references/stage-contract.md).
 - Each stage's slots, steps, checks and output template: `references/<stage>.md` in the stage skill, such as [02-prd.md](../plugins/corthex/skills/corthex-define/references/02-prd.md).
