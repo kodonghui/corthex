@@ -55,7 +55,7 @@ Does not apply:
 | Outside services | The human view is a link to its tool, which opens on its own; the rest of the detail is unchanged |
 | Data exposure | Only what the hub page already holds; a picture's source is never in the hub page |
 | Empty and streamed answers | A stage without items: SCR-104#empty. No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-104) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-104); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-104) |
 | AI answers | None: NEXUS calls no AI model (REQ-121) |
 
 ## Layout

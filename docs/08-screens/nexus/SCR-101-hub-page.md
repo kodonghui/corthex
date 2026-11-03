@@ -55,7 +55,7 @@ Does not apply:
 | Outside services | None: the page loads nothing from the network (REQ-097). A stage's human view is a link that opens its tool |
 | Data exposure | Only what the snapshots hold: no picture source, no comment's text, no identity, no secret and no local path (SPEC-124). A page built on a device leaves off the projects that are no longer in the project list (REQ-104) |
 | Empty and streamed answers | An empty server or device: SCR-101#empty. A project without recorded progress or without a snapshot: SCR-101#normal says why. No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-101) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-101); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-101) |
 | AI answers | None: NEXUS calls no AI model (REQ-121) |
 
 ## Layout

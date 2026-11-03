@@ -54,7 +54,7 @@ Does not apply:
 | Outside services | A pull request's link opens on its own; the rest of the panel is unchanged |
 | Data exposure | The stage source text shows only here, read on its own (API-115); no identity but the author's kind |
 | Empty and streamed answers | Does not reach the panel: a proposal is never empty. No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-108) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-108); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-108) |
 | AI answers | None: NEXUS calls no AI model (REQ-121); the agent's proposals are text written through the hub |
 
 ## Layout

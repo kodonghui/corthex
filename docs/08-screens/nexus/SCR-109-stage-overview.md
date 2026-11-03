@@ -57,7 +57,7 @@ Every state of the stage applies. The overview has no editor, so a failed core f
 | Outside services | None: the overview sends its requests only to the server; a pull request's link opens on its own |
 | Data exposure | Only the stage's record, checks and entries; a checkpoint shows that the user passed it, never who by name |
 | Empty and streamed answers | Nothing left: SCR-109#empty. No checks: "No checks found anything.". No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-109) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-109); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-109) |
 | AI answers | None: NEXUS calls no AI model (REQ-121) |
 
 ## Layout

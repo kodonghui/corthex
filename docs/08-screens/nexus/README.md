@@ -165,6 +165,31 @@ No screen shows the other codes. `agent_only`, `claimed` and `comment_closed` re
 
 The hub page and its views keep phase 1's other messages, such as "No projects yet. Register a project with the corthex skill, then build the hub again." and "Nothing matches “{q}”.", in English and Korean as hub.html holds them.
 
+### Words the mockups added
+
+The mockups of stage 09, in [direction A](../../09-mockup/nexus/README.md#the-choice), needed these words, which stage 08 had not written. They were added on 2026-11-03 with the mockups and can change at the checkpoint. A word between `·` marks is a label of its own.
+
+| Words | Where | English | Korean |
+| --- | --- | --- | --- |
+| Open counts | SCR-101, on the server | 1 open comment · {n} open comments · 1 open proposal · {n} open proposals · 1 open discrepancy · {n} open discrepancies | 열린 의견 {n} · 열린 제안 {n} · 열린 어긋남 {n} |
+| Picture mark | SCR-101, on the server: after the stages' legend, and in the name of a stage that has a picture | picture in NEXUS | NEXUS에 그림 |
+| Waiting checkpoints | SCR-101, on the server | Waiting for their records ({n}) | 기록을 기다리는 확인 지점 ({n}) |
+| In NEXUS | SCR-101#stale, on the server: the heading of a card's rows when a picture is not current or a record names a withdrawn checkpoint | In NEXUS | NEXUS에서 |
+| Asks first | SCR-101, on the server (SPEC-125) | Asks first ({source}) · {list} and {n} more in the settings · Not asked in this project: {list} · Anything that cannot be undone is asked in any case. · Only what cannot be undone is asked. | 먼저 묻는 일 ({source}) · {list} 외 {n}개는 설정에 있음 · 이 프로젝트에서 묻지 않는 일: {list} · 되돌릴 수 없는 일은 어쨌든 묻습니다. · 되돌릴 수 없는 일만 묻습니다. |
+| The list's source | SCR-101, in Asks first | the project's list · the profile's list · the default list | 프로젝트의 목록 · 프로필의 목록 · 기본 목록 |
+| All projects | SCR-103, SCR-104: the link to the projects | All projects | 모든 프로젝트 |
+| Zoom | SCR-105: the names of the zoom buttons | Zoom out · Zoom in · Whole picture | 축소 · 확대 · 그림 전체 |
+| Merged marks | SCR-105: the name of a context's marks, merged at the whole picture | 1 mark in {context}: zoom in · {n} marks in {context}: zoom in | {context}의 표시 {n}개: 확대하기 |
+| Legend | SCR-105: the legend's name | Legend of the marks | 표시의 설명 |
+| List of items | SCR-105 | With marks ({n}) · The rest ({n}) · Part without an ID | 표시가 있는 것 ({n}) · 나머지 ({n}) · ID 없는 부분 |
+| Item panel | SCR-106 | Proposals ({n}) · Comments ({n}) · Closed ({n}) · 1 reply · {n} replies | 제안 ({n}) · 의견 ({n}) · 닫힌 의견 ({n}) · 답글 {n}개 |
+| Back to the picture | SCR-106, SCR-107 and SCR-108, when their item, comment or proposal is gone | Back to the picture | 그림으로 돌아가기 |
+| Loading the replies | SCR-107#loading, for screen readers | Loading the replies… | 답글을 불러오는 중… |
+| New reply | SCR-107#stale: a reply that came after the panel opened | New | 새 답글 |
+| Proposal panel | SCR-108 | Change · Reason · Stage source text · Made on commit {commit} · Answers | 변경 · 까닭 · 단계 원본의 글 · 커밋 {commit}에서 낸 제안 · 답하는 의견 |
+| Loading the source text | SCR-108#loading, for screen readers | Loading the stage source text… | 단계 원본의 글을 불러오는 중… |
+| Overview's headings | SCR-109 | Recorded state · Updated {time} · Discrepancies ({n}) · Comments ({n}) · Pending reflections ({n}) · Words (optional) | 기록된 상태 · 갱신 {time} · 어긋남 ({n}) · 의견 ({n}) · 반영 대기 ({n}) · 남길 말 (선택) |
+
 ## Choices this stage made
 
 The earlier stages left these to stage 08. Each can change at the checkpoint.

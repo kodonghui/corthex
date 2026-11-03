@@ -1,5 +1,5 @@
 {
-  "$description": "NEXUS 0.2: the light theme's colours and shadows, under the same names in each theme file (stage 09 draft of 2026-11-03).",
+  "$description": "NEXUS 0.2: the light theme's colours and shadows, under the same names in each theme file (stage 09, direction A, 2026-11-03).",
   "color": {
     "$type": "color",
     "bg": {
@@ -128,7 +128,7 @@
         "components": [0.902, 0.9333, 0.9725],
         "hex": "#e6eef8"
       },
-      "$description": "An information notice and the user's replies in candidate B"
+      "$description": "An information notice"
     },
     "done-bg": {
       "$value": {
@@ -153,6 +153,38 @@
         "hex": "#57b26f"
       },
       "$description": "A done stage's border"
+    },
+    "progress-bg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.8627, 0.9255, 1.0],
+        "hex": "#dcecff"
+      },
+      "$description": "A stage in progress, as phase 1"
+    },
+    "progress-fg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.0431, 0.2667, 0.5255],
+        "hex": "#0b4486"
+      },
+      "$description": "A stage in progress: its text"
+    },
+    "progress-line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.3569, 0.6196, 0.9098],
+        "hex": "#5b9ee8"
+      },
+      "$description": "A stage in progress: its border"
+    },
+    "todo-line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.7686, 0.7961, 0.8275],
+        "hex": "#c4cbd3"
+      },
+      "$description": "A stage not started: its border, as phase 1"
     },
     "control-line": {
       "$value": {
@@ -234,33 +266,6 @@
         }
       },
       "$description": "A bottom sheet's edge"
-    },
-    "float": {
-      "$value": {
-        "color": {
-          "colorSpace": "srgb",
-          "components": [0.0588, 0.0706, 0.0863],
-          "alpha": 0.16,
-          "hex": "#0f1216"
-        },
-        "offsetX": {
-          "value": 0,
-          "unit": "px"
-        },
-        "offsetY": {
-          "value": 8,
-          "unit": "px"
-        },
-        "blur": {
-          "value": 24,
-          "unit": "px"
-        },
-        "spread": {
-          "value": 0,
-          "unit": "px"
-        }
-      },
-      "$description": "What floats over the picture: candidate B's zoom buttons and version chip"
     }
   }
 }

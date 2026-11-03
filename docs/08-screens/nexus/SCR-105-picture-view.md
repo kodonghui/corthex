@@ -62,7 +62,7 @@ Every state of the stage applies, with two of the screen's own, large and code-f
 | Outside services | None: the view loads its code, styles and fonts only from the server (REQ-147) and sends its requests only to it |
 | Data exposure | Only the picture and its entries; a proposal's stage source text only in its panel (API-115); no identity but the author's kind |
 | Empty and streamed answers | No picture: SCR-105#empty. A picture without entries shows no marks and no "Apart". No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-105) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-105); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-105) |
 | AI answers | None: NEXUS calls no AI model (REQ-121) |
 
 ## Layout
