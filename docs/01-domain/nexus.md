@@ -6,7 +6,7 @@ synced_at: 2026-10-24T22:44+09:00
 
 [한국어](nexus.ko.md)
 
-Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. At the joint checkpoint of NEXUS's stages 03 to 08 on 2026-11-03, the maintainer approved writing the read model of Edit picture in CTX-010 as Picture view, the name in the glossary, since the board's table of read models already says what the view shows on an edit conflict (stage 07's change 3). This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
 
 This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, the terms added with the board from TERM-109, after the ones that memory took up to TERM-108, and those added with the functional spec from TERM-124. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
 
@@ -182,7 +182,7 @@ Purpose: the user edits pictures on a PC, and the agent reflects the edits in th
 
 | Given by | Read model | Command | Aggregate | Events |
 | --- | --- | --- | --- | --- |
-| User, on a PC; policy: when Proposal accepted (CTX-014) | Picture view; on a conflict, the user's edit over the new picture | Edit picture | Edit | Picture edited, or Edit conflict found |
+| User, on a PC; policy: when Proposal accepted (CTX-014) | Picture view | Edit picture | Edit | Picture edited, or Edit conflict found |
 | Agent, at its next work | Agent to-do | Reflect in stage source | Edit | Edit reflected |
 
 - Aggregate rules: an edit is bound to the document version that its picture was drawn from, and a newer version makes it a conflict. It closes once it is in the stage sources, and so does an accepted proposal.

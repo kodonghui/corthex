@@ -2,7 +2,7 @@
 
 [한국어](README.ko.md)
 
-Stage 08 of CORTHEX's own project, for NEXUS 0.2: one definition for each of the nine screens of the [sitemap](../../07-sitemap/nexus.md), with the data that it shows and the request that each piece comes from, its actions with their results and failures, and every state with the responses that lead to it; and in this file the rules that hold on every screen, the final words of the messages, and the [wireframes](wireframes.html), drawn from the definitions. Status: draft of 2026-11-03, written while the memory plugin is being built, as the maintainer chose on 2026-11-02, and on the recommendations of the user flows, the functional spec, the server's data, the interfaces and the sitemap, whose checkpoint is still open. The maintainer checks it together with them. When a file and its Korean translation differ, the English file is the source.
+Stage 08 of CORTHEX's own project, for NEXUS 0.2: one definition for each of the nine screens of the [sitemap](../../07-sitemap/nexus.md), with the data that it shows and the request that each piece comes from, its actions with their results and failures, and every state with the responses that lead to it; and in this file the rules that hold on every screen, the final words of the messages, and the [wireframes](wireframes.html), drawn from the definitions. Status: drafted on 2026-11-03, while the memory plugin is being built, as the maintainer chose on 2026-11-02, on the recommendations of the user flows, the functional spec, the server's data, the interfaces and the sitemap. The maintainer passed its checkpoint the same day, together with stages 03 to 07. When a file and its Korean translation differ, the English file is the source.
 
 Inputs: the sitemap in [docs/07-sitemap/nexus.yaml](../../07-sitemap/nexus.yaml) (SCR-101 to SCR-109), with its [notes for stage 08](../../07-sitemap/nexus.md#stage-08-screen-states); the functional spec in [docs/04-functional-spec/nexus.md](../../04-functional-spec/nexus.md), above all SPEC-119, SPEC-122 to SPEC-127, SPEC-131 to SPEC-134, SPEC-138 and SPEC-139 and its [notes for stages 07 and 08](../../04-functional-spec/nexus.md#stages-07-and-08-screens); the interfaces in [docs/06-api/nexus.md](../../06-api/nexus.md) and the contract [nexus.openapi.yaml](../../06-api/nexus.openapi.yaml), whose responses and [error codes](../../06-api/nexus.md#error-codes) the states follow, with the [notes for stages 07 and 08](../../06-api/nexus.md#stages-07-and-08-screens); the server's data in [docs/05-erd/nexus.md](../../05-erd/nexus.md), for the marks that come from it; the user flows that run in a browser, FL-105 to FL-107, FL-109, FL-110, FL-113 and FL-115, in [docs/03-user-flow/nexus/](../../03-user-flow/nexus/README.md); and phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose states the hub page and its views keep. The memory plugin has no screens, so this stage has no file for it.
 
@@ -192,7 +192,7 @@ The mockups of stage 09, in [direction A](../../09-mockup/nexus/README.md#the-ch
 
 ## Choices this stage made
 
-The earlier stages left these to stage 08. Each can change at the checkpoint.
+The earlier stages left these to stage 08. The checkpoint of 2026-11-03 kept each as it is.
 
 1. One file for each screen, named by its ID and a short name, in a folder for NEXUS, with this file for the rules of every screen and the messages, as stage 03's flows are kept; the stage's default is one file for each screen, named by its ID alone, in `docs/08-screens/`.
 2. Three states of the screens' own, besides the stage's six: `large` and `code-failed` on the picture view, which SPEC-119 names, and `gone` on the three panels, for an item, a comment or a proposal that the address or the panel names and that is no longer there, which the stage's defaults would call an error.
@@ -209,7 +209,7 @@ The earlier stages left these to stage 08. Each can change at the checkpoint.
 
 ## Changes to earlier stages
 
-They wait for the checkpoint together with this stage, and the earlier files change once it is passed, apart from the last, which corrects two slips of stage 07.
+Applied on 2026-11-03, when the checkpoint passed: 1 to 3 to the interfaces. The last, which corrects two slips of stage 07, was made with this stage.
 
 1. Stage 06: the three pages, API-101 to API-103, answer a refusal or an error as `text/html` when the request accepts it, as a browser's does: a small page of one message in the server's language, with the trace ID, Load again and a link to the hub page, under the policy `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, with the same status. Today the contract gives them only `application/problem+json`, which a browser shows as raw text. Other clients keep Problem Details, and the `/api/` requests are unchanged; the pages get responses of their own in the contract, with both types.
 2. Stage 06's [Reads](../../06-api/nexus.md#reads) say that the picture view of a project without a space shows `picture_not_found`, while the contract answers that page with `404` `space_not_found`. The sentence follows the contract, and this stage words that code's message so that it also fits a checkpoint's pass (API-128).
@@ -228,7 +228,7 @@ On 2026-11-03, on the nine definitions, this file, their Korean translations and
 
 ## For the checkpoint
 
-Waiting, together with the checkpoint of the user flows, the functional spec, the server's data, the interfaces and the sitemap. Most worth a look:
+Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 07: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the screens' states and the messages' words stand as drawn and written. The checkpoint covered:
 
 1. The pages' refusals as HTML (change 1), which changes the contract's three pages.
 2. The picture view's states, above all `large`, `code-failed` and the newer version that is offered rather than drawn (choices 2 and 6), the panels beside the picture or under it (choice 3) and the panel of a part without an ID (choice 12).

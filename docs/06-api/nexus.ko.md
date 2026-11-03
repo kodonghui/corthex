@@ -2,7 +2,7 @@
 
 [English](nexus.md)
 
-CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계약 [nexus.openapi.yaml](nexus.openapi.yaml)에 있는 NEXUS 서버의 요청, 그리고 이 파일에 있는 그 계약이 따르는 규칙, 허브의 명령, 그것과 함께 가는 파일의 형식입니다. 상태: 2026-11-02 초안이며, 관리자가 그날 고른 대로 기억 플러그인을 만드는 동안, 확인 지점이 아직 열려 있는 사용자 흐름, 기능 명세, 서버의 자료의 추천을 따라 썼습니다. 관리자는 이 파일을 그것들과 함께 확인합니다. 확인이 끝나면 10단계가 작업을 나누기 전에 NEXUS 0.2의 요청, 명령, 형식을 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정이 필요합니다. 계약은 그 안에 있는 모든 요청, 응답, 예시, 오류 코드의 원본이고, 이 파일은 그것을 설명하며 나머지의 원본입니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
+CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계약 [nexus.openapi.yaml](nexus.openapi.yaml)에 있는 NEXUS 서버의 요청, 그리고 이 파일에 있는 그 계약이 따르는 규칙, 허브의 명령, 그것과 함께 가는 파일의 형식입니다. 상태: 2026-11-02에 관리자가 그날 고른 대로 기억 플러그인을 만드는 동안, 사용자 흐름, 기능 명세, 서버의 자료의 추천을 따라 초안을 썼습니다. 관리자가 2026-11-03에 03\~05단계, 07·08단계와 함께 이 파일의 확인 지점을 통과시켜, 10단계가 작업을 나누기 전에 NEXUS 0.2의 요청, 명령, 형식이 고정되었습니다. 이제 호환되지 않는 변경을 하려면 관리자의 결정이 필요합니다. 계약은 그 안에 있는 모든 요청, 응답, 예시, 오류 코드의 원본이고, 이 파일은 그것을 설명하며 나머지의 원본입니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
 
 입력: [docs/04-functional-spec/nexus.ko.md](../04-functional-spec/nexus.ko.md)의 기능 명세(SPEC-101\~SPEC-140), 특히 그 [06단계를 위한 메모](../04-functional-spec/nexus.ko.md#06단계-요청-명령-형식); [docs/05-erd/nexus.ko.md](../05-erd/nexus.ko.md)와 [nexus.sql](../05-erd/nexus.sql)의 서버의 자료와 파일(TBL-101\~TBL-118), 그 [06단계를 위한 메모](../05-erd/nexus.ko.md#06단계-요청-명령-형식)와 상한; [docs/02-prd/nexus.ko.md](../02-prd/nexus.ko.md)의 요구사항; [docs/01-domain/nexus.ko.md](../01-domain/nexus.ko.md)의 용어집과 DDD 보드(이 파일은 그 말을 그 뜻으로 씁니다); 그리고 지금 도는 1차, 곧 [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js), [store.js](../../nexus/src/store.js)의 서버와, [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md), [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)가 설명하는 [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py)의 허브입니다. 사이트맵(07단계)은 나중이라 아직 입력에 화면 ID가 없고, 요청은 사용자 흐름과 기능 명세가 적은 화면을 맡습니다.
 
@@ -117,11 +117,11 @@ CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계
 - 모든 응답은 1차의 헤더를 지닙니다: `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow`, `Cross-Origin-Resource-Policy: same-origin`. 그래서 어떤 응답도 캐시되거나, 다른 사이트의 프레임에 보이거나, 색인되지 않습니다(SPEC-113). JSON 응답에는 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`을 더합니다.
 - 허브 페이지는 1차의 정책을 그대로 둡니다. 자기 인라인 스크립트만 그 다이제스트로 돌리고, 아무 요청도 보내지 않습니다: `default-src 'none'; script-src 'sha256-…'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, 그리고 `Cross-Origin-Opener-Policy: same-origin`.
 - 그림 보기와 단계 현황은 코드를 `/code/`에서만 불러오고 요청은 서버에만 보냅니다(REQ-147): `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, 그리고 `Cross-Origin-Opener-Policy: same-origin`. 그 자료는 JSON 스크립트 블록에 있고, 페이지는 그것을 글로 읽을 뿐 돌리지 않습니다.
-- 브라우저가 간직해도 되는 것은 보기 화면의 코드 파일뿐이며, `Cache-Control: private, max-age=31536000, immutable`을 지닙니다. 파일 이름마다 그 내용의 다이제스트가 들어 있고, 프로젝트 자료는 없기 때문입니다. 이것은 SPEC-113을 바꿉니다([앞 단계의 변경](#앞-단계의-변경)).
+- 브라우저가 간직해도 되는 것은 보기 화면의 코드 파일뿐이며, `Cache-Control: private, max-age=31536000, immutable`을 지닙니다. 파일 이름마다 그 내용의 다이제스트가 들어 있고, 프로젝트 자료는 없기 때문입니다. 이 단계의 확인 지점이 SPEC-113을 그렇게 바꿨습니다([앞 단계의 변경](#앞-단계의-변경)).
 
 ### 오류
 
-모든 거절과 오류는 `application/problem+json`으로 보내는 문제 세부 정보(RFC 9457)이며, 다음 멤버가 있습니다(계약의 `Problem`):
+모든 거절과 오류는 아래 페이지가 브라우저에 하는 답을 빼면 `application/problem+json`으로 보내는 문제 세부 정보(RFC 9457)이며, 다음 멤버가 있습니다(계약의 `Problem`):
 
 | 멤버 | 값 |
 | --- | --- |
@@ -134,6 +134,8 @@ CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계
 | 그 밖 | [오류 코드](#오류-코드)가 적는, 그 코드가 더하는 멤버. 이를테면 `field`와 `limit` |
 
 NEXUS는 `type`을 보내지 않으며(RFC 9457은 이것을 `about:blank`로 읽습니다), `instance`도 보내지 않습니다. 클라이언트는 RFC 9457이 말하는 대로 모르는 멤버를 무시합니다. 보기 화면은 `detail`이 아니라 사용자의 언어로 된 코드의 말을 보여 주고, 허브는 `detail`을 보여 줍니다. 서버의 로그에는 오류의 종류와 추적 ID만 있고, 저장된 글이나 요청의 값은 없습니다(SPEC-113).
+
+세 페이지 API-101\~API-103은 요청의 `Accept` 헤더가 `text/html`을 적으면, 곧 브라우저가 페이지를 열 때처럼 하면 거절과 오류에 `text/html; charset=utf-8`로 답하고, 그렇지 않으면 문제 세부 정보로 답합니다. 브라우저는 문제 세부 정보를 날 글로 보이기 때문입니다. 그 페이지에는 서버의 언어로 된 코드의 말 하나와 추적 ID, 다시 불러오기, 허브 페이지 링크가 있고, 응답의 상태와 정책 `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`을 지니며, 08단계의 [규칙 9](../08-screens/nexus/README.ko.md#모든-화면)가 그것을 그립니다. `/api/` 요청과 보기 화면의 코드는 언제나 문제 세부 정보로 답하고, 보기 자신의 자료는 그것을 `problem`에 담습니다.
 
 ### 어느 거절이 먼저인지
 
@@ -272,7 +274,7 @@ TBL-112가 쓰기마다 간직하고, 보낼 편지함이 에이전트의 쓰기
 | 제안(API-115), 편집(API-116), 확인 지점(API-117) 하나 | 제안의 단계별 원본 글까지 그 항목 전체 | |
 | 지우기의 미리 보기(API-110) | 지우기가 지우는 것, 그리고 ID로 적은 열린 의견, 열린 제안, 반영 대기, 아직 기록되지 않은 확인 지점 | 저마다 20개와 그 총수 |
 
-어느 의견, 제안, 어긋남이 떨어져 있는지, 곧 지금 그림에 그 항목이 더는 없는지는 보기 화면이 찾습니다. 그림 자료의 항목을 읽는 것은 보기 화면뿐이기 때문입니다(SPEC-119). 0.1의 허브만 보낸, 공간이 없는 프로젝트에는 그림이 없습니다: 그림 보기는 `picture_not_found`를, 단계 현황은 기록과 점검만 보여 주고, 할 일은 `404` `space_not_found`입니다.
+어느 의견, 제안, 어긋남이 떨어져 있는지, 곧 지금 그림에 그 항목이 더는 없는지는 보기 화면이 찾습니다. 그림 자료의 항목을 읽는 것은 보기 화면뿐이기 때문입니다(SPEC-119). 0.1의 허브만 보낸, 공간이 없는 프로젝트에는 그림이 없습니다: 그림 보기와 할 일은 `404` `space_not_found`이고, 단계 현황은 기록과 점검만 보여 줍니다.
 
 ### AI 할 일
 
@@ -600,7 +602,7 @@ CREATE TABLE pictures (
 
 ### 보낼 편지함의 파일
 
-보낼 편지함의 파일은 저마다 05단계의 [보낼 편지함](../05-erd/nexus.ko.md#보낼-편지함-tbl-117)에 있는 TBL-117이며, 시도마다 첫 시도가 간 곳으로 가도록 필드 하나, 곧 요청의 경로인 `path`가 더 있습니다. 계약의 `OutboxFile`이 그것을 검사합니다:
+보낼 편지함의 파일은 저마다 05단계의 [보낼 편지함](../05-erd/nexus.ko.md#보낼-편지함-tbl-117)에 있는 TBL-117이며, 그 `path`, 곧 요청의 경로가 시도마다 첫 시도가 간 곳으로 가게 합니다. 계약의 `OutboxFile`이 그것을 검사합니다:
 
 ```json
 {
@@ -736,11 +738,11 @@ CREATE TABLE pictures (
 5. 지우기는 스냅샷과 함께 프로젝트의 공간을 지우고(SPEC-115), `GET /api/snapshots/{project}`는 그림 자료가 없는 0.2의 스냅샷을 돌려줍니다.
 6. 페이지 자료는 0.2의 페이지가 읽는 `corthex-hub-page/0.2`이고, 다른 것은 그것을 읽지 않습니다.
 
-0.2를 내보내기 전에 확인 지점이 이것을 정합니다.
+확인 지점이 2026-11-03에 이것을 받아들였으므로, 0.2는 이대로 나갑니다. 서버가 먼저이고, 그다음 모든 기기의 허브입니다.
 
 ## 앞 단계의 변경
 
-이 단계와 함께 확인 지점을 기다리며, 통과하면 앞 단계의 파일을 바꿉니다:
+2026-11-03에 확인 지점을 통과하며 반영했습니다. 1, 2, 6은 기능 명세에, 3\~5와 7은 서버의 자료에 들어갔습니다.
 
 1. SPEC-113은 어떤 응답도 캐시하면 안 된다고 말합니다. 보기 화면의 코드 파일은 캐시해도 됩니다: 프로젝트 자료가 없고, 이름마다 그 내용의 다이제스트가 있으며, 휴대폰에서 보기 화면이 빠르려면 그것을 간직해야 합니다(REQ-149).
 2. SPEC-108은 맨 위의 `without a screen` 목록을 적습니다. 07단계 양식의 YAML은 화면의 목록이어서 키를 둘 자리가 없으므로, SQL의 `-- without a table:`처럼 그 목록은 주석 줄 `# without a screen:`입니다.
@@ -775,9 +777,16 @@ CREATE TABLE pictures (
 - 모의 서버는 이것들 대부분을 설계상 통과하므로, 계약을 증명하는 것은 실제 서버뿐입니다: 11단계는 같은 도구를 사용자 자신의 서버가 아니라 Access 뒤의 개발 서버에 돌립니다.
 - 이 파일들을 둔 채로 돌린 저장소의 검사: `python -m unittest discover -s tests`(시험 725개, 건너뜀 12개), 마켓플레이스와 그 세 플러그인의 `claude plugin validate --strict`, `node --test nexus/test/*.test.js`(시험 15개)가 통과합니다. 허브가 찍은 이 저장소의 스냅샷은 API-101\~API-150을 한 번씩 읽고 점검이 없으며, 이 파일과 영어 원문의 링크는 모두 이어집니다.
 
+2026-11-03에 확인 지점의 변경을 넣은 뒤, 같은 도구로:
+
+- 이 단계의 검사와 openapi-spec-validator: 문제 없음. 계약의 예시 72개가 모두 쓰이며, 그중에 페이지의 HTML 응답이 있습니다.
+- Prism의 모의 서버는 요청의 `Accept`가 `text/html`을 적으면 API-101\~API-103에 그 코드의 말을 담은 페이지로 답하고, 아니면 문제 세부 정보로 답합니다.
+- 도구가 OpenAPI 3.1 계약에 요구하는 `--experimental=openapi-3.1`을 붙인 Schemathesis: 32개 작업이 모두 요청 858개에서 통과하고, 그중 Pages 아래의 네 작업, 곧 세 페이지와 보기 화면의 코드는 요청 103개에서 통과합니다. 세 번째 버릇도 같은 방법으로 비켜 두었습니다: 도구는 서비스 토큰의 두 헤더 `CF-Access-Client-Id`와 `CF-Access-Client-Secret`을 아무 글자로나 만드는데, Node의 HTTP 서버가 이것도 맨 `400`으로 거절하므로 훅이 저마다 출력할 수 있는 대신 값을 줍니다.
+- 저장소의 검사가 통과하며, 이제 시험은 727개(건너뜀 12개)입니다. 허브가 찍은 이 저장소의 스냅샷은 항목 996개를 읽고 점검이 없습니다.
+
 ## 확인할 것
 
-사용자 흐름, 기능 명세, 서버의 자료의 확인 지점과 함께 기다립니다. 특히 볼 만한 것:
+2026-11-03 11:39(KST)에 03\~05단계, 07·08단계와 함께 통과했습니다: 관리자가 프로젝트 스레드의 결정 카드에서 모든 추천을 골라(‘모두 추천대로’), 요청, 명령, 형식이 08단계의 변경과 함께 쓴 대로 섭니다. 로그인(3)은 그 시험 때까지 열려 있습니다. 확인 지점이 다룬 것:
 
 1. [호환되지 않는 변경](#호환되지-않는-변경), 특히 한 기기가 0.2로 보낸 뒤에는 모든 기기의 허브가 0.2로 옮겨 가야 한다는 것과 서버를 먼저 배포한다는 것.
 2. [앞 단계의 변경](#앞-단계의-변경), 특히 보기 화면 코드의 캐시(1)와 `# without a screen:` 줄(2).
@@ -789,7 +798,7 @@ CREATE TABLE pictures (
 
 ### 07·08단계: 화면
 
-- 화면마다의 요청: 허브 페이지는 API-101; 그림 보기는 불러오기에 API-102와 API-104, 다시 읽기에 API-111, 의견이나 제안을 열기에 API-114와 API-115, 쓰기에 API-118\~API-120, API-124, API-125, API-127; 단계 현황은 API-103, API-112, API-128, API-129.
+- 화면마다의 요청: 허브 페이지는 API-101; 그림 보기는 불러오기에 API-102와 API-104, 다시 읽기에 API-111, 의견이나 제안을 열기에 API-114와 API-115, 그림이 더는 늘어놓지 않는 닫히거나 버려진 반영을 읽어 제안의 패널에 그 PR을 보이기에 API-116, 쓰기에 API-118\~API-120, API-124, API-125, API-127; 단계 현황은 불러오기에 API-103과 API-104, 다시 읽기에 API-112, 쓰기에 API-128과 API-129.
 - 오류가 이끄는 상태: `why`가 있는 `picture_not_found`는 빈 상태; `access_missing`, `access_other_app`, `no_kind`, `opaqueredirect` 응답은 권한이나 끝난 로그인; `cross_site`는 서버 자신의 주소를 권하는 오류; `comment_limit`, `reply_limit`, `space_full`, `text_too_long`은 글을 간직함; `proposal_not_open`, `edit_state`, `checkpoint_recorded`는 낡은 상태이며 보기 화면이 다시 읽습니다. 보기 화면은 보내지 못한 글을 그 쓰기 ID와 함께 간직합니다(SPEC-126).
 - [오류 코드](#오류-코드)의 말마다 영어와 한국어로 최종 문구를 정합니다.
 

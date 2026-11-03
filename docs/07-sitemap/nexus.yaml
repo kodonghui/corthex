@@ -52,7 +52,7 @@
               name: Comment
               path: "/pictures/{project}/{part}/{stage}#comment={comment}"
               access: anyone Cloudflare Access lets in, on the server
-              flows: [FL-109]
+              flows: [FL-107, FL-109]
               terms: [CTX-014, TERM-111]
               status: active
             - id: SCR-108
