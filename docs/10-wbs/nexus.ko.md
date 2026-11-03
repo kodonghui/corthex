@@ -97,8 +97,8 @@ CORTHEX 자신의 프로젝트 10단계입니다. 상태: 2026-11-03 계획 확�
 
 | ID | 작업 | 근거 | 건드리는 곳 | 선행 작업 | 담당 | 크기 | 끝났다고 볼 때 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-248 | 고정 판 계약 검사와 mock 실행 | SPEC-113–SPEC-140 | API-101–API-132 | TASK-222 | agent | M | 저장소 밖 고정 판 validator 0.7.1·Prism 5.16.0·Schemathesis 3.39.16과 쿠키/경로/헤더 hook을 씁니다. 개발 계약 시험은 커밋을 적고 mock만의 결과를 나눕니다. | todo |
-| TASK-249 | 서버의 이름 붙은 응답 모두 보내기 | SPEC-104–SPEC-140 | API-101–API-132 | TASK-217, TASK-218, TASK-220, TASK-248 | agent | L | 가능한 모든 이름 붙은 예시를 개발 서버에서 보내 스키마·코드·데이터 효과를 확인합니다. default/internal의 mock 사례는 따로 셉니다. | todo |
+| TASK-248 | 고정 판 계약 검사와 mock 실행 | SPEC-113–SPEC-140 | API-101–API-132 | TASK-222 | agent | M | 저장소 밖 고정 판 validator 0.7.1·Prism 5.16.0·Schemathesis 3.39.16과 쿠키/경로/헤더 hook을 씁니다. 개발 계약 시험은 커밋을 적고 mock만의 결과를 나눕니다. | in progress |
+| TASK-249 | 서버의 이름 붙은 응답 모두 보내기 | SPEC-104–SPEC-140 | API-101–API-132 | TASK-217, TASK-218, TASK-220, TASK-248 | agent | L | 가능한 모든 이름 붙은 예시를 개발 서버에서 보내 스키마·코드·데이터 효과를 확인합니다. default/internal의 mock 사례는 따로 셉니다. | in progress |
 | TASK-250 | 세 운영체제의 허브 명령 검증 | SPEC-104–SPEC-140 | API-133–API-150 | TASK-231, TASK-232, TASK-235 | agent | M | Windows/macOS/Linux에서 Python 3.8과 최신 판의 모든 명령 결과가 통과하며 네트워크/토큰 없는 시험의 격리가 유지됩니다. | todo |
 | TASK-251 | 흐름과 모든 화면 상태 걷기 | SPEC-119, SPEC-123–SPEC-141 | FL-101–FL-114, SCR-101–SCR-109 | TASK-237, TASK-239, TASK-240, TASK-241, TASK-242, TASK-249 | agent | L | 브라우저 시험자가 역할·경로·커밋과 320/1440·두 테마/언어의 근거를 남깁니다. 페이지 검사와 이미지 확인을 나누고 작동한 경로를 CI e2e로 만듭니다. | todo |
 | TASK-252 | 성능과 NEXUS 자신의 그림 맞대기 | SPEC-106, SPEC-107, SPEC-108, SPEC-119, SPEC-120 | REQ-124, REQ-149 | TASK-223, TASK-224, TASK-251 | agent | M | 20번의 원래 값·P95, Worker/편집기 크기와 최대 밀기를 기록합니다. 가상 자료와 NEXUS 자신의 로컬 그림을 확인하며 저장소는 허락 없이 보내지 않습니다. | todo |

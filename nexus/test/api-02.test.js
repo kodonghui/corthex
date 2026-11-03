@@ -107,9 +107,36 @@ test("picture and overview bootstrap JSON preserve literal replacement character
     assert.equal(response.status,200,response.text);
     assert.equal(response.text.split("</script>").length,2);
     const payload=JSON.parse(response.text.match(/<script id="view-data" type="application\/json">(.*?)<\/script>/s)[1]);
+    assert.deepEqual(Object.keys(payload).sort(),["schema","generated_at","lang","view","data","problem"].sort());
+    assert.match(payload.generated_at,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.ok(Number.isFinite(Date.parse(payload.generated_at)));
     assert.equal(payload.data.comments.entries[0].text,literal);
     if(payload.view==="picture")assert.equal(payload.data.picture.source.tables[0].name,literal);
   }
   assert.throws(()=>renderView("no marker",{}),/placeholder/);
   assert.throws(()=>renderView("__CORTHEX_VIEW_DATA____CORTHEX_VIEW_DATA__",{}),/placeholder/);
+});
+
+test("an inherited-looking part name still serializes an explicit numeric not_opened",async()=>{
+  const call=server(),data=structuredClone(snapshot);data.project.parts.push("constructor");
+  assert.equal((await call("POST","/api/snapshots",{body:data})).status,200);
+  const response=await call("GET","/api/spaces/corthex/overview/constructor/05-erd");
+  assert.equal(response.status,200,response.text);
+  assert.ok(Object.hasOwn(response.data,"not_opened"));assert.equal(response.data.not_opened,0);
+});
+
+test("a known space without a picture serves its problem in the view shell",async()=>{
+  const call=server();await call("POST","/api/snapshots",{body:snapshot});
+  const api=await call("GET","/api/spaces/corthex/pictures/memory/05-erd");
+  assert.equal(api.status,404);assert.equal(api.data.code,"picture_not_found");
+  for(const method of ["GET","HEAD"]){
+    const response=await call(method,"/pictures/corthex/memory/05-erd");
+    assert.equal(response.status,200);assert.match(response.headers.get("Content-Type"),/text\/html/);
+    if(method==="HEAD")assert.equal(response.text,"");
+    else {
+      const payload=JSON.parse(response.text.match(/<script id="view-data" type="application\/json">(.*?)<\/script>/s)[1]);
+      assert.equal(payload.data,null);assert.equal(payload.problem.code,"picture_not_found");assert.equal(payload.problem.why,"not-drawn");
+    }
+  }
+  assert.equal((await call("GET","/pictures/corthex/unknown/05-erd")).status,404);
 });

@@ -56,6 +56,21 @@ test("a matching replaces cannot clear a held default commit", async () => {
   assert.equal(db.prepare("SELECT not_current FROM pictures").get().not_current, null);
 });
 
+test("unopened counts for the valid constructor part stay numeric after the pair quota", async () => {
+  const {store}=context(),data=fixture();
+  data.project.parts=["constructor"];data.stages={};data.items=[];data.left_out=[];
+  const where="docs/synthetic.md:1";
+  const terms=["TERM-001","TERM-002","TERM-003"];
+  const board={format:1,contexts:[{id:"CTX-001",name:"Synthetic",type:"core",purpose:"Synthetic",removed:false,external:"",rows:[],where}],
+    aggregates:terms.map((term)=>({term,name:term,context:"CTX-001",removed:false,where})),read_models:[],dependencies:[],hotspots:[]};
+  const erd={format:1,tables:Array.from({length:500},(_,i)=>({id:"TBL-"+String(i).padStart(3,"0"),name:"table_"+i,context:"CTX-002",terms,removed:false,columns:[],primary_key:[],unique:[],foreign_keys:[],where})),without_table:[]};
+  const basis={part:"constructor",commit:data.repos["."].default.commit,time:data.repos["."].default.time};
+  data.pictures=[{...basis,stage:"01-domain",source:board},{...basis,stage:"05-erd",source:erd}];
+  const answer=await store.push(parse(data),NOW);
+  assert.equal(answer.discrepancies.opened,1000);assert.equal(answer.discrepancies.not_opened,500);
+  assert.equal((await store.readOverview("corthex","constructor","05-erd")).not_opened,500);
+});
+
 test("the write batch rolls back its snapshot if a picture statement fails", async () => {
   const { db, binding, store } = context(); await store.ensure();
   const faulty = { prepare: binding.prepare, batch(statements) {

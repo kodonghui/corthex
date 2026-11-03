@@ -9,6 +9,27 @@ import secrets
 from urllib.parse import urlsplit
 
 import schemathesis
+from schemathesis import cli as _cli  # Registers the pinned CLI's call-kwargs hook.
+from schemathesis import sanitization
+
+
+def configure_sanitizer():
+    # The default config is thread-local; configure the loader and each runner
+    # thread. A client identifier is credential material too.
+    sanitization.configure(sanitization.Config().with_keys_to_sanitize(
+        "CF-Access-Client-Id", "CF-Access-Client-Secret", "CF_Authorization"))
+
+
+configure_sanitizer()
+
+
+@schemathesis.hook
+def process_call_kwargs(context, case, kwargs):
+    configure_sanitizer()
+    kwargs["allow_redirects"] = False
+    # before_call has no kwargs parameter. Retain this runner-owned dict only
+    # until that hook checks it, so a live direct Case.call fails closed.
+    case._nexus_call_kwargs = kwargs
 
 
 @schemathesis.check
@@ -74,6 +95,10 @@ def before_generate_headers(context, strategy):
 
 @schemathesis.hook
 def before_call(context, case):
+    configure_sanitizer()
+    # Consume every admission once, including synthetic runs. A Case reused
+    # after switching to live mode must receive fresh runner-owned kwargs.
+    call_kwargs = case.__dict__.pop("_nexus_call_kwargs", None)
     # Even generated snapshot writes/removals stay in one synthetic namespace.
     case.path_parameters = {key: PATH_VALUES.get(key, value) for key, value in (case.path_parameters or {}).items()}
     if case.method.upper() == "POST" and case.path == "/api/snapshots" and isinstance(case.body, dict):
@@ -86,6 +111,8 @@ def before_call(context, case):
     headers["Nexus-Session"] = "qa-contract"
     headers["User-Agent"] = "corthex-nexus-contract/0.2"
     if os.environ.get("NEXUS_CONTRACT_LIVE") == "1":
+        if not isinstance(call_kwargs, dict) or call_kwargs.get("allow_redirects") is not False:
+            raise RuntimeError("live contract calls require the no-redirect CLI runner")
         target = urlsplit(os.environ.get("NEXUS_CONTRACT_URL", ""))
         actual = urlsplit(case.base_url or "")
         if target.scheme != "https" or not target.hostname or target.username or target.password or target.query or target.fragment:

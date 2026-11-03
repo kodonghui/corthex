@@ -69,7 +69,7 @@ export async function planPush(sent, state, now) {
   const candidates = reconciled.open.map((entry) => ({ ...entry, id: entryId("nd_") }));
   candidates.sort((a, b) => (a.level === "warn" ? 0 : 1) - (b.level === "warn" ? 0 : 1) || a.id.localeCompare(b.id, "en"));
   const opened = candidates.slice(0, Math.max(0, 1000 - retained));
-  const unopened = { ...(state.space ? JSON.parse(state.space.unopened) : {}) };
+  const unopened = Object.assign(Object.create(null),state.space ? JSON.parse(state.space.unopened) : {});
   for (const part of changedParts) delete unopened[part];
   for (const entry of candidates.slice(opened.length)) unopened[entry.part] = (unopened[entry.part] || 0) + 1;
   const records = new Set();

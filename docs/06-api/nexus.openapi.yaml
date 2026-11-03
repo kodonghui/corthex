@@ -3142,7 +3142,7 @@ components:
           properties:
             replies: {type: array, maxItems: 200, items: {$ref: "#/components/schemas/Reply"}}
             decisions: {type: array, items: {$ref: "#/components/schemas/Decision"}}
-            proposals: {type: array, maxItems: 500, items: {$ref: "#/components/schemas/ProposalEntry"}}
+            proposals: {type: array, items: {$ref: "#/components/schemas/ProposalEntry"}}
     Proposal:
       type: object
       required: [id, part, stage, commit, items, reason, change, source_text, comment, discrepancy, state, made_at, closed_at, edit]

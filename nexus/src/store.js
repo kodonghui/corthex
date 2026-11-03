@@ -394,6 +394,7 @@ export class Store {
       this.db.prepare("SELECT stage,commit_id,not_current FROM pictures WHERE project=? AND part=? ORDER BY stage").bind(project,part),
     ]);
     const source = snapshot.stages?.[stage] || {};
+    const notOpened = space ? JSON.parse(space.unopened) : {};
     const warnings = checkpoints.results.filter((row) => row.state==='withdrawn').map((row) => ({ rule:"checkpoint-withdrawn", checkpoint:row.id }));
     const checks = (snapshot.checks || []).filter((check) => check.stage===stage && (!check.part || check.part===part));
     for (const warning of warnings) checks.push({ rule:warning.rule,level:"warn",by:"server",stage,part,message:"A withdrawn checkpoint is named by the stored stage record",refs:[],args:{checkpoint:warning.checkpoint} });
@@ -403,7 +404,7 @@ export class Store {
       pictures:["01-domain","05-erd","07-sitemap"].includes(stage)?pictures.results.slice(0,3).map((row)=>({stage:row.stage,commit:row.commit_id,not_current:row.not_current})):[],
       comments:envelope(comments.results,(row)=>E.commentListRow(row)), reflections:envelope(edits.results,(row)=>E.editListRow(row)),
       discrepancies:envelope(discrepancies.results,(row)=>E.discrepancy(row)), checkpoints:checkpoints.results.map((row)=>E.checkpoint(row)), warnings,
-      not_opened:space?JSON.parse(space.unopened)[part]||0:0 };
+      not_opened:Object.hasOwn(notOpened,part)?notOpened[part]:0 };
   }
 
   async readEntry(project, kind, id) {

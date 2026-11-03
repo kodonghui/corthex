@@ -274,6 +274,8 @@ A push that gets no answer within 30 seconds, or no network, is reported and not
 | One proposal (API-115), edit (API-116) or checkpoint (API-117) | The whole entry, with a proposal's stage source text | |
 | The dry run of a removal (API-110) | What the removal deletes, with the open comments, open proposals, pending reflections and checkpoints that no record names yet by ID | 20 of each, with their totals |
 
+Implementation clarification (2026-11-04): `CommentThread.proposals` has no lifetime array cap. The 500-proposal limit applies to open proposals in a space, not to a comment's historical proposals. The OpenAPI schema now agrees with API-114's existing promise to return all of them.
+
 The view finds which comments, proposals and discrepancies are apart, those whose item the current picture no longer holds, since only it reads the picture source's items (SPEC-119). A project without a space, which only hubs of 0.1 pushed, has no pictures: its picture view and its to-do are `404` `space_not_found`, and its overview shows the record and checks only.
 
 ### The agent to-do
