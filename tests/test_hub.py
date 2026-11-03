@@ -164,6 +164,17 @@ class TemplateTest(HubCase):
             self.write(self.repo / path, "\n".join(blocks) if block is None else blocks[block])
         self.project()
 
+    def test_domain_template_keeps_nested_mermaid_and_later_sections(self):
+        (domain,) = output_blocks("corthex-discover", "01-domain")
+        lines = domain.splitlines()
+        start = lines.index("```mermaid")
+        end = lines.index("```", start + 1)
+        self.assertGreater(end, start + 1, "the nested diagram has content")
+        self.assertGreater(lines.index("## 6. Hotspots"), end)
+        self.assertGreater(lines.index("## 7. Glossary"), end)
+        self.assertIn("| TERM-002 | Payment |", domain)
+        self.assertNotIn("````", domain, "the outer fence is removed, not copied into the document")
+
     def test_every_template_defines_its_items(self):
         expected = {
             "CTX-001": ("context", "01-domain", "Ordering"),

@@ -39,6 +39,10 @@ Write requirements in the project's language; keep the shape.
 - Terms match the glossary.
 - Each non-functional requirement says how it is measured, and each performance target names its percentile, its load and where it is measured.
 
+## Scope freeze
+
+Ask once what might be missing: compare the requirements with an independent list, such as similar services, regulations or stakeholders, and say which list you used. In a small project one short list is enough.
+
 ## Output template
 
 ```markdown
