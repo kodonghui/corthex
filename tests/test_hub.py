@@ -1057,6 +1057,7 @@ class PageTest(HubCase):
         data = self.page_data(page)
         self.assertEqual(data["projects"][0]["project"]["title"], title)
         self.assertEqual((data["schema"], data["origin"], data["lang"]), ("corthex-hub-page/0.2", "local", "en"))
+        self.assertEqual(data["spaces"], {}, "a device page has no server discussion space")
         self.assertEqual((path, notes), (self.home / ".corthex" / "hub" / "index.html", []))
 
     def test_build_lists_projects_that_cannot_be_read(self):
@@ -1068,6 +1069,7 @@ class PageTest(HubCase):
         self.assertEqual([p["project"]["name"] for p in data["projects"]], ["acme-shop"])
         self.assertEqual(data["missing"], [{"name": "blog", "reason": "no snapshot"}])
         self.assertEqual(data["lang"], "ko")
+        self.assertIn('<html lang="ko">', read_text(path))
         self.assertEqual(notes, ["blog: its folder is not on this machine"])
         self.assertTrue(hub.snapshot_path(self.home, "acme-shop").is_file())
 
