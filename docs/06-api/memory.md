@@ -83,7 +83,7 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | End-of-turn hook | Stop | Stop | `hook.py end-of-turn` | 5 s | 300 ms |
 | Session end hook | SessionEnd | SessionEnd | `hook.py end` | 2 s | 500 ms |
 
-One script, `scripts/hook.py`, serves the four hooks, with the hook's name as its argument. It replaces the `session_start.py` of release 0.1.0 and keeps its start summary as the base. `hooks/hooks.json` of release 0.2.0:
+One script, `scripts/hook.py`, serves the four hooks, with the hook's name as its argument. It replaces the compatibility entry of release 0.1.0 and keeps its start summary as the base. `hooks/hooks.json` of release 0.2.0:
 
 ```json
 {

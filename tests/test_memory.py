@@ -343,9 +343,10 @@ class SessionStartTest(unittest.TestCase):
         self.assertIn("- shop, team project", output["additionalContext"])
         self.assertIn(session_start.NO_PROFILE, output["additionalContext"])
 
-    def test_legacy_entry_keeps_the_same_base(self):
+    def test_current_start_keeps_the_same_base_without_enabled_memory(self):
         payload = json.dumps({"hook_event_name": "SessionStart", "session_id": "legacy-fixture"}).encode()
-        self.assertTrue(self.run_hook(payload).stdout == self.run_hook(payload, PLUGIN / "scripts/session_start.py").stdout)
+        actual = json.loads(self.run_hook(payload).stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertEqual(actual, session_start.build_context(self.repo, self.home))
 
     def test_hook_with_bad_input_uses_its_working_directory(self):
         self.write_project()
