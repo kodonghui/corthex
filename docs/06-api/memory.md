@@ -493,7 +493,7 @@ What each command's `data` holds, in brief; the result schema has every field, a
 - `leave-out`: `project`, and the `folders` and `kinds` left out afterwards; with `folder-outside`, `outside`. `retention`: `days`, `was`, and when it asks, `entries`, how many the next session start will delete.
 - `sync`: `state` (`on` or `off`), `address`, `branch`, `checked_by`, for `now` `pulled` and `pushed`, and with `other-files` up to 20 of the `other` paths.
 - `setup`: `project`, `at`, and `script`, the text to put in the environment's setup ([below](#setup-for-a-temporary-device)).
-- `repair`: `device`, once done the new device ID.
+- `repair`: `device`, once done the new device ID; with a readable record, the current device and `nothing`. A missing memory directory returns `nothing` with empty data and guidance to use `on`; only `on` creates that directory. Repair writes only an irrecoverable store record in an existing directory and preserves configuration, consent and all other memory.
 
 ### Consent text, version 1
 

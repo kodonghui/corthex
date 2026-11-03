@@ -493,7 +493,7 @@ confirm = nv4zxpnv
 - `leave-out`: `project`, 그리고 그 뒤에 빠져 있는 `folders`와 `kinds`. `folder-outside`일 때 `outside`. `retention`: `days`, `was`, 그리고 물을 때는 다음 세션 시작이 지울 기록 줄의 수 `entries`.
 - `sync`: `state`(`on`이나 `off`), `address`, `branch`, `checked_by`, `now`일 때 `pulled`와 `pushed`, `other-files`일 때 `other` 경로 20개까지.
 - `setup`: `project`, `at`, 그리고 환경의 설정에 넣을 글 `script`([아래](#임시-기기를-위한-설정)).
-- `repair`: `device`. 끝나면 새 기기 ID.
+- `repair`: `device`, 끝나면 새 기기 ID이며, 읽을 수 있는 정보가 있으면 현재 기기 ID와 `nothing`입니다. 기억 디렉터리 자체가 없으면 빈 data와 `nothing`, `on` 안내를 돌려주며 그 디렉터리는 `on`만 만듭니다. 복구는 기존 디렉터리에서 복원할 수 없는 저장소 정보만 다시 쓰고 설정·동의·나머지 기억은 보존합니다.
 
 ### 동의 문구, 판 1
 
