@@ -2,7 +2,7 @@
 
 | Slot | This stage |
 | --- | --- |
-| Inputs | The functional spec (SPEC) for the data each behaviour needs, and the glossary (TERM) for names |
+| Inputs | The functional spec (SPEC) for the data each behaviour needs, the domain design's aggregate rules (CTX), and the glossary (TERM) for names |
 | Outputs | `schema.sql`, by default `db/schema.sql`, with a TBL ID comment on each table, plus the migrations; optionally a Mermaid `erDiagram` in `docs/05-erd/` |
 | Human view | An ERD tool, as set in `human`: by default ERD Editor for a new project; see "ERD Editor" below. A team that already uses another tool, such as ERD Cloud, keeps it unless the team decides to move |
 | Sync | Compare the DDL in the repository with the tool's latest SQL export and name the export's date. Report the differences table by table and column by column, then apply them in the direction `truth` gives. If the AI cannot reach the tool, a person exports and imports the SQL, as step 5 in [SKILL.md](../SKILL.md) says |
@@ -13,7 +13,7 @@
 
 1. List the data each SPEC row reads or writes.
 2. Group it into tables named with the glossary's words and one naming convention.
-3. Write keys, foreign keys with their on-delete behaviour, unique rules and indexes for the reads the spec needs.
+3. Write keys, foreign keys with their on-delete behaviour, unique rules and indexes for the reads the spec needs. Translate aggregate rules the database can enforce into unique, foreign-key or check constraints, and name each rule in a comment.
 4. Write a migration for every change; never edit a migration that has been applied somewhere.
 5. When the product calls an AI model (see the AI call entries in stage 04), add a table that records each call: when it was sent, the model and the prompt version, the token counts, the time to the first token and to the end, the result (success, failure or a reached limit) and the request's trace ID. Keep personal data and secrets out of it, and keep the prompt and the answer only when the product needs them.
 

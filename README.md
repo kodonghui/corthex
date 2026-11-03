@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.2.0; optional plugins 0.1.0, early development. The stage skills are outlines that will grow with real use. `corthex-memory` has session context and local recording hooks; C1 remains in progress. `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
+> Status: core `corthex` 0.3.0; optional plugins 0.1.0, early development. The stage skills are outlines that will grow with real use. `corthex-memory` has session context and local recording hooks; C1 remains in progress. `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
 
 ## Install
 
