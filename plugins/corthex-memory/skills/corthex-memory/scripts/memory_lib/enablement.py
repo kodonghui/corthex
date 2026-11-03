@@ -1,10 +1,11 @@
 """Confirmed C1 provisioning and project on/off; no network or background work."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
 
-from . import base, clock, commands, configuration, curation, files, locks, projects, store
+from . import base, clock, commands, configuration, curation, diagnostics, files, locks, projects, store
 from .worker_support import BoundDiagnostics, PathFence
 
 CONSENT = """CORTHEX memory, consent version 1.
@@ -28,6 +29,17 @@ class CommandStore(store.MemoryStore):
 
     def _lock(self, path, kind, device):
         return locks.Lock(path, kind, device, path_check=self._path_check)
+
+
+def _header_stamp(memory, accepted):
+    """Bind accepted bytes to the current named file, never a retired FD."""
+    current = diagnostics.Diagnostics._stamp(memory.folder / "store.json", clock.now() + 10,
+                                             check=memory.fence.check)
+    if current is None:
+        raise FileNotFoundError()
+    if current[-1] != hashlib.sha256(accepted).digest():
+        raise locks.LostLock()
+    return current
 
 
 def _keys():
@@ -130,19 +142,20 @@ def _apply(context, enabled, confirmed=False):
         context.memory = memory
         device = original["device"] if original else first["device"]
         with context.lock(memory.folder / "store.lock", "store", device=device, report=report) as lease:
-            pin = [None, False]
+            pin, fingerprint = [None, False], [None]
             def check():
                 lease.check()
                 memory.fence.check(memory.folder / "store.json")
                 if pin[0] is not None:
                     try:
-                        current = memory.fence.read(memory.folder / "store.json", clock.now() + 10)
+                        current = _header_stamp(memory, pin[0])
                     except FileNotFoundError:
                         if pin[1]:
                             return
                         raise locks.LostLock() from None
-                    if current != pin[0]:
+                    if fingerprint[0] is not None and current != fingerprint[0]:
                         raise locks.LostLock()
+                    fingerprint[0] = current
                 lease.check()
             validated = [None]
             def header(data):
