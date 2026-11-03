@@ -2,17 +2,17 @@
 
 [한국어](nexus.ko.md)
 
-Stage 02 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: rewritten on 2026-10-24 from the event storming board and the new stage 01. The maintainer checked the scope on 2026-10-25 and approved the recommendations of D8 to D13, without changes (the stage's first checkpoint). R4 of the harness review, which the maintainer approved on 2026-11-02, added REQ-197 and REQ-198 and widened REQ-076. The joint checkpoint of NEXUS's stages 03 to 08, which the maintainer passed on 2026-11-03, added REQ-199 to REQ-208 and changed REQ-115, REQ-118, REQ-197 and REQ-198, as the functional spec proposed. It replaces the draft of 2026-10-24, which planned the next release around the hub of phase 1. The draft's rows keep their IDs: the rows marked `built` describe phase 1 as it runs now, in `corthex-nexus` 0.1.0 and the server deployed on 2026-10-24, and the rows that the board changed or removed say so. When this file and its Korean translation differ, this file is the source.
+Stage 02 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: rewritten on 2026-10-24 from the event storming board and the new stage 01. The maintainer checked the scope on 2026-10-25 and approved the recommendations of D8 to D13, without changes (the stage's first checkpoint). R4 of the harness review, which the maintainer approved on 2026-11-02, added REQ-197 and REQ-198 and widened REQ-076. The joint checkpoint of NEXUS's stages 03 to 08, which the maintainer passed on 2026-11-03, added REQ-199 to REQ-208 and changed REQ-115, REQ-118, REQ-197 and REQ-198, as the functional spec proposed. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS widened the goal and the scope and added problem 13 and REQ-209 to REQ-218, which the maintainer passed the same day ([For the checkpoint](#for-the-checkpoint)). It replaces the draft of 2026-10-24, which planned the next release around the hub of phase 1. The draft's rows keep their IDs: the rows marked `built` describe phase 1 as it runs now, in `corthex-nexus` 0.1.0 and the server deployed on 2026-10-24, and the rows that the board changed or removed say so. When this file and its Korean translation differ, this file is the source.
 
-Inputs: the contexts and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md) (CTX-006 to CTX-015, TERM-047 to TERM-123), with the shared terms of [docs/01-domain/memory.md](../01-domain/memory.md). Words in this file have the meanings given there.
+Inputs: the contexts and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md) (CTX-006 to CTX-015, TERM-047 to TERM-134), with the shared terms of [docs/01-domain/memory.md](../01-domain/memory.md). Words in this file have the meanings given there.
 
 ## Goal
 
-Let the user and the AI discuss each project's pictures, the DDD board, the ERD and the sitemap, which NEXUS draws from the stage sources in Git and checks against each other, on a phone as on a PC. Later, let the user edit the pictures and link Notion records and Jira work items to them. The hub of phase 1 stays as each project's home, and NEXUS builds only what existing tools cannot do.
+Let the user and the AI discuss each project's pictures, the DDD board, the ERD and the sitemap, which NEXUS draws from the stage sources in Git and checks against each other, on a phone as on a PC, and follow the DDD board step by step, as its event storming built it. Later, let the user edit the pictures, hold stage 01's event storming with the agent on a work board, and link Notion records and Jira work items to the pictures. The hub of phase 1 stays as each project's home, and NEXUS builds only what existing tools cannot do.
 
 ## Problems
 
-Problems 8 to 12 come from the maintainer's words of 2026-10-24 and the board, and they are what the next release is for. Problems 1 to 7 came with the hub of phase 1 and still hold. Each requirement below names the problem or the decision it comes from.
+Problems 8 to 12 come from the maintainer's words of 2026-10-24 and the board, and they are what the next release is for. Problem 13 comes from the maintainer's words of 2026-11-03. Problems 1 to 7 came with the hub of phase 1 and still hold. Each requirement below names the problem or the decision it comes from.
 
 1. A project's stage work sits in several repositories and tools, so seeing where every project stands means opening each of them or asking an agent.
 2. Whether the stages connect, for example whether every Must requirement has a spec, is hard to see by hand.
@@ -26,13 +26,14 @@ Problems 8 to 12 come from the maintainer's words of 2026-10-24 and the board, a
 10. Whether the pictures agree with each other, such as an ERD table with no aggregate behind it, is hard to see by hand.
 11. The AI is not there between sessions, so what the user notes on a phone must wait for the agent's next work without getting lost.
 12. Records and work items live in Notion and Jira, apart from the pictures that they concern.
+13. Stage 01's event storming runs step by step on a board in another tool, while NEXUS shows only its outcome: the user cannot follow in NEXUS how a DDD board was built, nor hold the workshop beside the pictures that it leads to.
 
 ## Scope
 
 The next release, NEXUS 0.2, as decided in D13: phase ①, discussion over pictures, with the hub of phase 1 as each project's home. Building starts after the memory plugin.
 
-- In: drawing the DDD board, the ERD and the sitemap from the stage sources, each once a project has its stage source (CTX-012); the picture view, on a phone for viewing and comments, and on a PC; cross-checking the pictures in the pairs of D10 (CTX-013); comments, proposals and decisions between the user and the agent (CTX-014); accepted proposals as pending reflections, which the agent reflects by pull request (CTX-010, without the editor); the stage overview, checkpoints passed in NEXUS and stage records in the repository (CTX-007, D12); the agent to-do through the hub (D9); pushes that carry what the pictures show (D8); this repository as the first project.
-- Later: editing pictures on a PC with the embedded editor (phase ②, D11); links to Notion records and Jira work items (phase ③, CTX-015, hotspot 12); team members; earlier snapshots on the server; reading human views through their APIs.
+- In: drawing the DDD board, the ERD and the sitemap from the stage sources, each once a project has its stage source (CTX-012); the picture view, on a phone for viewing and comments, and on a PC; cross-checking the pictures in the pairs of D10 (CTX-013); comments, proposals and decisions between the user and the agent (CTX-014); accepted proposals as pending reflections, which the agent reflects by pull request (CTX-010, without the editor); the stage overview, checkpoints passed in NEXUS and stage records in the repository (CTX-007, D12); the agent to-do through the hub (D9); pushes that carry what the pictures show (D8); the DDD board's step view, drawn from the timeline and the context tables of the stage 01 source (CTX-012); this repository as the first project.
+- Later: editing pictures on a PC with the embedded editor (phase ②, D11); in the same phase, a work board for stage 01's event storming, for the user and the agent first, starting with what event storming needs: stickies in the legend's colours, step frames, arrows, groups and comments (CTX-010, hotspot 14 of stage 01); links to Notion records and Jira work items (phase ③, CTX-015, hotspot 12); team members, with their real-time work on a work board, while team workshops stay on Miro until then; earlier snapshots on the server; reading human views through their APIs.
 - Never built: a picture editor of NEXUS's own, since it embeds an open-source one; Notion or Jira again, since it links to them; an ERD editor, since new projects use ERD Editor; mockup or presentation tools; AI inside the server; writes to Git by NEXUS, since the agent reflects by pull request; memory, which is CORTHEX-MEMORY, and its sync, which goes through memory's own HTTPS sync gateway (memory's decision D3).
 - Projects with protected data, such as answer keys or student records, and team projects whose members have not agreed, are not pushed.
 
@@ -54,6 +55,7 @@ The next release, NEXUS 0.2, as decided in D13: phase ①, discussion over pictu
 | 2026-10-27 | Memory's decision D3: memory syncs through an HTTPS sync gateway in front of the user's own Postgres server, not through NEXUS, so serving as memory's sync remote left the later scope. Corrected here on 2026-11-02. | Scope |
 | 2026-11-02 | Each project's own rule for asking first (R4 of the harness review of 2026-11-02, which the maintainer approved that day): a project's settings may set their own `ask_before`, which replaces the profile's for that project, while anything that cannot be undone is still asked. The core plugin's project settings define the field, and the hub shows each project's list. | REQ-076, REQ-197, REQ-198 |
 | 2026-11-03 | The joint checkpoint of NEXUS's stages 03 to 08: the user flows, the functional spec, the server's data, the interfaces, the sitemap and the screen states as drafted, with the changes that they made to earlier stages, all as recommended. The changes to the requirements that the functional spec proposed took the next free numbers. | REQ-115, REQ-118, REQ-197 to REQ-208 |
+| 2026-11-03 | Stage 01's event storming in NEXUS, a change of the goal that the maintainer chose at 12:39 KST: NEXUS 0.2 also shows the DDD board step by step, drawn from the stage 01 source, and phase ② adds a work board, on Excalidraw, where the user and the agent hold the workshop, starting with what event storming needs. While a workshop runs, its board leads, and at each checkpoint the agent writes the stage 01 source from it. Team members' real-time work comes with team members; until then team workshops stay on Miro. | Goal, problem 13, scope; REQ-209 to REQ-218 |
 
 The maintainer's own words and where they were said are in the maintainer's records, not in this repository.
 
@@ -219,6 +221,16 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in phase 1 already) 
 | REQ-206 | When the user asks to remove a project, the hub skill shall have the agent show what the removal deletes, with the space's open comments, open proposals, pending reflections and checkpoints not yet recorded, before the user confirms. | functional | Should | CTX-009 | The joint checkpoint of stages 03 to 08, 2026-11-03 (point 17 of the user flows; SPEC-115) | active |
 | REQ-207 | While no pushed stage record holds a checkpoint passed in NEXUS, the stage overview shall let the user withdraw it. | functional | Could | CTX-007 | The joint checkpoint of stages 03 to 08, 2026-11-03 (point 15 of the user flows; SPEC-139, SPEC-140) | active |
 | REQ-208 | If a pushed stage record names a withdrawn checkpoint, then the NEXUS server shall add a warning to the stage and list the record in the agent to-do. | functional | Could | CTX-007 | The joint checkpoint of stages 03 to 08, 2026-11-03 (point 15 of the user flows; SPEC-139, SPEC-140) | active |
+| REQ-209 | The picture view shall let the user go through a DDD board step by step, as its event storming built it: from the timeline, through the external systems, commands, hotspots, actors, aggregates, contexts, policies and read models, to the context map and tables. | functional | Should | CTX-012 | Problem 13; the maintainer's choice of 2026-11-03 (the step view in phase ①) | active |
+| REQ-210 | The hub shall take into each DDD board's picture source the timeline of its stage 01 source, with the lanes and their events in order. | functional | Should | CTX-006 | Problem 13; the maintainer's choice of 2026-11-03 | active |
+| REQ-211 | If a DDD board's stage 01 source has no timeline, then the picture view shall show the board only as a whole and say why. | functional | Should | CTX-012 | The maintainer's choice of 2026-11-03 | active |
+| REQ-212 | The stage 01 skill shall have the agent write the board's timeline, its lanes and their events in order, into the domain design document. | functional | Should | CTX-012 | Problem 13; the maintainer's choice of 2026-11-03 (the stage 01 template has no timeline) | active |
+| REQ-213 | Where editing is included, NEXUS shall let the user and the agent hold a part's stage 01 event storming on a work board, on a PC, with a frame for each step that starts as a copy of the previous one. | functional | Could | CTX-010 | Problem 13; the maintainer's choice of 2026-11-03 (the work board in phase ②) | active |
+| REQ-214 | Where editing is included, the work board shall offer what event storming needs: stickies in the colours of the board's legend, step frames, arrows, groups and comments. | functional | Could | CTX-010 | The maintainer's choice of 2026-11-03 (what event storming needs, not every feature of Miro) | active |
+| REQ-215 | Where editing is included, the NEXUS server shall mark each sticky on a work board with its author, the user or the agent, from the kind of Cloudflare Access sign-in that the request carries. | functional | Could | CTX-010 | The maintainer's choice of 2026-11-03 (the user and the AI first); as REQ-163 | active |
+| REQ-216 | Where editing is included, while a workshop runs, NEXUS shall show its work board as that part's stage 01 work in progress, apart from the DDD board, which it keeps drawing only from the stage 01 source. | functional | Could | CTX-010 | The maintainer's choice of 2026-11-03 (the board leads while the workshop runs); REQ-138 | active |
+| REQ-217 | Where editing is included, at each checkpoint of a workshop, the stage 01 skill shall have the agent read the work board through the hub and write the stage 01 source from it by pull request, with the board's version. | functional | Could | CTX-010 | The maintainer's choice of 2026-11-03 (at each checkpoint the AI writes the stage 01 document); stage 01's sync rule | active |
+| REQ-218 | Where editing is included, when a workshop's last checkpoint is passed, NEXUS shall keep its work board read-only, as material. | functional | Could | CTX-010 | The maintainer's choice of 2026-11-03; stage 01's sync rule (after the last checkpoint the document leads) | active |
 
 Removed, with their IDs kept:
 
@@ -230,7 +242,7 @@ Removed, with their IDs kept:
 | REQ-134 | Where assistant access is included, the MCP server shall answer only chat clients that signed in through Cloudflare Access. | removed 2026-10-24 | As for REQ-133 |
 | REQ-135 | Where assistant access is included, the MCP server shall show a project's stages as an in-chat view in chat clients that support MCP Apps. | removed 2026-10-24 | As for REQ-133 |
 
-Changed with the board on 2026-10-24: REQ-076, REQ-085 to REQ-087, REQ-105, REQ-118, REQ-120 and REQ-127 to REQ-131 have new wording under the same IDs; REQ-089 and REQ-125 depend on D12 and D8 instead of D6 and D7; REQ-136 to REQ-193 are new. With R4 on 2026-11-02, REQ-076 also allows the kinds of actions to ask about first, and REQ-197 and REQ-198 are new. With the joint checkpoint of stages 03 to 08 on 2026-11-03, REQ-115, REQ-118, REQ-197 and REQ-198 have new wording, and REQ-199 to REQ-208 are new.
+Changed with the board on 2026-10-24: REQ-076, REQ-085 to REQ-087, REQ-105, REQ-118, REQ-120 and REQ-127 to REQ-131 have new wording under the same IDs; REQ-089 and REQ-125 depend on D12 and D8 instead of D6 and D7; REQ-136 to REQ-193 are new. With R4 on 2026-11-02, REQ-076 also allows the kinds of actions to ask about first, and REQ-197 and REQ-198 are new. With the joint checkpoint of stages 03 to 08 on 2026-11-03, REQ-115, REQ-118, REQ-197 and REQ-198 have new wording, and REQ-199 to REQ-208 are new. With the maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS, REQ-209 to REQ-218 are new.
 
 ## Success measures
 
@@ -239,6 +251,7 @@ For a two-week trial of phase ① with this repository on NEXUS:
 | Measure | Target | How it is measured |
 | --- | --- | --- |
 | Talking over pictures | The maintainer settles questions about this repository's pictures with the agent through comments, without describing a picture in words | The maintainer's note at the end of the trial |
+| Steps on the board | The maintainer follows how this repository's DDD boards were built, step by step, in NEXUS, without opening the event storming board | The maintainer's note at the end of the trial |
 | Comments reach the agent | Every comment that the maintainer leaves is answered at the agent's next work on the project | Comment times against the times of the agent's answers and its session starts |
 | Pictures current | A picture shows a merged stage source within a day of the merge | The pictures' document versions against merge times |
 | Useful discrepancies | At most one discrepancy in three is a false lead, once the repository has a second picture | The maintainer's sample of the discrepancies raised |
@@ -247,6 +260,13 @@ For a two-week trial of phase ① with this repository on NEXUS:
 | Cost | The server stays on the free plans | Cloudflare's usage pages |
 
 ## For the checkpoint
+
+The maintainer's choice of 2026-11-03 passed at 16:54 KST the same day, together with the changes that it made to stage 01 and to stages 03 to 09: on a decision card in the project's thread the maintainer chose to pass the step view and the work board as drawn ("모두 그린 대로 통과", pass all as drawn). Hotspot 14 of stage 01, the work board's own steps, stays open until phase ② is designed. The checkpoint covered:
+
+1. The goal, problem 13, the scope and the decision of 2026-11-03.
+2. REQ-209 to REQ-212 for NEXUS 0.2: the DDD board step by step, the timeline in its picture source, a board without a timeline, and the stage 01 skill's timeline, which the stage 01 template does not hold yet.
+3. REQ-213 to REQ-218 for phase ②: the work board, what it offers, its authors, its lead while a workshop runs, the agent's writing of the stage 01 source at each checkpoint, and the board read-only after the last one. They name Editing (CTX-010) until phase ② draws the work board's own steps (hotspot 14 of stage 01).
+4. Conflicts: REQ-138 still holds, since a work board is not a picture (REQ-216). REQ-212 changes the stage 01 template, together with the other changes to the stage skills that NEXUS 0.2 needs.
 
 Passed on 2026-10-25: the maintainer approved the scope and the recommendations of D8 to D13, without changes. The checkpoint covered:
 

@@ -2,9 +2,9 @@
 
 [한국어](FL-101-read-a-project.ko.md)
 
-Serves: REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-076, REQ-077, REQ-078, REQ-079, REQ-080, REQ-081, REQ-084, REQ-085, REQ-087, REQ-173, REQ-174, REQ-175, REQ-191, REQ-192, REQ-198
+Serves: REQ-066, REQ-067, REQ-068, REQ-069, REQ-070, REQ-071, REQ-072, REQ-073, REQ-074, REQ-075, REQ-076, REQ-077, REQ-078, REQ-079, REQ-080, REQ-081, REQ-084, REQ-085, REQ-087, REQ-173, REQ-174, REQ-175, REQ-191, REQ-192, REQ-198, REQ-210
 
-Context: CTX-006 Reading, with the stage records of CTX-007 Stage progress. Starts when the agent or the user takes a snapshot of a project, or the hub refreshes one to build the hub page or before a push. Built in phase 1; NEXUS 0.2 adds the parts of the stage sources that pictures show (REQ-076, REQ-191, REQ-192) and the stage records in the repository (REQ-173 to REQ-175), and R4 of 2026-11-02 adds each project's actions to ask about first (REQ-198).
+Context: CTX-006 Reading, with the stage records of CTX-007 Stage progress. Starts when the agent or the user takes a snapshot of a project, or the hub refreshes one to build the hub page or before a push. Built in phase 1; NEXUS 0.2 adds the parts of the stage sources that pictures show (REQ-076, REQ-191, REQ-192) and the stage records in the repository (REQ-173 to REQ-175), R4 of 2026-11-02 adds each project's actions to ask about first (REQ-198), and the maintainer's choice of 2026-11-03 adds the DDD board's timeline (REQ-210).
 
 ```mermaid
 flowchart TD
@@ -20,7 +20,7 @@ flowchart TD
   E -->|yes| F["Read its files as text, without running code,<br/>Git hooks or Git filters, and skip files that look<br/>like secrets and translations that define<br/>only their original's IDs<br/>REQ-068, REQ-074, REQ-075"]
   F --> G["Count each ID as defined only in the stage<br/>that creates its kind, and as a mention elsewhere<br/>REQ-071"]
   G --> H{"Does a picture show this stage:<br/>01 the DDD board, 05 the ERD<br/>or 07 the sitemap?"}
-  H -->|yes| H1["Keep the parts that the picture shows,<br/>with secrets and email addresses redacted<br/>REQ-076, REQ-191"]
+  H -->|yes| H1["Keep the parts that the picture shows, among them<br/>the DDD board's timeline, with secrets<br/>and email addresses redacted<br/>REQ-076, REQ-191, REQ-210"]
   H -->|no| I{"Another stage left?"}
   H1 --> I
   E1 --> I

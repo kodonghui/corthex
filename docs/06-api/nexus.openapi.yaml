@@ -487,7 +487,7 @@ paths:
         getProposal.
       x-corthex:
         id: API-111
-        spec: [SPEC-113, SPEC-118, SPEC-119]
+        spec: [SPEC-113, SPEC-118, SPEC-119, SPEC-141]
         status: active
         omit:
           "400": the request has no input; a path value in another form gets 404
@@ -2386,6 +2386,8 @@ components:
               - {from: CTX-012, to: CTX-013, kind: event, why: Cross-check what was drawn, data: "Picture drawn, Picture redrawn", where: "docs/01-domain/nexus.md:260"}
             hotspots:
               - {number: 1, text: "1. Repositories per space: what about a project with two repositories?", contexts: [CTX-012], state: answered, answer: One repository per project space at first, where: "docs/01-domain/nexus.md:275"}
+            timeline:
+              - {lane: Drawing pictures, places: [[Project space created], [Stage source changed], [Picture drawn, Picture redrawn], [Discrepancy found]], where: "docs/01-domain/nexus.md:82"}
         comments: {total: 0, entries: []}
         closed_comments: {total: 0, entries: []}
         proposals: []
@@ -2798,6 +2800,21 @@ components:
               contexts: {type: array, maxItems: 20, items: {$ref: "#/components/schemas/TraceId"}}
               state: {$ref: "#/components/schemas/Name"}
               answer: {$ref: "#/components/schemas/Words"}
+              where: {$ref: "#/components/schemas/Where"}
+        timeline:
+          description: The board's timeline, its lanes in order, each with its places from left to right and the events stacked in each; left out when the document has none (Picture sources in nexus.md)
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [lane, places, where]
+            additionalProperties: false
+            properties:
+              lane: {$ref: "#/components/schemas/Name"}
+              places:
+                type: array
+                maxItems: 200
+                items: {type: array, minItems: 1, maxItems: 10, items: {$ref: "#/components/schemas/Name"}}
               where: {$ref: "#/components/schemas/Where"}
     BoardTerm:
       description: An aggregate or a read model, by its name in its context, with the glossary's term of the same name

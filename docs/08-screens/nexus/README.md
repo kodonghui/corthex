@@ -2,9 +2,9 @@
 
 [한국어](README.ko.md)
 
-Stage 08 of CORTHEX's own project, for NEXUS 0.2: one definition for each of the nine screens of the [sitemap](../../07-sitemap/nexus.md), with the data that it shows and the request that each piece comes from, its actions with their results and failures, and every state with the responses that lead to it; and in this file the rules that hold on every screen, the final words of the messages, and the [wireframes](wireframes.html), drawn from the definitions. Status: drafted on 2026-11-03, while the memory plugin is being built, as the maintainer chose on 2026-11-02, on the recommendations of the user flows, the functional spec, the server's data, the interfaces and the sitemap. The maintainer passed its checkpoint the same day, together with stages 03 to 07. When a file and its Korean translation differ, the English file is the source.
+Stage 08 of CORTHEX's own project, for NEXUS 0.2: one definition for each of the nine screens of the [sitemap](../../07-sitemap/nexus.md), with the data that it shows and the request that each piece comes from, its actions with their results and failures, and every state with the responses that lead to it; and in this file the rules that hold on every screen, the final words of the messages, and the [wireframes](wireframes.html), drawn from the definitions. Status: drafted on 2026-11-03, while the memory plugin is being built, as the maintainer chose on 2026-11-02, on the recommendations of the user flows, the functional spec, the server's data, the interfaces and the sitemap. The maintainer passed its checkpoint the same day, together with stages 03 to 07. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS added a DDD board's step control to the picture view, with its words, which the maintainer passed the same day ([For the checkpoint](#for-the-checkpoint)). When a file and its Korean translation differ, the English file is the source.
 
-Inputs: the sitemap in [docs/07-sitemap/nexus.yaml](../../07-sitemap/nexus.yaml) (SCR-101 to SCR-109), with its [notes for stage 08](../../07-sitemap/nexus.md#stage-08-screen-states); the functional spec in [docs/04-functional-spec/nexus.md](../../04-functional-spec/nexus.md), above all SPEC-119, SPEC-122 to SPEC-127, SPEC-131 to SPEC-134, SPEC-138 and SPEC-139 and its [notes for stages 07 and 08](../../04-functional-spec/nexus.md#stages-07-and-08-screens); the interfaces in [docs/06-api/nexus.md](../../06-api/nexus.md) and the contract [nexus.openapi.yaml](../../06-api/nexus.openapi.yaml), whose responses and [error codes](../../06-api/nexus.md#error-codes) the states follow, with the [notes for stages 07 and 08](../../06-api/nexus.md#stages-07-and-08-screens); the server's data in [docs/05-erd/nexus.md](../../05-erd/nexus.md), for the marks that come from it; the user flows that run in a browser, FL-105 to FL-107, FL-109, FL-110, FL-113 and FL-115, in [docs/03-user-flow/nexus/](../../03-user-flow/nexus/README.md); and phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose states the hub page and its views keep. The memory plugin has no screens, so this stage has no file for it.
+Inputs: the sitemap in [docs/07-sitemap/nexus.yaml](../../07-sitemap/nexus.yaml) (SCR-101 to SCR-109), with its [notes for stage 08](../../07-sitemap/nexus.md#stage-08-screen-states); the functional spec in [docs/04-functional-spec/nexus.md](../../04-functional-spec/nexus.md), above all SPEC-119, SPEC-122 to SPEC-127, SPEC-131 to SPEC-134, SPEC-138, SPEC-139, SPEC-141 and SPEC-142 and its [notes for stages 07 and 08](../../04-functional-spec/nexus.md#stages-07-and-08-screens); the interfaces in [docs/06-api/nexus.md](../../06-api/nexus.md) and the contract [nexus.openapi.yaml](../../06-api/nexus.openapi.yaml), whose responses and [error codes](../../06-api/nexus.md#error-codes) the states follow, with the [notes for stages 07 and 08](../../06-api/nexus.md#stages-07-and-08-screens); the server's data in [docs/05-erd/nexus.md](../../05-erd/nexus.md), for the marks that come from it; the user flows that run in a browser, FL-105 to FL-107, FL-109, FL-110, FL-113, FL-115 and FL-116, in [docs/03-user-flow/nexus/](../../03-user-flow/nexus/README.md); and phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose states the hub page and its views keep. The memory plugin has no screens, so this stage has no file for it.
 
 The stage's default human view is grayscale wireframes drawn from the definitions. Here they are one page, [wireframes.html](wireframes.html), with a frame for each state at 320 and 1440 pixels, and people look at it as a private published page whose link is in the project's records, since the repository is public. The definitions are read in the Korean copy in the project's Notion records, with the tables as databases. `.corthex/project.json` records the choice.
 
@@ -133,6 +133,8 @@ No screen shows the other codes. `agent_only`, `claimed` and `comment_closed` re
 | Loading the view | SCR-105, before its code runs | Loading the picture view. If it does not appear, load the page again. | 그림 보기를 불러오는 중입니다. 나타나지 않으면 페이지를 다시 불러와 주세요. |
 | Drawing | SCR-105 | Drawing the picture… | 그림을 그리는 중… |
 | Large | SCR-105 | This picture is large ({n} elements), so drawing it may take longer. | 이 그림은 요소가 {n}개로 커서 그리는 데 시간이 더 걸릴 수 있습니다. |
+| Steps | SCR-105, on a DDD board: the step control (SPEC-141) | Previous step · Next step · Steps · 1-b Timeline · 2 External systems · 3 Commands · 4 Hotspots · 5 Actors · 6 Aggregates · 7 Contexts · 8-a Policies and read models · 8-b–9 Map and tables | 이전 스텝 · 다음 스텝 · 스텝 · 1-b 타임라인 · 2 바깥 시스템 · 3 명령 · 4 핫스팟 · 5 행위자 · 6 애그리거트 · 7 컨텍스트 · 8-a 정책과 읽기 모델 · 8-b–9 지도와 정리표 |
+| No timeline | SCR-105, on a DDD board without a timeline, in the step control's place | This document has no timeline, so the board is shown only as a whole. | 이 문서에는 타임라인이 없어 보드를 전체로만 보여 줍니다. |
 | Not current | SCR-105 | This picture shows commit {commit}: its newest source is larger than a snapshot may hold. Or: its newest source is gone from the repository. Or: its newest source is in another repository. | 이 그림은 커밋 {commit}의 그림입니다. 최신 원본이 스냅샷에 담을 수 있는 크기보다 큽니다. 또는: 최신 원본이 저장소에서 사라졌습니다. 또는: 최신 원본이 다른 저장소에 있습니다. |
 | Not current, by a link | SCR-104, SCR-109 | Not current: its newest source is larger than a snapshot may hold. Or: is gone from the repository. Or: is in another repository. | 최신 아님: 최신 원본이 스냅샷에 담을 수 있는 크기보다 큼. 또는: 저장소에서 사라짐. 또는: 다른 저장소에 있음. |
 | Newer version | SCR-105 | A newer version of this picture is on the server. Show it | 서버에 이 그림의 새 판이 있습니다. 보기 |
@@ -163,11 +165,13 @@ No screen shows the other codes. `agent_only`, `claimed` and `comment_closed` re
 | Withdrawn | SCR-109 | Withdrawn on {date} | {date}에 철회함 |
 | Not opened | SCR-109 | {n} discrepancies could not be opened, since the space holds 1,000 open ones. | 공간에 열린 어긋남이 1,000개라 {n}개를 열지 못했습니다. |
 
+The rows Steps and No timeline came with the maintainer's choice of 2026-11-03; in Steps, each label between `·` marks is a label of its own.
+
 The hub page and its views keep phase 1's other messages, such as "No projects yet. Register a project with the corthex skill, then build the hub again." and "Nothing matches “{q}”.", in English and Korean as hub.html holds them.
 
 ### Words the mockups added
 
-The mockups of stage 09, in [direction A](../../09-mockup/nexus/README.md#the-choice), needed these words, which stage 08 had not written. They were added on 2026-11-03 with the mockups and can change at the checkpoint. A word between `·` marks is a label of its own.
+The mockups of stage 09, in [direction A](../../09-mockup/nexus/README.md#the-choice), needed these words, which stage 08 had not written. They were added on 2026-11-03 with the mockups and kept by that day's checkpoint. A word between `·` marks is a label of its own.
 
 | Words | Where | English | Korean |
 | --- | --- | --- | --- |
@@ -226,7 +230,15 @@ On 2026-11-03, on the nine definitions, this file, their Korean translations and
 - The hub's snapshot of this repository reads the nine definitions as the screen definitions of SCR-101 to SCR-109, with their 45 states, and adds no check result; with the correction of change 4, the two warnings that stage 07's text gave on `main` are gone too.
 - The repository's checks with these files pass: `python -m unittest discover -s tests`, `claude plugin validate --strict` for the marketplace and its three plugins, `node --test nexus/test/*.test.js` and `git diff --check`.
 
+Again on 2026-11-03, after the maintainer's choice to hold stage 01's event storming in NEXUS, with the same script:
+
+- The stage's checks find no problems with SCR-105's new data, action and words: 9 screens, 45 states and 97 responses, and the Korean files hold the same. The step view adds no state: it is a way of showing SCR-105#normal.
+- The wireframes were not drawn again, so they do not draw the step control, as SCR-105's definition says; stage 09's mockups draw it.
+- The repository's checks pass, with 756 tests (12 skipped), and the hub's snapshot of this repository reads 1014 items with no checks.
+
 ## For the checkpoint
+
+The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, passed at 16:54 KST the same day, together with the changes that it made to the other stages: on a decision card in the project's thread the maintainer chose to pass the step view and the work board as drawn ("모두 그린 대로 통과", pass all as drawn). The checkpoint covered: SCR-105's step control on a DDD board, the notice of a board without a timeline and their words, and the workshop of phase ②, whose states come with that phase. The wireframes predate the step control; the mockups of stage 09 draw it.
 
 Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 07: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the screens' states and the messages' words stand as drawn and written. The checkpoint covered:
 
@@ -241,6 +253,7 @@ Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 07: on a decision 
 
 - Two candidates for each new screen, SCR-105 to SCR-109, the phone first, at 320 pixels, from these frames; each state is a frame to design. The hub page keeps phase 1's design, with the additions of 0.2 on SCR-101 and SCR-104.
 - The marks on a picture's items, and "Accepted, not yet reflected", need a form that reads on a full DDD board and in both themes, and a size that a finger can select.
+- The step control of a DDD board, at both widths, and the notice of a board without a timeline (SPEC-141).
 
 ### Stage 10: work breakdown
 

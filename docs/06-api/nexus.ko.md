@@ -2,9 +2,9 @@
 
 [English](nexus.md)
 
-CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계약 [nexus.openapi.yaml](nexus.openapi.yaml)에 있는 NEXUS 서버의 요청, 그리고 이 파일에 있는 그 계약이 따르는 규칙, 허브의 명령, 그것과 함께 가는 파일의 형식입니다. 상태: 2026-11-02에 관리자가 그날 고른 대로 기억 플러그인을 만드는 동안, 사용자 흐름, 기능 명세, 서버의 자료의 추천을 따라 초안을 썼습니다. 관리자가 2026-11-03에 03\~05단계, 07·08단계와 함께 이 파일의 확인 지점을 통과시켜, 10단계가 작업을 나누기 전에 NEXUS 0.2의 요청, 명령, 형식이 고정되었습니다. 이제 호환되지 않는 변경을 하려면 관리자의 결정이 필요합니다. 계약은 그 안에 있는 모든 요청, 응답, 예시, 오류 코드의 원본이고, 이 파일은 그것을 설명하며 나머지의 원본입니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
+CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계약 [nexus.openapi.yaml](nexus.openapi.yaml)에 있는 NEXUS 서버의 요청, 그리고 이 파일에 있는 그 계약이 따르는 규칙, 허브의 명령, 그것과 함께 가는 파일의 형식입니다. 상태: 2026-11-02에 관리자가 그날 고른 대로 기억 플러그인을 만드는 동안, 사용자 흐름, 기능 명세, 서버의 자료의 추천을 따라 초안을 썼습니다. 관리자가 2026-11-03에 03\~05단계, 07·08단계와 함께 이 파일의 확인 지점을 통과시켜, 10단계가 작업을 나누기 전에 NEXUS 0.2의 요청, 명령, 형식이 고정되었습니다. 이제 호환되지 않는 변경을 하려면 관리자의 결정이 필요합니다. 2026-11-03에 관리자가 01단계 이벤트 스토밍을 NEXUS에서 하기로 고르면서 DDD 보드의 그림 자료에 선택 항목 `timeline`을 더했고(호환되는 변경), ② 차례의 작업 보드를 편집 곁에 적었습니다. 둘 다 관리자가 같은 날 통과시켰습니다([확인할 것](#확인할-것)). 계약은 그 안에 있는 모든 요청, 응답, 예시, 오류 코드의 원본이고, 이 파일은 그것을 설명하며 나머지의 원본입니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
 
-입력: [docs/04-functional-spec/nexus.ko.md](../04-functional-spec/nexus.ko.md)의 기능 명세(SPEC-101\~SPEC-140), 특히 그 [06단계를 위한 메모](../04-functional-spec/nexus.ko.md#06단계-요청-명령-형식); [docs/05-erd/nexus.ko.md](../05-erd/nexus.ko.md)와 [nexus.sql](../05-erd/nexus.sql)의 서버의 자료와 파일(TBL-101\~TBL-118), 그 [06단계를 위한 메모](../05-erd/nexus.ko.md#06단계-요청-명령-형식)와 상한; [docs/02-prd/nexus.ko.md](../02-prd/nexus.ko.md)의 요구사항; [docs/01-domain/nexus.ko.md](../01-domain/nexus.ko.md)의 용어집과 DDD 보드(이 파일은 그 말을 그 뜻으로 씁니다); 그리고 지금 도는 1차, 곧 [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js), [store.js](../../nexus/src/store.js)의 서버와, [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md), [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)가 설명하는 [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py)의 허브입니다. 사이트맵(07단계)은 나중이라 아직 입력에 화면 ID가 없고, 요청은 사용자 흐름과 기능 명세가 적은 화면을 맡습니다.
+입력: [docs/04-functional-spec/nexus.ko.md](../04-functional-spec/nexus.ko.md)의 기능 명세(SPEC-101\~SPEC-142), 특히 그 [06단계를 위한 메모](../04-functional-spec/nexus.ko.md#06단계-요청-명령-형식); [docs/05-erd/nexus.ko.md](../05-erd/nexus.ko.md)와 [nexus.sql](../05-erd/nexus.sql)의 서버의 자료와 파일(TBL-101\~TBL-118), 그 [06단계를 위한 메모](../05-erd/nexus.ko.md#06단계-요청-명령-형식)와 상한; [docs/02-prd/nexus.ko.md](../02-prd/nexus.ko.md)의 요구사항; [docs/01-domain/nexus.ko.md](../01-domain/nexus.ko.md)의 용어집과 DDD 보드(이 파일은 그 말을 그 뜻으로 씁니다); 그리고 지금 도는 1차, 곧 [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js), [store.js](../../nexus/src/store.js)의 서버와, [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md), [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)가 설명하는 [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py)의 허브입니다. 사이트맵(07단계)은 나중이라 아직 입력에 화면 ID가 없고, 요청은 사용자 흐름과 기능 명세가 적은 화면을 맡습니다.
 
 이 단계의 기본 계약은 Swagger UI로 읽는 `api/openapi.yaml`입니다. NEXUS 서버에는 HTTP API가 있으므로 계약은 단계가 말하는 대로 OpenAPI 3.1이고, 다른 부분의 인터페이스 옆에 `docs/06-api/nexus.openapi.yaml`로 둡니다. 사람은 프로젝트의 Notion 기록에 있는 한국어 사본으로 읽고, 파일 자체는 Swagger UI 같은 OpenAPI 보기 도구로 읽습니다. `.corthex/project.json`이 이 선택을 적어 둡니다. 허브의 명령은 HTTP 요청이 아니므로 이 파일이 MEMORY의 [인터페이스](memory.ko.md)와 같은 꼴로 정합니다: 명령마다 API ID, 맡는 동작, 결과가 있습니다.
 
@@ -15,7 +15,7 @@ CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계
 - 응답은 그 요청의 ID와 상태로 `API-105#409`처럼 적고, 명령의 결과는 그 ID와 결과로 `API-136#refused`처럼 적습니다.
 - 오류 코드는 `commit_not_replaced`처럼 적습니다. [오류 코드](#오류-코드)는 계약의 `components.x-corthex.errors`대로 코드마다 상태, 뜻, 더하는 멤버, 사용자가 보는 말, 클라이언트가 하는 일을 적습니다.
 - 서버의 시각은 `2026-11-03T09:00:00.000Z`처럼 밀리초까지 UTC이고, 기기나 Git의 시각은 그 시간대를 지닙니다. 바이트 크기는 UTF-8로 세고, 글자 수는 05단계처럼 코드 포인트로 셉니다.
-- 상태: 지금 도는 1차가 주는 것은 `built`, NEXUS 0.2가 더하거나 바꾸는 것은 `active`입니다. PC에서의 편집(SPEC-134)은 ② 차례이고, 그 요청은 그때 더합니다.
+- 상태: 지금 도는 1차가 주는 것은 `built`, NEXUS 0.2가 더하거나 바꾸는 것은 `active`입니다. PC에서의 편집(SPEC-134)과 작업 보드(SPEC-142)는 ② 차례이고, 그 요청은 그때 더합니다.
 - `~/.corthex/`는 사용자 홈 폴더의 CORTHEX 폴더이고, Windows에서는 `%USERPROFILE%\.corthex\`입니다. 허브의 파일은 1차처럼 `~/.corthex/hub/` 아래에 있습니다.
 
 ## 출처
@@ -31,7 +31,7 @@ CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계
 
 ## 인터페이스
 
-기능 명세의 모든 동작에 인터페이스가 있습니다. ② 차례가 더하는 PC에서의 편집(SPEC-134)만 예외입니다.
+기능 명세의 모든 동작에 인터페이스가 있습니다. ② 차례가 더하는 PC에서의 편집(SPEC-134)과 작업 보드(SPEC-142)만 예외입니다. 스텝별 보기(SPEC-141)는 제 요청이 없고, 그림 보기가 읽는 그림(API-111)을 보여 줍니다.
 
 ### 서버의 요청 목록
 
@@ -49,7 +49,7 @@ CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 06단계입니다: OpenAPI 계
 | API-108 | `DELETE /api/snapshots/{project}` | `removeProject` | 둘 다 | SPEC-113, SPEC-115 | active |
 | API-109 | `GET /api/snapshots/{project}/held` | `getHeldCommit` | 둘 다 | SPEC-111, SPEC-112, SPEC-113 | active |
 | API-110 | `GET /api/snapshots/{project}/removal` | `getRemovalDryRun` | 둘 다 | SPEC-113, SPEC-115 | active |
-| API-111 | `GET /api/spaces/{project}/pictures/{part}/{stage}` | `getPicture` | 둘 다 | SPEC-113, SPEC-118, SPEC-119 | active |
+| API-111 | `GET /api/spaces/{project}/pictures/{part}/{stage}` | `getPicture` | 둘 다 | SPEC-113, SPEC-118, SPEC-119, SPEC-141 | active |
 | API-112 | `GET /api/spaces/{project}/overview/{part}/{stage}` | `getStageOverview` | 둘 다 | SPEC-113, SPEC-138 | active |
 | API-113 | `GET /api/spaces/{project}/todo` | `getAgentTodo` | 둘 다 | SPEC-113, SPEC-135, SPEC-136 | active |
 | API-114 | `GET /api/spaces/{project}/comments/{comment}` | `getComment` | 둘 다 | SPEC-113, SPEC-127, SPEC-132, SPEC-135 | active |
@@ -535,8 +535,11 @@ hub.py outbox [PROJECT ...] [--send]
 | 핫스팟 | `Hotspot`, `Context`, `State`, `Answer or next step` 열이 있는 표. `1.`처럼 글 첫머리의 번호가 핫스팟의 `number`이고, `Context` 아래의 CTX ID가 그 컨텍스트입니다 | `핫스팟`, `컨텍스트`, `상태`, `답이나 다음 할 일` |
 | 용어집 | TERM ID가 든 `ID` 열과 `Term` 열이 있는 표 | `ID`, `용어` |
 | 삭제된 컨텍스트와 용어 | `ID` 열과 삭제라고 말하는 `Status` 열이 있는 표 | `ID`, `상태`와 `삭제` |
+| 타임라인 | 흐름(레인)마다 한 줄씩 차례대로인 `Lane`, `Events` 열의 표. `Events`에서 ` → `는 왼쪽에서 오른쪽으로 자리를 가르고, `, or `는 한 자리에 쌓인 사건을 가릅니다 | `흐름`, `사건`; 앞에 쉼표가 있든 없든 ` 또는 ` |
 
 애그리거트나 읽기 모델은 `Picture (TERM-085)`처럼 그 이름 옆에 적은 TERM ID를, 아니면 같은 문서에서 대소문자와 띄어쓰기를 가리지 않고 그 이름이 용어인 용어집 줄의 것을 가져옵니다. 그런 줄이 없거나 둘이면 `board-term-missing` 경고를 받습니다(SPEC-106).
+
+명령 줄의 `Events`에서는 쉼표가 사건을 가르고, 맨 앞의 `or`(`또는`)는 이름에 들지 않습니다. 그래서 `Payment taken, or Payment failed`는 사건 둘입니다. 타임라인은 없어도 됩니다: 타임라인이 없는 문서는 `timeline`을 주지 않고, 그러면 그림 보기는 보드를 전체로만 보여 줍니다(SPEC-141). 흐름마다 그 줄의 자리인 `where`를 둡니다.
 
 **ERD(`05-erd`).** [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)와 05단계 양식 [05-erd.md](../../plugins/corthex/skills/corthex-contract/references/05-erd.md)의 SQL입니다:
 
@@ -784,7 +787,16 @@ CREATE TABLE pictures (
 - 도구가 OpenAPI 3.1 계약에 요구하는 `--experimental=openapi-3.1`을 붙인 Schemathesis: 32개 작업이 모두 요청 858개에서 통과하고, 그중 Pages 아래의 네 작업, 곧 세 페이지와 보기 화면의 코드는 요청 103개에서 통과합니다. 세 번째 버릇도 같은 방법으로 비켜 두었습니다: 도구는 서비스 토큰의 두 헤더 `CF-Access-Client-Id`와 `CF-Access-Client-Secret`을 아무 글자로나 만드는데, Node의 HTTP 서버가 이것도 맨 `400`으로 거절하므로 훅이 저마다 출력할 수 있는 대신 값을 줍니다.
 - 저장소의 검사가 통과하며, 이제 시험은 727개(건너뜀 12개)입니다. 허브가 찍은 이 저장소의 스냅샷은 항목 996개를 읽고 점검이 없습니다.
 
+2026-11-03에 관리자가 01단계 이벤트 스토밍을 NEXUS에서 하기로 고른 뒤, 다시:
+
+- openapi-spec-validator 0.7.1: `DomainSource`의 선택 항목 `timeline`을 넣은 계약은 올바른 OpenAPI 3.1입니다.
+- 이 단계의 검사: 문제 없음. 이제 타임라인의 흐름 하나를 담은 예시 `picture_data_domain`을 그 스키마가 받고, 예시 72개가 여전히 모두 쓰입니다.
+- Prism과 Schemathesis는 다시 돌리지 않았습니다: 이 변경은 스키마 하나에 선택 항목 하나를, 예시 하나에 흐름 하나를 더하고, 이 단계의 검사가 그것을 확인합니다.
+- 저장소의 검사가 통과하며, 이제 시험은 756개(건너뜀 12개)입니다. 허브가 찍은 이 저장소의 스냅샷은 항목 1014개를 읽고 점검이 없습니다.
+
 ## 확인할 것
+
+2026-11-03 관리자가 고른 01단계 이벤트 스토밍을 NEXUS에서 하는 것은 그것이 다른 단계에 낸 변경과 함께 같은 날 16:54(KST)에 통과했습니다: 관리자가 프로젝트 스레드의 결정 카드에서 스텝별 보기와 작업 보드를 그린 대로 통과시켰습니다(‘모두 그린 대로 통과’). 확인 지점이 다룬 것: `DomainSource`의 선택 항목 `timeline`과 [그림 자료](#그림-자료)에 적은 그 양식. 그것이 없는 그림 자료도 그대로 맞고 고정된 형식의 스냅샷도 그대로 통과하므로 호환되는 변경입니다. 그리고 ② 차례의 작업 보드(SPEC-142). 그 요청은 편집(SPEC-134)의 요청 곁에 그때 더합니다.
 
 2026-11-03 11:39(KST)에 03\~05단계, 07·08단계와 함께 통과했습니다: 관리자가 프로젝트 스레드의 결정 카드에서 모든 추천을 골라(‘모두 추천대로’), 요청, 명령, 형식이 08단계의 변경과 함께 쓴 대로 섭니다. 로그인(3)은 그 시험 때까지 열려 있습니다. 확인 지점이 다룬 것:
 

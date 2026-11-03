@@ -2,9 +2,9 @@
 
 [English](README.md)
 
-CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 08단계입니다: [사이트맵](../../07-sitemap/nexus.ko.md)의 화면 아홉 개마다 정의 하나, 곧 그 화면이 보여 주는 자료와 저마다 어느 요청에서 오는지, 그 동작과 결과와 실패, 그리고 모든 상태와 그것으로 이어지는 응답; 그리고 이 파일에 있는 모든 화면에 걸리는 규칙, 메시지의 최종 문구, 정의에서 그린 [와이어프레임](wireframes.html)입니다. 상태: 2026-11-03에 관리자가 2026-11-02에 고른 대로 기억 플러그인을 만드는 동안, 사용자 흐름, 기능 명세, 서버의 자료, 인터페이스, 사이트맵의 추천을 따라 초안을 썼습니다. 관리자가 같은 날 03\~07단계와 함께 이 단계의 확인 지점을 통과시켰습니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
+CORTHEX 자신의 프로젝트에서 NEXUS 0.2의 08단계입니다: [사이트맵](../../07-sitemap/nexus.ko.md)의 화면 아홉 개마다 정의 하나, 곧 그 화면이 보여 주는 자료와 저마다 어느 요청에서 오는지, 그 동작과 결과와 실패, 그리고 모든 상태와 그것으로 이어지는 응답; 그리고 이 파일에 있는 모든 화면에 걸리는 규칙, 메시지의 최종 문구, 정의에서 그린 [와이어프레임](wireframes.html)입니다. 상태: 2026-11-03에 관리자가 2026-11-02에 고른 대로 기억 플러그인을 만드는 동안, 사용자 흐름, 기능 명세, 서버의 자료, 인터페이스, 사이트맵의 추천을 따라 초안을 썼습니다. 관리자가 같은 날 03\~07단계와 함께 이 단계의 확인 지점을 통과시켰습니다. 2026-11-03에 관리자가 01단계 이벤트 스토밍을 NEXUS에서 하기로 고르면서 그림 보기에 DDD 보드의 스텝 고르기와 그 말을 더했고, 이것은 관리자가 같은 날 통과시켰습니다([확인할 것](#확인할-것)). 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
 
-입력: [docs/07-sitemap/nexus.yaml](../../07-sitemap/nexus.yaml)의 사이트맵(SCR-101\~SCR-109)과 그 [08단계를 위한 메모](../../07-sitemap/nexus.ko.md#08단계-화면-상태); [docs/04-functional-spec/nexus.ko.md](../../04-functional-spec/nexus.ko.md)의 기능 명세, 특히 SPEC-119, SPEC-122\~SPEC-127, SPEC-131\~SPEC-134, SPEC-138, SPEC-139와 그 [07·08단계를 위한 메모](../../04-functional-spec/nexus.ko.md#0708단계-화면); [docs/06-api/nexus.ko.md](../../06-api/nexus.ko.md)의 인터페이스와 계약 [nexus.openapi.yaml](../../06-api/nexus.openapi.yaml), 상태는 그 응답과 [오류 코드](../../06-api/nexus.ko.md#오류-코드)를 따르며, 그 [07·08단계를 위한 메모](../../06-api/nexus.ko.md#0708단계-화면)와 함께; [docs/05-erd/nexus.ko.md](../../05-erd/nexus.ko.md)의 서버의 자료, 거기서 오는 표시를 위해; [docs/03-user-flow/nexus/](../../03-user-flow/nexus/README.ko.md)에 있는, 브라우저에서 도는 사용자 흐름 FL-105\~FL-107, FL-109, FL-110, FL-113, FL-115; 그리고 지금 도는 1차의 허브 페이지 [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), 허브 페이지와 그 보기는 그 상태를 그대로 둡니다. 기억 플러그인에는 화면이 없으므로 이 단계에는 그 파일이 없습니다.
+입력: [docs/07-sitemap/nexus.yaml](../../07-sitemap/nexus.yaml)의 사이트맵(SCR-101\~SCR-109)과 그 [08단계를 위한 메모](../../07-sitemap/nexus.ko.md#08단계-화면-상태); [docs/04-functional-spec/nexus.ko.md](../../04-functional-spec/nexus.ko.md)의 기능 명세, 특히 SPEC-119, SPEC-122\~SPEC-127, SPEC-131\~SPEC-134, SPEC-138, SPEC-139, SPEC-141, SPEC-142와 그 [07·08단계를 위한 메모](../../04-functional-spec/nexus.ko.md#0708단계-화면); [docs/06-api/nexus.ko.md](../../06-api/nexus.ko.md)의 인터페이스와 계약 [nexus.openapi.yaml](../../06-api/nexus.openapi.yaml), 상태는 그 응답과 [오류 코드](../../06-api/nexus.ko.md#오류-코드)를 따르며, 그 [07·08단계를 위한 메모](../../06-api/nexus.ko.md#0708단계-화면)와 함께; [docs/05-erd/nexus.ko.md](../../05-erd/nexus.ko.md)의 서버의 자료, 거기서 오는 표시를 위해; [docs/03-user-flow/nexus/](../../03-user-flow/nexus/README.ko.md)에 있는, 브라우저에서 도는 사용자 흐름 FL-105\~FL-107, FL-109, FL-110, FL-113, FL-115, FL-116; 그리고 지금 도는 1차의 허브 페이지 [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), 허브 페이지와 그 보기는 그 상태를 그대로 둡니다. 기억 플러그인에는 화면이 없으므로 이 단계에는 그 파일이 없습니다.
 
 이 단계의 기본 사람 화면은 정의에서 그린 회색 와이어프레임입니다. 여기서는 그것이 한 페이지 [wireframes.html](wireframes.html)이며 상태마다 320과 1440픽셀의 틀이 있고, 저장소가 공개이므로 사람은 그것을 링크가 프로젝트의 기록에 있는 비공개 게시 페이지로 봅니다. 정의는 프로젝트의 Notion 기록에 있는 한국어 사본으로 읽으며, 표는 거기서 데이터베이스입니다. `.corthex/project.json`이 이 선택을 적어 둡니다.
 
@@ -133,6 +133,8 @@ NEXUS가 단계의 기본값과 다른 곳: `401`은 서버가 아니라 Access�
 | 보기를 불러오는 중 | 코드가 돌기 전의 SCR-105 | Loading the picture view. If it does not appear, load the page again. | 그림 보기를 불러오는 중입니다. 나타나지 않으면 페이지를 다시 불러와 주세요. |
 | 그리는 중 | SCR-105 | Drawing the picture… | 그림을 그리는 중… |
 | 큰 그림 | SCR-105 | This picture is large ({n} elements), so drawing it may take longer. | 이 그림은 요소가 {n}개로 커서 그리는 데 시간이 더 걸릴 수 있습니다. |
+| 스텝 | SCR-105, DDD 보드에서: 스텝 고르기(SPEC-141) | Previous step · Next step · Steps · 1-b Timeline · 2 External systems · 3 Commands · 4 Hotspots · 5 Actors · 6 Aggregates · 7 Contexts · 8-a Policies and read models · 8-b–9 Map and tables | 이전 스텝 · 다음 스텝 · 스텝 · 1-b 타임라인 · 2 바깥 시스템 · 3 명령 · 4 핫스팟 · 5 행위자 · 6 애그리거트 · 7 컨텍스트 · 8-a 정책과 읽기 모델 · 8-b–9 지도와 정리표 |
+| 타임라인 없음 | SCR-105, 타임라인이 없는 DDD 보드에서 스텝 고르기 자리에 | This document has no timeline, so the board is shown only as a whole. | 이 문서에는 타임라인이 없어 보드를 전체로만 보여 줍니다. |
 | 최신 아님 | SCR-105 | This picture shows commit {commit}: its newest source is larger than a snapshot may hold. Or: its newest source is gone from the repository. Or: its newest source is in another repository. | 이 그림은 커밋 {commit}의 그림입니다. 최신 원본이 스냅샷에 담을 수 있는 크기보다 큽니다. 또는: 최신 원본이 저장소에서 사라졌습니다. 또는: 최신 원본이 다른 저장소에 있습니다. |
 | 링크 옆의 최신 아님 | SCR-104, SCR-109 | Not current: its newest source is larger than a snapshot may hold. Or: is gone from the repository. Or: is in another repository. | 최신 아님: 최신 원본이 스냅샷에 담을 수 있는 크기보다 큼. 또는: 저장소에서 사라짐. 또는: 다른 저장소에 있음. |
 | 새 판 | SCR-105 | A newer version of this picture is on the server. Show it | 서버에 이 그림의 새 판이 있습니다. 보기 |
@@ -163,11 +165,13 @@ NEXUS가 단계의 기본값과 다른 곳: `401`은 서버가 아니라 Access�
 | 철회함 | SCR-109 | Withdrawn on {date} | {date}에 철회함 |
 | 열지 못함 | SCR-109 | {n} discrepancies could not be opened, since the space holds 1,000 open ones. | 공간에 열린 어긋남이 1,000개라 {n}개를 열지 못했습니다. |
 
+스텝과 타임라인 없음 두 줄은 2026-11-03 관리자의 선택으로 더했습니다. 스텝 줄에서 `·` 사이의 말은 저마다 따로 쓰는 이름표입니다.
+
 허브 페이지와 그 보기는 1차의 다른 메시지, 곧 "아직 프로젝트가 없습니다. corthex 스킬로 프로젝트를 등록한 뒤 허브를 다시 만들어 주세요."나 "“{q}”와 맞는 항목이 없습니다." 같은 것을 hub.html이 담은 영어와 한국어 그대로 둡니다.
 
 ### 목업이 더한 말
 
-09단계의 목업([A 방향](../../09-mockup/nexus/README.ko.md#결정))에 필요했지만 08단계가 쓰지 않았던 말입니다. 2026-11-03에 목업과 함께 더했으며, 확인 지점에서 바뀔 수 있습니다. `·` 사이의 말은 저마다 따로 쓰는 이름표입니다.
+09단계의 목업([A 방향](../../09-mockup/nexus/README.ko.md#결정))에 필요했지만 08단계가 쓰지 않았던 말입니다. 2026-11-03에 목업과 함께 더했고, 그날의 확인 지점에서 그대로 섰습니다. `·` 사이의 말은 저마다 따로 쓰는 이름표입니다.
 
 | 말 | 나오는 곳 | 영어 | 한국어 |
 | --- | --- | --- | --- |
@@ -226,7 +230,15 @@ NEXUS가 단계의 기본값과 다른 곳: `401`은 서버가 아니라 Access�
 - 이 저장소의 허브 스냅샷이 정의서 아홉 개를 SCR-101\~SCR-109의 화면 정의로, 그 상태 45개와 함께 읽고, 점검 결과를 더하지 않음. 변경 4의 수정으로 07단계의 글이 `main`에서 낸 경고 둘도 사라짐.
 - 이 파일들을 넣은 저장소의 검사가 통과함: `python -m unittest discover -s tests`, 마켓플레이스와 그 세 플러그인의 `claude plugin validate --strict`, `node --test nexus/test/*.test.js`, `git diff --check`.
 
+2026-11-03에 관리자가 01단계 이벤트 스토밍을 NEXUS에서 하기로 고른 뒤, 같은 스크립트로 다시:
+
+- 이 단계의 검사가 SCR-105의 새 자료, 동작, 말에서 문제를 찾지 않음: 화면 9개, 상태 45개, 응답 97개이고, 한국어 파일도 같은 것을 담음. 스텝별 보기는 상태를 더하지 않음: SCR-105#normal을 보여 주는 한 방법임.
+- 와이어프레임은 다시 그리지 않았으므로, SCR-105의 정의서가 적듯 스텝 조절을 그리지 않음. 09단계의 목업이 그것을 그림.
+- 저장소의 검사가 통과하고(시험 756개, 건너뜀 12개), 이 저장소의 허브 스냅샷이 항목 1014개를 읽고 점검이 없음.
+
 ## 확인할 것
+
+2026-11-03 관리자가 고른 01단계 이벤트 스토밍을 NEXUS에서 하는 것은 그것이 다른 단계에 낸 변경과 함께 같은 날 16:54(KST)에 통과했습니다: 관리자가 프로젝트 스레드의 결정 카드에서 스텝별 보기와 작업 보드를 그린 대로 통과시켰습니다(‘모두 그린 대로 통과’). 확인 지점이 다룬 것: DDD 보드에서 SCR-105의 스텝 고르기, 타임라인이 없는 보드의 안내와 그 말, 그리고 그 상태가 그 차례와 함께 오는 ② 차례의 워크숍. 와이어프레임은 스텝 고르기보다 먼저 그렸고, 09단계의 목업이 그것을 그립니다.
 
 2026-11-03 11:39(KST)에 03\~07단계와 함께 통과했습니다: 관리자가 프로젝트 스레드의 결정 카드에서 모든 추천을 골라(‘모두 추천대로’), 화면의 상태와 메시지의 문구가 그리고 쓴 대로 섭니다. 확인 지점이 다룬 것:
 
@@ -241,6 +253,7 @@ NEXUS가 단계의 기본값과 다른 곳: `401`은 서버가 아니라 Access�
 
 - 새 화면 SCR-105\~SCR-109마다 후보 둘, 휴대폰을 먼저, 320픽셀에서, 이 틀에서 시작합니다. 상태마다 디자인할 틀입니다. 허브 페이지는 1차의 디자인을 그대로 두고 SCR-101과 SCR-104에 0.2가 더하는 것을 더합니다.
 - 그림의 항목 위의 표시와 "받음, 아직 반영 전"은 꽉 찬 DDD 보드 위에서도 두 테마에서도 읽히는 꼴과, 손가락으로 고를 수 있는 크기가 필요합니다.
+- DDD 보드의 스텝 고르기를 두 폭에서, 그리고 타임라인이 없는 보드의 안내(SPEC-141).
 
 ### 10단계: 작업 분해
 
