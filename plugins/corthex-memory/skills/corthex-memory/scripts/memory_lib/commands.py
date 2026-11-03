@@ -238,12 +238,12 @@ class Context:
         return apply()
 
     @contextmanager
-    def lock(self, path, kind, force=False, device=None):
+    def lock(self, path, kind, force=False, device=None, report=None):
         """Handlers select the contract's lock and keep its lease until mutation ends."""
         if self.command not in CHANGES or force and self.command not in ("purge", "delete-project"):
             raise ValueError()
         lease = self.memory._lock(path, kind, self.record["device"] if self.record else device)
-        with lease.held(clock.now() + 10, force=force) as held:
+        with lease.held(clock.now() + 10, force=force, report=report) as held:
             held.check()
             yield held
 
@@ -325,6 +325,9 @@ def run(argv, handlers=None):
         context = Context(command, args, supplied, memory)
         answer = _gates(context)
         if answer is None:
+            if handlers is None:
+                from . import enablement
+                handlers = {"on": enablement.on, "off": enablement.off}
             handler = (handlers or {}).get(command)
             if handler is None:
                 unimplemented = True
