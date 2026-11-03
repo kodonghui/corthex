@@ -4,6 +4,7 @@ Measure on a real render before showing anything. Write "not measured" for what 
 
 - The two scripts only help. Even when their results are clean, a person still looks once (and, for video, watches and listens).
 - Where the scripts cannot run, measure the same criteria by hand and say how you measured.
+- For a fresh-eye review, a reviewer who did not make the work, person or agent, sees only the render or its frames and this checklist. Leave out the maker's plan and reasoning, so the review judges what is on screen.
 
 ## 1. Screens (web, app, HTML slides)
 

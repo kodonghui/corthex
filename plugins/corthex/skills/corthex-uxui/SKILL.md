@@ -91,11 +91,11 @@ Measure on a real render before showing anything. Always measure these four wher
 | Task at hand | Read |
 | --- | --- |
 | Choosing references, the likeness, colours as values, diagrams for slides | [design-references.md](references/design-references.md) |
-| Names and instructions for layout, spacing, type, parts and states; Korean text | [ui-terms.md](references/ui-terms.md) |
+| Names and instructions for layout, spacing, type, parts and states; Korean text; icons | [ui-terms.md](references/ui-terms.md) |
 | Names and instructions for motion, camera and transitions; turning them into HTML | [motion-terms.md](references/motion-terms.md) |
-| Time, curves and springs of UI motion; speed, frames and beats of video | [motion-values.md](references/motion-values.md) |
+| Time, curves and springs of UI motion, and its continuity; speed, frames and beats of video | [motion-values.md](references/motion-values.md) |
 | The video brief, gates, scene table, same t same frame, sound, output, slides | [video.md](references/video.md) |
-| Engines, libraries, version pinning and licenses | [tools.md](references/tools.md) |
+| Engines, libraries, an optional skill for promotional demos, version pinning and licenses | [tools.md](references/tools.md) |
 | Every check, and how to run the two scripts | [checklist.md](references/checklist.md) |
 | Sources, where they disagree, and why each default was chosen | [sources.md](references/sources.md) |
 

@@ -1,6 +1,6 @@
 # Sources and choices
 
-Where this skill's numbers and rules come from, and what it chose where sources disagree. The skill was first drafted in Korean on 2026-10-24 from the maintainer's notes on public glossaries, guides and tools. It was rewritten in English for this repository on 2026-10-25, and the values that change over time were checked again against the sources below on that day. The terms, instructions and examples were written anew; no card, picture or sentence from another work was copied.
+Where this skill's numbers and rules come from, and what it chose where sources disagree. The skill was first drafted in Korean on 2026-10-24 from the maintainer's notes on public glossaries, guides and tools. It was rewritten in English for this repository on 2026-10-25, and the values that change over time were checked again against the sources below on that day. The terms, instructions and examples were written anew; no card, picture or sentence from another work was copied. On 2026-11-03, rules for motion continuity, alignment by eye, icons, poster frames and fresh-eye review were added in the same way from a public source (section 1).
 
 ## 1. Primary sources
 
@@ -18,6 +18,7 @@ Where this skill's numbers and rules come from, and what it chose where sources 
 | Chart categories | The [FT Visual Vocabulary](https://github.com/Financial-Times/chart-doctor/tree/main/visual-vocabulary) (© The Financial Times; only its category names are used) |
 | HTML to video | [HyperFrames](https://github.com/heygen-com/hyperframes): its README, its CLI's README and its `hyperframes` and `hyperframes-cli` skills, read on 2026-10-25 |
 | Licenses | [GSAP standard license](https://gsap.com/community/standard-license/), [Remotion license](https://www.remotion.dev/docs/license), [HyperFrames license](https://github.com/heygen-com/hyperframes/blob/main/LICENSE) |
+| Continuity, alignment by eye, icons and marks, the poster frame, fresh-eye review | [Stageshow](https://github.com/benjitaylor/skills/tree/main/stageshow)'s `references/craft.md`, `references/motion.md` and `references/review.md` (commit 8020574, read on 2026-11-03), a skill for promotional product demos; only rules that hold for real screens were taken |
 
 ## 2. Where sources disagree, and this skill's choice
 
@@ -54,3 +55,4 @@ Most of these are `[default]`: when the person asking sets a value, theirs wins.
 - Some official pages (Netflix, Apple, Android, EBU, Spotify) could not be opened from the working environment and were checked through search results that quote them.
 - Licenses are summaries of published terms, not legal advice. Read them again before a commercial use.
 - The scripts were run on Linux: `media-check.py` with Python 3.8.20 and 3.13 and FFmpeg 6.1 on synthetic clips (general and red flashes, the area exception, extended flashing, loudness), giving the same results on both; `page-check.js` in Chromium through Playwright for Node and for Python, at 320, 390, 768 and 1440 px on a page with known faults and on a clean page. They have not been run on Windows or macOS.
+- Stageshow was read, not run: its filming script was not executed while these rules were written.

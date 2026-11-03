@@ -14,6 +14,7 @@
 - Make two candidates per screen by default. Make more only when the user asks.
 - Once the user picks a direction, later screens follow it. Record the choice with the user's words.
 - Show each candidate in the states and at the widths that matter, and say which ones you showed.
+- A mockup draws the screen as it will ship: its real copy at its real size, in each state. Techniques of promotional "faux UI", such as cutting text to a few words and grey bars or cropping windows past the edge, are for product demos, never for mockups.
 
 ## Steps
 

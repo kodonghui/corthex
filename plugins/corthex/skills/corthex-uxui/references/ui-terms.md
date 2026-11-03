@@ -66,6 +66,13 @@ When the request uses a feeling word, show two candidates made of names and numb
 
 **Target size**: WCAG 2.5.8 (AA) sets 24×24 CSS px as the floor, with exceptions such as enough spacing around the target or a link inside a sentence; 2.5.5 (AAA) asks for 44×44. Apple asks for 44×44 pt, and Material for 48×48 dp (about 9 mm) with 8 dp between targets. Aim for the platform's convention.
 
+**Alignment by eye**: the eye judges letters and edges, not boxes.
+
+- A line box leaves room below the letters, so capitals beside an icon, in a pill or in a button look low. Centre the capital height instead: `text-box: trim-both cap alphabetic`, where the browser supports it.
+- Nested rounded shapes, such as an icon in a button or a pill in a field, sit at an even distance from every edge, with outer radius = inner radius + that distance.
+- Two edges that almost meet, 1–3 px apart, look accidental: make them meet exactly, or separate them by the layout's gap and by no less than 8 px.
+- When an amount is centred, centre its digits and let the currency sign sit outside that box.
+
 ## 3. Type
 
 | Name | What it is | Instruct like this |
@@ -165,6 +172,13 @@ When the request uses a feeling word, show two candidates made of names and numb
 
 - Content that appears on hover or focus can be dismissed, and stays while the pointer moves onto it (WCAG 1.4.13).
 - Anything that moves on its own for more than 5 s, such as an auto-advancing carousel or a scrolling ticker, needs a way to pause it (2.2.2).
+
+### Icons and marks
+
+- One icon family per product, with one stroke weight and one size per screen. Compare the strokes, not the boxes: at the same size, a filled icon looks heavier than an outlined one.
+- An AI feature shows what it does: the question, the answer and its sources. A sparkle, a wand or a star, or purple as "the AI colour", says nothing about it. If the product's own icon happens to be a sparkle, it stays.
+- Emoji belong in messages and reactions, not in place of icons.
+- Do not invent a logo, such as an initial on a coloured tile, for a name that has none.
 
 ## 5. Pairs people mix up
 
