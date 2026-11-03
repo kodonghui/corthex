@@ -34,7 +34,7 @@ Every operation accounts for each response in this table: it lists the response,
 | 409 | The request can clash with the current state, such as a duplicate or an outdated version |
 | `default` | Always, for any other error, with the error shape |
 
-Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says.
+Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow, the server has no key for it or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says.
 
 ## Errors
 
