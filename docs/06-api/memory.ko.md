@@ -83,7 +83,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 | 턴 끝 훅 | Stop | Stop | `hook.py end-of-turn` | 5초 | 300ms |
 | 세션 끝 훅 | SessionEnd | SessionEnd | `hook.py end` | 2초 | 500ms |
 
-스크립트 하나, `scripts/hook.py`가 훅의 이름을 인자로 받아 네 훅을 모두 맡습니다. 0.1.0 판의 `session_start.py`를 대신하며, 그 시작 요약을 기본 부분으로 이어받습니다. 0.2.0 판의 `hooks/hooks.json`:
+스크립트 하나, `scripts/hook.py`가 훅의 이름을 인자로 받아 네 훅을 모두 맡습니다. 0.1.0 판의 호환 진입점을 대신하며, 그 시작 요약을 기본 부분으로 이어받습니다. 0.2.0 판의 `hooks/hooks.json`:
 
 ```json
 {
