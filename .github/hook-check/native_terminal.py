@@ -55,13 +55,16 @@ class Terminal:
                 break
         raise AssertionError("Native terminal did not reach its expected state")
 
-    def line(self, text):
-        os.write(self.fd, b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~")
-        # Keep Enter separate from paste so the host's paste-burst parser submits it.
-        deadline = time.monotonic() + .3
-        while time.monotonic() < deadline:
+    def key(self, value, pause=.2):
+        os.write(self.fd, value)
+        deadline = time.monotonic() + pause
+        while time.monotonic() < deadline and self.status is None:
             self.pump()
-        os.write(self.fd, b"\r")
+
+    def line(self, text):
+        # Keep Enter separate from paste so the host's paste-burst parser submits it.
+        self.key(b"\x1b[200~" + text.encode("utf-8") + b"\x1b[201~", pause=.3)
+        self.key(b"\r")
 
     def close(self):
         try:

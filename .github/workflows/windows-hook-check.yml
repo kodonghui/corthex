@@ -81,5 +81,7 @@ jobs:
         if: always()
         with:
           name: hook-check
-          path: ${{ runner.temp }}/hook-check
+          path: |
+            ${{ runner.temp }}/hook-check
+            !${{ runner.temp }}/hook-check/**/codex-home/tmp/arg0-*/**
           retention-days: 7

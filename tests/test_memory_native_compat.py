@@ -62,7 +62,15 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                 time.sleep(.15)
                 pending = path.with_suffix(".pending")
                 pending.write_bytes(encode(rows + [{"session":"native-fixture", "kind":"end"}]))
-                pending.replace(path)
+                deadline = time.monotonic() + 2
+                while True:
+                    try:
+                        pending.replace(path)
+                        break
+                    except PermissionError as error:
+                        if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32, 33) or time.monotonic() >= deadline:
+                            raise
+                        time.sleep(.01)
             child = threading.Thread(target=end); child.start()
             try:
                 result = self.lifecycle.wait_capture(home, {}, "startup")

@@ -19,7 +19,6 @@ from network_proxy import NetworkProxy
 
 OLD = "dfc6a2c68d01c840f41206074b6a498cbf06bf27"
 
-
 def before_retrust_files(home):
     files = runner.native_evidence.persistent_files(home)
     root = home / ".corthex/corthex-memory"
@@ -73,7 +72,8 @@ def main():
             terminal.wait(lambda: b"Hooks need review" in terminal.data and b"Trust" in terminal.data)
             before = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", bytes(terminal.data))
             assert re.search(rb"\b" + str(expected).encode() + rb" hooks? (?:is|are) new or changed", before)
-            os.write(terminal.fd, b"2\r")
+            terminal.key(b"\x1b[B")  # Second visible choice: trust all and continue.
+            terminal.key(b"\r")
             terminal.wait(lambda: len(re.findall(r"(?m)^trusted_hash\s*=", path.read_text(encoding="utf-8"))) == expected)
         finally:
             status = terminal.close()

@@ -131,9 +131,11 @@ def codex_terminal(source, exe, env, project, home, output, seed):
             recording("on", env, project)
         before = raw(home)
         if source in ("clear", "compact"):
+            offset = len(terminal.data)
             terminal.line("/" + source)
             if source == "compact":
-                terminal.wait(lambda:any(v.get("event") == "compact" for v in delta(home, before)))
+                # Codex runs this start hook at the next turn, after the UI compacted.
+                terminal.wait(lambda:b"Context compacted" in terminal.data[offset:] and b"7501;state=done" in terminal.data[offset:])
             else:
                 until = time.monotonic() + .5; terminal.wait(lambda:time.monotonic() > until)
         turn()

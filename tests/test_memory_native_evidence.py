@@ -154,7 +154,7 @@ class NativeEvidenceTest(unittest.TestCase):
                 row=json.loads(stop.read_bytes())
                 row["stop_hook_active"]=change=="Stop.stop_hook_active"
                 stop.write_text(json.dumps(row),encoding="utf-8")
-                with mock.patch.object(hooks,"HOST_PROMPTS_VERSION","changed" if change=="prefix.version" else "host-prompts-1"):
+                with mock.patch.object(hooks,"HOST_PROMPTS_VERSION","changed" if change=="prefix.version" else "host-prompts-2"):
                     result=self.evidence.input_contract(self.root,"claude","0.0.0" if change=="version" else expected["version"])
                 self.assertFalse(result["verified"])
                 self.assertIn(change,result.get("changed_values",{}))

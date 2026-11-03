@@ -54,5 +54,7 @@ jobs:
         if: always()
         with:
           name: memory-hooks-${{ matrix.os }}
-          path: ${{ runner.temp }}/memory-hook-check
+          path: |
+            ${{ runner.temp }}/memory-hook-check
+            !${{ runner.temp }}/memory-hook-check/**/codex-home/tmp/arg0-*/**
           retention-days: 7

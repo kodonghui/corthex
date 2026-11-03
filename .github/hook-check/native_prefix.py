@@ -13,15 +13,14 @@ from network_proxy import NetworkProxy
 from tool_turn import sse
 
 MARKER = "PREFIX_TASK_FIXTURE_314159"
-PREFIXES = ("<task-notification>", "<cross-session-message", "<teammate-message")
-
+PREFIXES = ("<task-notification>", "<cross-session-message", "<teammate-message", "<agent-message")
 
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("output"); args = parser.parse_args()
     output = Path(args.output).resolve(); output.mkdir(parents=True, exist_ok=False)
     repository = runner.REPO; target = output / "source"; target.mkdir()
     for folder in (".claude-plugin", ".agents/plugins", "plugins"):
-        shutil.copytree(repository / folder, target / folder)
+        shutil.copytree(repository / folder, target / folder, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     memory = target / "plugins/corthex-memory"
     originals = {p.relative_to(memory).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in memory.rglob("*") if p.is_file()}
     shutil.copyfile(Path(__file__).with_name("measure_hook.py"), memory / "scripts/measure_hook.py")
@@ -100,7 +99,7 @@ def main():
         assert sorted(result["capture"]["hook_outcomes"]["prompt"]) == ["left-out", "ok"]
         assert all(hashlib.sha256((memory / name).read_bytes()).hexdigest() == value for name,value in originals.items() if name != "hooks/hooks.json")
         report.update(verified=True, native_agent_launch_matches_completion=True, observed_prompt_prefixes=["<task-notification>"],
-                      unobserved_prompt_prefixes=list(PREFIXES[1:]), prefix_filter_version="host-prompts-1",
+                      unobserved_prompt_prefixes=list(PREFIXES[1:]), prefix_filter_version="host-prompts-2",
                       scope="One actual native notification branch, not a claim about unobserved team/cross-session branches")
     finally:
         runner.REPO, runner.MEMORY, runner.run, runner.base_env, runner.prepare = old_repository, old_memory, old_run, old_env, old_prepare
