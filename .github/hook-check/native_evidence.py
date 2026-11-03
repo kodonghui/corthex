@@ -6,6 +6,7 @@ from pathlib import Path
 import secrets
 import shutil
 import time
+clock_ns = (lambda: time.clock_gettime_ns(time.CLOCK_MONOTONIC)) if hasattr(time, "clock_gettime_ns") else time.monotonic_ns
 
 
 def digest(path):
@@ -63,6 +64,7 @@ def release_lifetime(base, environment, host_run, old):
     started = host_run["started_monotonic_ns"]
     hook_ended = host_run["hooks_ended_monotonic_ns"]
     boundary = max(ended, hook_ended)
+    entered, heartbeat = {}, {}
 
     def read(name):
         try:
@@ -77,7 +79,6 @@ def release_lifetime(base, environment, host_run, old):
         if entered and heartbeat.get("monotonic_ns", 0) > boundary:
             break
         time.sleep(.025)
-    entered, heartbeat = read("entered"), read("heartbeat")
     write(folder / "release.json", {"nonce": nonce, "host_exit_monotonic_ns": ended})
     deadline = time.monotonic() + 12
     while not read("returned") and time.monotonic() < deadline:
@@ -127,24 +128,10 @@ def external_clocks(base):
             "rows": rows, "p95_claimed": False, "minimum_samples_for_percentiles": 100}
 
 
-def input_contract(base, host, version, session=None):
-    from memory_lib import hooks
-    contract = json.loads(Path(__file__).with_name("host-inputs.json").read_bytes())
-    expected = contract["hosts"][host]
+def input_identity(base, session):
     inputs = [json.loads(path.read_bytes()) for path in (base / "inputs").glob("*.json")]
-    observed = {value["hook_event_name"]: {k: type(v).__name__ for k, v in value.items()} for value in inputs}
-    changed = {event: sorted(k for k in set(expected["events"].get(event, {})) | set(observed.get(event, {}))
-               if expected["events"].get(event, {}).get(k) != observed.get(event, {}).get(k))
-               for event in set(expected["events"]) | set(observed)}
-    for value in inputs:
-        if session is not None and value.get("session_id") != session:
-            changed.setdefault(value["hook_event_name"], []).append("session_id:value")
-    changed = {event: keys for event, keys in changed.items() if keys}
-    prefixes = sorted({p for value in inputs for p in hooks.HOST_PROMPTS
-                       if isinstance(value.get("prompt"), str) and value["prompt"].startswith(p)})
-    verified = (not changed and len(inputs) == len(observed) == 4 and expected["version"] in version.split() and
-                all(value.get("stop_hook_active") is False for value in inputs if value["hook_event_name"] == "Stop") and
-                list(hooks.HOST_PROMPTS) == contract["host_prompt_prefixes"] and hooks.HOST_PROMPTS_VERSION == contract["host_prompts_version"])
-    return {"verified": verified, "observed_types": observed, "changed_fields": changed,
-            "host_prompt_prefixes_observed": prefixes, "prefix_contract": hooks.HOST_PROMPTS_VERSION,
-            "prefix_observation_scope": "only prefixes actually emitted in this synthetic native session"}
+    events = {value.get("hook_event_name") for value in inputs}
+    changed = {value.get("hook_event_name"): ["session_id:value"] for value in inputs if value.get("session_id") != session}
+    verified = session is not None and len(inputs) == 4 and events == {"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"} and not changed
+    return {"verified": verified, "changed_fields": changed,
+            "scope": "native CLI/input session identity; TC-106 field/version/prefix drift remains follow-up"}

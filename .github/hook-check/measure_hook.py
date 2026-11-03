@@ -1,15 +1,12 @@
-"""Test-only outer clock for the unchanged hook in an isolated plugin copy.
-
-The installed fixture replaces only hook command paths with this wrapper.
-The measured subprocess includes the product interpreter's startup and exit;
-the extra wrapper's startup and the host's own launch overhead are excluded.
-"""
+"""Test-only clock of the unchanged product subprocess: interpreter startup/exit included, wrapper and host launch excluded."""
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import time
+
+clock_ns = (lambda: time.clock_gettime_ns(time.CLOCK_MONOTONIC)) if hasattr(time, "clock_gettime_ns") else time.monotonic_ns
 
 
 def main():
@@ -23,11 +20,11 @@ def main():
         environment.update(HTTP_PROXY=memory_proxy, HTTPS_PROXY=memory_proxy, ALL_PROXY=memory_proxy,
                            NO_PROXY="127.0.0.1,localhost")
     started = time.perf_counter()
-    started_ns = time.monotonic_ns()
+    started_ns = clock_ns()
     process = subprocess.Popen([sys.executable, str(Path(__file__).with_name("hook.py")), event],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
     stdout, stderr = process.communicate(raw)
-    ended_ns = time.monotonic_ns()
+    ended_ns = clock_ns()
     elapsed = (time.perf_counter() - started) * 1000
     folder = Path(os.environ["HOOKCHECK_MEASURE_DIR"])
     if not folder.is_absolute():

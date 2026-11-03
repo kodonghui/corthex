@@ -89,23 +89,29 @@ class HostCaptureTest(unittest.TestCase):
         self.raw.write_text("".join(json.dumps(row)+"\n" for row in wrong),encoding="utf-8")
         self.assertFalse(self.fixture.capture(self.home)["end_ok"])
 
-    def run_fake_host(self, label="fixture", failed=None, inventory=None):
+    def run_fake_host(self, label="fixture", failed=None, inventory=None, evidence=False):
         good = {k: True for k in ("start_ok", "prompt_ok", "answer_ok", "end_ok", "same_turn",
                                  "korean_intact", "timings_ok", "failures_ok", "boundary_ok")}
         with tempfile.TemporaryDirectory() as output:
             value = {"requests": [{"path": "/v1/messages", "context": 1}], "capture": good,
                      "install": {"memory": {"exit": 7 if failed == "install" else 0}},
-                     "run": {"exit": 7 if failed == "run" else 0}}
-            with mock.patch.object(self.fixture.sys, "argv", ["run.py", label, output, "claude"]), \
-                 mock.patch.object(self.fixture, "Mock"), mock.patch.object(self.fixture, "market", return_value=[]), \
+                     "run": {"exit": 7 if failed == "run" else 0},
+                     **{key:{"verified":True} for key in ("lifetime","network","reinstall","outer_clock","input_identity")}}
+            with mock.patch.object(self.fixture.sys, "argv", ["run.py", label, output, "claude"] + (["--evidence"] if evidence else [])), \
+                 mock.patch.object(self.fixture, "Mock"), mock.patch.object(self.fixture, "market", return_value=["slow-diag"]), \
+                 mock.patch.object(self.fixture.native_evidence, "package_copy", return_value=(ROOT, {})), \
                  mock.patch.object(self.fixture, "facts", return_value=inventory or {}), \
-                 mock.patch.object(self.fixture, "shells", return_value={}), \
-                 mock.patch.object(self.fixture, "claude", return_value=value), \
+                 mock.patch.object(self.fixture, "shells", return_value={}) as probes, \
+                 mock.patch.object(self.fixture, "claude", return_value=value) as host, \
                  mock.patch.object(self.fixture, "codex", return_value={}), \
                  mock.patch.object(self.fixture, "summary", return_value="fixture"), \
                  mock.patch.dict(self.fixture.os.environ, {"GITHUB_STEP_SUMMARY": ""}), \
                  contextlib.redirect_stdout(io.StringIO()):
-                return self.fixture.main()
+                code = self.fixture.main()
+                if evidence:
+                    self.assertEqual(host.call_args.args[4], [])
+                    self.assertFalse(probes.called)
+                return code
 
     def test_actual_runner_rejects_a_failed_host_even_with_all_hook_markers(self):
         for failed in ("install", "run"):
@@ -117,12 +123,22 @@ class HostCaptureTest(unittest.TestCase):
                  ("no-git-bash", {"found": {"bash": "alternate/bash.exe"}}),
                  ("powershell-5.1-only", {"found": {"pwsh": "alternate/pwsh.exe"}}),
                  ("powershell-5.1-only", {"found": {"powershell": "PS.exe"}, "powershell_version": "7.6.0"})]
+        cases.append(("no-git-bash", {"found":{"bash":"system/bash.exe"},"wsl_launcher":"system/bash.exe", "bash_candidates":["alternate/bash.exe"]}))
+        cases.extend(("no-git-bash", inventory) for inventory in ({"crash":"injected inventory failure"}, {}, {"found":{}}))
         for label, inventory in cases:
             with self.subTest(label=label, inventory=inventory):
                 self.assertEqual(self.run_fake_host(label=label, inventory=inventory), 1)
         for label in ("no-git-bash", "powershell-5.1-only"):
             self.assertEqual(self.run_fake_host(label=label, inventory={"found": {"powershell": "PS.exe"},
                                                                      "powershell_version": "5.1.1"}), 0)
+
+        inventory = {"found":{"bash":"system/BASH.exe","powershell":"PS.exe"},
+                     "wsl_launcher":"system/bash.exe","powershell_version":"5.1.1"}
+        for label in ("no-git-bash", "powershell-5.1-only"):
+            self.assertEqual(self.run_fake_host(label=label, inventory=inventory), 0)
+
+    def test_controlled_evidence_omits_unrelated_slow_shell_diagnostics(self):
+        self.assertEqual(self.run_fake_host(evidence=True), 0)
 
     def test_native_capture_rejects_the_wrong_host_session_or_timing_host(self):
         for wrong in ("host", "session", "timing", None):

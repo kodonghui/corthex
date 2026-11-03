@@ -1,9 +1,4 @@
-"""Test-only bounded barrier at entry to byte-identical retention code.
-
-Installed only in an isolated fixture copy; worker_actual.py is the original
-entry, and all product library files remain byte-identical. The call profiler
-is removed before waiting, after the original entry and runtime have run.
-"""
+"""Bounded fixture barrier after original entry/runtime setup; byte-identical libraries run with profiling removed before waiting."""
 import hashlib
 import json
 import os
@@ -12,6 +7,7 @@ import runpy
 import sys
 import time
 import traceback
+clock_ns = (lambda: time.clock_gettime_ns(time.CLOCK_MONOTONIC)) if hasattr(time, "clock_gettime_ns") else time.monotonic_ns
 
 
 def main():
@@ -28,7 +24,7 @@ def main():
     entered = []
 
     def write(name, **values):
-        value = dict(nonce=nonce, pid=os.getpid(), monotonic_ns=time.monotonic_ns(), **values)
+        value = dict(nonce=nonce, pid=os.getpid(), monotonic_ns=clock_ns(), **values)
         temporary = folder / (name + ".tmp")
         temporary.write_text(json.dumps(value) + "\n", encoding="utf-8")
         deadline = time.monotonic() + .5
@@ -76,11 +72,7 @@ def main():
     write("worker-entry", parent_pid=os.getppid(), arguments=sys.argv[1:], original_entry_sha256=original_hash)
     sys.setprofile(profile)
     try:
-        try:
-            runpy.run_path(str(original), run_name="__main__")
-        except SystemExit as error:
-            if error.code not in (None, 0):
-                raise
+        runpy.run_path(str(original), run_name="__main__")
     finally:
         sys.setprofile(None)
         write("returned", entered_retention=bool(entered))

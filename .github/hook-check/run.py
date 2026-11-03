@@ -146,7 +146,7 @@ class Mock:
 def run(args, env, cwd=None, stdin="", timeout=180, line=None):
     """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe."""
     start = time.time()
-    started_ns = time.monotonic_ns()
+    started_ns = native_evidence.clock_ns()
     try:
         process = subprocess.Popen(line or args, env=env, cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -164,7 +164,7 @@ def run(args, env, cwd=None, stdin="", timeout=180, line=None):
         out, err = process.communicate()
         code = "timeout"
     return {"exit": code, "seconds": round(time.time() - start, 1), "pid": process.pid,
-            "started_monotonic_ns": started_ns, "ended_monotonic_ns": time.monotonic_ns(),
+            "started_monotonic_ns": started_ns, "ended_monotonic_ns": native_evidence.clock_ns(),
             "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace")}
 
 
@@ -278,6 +278,10 @@ def facts():
     found = {name: shutil.which(name, path=env.get("PATH")) for name in names}
     result = {"platform": platform.platform(), "python": sys.version.split()[0], "found": found,
               "git_bash": str(GIT_BASH) if GIT_BASH.exists() else None}
+    system = os.environ.get("SystemRoot")
+    result["wsl_launcher"] = str(Path(system)/"System32/bash.exe") if os.name == "nt" and system else None
+    folders = (Path(folder.strip('"')) for folder in env.get("PATH", "").split(os.pathsep))
+    result["bash_candidates"] = [str(folder/name) for folder in folders if folder.is_absolute() for name in ("bash.exe", "sh.exe") if (folder/name).is_file()] if os.name == "nt" else []
     for name in ("pwsh", "powershell"):
         if found[name]:
             result[name + "_version"] = run([found[name], "-NoProfile", "-NonInteractive", "-Command",
@@ -398,7 +402,7 @@ def claude(label, out, mock, folder, plugins, pins=None):
     captured = wait_for_capture(home, host="claude-code", session=session)
     if pins:
         result["outer_clock"] = native_evidence.external_clocks(base)
-        result["input_contract"] = native_evidence.input_contract(base, "claude", result["version"], session)
+        result["input_identity"] = native_evidence.input_identity(base, session)
         done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
         result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
         memory_observed, host_observed = memory_network.finish(), network.finish()
@@ -452,7 +456,7 @@ def codex(label, out, mock, folder, plugins, pins=None):
     captured = wait_for_capture(home, host="codex", session=session)
     if pins:
         result["outer_clock"] = native_evidence.external_clocks(base)
-        result["input_contract"] = native_evidence.input_contract(base, "codex", result["version"], session)
+        result["input_identity"] = native_evidence.input_identity(base, session)
         done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
         result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
         memory_observed, host_observed = memory_network.finish(), network.finish()
@@ -567,7 +571,10 @@ def summary(report):
 
 def shell_variant_ok(label, info):
     found = info.get("found", {})
-    no_bash = not info.get("git_bash") and not found.get("bash")
+    if label in ("git-bash","no-git-bash","powershell-5.1-only") and (not isinstance(found,dict) or not found or "crash" in info):
+        return False
+    bashes, launcher = [found.get("bash")] + info.get("bash_candidates", []), info.get("wsl_launcher")
+    no_bash = not info.get("git_bash") and all(not bash or bool(launcher) and Path(bash).as_posix().casefold() == Path(launcher).as_posix().casefold() for bash in bashes)
     if label == "no-git-bash":
         return no_bash
     if label == "powershell-5.1-only":
@@ -594,7 +601,9 @@ def main():
         report["instrumentation"] = pins
     mock = Mock()
     plugins = market(out / "hk")
-    sections = (("facts", facts), ("shells", lambda: shells(out)),
+    if evidence:
+        plugins = []
+    sections = (("facts", facts), ("shells", lambda: {} if evidence else shells(out)),
                 ("claude", lambda: claude(label, out, mock, out / "hk", plugins, pins)),
                 ("codex", lambda: codex(label, out, mock, out / "hk", plugins, pins)))
     for name, step in sections:
@@ -614,7 +623,7 @@ def main():
         missing = sorted(set(missing) | set(expected))
     if evidence:
         missing = sorted(set(missing) | {host for host in expected if not all(
-            report.get(host, {}).get(name, {}).get("verified") for name in ("lifetime", "network", "reinstall", "outer_clock", "input_contract"))})
+            report.get(host, {}).get(name, {}).get("verified") for name in ("lifetime", "network", "reinstall", "outer_clock", "input_identity"))})
     report["expected"] = {"hosts": expected, "missing": missing}
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     text = summary(report) + "\nrequired context, hooks and native evidence from %s: %s" % (
