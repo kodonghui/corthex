@@ -57,7 +57,7 @@ Does not apply:
 | Outside services | A decision's link opens where it was written, on its own; the rest of the panel is unchanged |
 | Data exposure | Only the comment's entries, each with its author's kind, never a name or an email address (REQ-163) |
 | Empty and streamed answers | No replies: "No replies yet." in SCR-107#normal. No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-107) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-107); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-107) |
 | AI answers | None: NEXUS calls no AI model (REQ-121); the agent's replies are text written through the hub |
 
 ## Layout

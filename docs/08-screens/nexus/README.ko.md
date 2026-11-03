@@ -165,6 +165,31 @@ NEXUS가 단계의 기본값과 다른 곳: `401`은 서버가 아니라 Access�
 
 허브 페이지와 그 보기는 1차의 다른 메시지, 곧 "아직 프로젝트가 없습니다. corthex 스킬로 프로젝트를 등록한 뒤 허브를 다시 만들어 주세요."나 "“{q}”와 맞는 항목이 없습니다." 같은 것을 hub.html이 담은 영어와 한국어 그대로 둡니다.
 
+### 목업이 더한 말
+
+09단계의 목업([A 방향](../../09-mockup/nexus/README.ko.md#결정))에 필요했지만 08단계가 쓰지 않았던 말입니다. 2026-11-03에 목업과 함께 더했으며, 확인 지점에서 바뀔 수 있습니다. `·` 사이의 말은 저마다 따로 쓰는 이름표입니다.
+
+| 말 | 나오는 곳 | 영어 | 한국어 |
+| --- | --- | --- | --- |
+| 열린 수 | SCR-101, 서버에서 | 1 open comment · {n} open comments · 1 open proposal · {n} open proposals · 1 open discrepancy · {n} open discrepancies | 열린 의견 {n} · 열린 제안 {n} · 열린 어긋남 {n} |
+| 그림 표시 | SCR-101, 서버에서: 단계 표시의 설명 끝과, 그림이 있는 단계의 이름 | picture in NEXUS | NEXUS에 그림 |
+| 기다리는 확인 지점 | SCR-101, 서버에서 | Waiting for their records ({n}) | 기록을 기다리는 확인 지점 ({n}) |
+| NEXUS에서 | SCR-101#stale, 서버에서: 최신이 아닌 그림이 있거나 기록에 철회한 확인 지점이 적혀 있을 때 카드의 그 줄들의 제목 | In NEXUS | NEXUS에서 |
+| 먼저 묻는 일 | SCR-101, 서버에서(SPEC-125) | Asks first ({source}) · {list} and {n} more in the settings · Not asked in this project: {list} · Anything that cannot be undone is asked in any case. · Only what cannot be undone is asked. | 먼저 묻는 일 ({source}) · {list} 외 {n}개는 설정에 있음 · 이 프로젝트에서 묻지 않는 일: {list} · 되돌릴 수 없는 일은 어쨌든 묻습니다. · 되돌릴 수 없는 일만 묻습니다. |
+| 목록의 출처 | SCR-101, 먼저 묻는 일 안 | the project's list · the profile's list · the default list | 프로젝트의 목록 · 프로필의 목록 · 기본 목록 |
+| 모든 프로젝트 | SCR-103, SCR-104: 프로젝트로 가는 링크 | All projects | 모든 프로젝트 |
+| 확대 | SCR-105: 확대 단추의 이름 | Zoom out · Zoom in · Whole picture | 축소 · 확대 · 그림 전체 |
+| 합친 표시 | SCR-105: 그림 전체에서 합친 컨텍스트 표시의 이름 | 1 mark in {context}: zoom in · {n} marks in {context}: zoom in | {context}의 표시 {n}개: 확대하기 |
+| 표시의 설명 | SCR-105: 표시 설명의 이름 | Legend of the marks | 표시의 설명 |
+| 항목 목록 | SCR-105 | With marks ({n}) · The rest ({n}) · Part without an ID | 표시가 있는 것 ({n}) · 나머지 ({n}) · ID 없는 부분 |
+| 항목 패널 | SCR-106 | Proposals ({n}) · Comments ({n}) · Closed ({n}) · 1 reply · {n} replies | 제안 ({n}) · 의견 ({n}) · 닫힌 의견 ({n}) · 답글 {n}개 |
+| 그림으로 돌아가기 | SCR-106, SCR-107, SCR-108, 그 항목·의견·제안이 없어졌을 때 | Back to the picture | 그림으로 돌아가기 |
+| 답글 불러오기 | SCR-107#loading, 화면 낭독기용 | Loading the replies… | 답글을 불러오는 중… |
+| 새 답글 | SCR-107#stale: 패널을 연 뒤에 온 답글 | New | 새 답글 |
+| 제안 패널 | SCR-108 | Change · Reason · Stage source text · Made on commit {commit} · Answers | 변경 · 까닭 · 단계 원본의 글 · 커밋 {commit}에서 낸 제안 · 답하는 의견 |
+| 원본 글 불러오기 | SCR-108#loading, 화면 낭독기용 | Loading the stage source text… | 단계 원본의 글을 불러오는 중… |
+| 단계 현황의 제목 | SCR-109 | Recorded state · Updated {time} · Discrepancies ({n}) · Comments ({n}) · Pending reflections ({n}) · Words (optional) | 기록된 상태 · 갱신 {time} · 어긋남 ({n}) · 의견 ({n}) · 반영 대기 ({n}) · 남길 말 (선택) |
+
 ## 이 단계가 고른 것
 
 앞 단계들이 이것들을 08단계에 맡겼습니다. 저마다 확인 지점에서 바뀔 수 있습니다.
