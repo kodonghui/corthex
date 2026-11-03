@@ -708,7 +708,7 @@ Stage 12 of CORTHEX’s own project. Status: planned on 2026-11-03; no case has 
 | TC-1266 | Two hubs drain one device outbox | SPEC-129, TBL-117 | TASK-234 | unittest | Start two hub processes against one isolated outbox and local fixture server. | Exclusive lock preserves oldest-first delivery and exact write IDs; no file is lost. | not run |
 | TC-1267 | Withdraw while checkpoint record PR is open | SPEC-140, API-129, API-130 | TASK-220 | api, agent | Pass, report opened, withdraw, then report merged and push a record naming the withdrawn checkpoint. | To-do requires correction and overview/hub show checkpoint-withdrawn until a correcting push. | not run |
 | TC-1268 | NEXUS compares its own pictures | SPEC-106, SPEC-107, SPEC-108, SPEC-120 | TASK-252 | unittest, manual | Read this repository locally through default-branch Git objects and pair NEXUS boards/tables/screens. Do not upload this repository without REQ-107 consent. | Explicit terms:none and exemptions suppress false discrepancies; known synthetic mismatches remain discoverable. | not run |
-| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | Use development Access with each identity; record field presence only and reject other audience. | Record date/method and presence/empty for ctx.access, aud, sub, email and common_name; select the working verifier. | not run |
+| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | Use development Access with each identity; record field presence only and reject other audience. | Record date/method and presence/empty for ctx.access, aud, sub, email and common_name; select the working verifier. | pass: dev Access identity trial 2026-11-03; synthetic audience/signature checks, Node 24.18.0; 51cc0d3, #92 |
 | TC-1270 | Largest push on free Workers/D1 | REQ-081, REQ-124 | TASK-223 | api, manual | Send synthetic maximum-size snapshot with three pictures on development and collect Workers CPU/D1 metadata. | CPU <=10 ms and <=50 queries/request, rows written recorded; exceedance remains open for maintainer decision. | not run |
 | TC-1271 | Twenty 4G mobile editor openings | REQ-149, REQ-146, REQ-147, REQ-148 | TASK-224 | agent, manual | Load 300 elements 20 times in Chrome mobile emulation with 4G; use page request-to-complete-drawing time. | Report all 20 values and nearest-rank P95 <=3 seconds, raw/gzip code bytes, current Worker limit, CSP and self-served fonts/assets. | not run |
 | TC-1272 | Expired sign-in and recovered draft | SPEC-126, SCR-107#permission | TASK-243 | agent, e2e | Write a draft, expire Access, send, reload/sign in and retry after a lost response. | Text and one write ID survive; manual opaqueredirect is permission and resend creates exactly one entry. | not run |
@@ -751,11 +751,11 @@ Pending: no go/no-go has been requested or inferred. Before asking, complete all
 
 ## Coverage
 
-Planning inventory: 677 cases; 36 active SPEC rows; 32 server operations; 410 named response examples; 18 hub commands; 45 declared screen states. Passing: 4 (TC-1274–TC-1277). Browser paths walked: 0. Mock-only cases passed: 0. The other 673 cases are not run. Recompute from actual results at each bundle; never turn planning coverage into a pass count.
+Planning inventory: 677 cases; 36 active SPEC rows; 32 server operations; 410 named response examples; 18 hub commands; 45 declared screen states. Passing: 5 (TC-1269, TC-1274–TC-1277). Browser paths walked: 0. Mock-only cases passed: 0. The other 672 cases are not run. Recompute from actual results at each bundle; never turn planning coverage into a pass count.
 
 ## Bugs
 
-No BUG-501 or later has been filed yet. Preserve each failure with its TC/SPEC/SCR/API response, steps, expected/actual data effect, environment/commit, safe traceId and screenshot/API evidence. Impressions are recorded separately until the maintainer chooses to make them bugs/tasks.
+BUG-501 (TC-1269, SPEC-113/116): the temporary development module returned internal/500 while its default fetch was called with the verifier as receiver. A global-call wrapper fixed it; a host-receiver regression test and the real user/agent role trials pass. Fixed in this Access foundation bundle. This is a temporary-entrypoint failure, not evidence about unimplemented API operations. Preserve each failure with its TC/SPEC/SCR/API response, steps, expected/actual data effect, environment/commit, safe traceId and screenshot/API evidence. Impressions are recorded separately until the maintainer chooses to make them bugs/tasks.
 
 ## Notes for later stages
 
@@ -769,6 +769,16 @@ Each implementation PR updates only the cases it actually ran and cites raw evid
 | TC-1275 | Phase-1 snapshots survive | SPEC-114, TBL-101, TBL-113 | TASK-202 | node, local D1 | Seed a phase-1 snapshot with non-ASCII text and an existing revision, migrate twice and compare bytes and metadata. | Original body/revision/timestamps remain; new columns are NULL; rerun preserves migration timestamps. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
 | TC-1276 | Failed migration rolls back and retries | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Inject a failure after schema-2 ALTER statements inside the D1 batch, then retry the same Store. | No partial columns or version-2 marker after failure; retry installs the complete schema. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
 | TC-1277 | Two migration isolates converge | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Synchronize two independent DB bindings before their migration-1 batch, then let them race. | Both finish with exact stage-05 schema and one marker per version; no partial schema. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+
+## Access evidence (TASK-201)
+
+Development Access on 2026-11-03 supplied ctx.access and the configured audience for both a real browser user and a service token. getIdentity could not distinguish them. The presence-only table and the verifier choice were written to stage 06 before authentication implementation. A pinned-team RS256/JWKS signature, issuer, audience and expiry check then verified both real assertion headers; no token, cookie, email or service client ID is retained.
+
+The implementation was exercised through a temporary development entrypoint using the actual Access/Problem modules: user `/` 200, `/user-only` 200, `/agent-only` 403 agent_only; agent `/` 200, `/agent-only` 200, `/user-only` 403 user_only. Wrong audiences, forged/expired tokens, key rotation/outage, malformed assertions and missing/null sub use synthetic signed fixtures on Node 24.18.0, not altered real identities. Node tests are 29/29 on this branch (14 Access/Problem and 15 existing). A read-only code/security review found two issues in an earlier module version (unexpired-key cache lost on refresh failure and nonempty service name with missing/null sub); both were corrected and independently rechecked.
+
+These are authentication foundation and temporary-entrypoint checks. app.js still uses its phase-1 routing: TASK-209 and TASK-210 remain in progress, and no API-101–API-132 response, page or flow is marked provided/accepted by this evidence.
+
+Commit `51cc0d3` is the Access foundation tested above. The full Windows/Python 3.13 repository suite also passed 817 tests (14 skipped), and all four strict Claude plugin validations passed. The edited OpenAPI passes openapi-spec-validator 0.7.1. Full development API contracts and screens remain untested.
 
 ## Migration evidence (#91)
 

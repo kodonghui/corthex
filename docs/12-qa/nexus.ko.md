@@ -708,7 +708,7 @@ TC는 TC-601, BUG는 BUG-501부터입니다. 근거는 수용 기준·API 응답
 | TC-1266 | Two hubs drain one device outbox | SPEC-129, TBL-117 | TASK-234 | unittest | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1267 | Withdraw while checkpoint record PR is open | SPEC-140, API-129, API-130 | TASK-220 | api, agent | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1268 | NEXUS compares its own pictures | SPEC-106, SPEC-107, SPEC-108, SPEC-120 | TASK-252 | unittest, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
-| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
+| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | pass: dev Access identity trial 2026-11-03; synthetic audience/signature checks, Node 24.18.0; 51cc0d3, #92 |
 | TC-1270 | Largest push on free Workers/D1 | REQ-081, REQ-124 | TASK-223 | api, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1271 | Twenty 4G mobile editor openings | REQ-149, REQ-146, REQ-147, REQ-148 | TASK-224 | agent, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1272 | Expired sign-in and recovered draft | SPEC-126, SCR-107#permission | TASK-243 | agent, e2e | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
@@ -751,11 +751,11 @@ TASK-251은 FL-101–114의 단계 ① 주 경로·실패 경로·실제 역할�
 
 ## 커버리지
 
-계획 목록은 677사례·active SPEC 36행·서버 요청 32개·이름 붙은 응답 예시 410개·허브 명령 18개·화면 상태 45개입니다. 통과 4(TC-1274–TC-1277), 브라우저 경로 0, mock만의 통과 0입니다. 나머지 673사례는 실행 전이며 묶음마다 실제 결과로 다시 셉니다.
+계획 목록은 677사례·active SPEC 36행·서버 요청 32개·이름 붙은 응답 예시 410개·허브 명령 18개·화면 상태 45개입니다. 통과 5(TC-1269, TC-1274–TC-1277), 브라우저 경로 0, mock만의 통과 0입니다. 나머지 672사례는 실행 전이며 묶음마다 실제 결과로 다시 셉니다.
 
 ## 버그
 
-아직 BUG-501 이후를 등록하지 않았습니다. 실패는 TC/SPEC/SCR/API·단계·기대/실제 데이터 효과·환경/커밋·안전한 traceId·이미지/API 근거를 남깁니다. 느낌은 관리자가 버그/작업으로 고르기 전까지 나눕니다.
+BUG-501(TC-1269, SPEC-113/116): 임시 개발 진입점에서 기본 fetch에 verifier 객체가 receiver로 전달되어 internal/500이 났습니다. 전역 호출 래퍼로 고쳤고 host receiver 회귀와 실제 사람/서비스 역할 시험을 통과했습니다. 이 Access 기반 묶음에서 수정했으며 미구현 API의 결과를 뜻하지 않습니다. 실패는 TC/SPEC/SCR/API·단계·기대/실제 데이터 효과·환경/커밋·안전한 traceId·이미지/API 근거를 남깁니다. 느낌은 관리자가 버그/작업으로 고르기 전까지 나눕니다.
 
 ## 다음 단계를 위한 메모
 
@@ -769,6 +769,16 @@ PR은 실제 돌린 사례만 바꾸고 원래 근거를 가리킵니다. 계약
 | TC-1275 | 1단계 스냅샷 보존 | SPEC-114, TBL-101, TBL-113 | TASK-202 | node, local D1 | 비ASCII 글과 기존 revision이 있는 1단계 스냅샷을 넣고 두 번 이주해 바이트와 메타데이터를 맞댑니다. | 기존 본문·revision·시각이 같고 새 열은 NULL이며 반복 이주는 이주 시각도 지킵니다. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
 | TC-1276 | 실패한 이주의 롤백과 재시도 | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | D1 batch에서 schema 2 ALTER 뒤 실패를 넣고 같은 Store로 다시 시도합니다. | 실패 뒤 부분 열과 이주 2 기록이 없고 재시도는 완전한 스키마를 만듭니다. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
 | TC-1277 | 두 이주 실행의 동시 수렴 | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | 독립된 DB 바인딩 둘을 이주 1 batch 직전에 맞춰 동시에 진행합니다. | 둘 다 05와 같은 스키마로 끝나고 버전당 기록 하나이며 부분 스키마가 없습니다. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+
+## Access 근거 (TASK-201)
+
+2026-11-03 개발 Access에서 실제 브라우저 사람과 서비스 토큰 모두 ctx.access와 설정한 audience가 있었습니다. getIdentity는 둘을 구별하지 못했습니다. 필드 유무 표와 검증 방법을 로그인 코드보다 먼저 06에 적었습니다. 고정 팀의 RS256/JWKS 서명·issuer·audience·만료 검사로 실제 헤더 둘을 검증했으며 토큰·쿠키·이메일·서비스 client ID 값은 남기지 않았습니다.
+
+실제 Access/Problem 모듈을 쓰는 임시 개발 진입점에서 사람은 `/` 200·`/user-only` 200·`/agent-only` 403 agent_only, 서비스는 `/` 200·`/agent-only` 200·`/user-only` 403 user_only였습니다. 다른 audience·위조/만료 토큰·키 회전/조회 실패·비정형 assertion·없음/null sub는 Node 24.18.0의 합성 서명 자료로 확인했으며 실제 신원을 바꾼 시험은 아닙니다. 이 브랜치의 Node 29개(Access/Problem 14개와 기존 15개)를 통과했습니다. 읽기 전용 코드·보안 리뷰가 앞 버전의 두 문제(갱신 실패 때 유효한 키 캐시 삭제, sub 없음/null도 서비스 역할 허용)를 찾았고 둘 다 수정 후 독립 재검증했습니다.
+
+로그인 기반 모듈과 임시 진입점의 검증입니다. app.js는 아직 1단계 라우터를 쓰므로 TASK-209·210은 진행 중이며 이 근거로 API-101–API-132 응답·화면·흐름을 제공/수용 통과로 세지 않습니다.
+
+`51cc0d3`가 위 Access 기반 시험의 커밋입니다. Windows/Python 3.13 전체 817개(14개 건너뜀)와 Claude 플러그인 엄격 검사 네 개도 통과했습니다. 바뀐 OpenAPI는 openapi-spec-validator 0.7.1을 통과했으며 전체 개발 API 계약과 화면은 아직 시험하지 않았습니다.
 
 ## 이주 근거 (#91)
 

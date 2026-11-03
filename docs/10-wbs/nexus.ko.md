@@ -18,7 +18,7 @@ CORTHEX 자신의 프로젝트 10단계입니다. 상태: 2026-11-03 계획 확�
 
 | ID | 작업 | 근거 | 건드리는 곳 | 선행 작업 | 담당 | 크기 | 끝났다고 볼 때 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-201 | Access 로그인 두 종류 시험 | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | 실제 개발 Access의 사람·서비스 토큰에서 ctx.access·aud·sub·email·common_name의 있음/비어 있음을 기록하고 로그인 구현 전에 확인 방법을 정합니다. | in progress |
+| TASK-201 | Access 로그인 두 종류 시험 | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | 실제 개발 Access의 사람·서비스 토큰에서 ctx.access·aud·sub·email·common_name의 있음/비어 있음을 기록하고 로그인 구현 전에 확인 방법을 정합니다. | done (#92) |
 | TASK-202 | 1단계 DB를 보존하는 이주 1 | SPEC-114 | TBL-101, TBL-113 | none | agent | S | 빈 DB와 1단계 DB에 이주 1이 원자적으로 적용되고 기존 스냅샷 바이트와 revision이 그대로 남습니다. | done (#91) |
 | TASK-203 | 설계 스키마로 옮기는 이주 2 | SPEC-114 | TBL-101–TBL-113 | TASK-202 | agent | M | 이주 결과와 nexus.sql의 표·열·키·색인·CHECK가 같으며 실패·동시 적용 뒤 부분 스키마가 남지 않습니다. | done (#91) |
 | TASK-204 | 스냅샷 0.2와 그림 자료 검증 | SPEC-104, SPEC-105, SPEC-109, SPEC-110, SPEC-114 | API-105, TBL-114 | TASK-203 | agent | M | 두 스냅샷 판과 그림 자료의 형식·UTF-8·한도를 검사하고 모르는 스냅샷 필드는 보존하며 그림 자료는 따로 저장합니다. | todo |
@@ -26,8 +26,8 @@ CORTHEX 자신의 프로젝트 10단계입니다. 상태: 2026-11-03 계획 확�
 | TASK-206 | 그림 짝짓기와 불일치 정리 | SPEC-120, SPEC-121 | TBL-103, TBL-104 | TASK-204 | agent | M | 다섯 불일치 유형, 삭제된 용어, 명시적 none·예외, 기다리는 그림, 다시 생긴 불일치와 열린 항목 1,000개 한도를 시험합니다. | todo |
 | TASK-207 | 삭제 전 확인과 프로젝트 삭제 | SPEC-115 | API-108, API-110, TBL-101–TBL-112 | TASK-205 | agent | S | 모든 응답과 제한된 ID·합계를 확인하고 삭제 뒤 어떤 표에도 그 프로젝트 행이 남지 않습니다. | todo |
 | TASK-208 | 공간·그림·개요·개별 항목 읽기 | SPEC-119, SPEC-123, SPEC-127, SPEC-130, SPEC-133, SPEC-138, SPEC-140 | API-106, API-107, API-111, API-112, API-114–API-117 | TASK-205 | agent | L | 모든 응답과 HEAD, 합계·순서·목록 한도를 확인합니다. 제안 원문은 개별 읽기에만 나옵니다. | todo |
-| TASK-209 | Access 확인과 주소·역할별 요청 처리 | SPEC-113, SPEC-116 | API-101–API-132 | TASK-201 | agent | M | 실제 로그인 시험의 방법을 쓰고 앱·로그인 종류·주소·메서드·출처·세션 거절의 순서와 무변경을 확인합니다. | todo |
-| TASK-210 | Problem Details와 안전한 추적 로그 | SPEC-113 | API-101–API-132 | TASK-209 | agent | S | 서버 오류 코드는 계약 목록과 같고 상태·추가 필드·안전한 detail·traceId가 맞습니다. 로그에는 종류와 traceId만 남습니다. | todo |
+| TASK-209 | Access 확인과 주소·역할별 요청 처리 | SPEC-113, SPEC-116 | API-101–API-132 | TASK-201 | agent | M | 실제 로그인 시험의 방법을 쓰고 앱·로그인 종류·주소·메서드·출처·세션 거절의 순서와 무변경을 확인합니다. | in progress |
+| TASK-210 | Problem Details와 안전한 추적 로그 | SPEC-113 | API-101–API-132 | TASK-209 | agent | S | 서버 오류 코드는 계약 목록과 같고 상태·추가 필드·안전한 detail·traceId가 맞습니다. 로그에는 종류와 traceId만 남습니다. | in progress |
 | TASK-211 | 항목·그림에 댓글 달기 | SPEC-126, SPEC-128 | API-118, TBL-105 | TASK-208, TASK-221 | agent | M | 모든 API-118 응답과 수용 기준, 없는 항목·인용문·그림 판·개수·UTF-8 글 바이트 한도를 시험합니다. | todo |
 | TASK-212 | 답글·답함·결정 요청과 다시 열기 | SPEC-127, SPEC-128, SPEC-132 | API-119, API-120, TBL-105, TBL-106 | TASK-211 | agent | M | 모든 응답을 시험합니다. 사용자만 닫힌 댓글을 다시 열거나 결정을 요청하며 waits·dismissed·클레임 갱신이 맞습니다. | todo |
 | TASK-213 | 결정 기록과 댓글 닫기 | SPEC-132 | API-121, TBL-105, TBL-107 | TASK-212 | agent | S | 모든 응답을 시험합니다. 에이전트만 결정 요청된 댓글을 안전한 HTTPS 링크로 기록하고 원자적으로 닫습니다. | todo |
