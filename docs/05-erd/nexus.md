@@ -359,7 +359,7 @@ The agent writes them in the pull request of the stage's work (SPEC-137) or of a
 | `part` | part name | The part; left out in `.corthex/stages.json` |
 | `stages` | object by stage key | One record for each stage that has one |
 | `stages.<stage>.state` | `done`, `in_progress`, `not_started` or `skipped` | As recorded (REQ-084); `done` only with a checkpoint and its date (REQ-085) |
-| `stages.<stage>.checkpoints` | list | Each checkpoint with `approved`, what was approved, in the user's words when they gave some; `by`, a role such as `the maintainer`, never a name or an email address; `where`, a link to where it was approved; `date`; and `nexus`, the ID of the checkpoint when it was passed in NEXUS (SPEC-137, SPEC-140) |
+| `stages.<stage>.checkpoints` | list | Each checkpoint with `approved`, what was approved, in the user's words when they gave some; `by`, a role such as `the maintainer`, never a name or an email address; optional `where`, a safe HTTPS link to where it was approved; `date`; and optional `nexus`, the ID of the checkpoint when it was passed in NEXUS (SPEC-137, SPEC-140). An unsafe link is left out as SPEC-109 requires; its absence does not discard the approval |
 | `stages.<stage>.next` | text | The next action |
 | `stages.<stage>.checks` | optional list | The review findings, each with `level`, `message`, optional `refs` and `at` (REQ-087) |
 | `stages.<stage>.updated` | time with its zone | When the record was written |
@@ -388,6 +388,10 @@ The agent's writes that the hub could not send (SPEC-129), one file for each wri
 | `failure` | optional text | The kind of the last failure, such as `no network` or `no service token` |
 
 The hubs of one device take turns on a project's outbox with the lock `outbox/<project>.lock`, a file made with an exclusive create, which works on Linux, macOS and Windows (REQ-083). It holds the hub's process ID and the time. The holder renews it after each write that it sends, each send waiting at most 30 seconds, and a lock older than 2 minutes is stale and taken over. A claim never waits in the outbox: sent later, it would hold an entry for a session that has moved on, so a claim that cannot be sent leaves the entry untaken, and the hub says so. The outbox never holds the service token (REQ-109).
+
+A short native operating-system lock on `outbox/<project>.guard` serializes creating, renewing and taking over that lease. It holds no text or token and never spans a network request. A sender verifies its random ownership marker before changing a queued file, so a former holder cannot alter a new holder's queue. While the lease is busy, another hub may append a new unique write under the short guard, with `tries: 0`; it waits for the next drain and is never sent ahead of the waiting head. These are device-only synchronization details, not new fields of `OutboxFile`.
+
+Every agent write is atomically queued with its original ID before its first send, and that same drain sends it after older writes. This closes the gap between checking an empty queue and sending a fresh write, and retains the write if its process loses the lease. `outbox/<project>.order` holds only the queued write IDs in admission order, under the same short guard, so writes created in the same millisecond keep their order without altering their actual `made` times. Its entry is written before publishing a new queue file; a missing file is ignored. Existing queue files without ordering metadata retain filename order. Retries do not move a write, and a former sender may only recover its original missing file through the unique-append path, never overwrite a new holder's file. Failure to persist gives the agent one redacted recovery copy, as SPEC-129 requires, without saving it in a log.
 
 ### Positions (TBL-118), phase ②
 

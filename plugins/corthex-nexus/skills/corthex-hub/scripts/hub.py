@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """CORTHEX hub: one page with the stages, checks and trace links of every project.
 
-Commands, each with --help:
-  snapshot  read a project's stage sources and save a snapshot of them
-  status    record a stage's progress, last checkpoint and next action
-  build     refresh the snapshots and write the hub page
-  push      send snapshots to your own NEXUS server
-  remove    remove projects from your NEXUS server
-
-It reads ~/.corthex/profile.json, ~/.corthex/projects.json, each project's
-.corthex/project.json and the stage sources that file names. It writes only
-under ~/.corthex/hub/ and never into a repository. Only `push` and `remove`
-use the network. Standard library only.
+The 18 commands have --help. Snapshot/build/status work locally. Explicit
+server commands use only the configured NEXUS address and permitted projects.
+It reads profile/registration/project settings and stage sources; pictures and
+repository records come from the fetched default commit. Generated files and
+queued writes stay under ~/.corthex/hub/. Status may write repository stage
+records, and never commits, pushes Git or opens a PR. Standard library only.
 """
 
 import argparse
+import importlib.util
 import bisect
 import csv
 import html
@@ -29,10 +25,11 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
-VERSION = "0.1.0"
-SCHEMA = "corthex-hub/0.1"
-PAGE_SCHEMA = "corthex-hub-page/0.1"
+VERSION = "0.2.0"
+SCHEMA = "corthex-hub/0.2"
+PAGE_SCHEMA = "corthex-hub-page/0.2"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"
 PLACEHOLDER = "__CORTHEX_HUB_DATA__"
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
@@ -139,6 +136,7 @@ SQL_READINGS = tuple((escapes, re.compile(
     r"|(?P<string>[Ee]'(?:[^'\\]|''|\\.)*(?:'|\Z)|[Nn]?'(?:" + quoted + r")*(?:'|\Z)"
     r"|\$(?P<tag>[A-Za-z_]\w*|)\$.*?(?:\$(?P=tag)\$|\Z))"
     r"|(?P<name>\"(?:[^\"]|\"\")*(?:\"|\Z)|`(?:[^`]|``)*(?:`|\Z)|\[[^\]\n]*\]|[A-Za-z_@][\w$@#]*)"
+    r"|(?P<number>[0-9]+(?:\.[0-9]+)?)"
     r"|(?P<mark>\S)",
     re.S,
 )) for escapes, quoted in ((True, r"[^'\\]|''|\\."), (False, r"[^']|''")))
@@ -178,6 +176,23 @@ REMOVED = {"removed", "deleted", "dropped", "cancelled", "canceled", "deprecated
 
 
 # ---------------------------------------------------------------- small helpers
+
+_COMPANIONS = {}
+
+def companion(name):
+    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands"}:
+        raise ValueError("unknown hub companion")
+    if name not in _COMPANIONS:
+        path = Path(__file__).resolve().with_name(name + ".py")
+        spec = importlib.util.spec_from_file_location("corthex_hub_" + name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _COMPANIONS[name] = module
+    return _COMPANIONS[name]
+
+def parse_picture(stage, documents, checks, helpers, part):
+    return companion({"01-domain":"domain", "05-erd":"erd", "07-sitemap":"sitemap"}[stage]).parse(documents, checks, helpers, part)
+
 
 def now_text():
     return datetime.now().astimezone().isoformat(timespec="seconds")
@@ -1274,10 +1289,13 @@ def run_git(root, args, data=None):
         result = subprocess.run(
             # The fsmonitor hook would run a program from the repository's config,
             # and optional locks let `git status` rewrite the index.
-            [program, "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
+            [program, "--no-replace-objects", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(root)] + list(args),
             # Git starts in its own folder, so no file of the repository sits in the current folder.
             cwd=os.path.dirname(program),
             capture_output=True, timeout=30,
+            # Partial clones must not fetch a missing object (or invoke a
+            # remote helper) from an otherwise local snapshot command.
+            env=dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_ALLOW_PROTOCOL=""),
             **({"input": data} if data is not None else {"stdin": subprocess.DEVNULL}),
         )
     except (OSError, subprocess.SubprocessError):
@@ -1638,7 +1656,7 @@ def stage_order(item):
     return (STAGE_KEYS.index(item["stage"]) if item["stage"] in STAGE_KEYS else 99,) + id_key(item["id"])
 
 
-def make_snapshot(project, status=None, now=None):
+def make_snapshot(project, status=None, now=None, home=None):
     """The snapshot of one project: settings, repositories, stages, items and checks."""
     settings = project.settings
     ids = IdFormat(settings.get("ids"))
@@ -1677,6 +1695,7 @@ def make_snapshot(project, status=None, now=None):
         "summary": summary(ordered, checks, stages),
         "truncated": False,
     }
+    snapshot = companion("snapshot02").augment(snapshot, project, home, globals(), parse_picture)
     return fit(snapshot)
 
 
@@ -1773,7 +1792,7 @@ def stored_snapshots(home):
         return result
     for path in sorted(folder.glob("*.json")):
         data = load_json(path)
-        if data and data.get("schema") == SCHEMA and isinstance(data.get("project"), dict):
+        if data and data.get("schema") in ("corthex-hub/0.1", SCHEMA) and isinstance(data.get("project"), dict):
             name = data["project"].get("name")
             if isinstance(name, str) and NAME.match(name):
                 result[name] = data
@@ -1869,7 +1888,7 @@ def build_hub(home, names=(), out=None, scan=True, now=None):
             if project is None:
                 notes.append("%s: %s" % (name, reason))
                 continue
-            snapshot = make_snapshot(project, load_status(home, project.name), now)
+            snapshot = make_snapshot(project, load_status(home, project.name), now, home=home)
             save_snapshot(home, snapshot)
     stored = stored_snapshots(home)
     snapshots = [stored[n] for n in wanted if n in stored]
@@ -2014,7 +2033,7 @@ def server_reason(error):
         reply = json.loads(error.read(4096).decode("utf-8", "replace"))
     except (ValueError, OSError, AttributeError):
         return ""
-    reason = reply.get("error") if isinstance(reply, dict) else None
+    reason = (reply.get("error") or reply.get("detail")) if isinstance(reply, dict) else None
     return one_line(CONTROL.sub(" ", reason), 300) if isinstance(reason, str) else ""
 
 
@@ -2058,10 +2077,18 @@ def run_snapshot(args, home):
     status = 0
     for name, project, reason in results:
         if project is None:
-            say("%s: %s" % (name or "project", reason), sys.stderr)
+            if args.json:
+                _local_result(args, home, name, {"failure": reason}, "failed")
+            else:
+                say("%s: %s" % (name or "project", reason), sys.stderr)
             status = 1
             continue
-        snapshot = make_snapshot(project, load_status(home, project.name))
+        snapshot = make_snapshot(project, load_status(home, project.name), home=home)
+        if args.json:
+            if not args.print:
+                save_snapshot(home, snapshot)
+            _local_result(args, home, project.name, {"snapshot": snapshot})
+            continue
         if args.print:
             sys.stdout.buffer.write(dump(snapshot).encode("utf-8"))
             sys.stdout.flush()
@@ -2073,11 +2100,29 @@ def run_snapshot(args, home):
 
 
 def run_status(args, home):
+    selected = select_projects(home, [args.project])[0]
+    if selected[1] is None and (args.repository or args.part):
+        raise ValueError(selected[2])
+    writer = companion("records")
+    if args.by is not None and not writer.role(args.by, SimpleNamespace(**globals()), home):
+        raise companion("commands").CommandLine("--by needs a role without secrets or email addresses")
+    if args.where is not None and not writer.safe_link(args.where, SimpleNamespace(**globals()), home):
+        raise companion("commands").CommandLine("--where needs an HTTPS link without secrets or email addresses")
+    written = writer.write(selected[1], home, args, globals()) if selected[1] else None
+    if written is not None:
+        entry, path = written
+        if args.json:
+            _local_result(args, home, args.project, {"stage": args.stage, "record": entry, "from": "repository"})
+        else:
+            say("%s %s: repository record saved" % (args.project, args.stage))
+        return 0
     entry = record_status(
         home, args.project, args.stage, args.state, args.checkpoint, args.date, getattr(args, "next"),
         args.check or (), args.clear_checks, args.reset,
     )
-    if not entry:
+    if args.json:
+        _local_result(args, home, args.project, {"stage": args.stage, "record": entry, "from": "status-file"})
+    elif not entry:
         say("%s %s: status removed" % (args.project, args.stage))
     else:
         say("%s %s: %s" % (args.project, args.stage, entry.get("state", "state not set")))
@@ -2086,12 +2131,26 @@ def run_status(args, home):
 
 def run_build(args, home):
     path, snapshots, notes = build_hub(home, args.project, args.out, scan=not args.no_scan)
+    if args.json:
+        for snapshot in snapshots:
+            _local_result(args, home, snapshot["project"]["name"], {"page": str(path), "summary": snapshot["summary"]})
+        for note in notes:
+            _local_result(args, home, note.split(":", 1)[0], {"failure": note}, "failed")
+        return int(bool(notes))
     for note in notes:
         say(note, sys.stderr)
     for snapshot in snapshots:
         say(counts_line(snapshot))
     say("Hub page: %s" % path)
     return 0
+
+
+def _local_result(args, home, project, answer, state="done"):
+    module = companion("commands")
+    value = {"outcome": state, "answer": answer if state == "done" else None,
+             "failure": answer.get("failure") if state != "done" else None}
+    row = module.outcome(args.command, project, value)
+    module.emit(args, module.scrub([row], home, os.environ, SimpleNamespace(**globals())), SimpleNamespace(**globals()))
 
 
 def run_push(args, home):
@@ -2106,8 +2165,14 @@ def run_remove(args, home):
     return 0
 
 
+class CommandParser(argparse.ArgumentParser):
+    def error(self, message):
+        safe = companion("commands").scrub(message, Path.home(), os.environ, SimpleNamespace(**globals()))
+        super().error(safe)
+
+
 def parser():
-    top = argparse.ArgumentParser(prog="hub.py", description="CORTHEX hub: stages, checks and trace links of your projects.")
+    top = CommandParser(prog="hub.py", description="CORTHEX hub: stages, checks and trace links of your projects.")
     top.add_argument("--home", help="the folder that holds .corthex (default: your home folder)")
     top.add_argument("--version", action="version", version="corthex-nexus " + VERSION)
     commands = top.add_subparsers(dest="command", required=True)
@@ -2143,17 +2208,30 @@ def parser():
     drop.add_argument("project", nargs="+", help="projects to remove from the server")
     drop.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
     drop.add_argument("--dry-run", action="store_true", help="show what would be removed without removing it")
+    companion("commands").configure(top, commands, {"snapshot":snap, "status":stat, "build":build, "push":send_cmd, "remove":drop}, None)
     return top
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    command_parser = parser()
+    args = command_parser.parse_args(argv)
     home = Path(args.home).expanduser().resolve() if args.home else Path.home()
     commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push, "remove": run_remove}
     try:
+        if args.command in companion("commands").NETWORK:
+            helper = SimpleNamespace(**globals())
+            return companion("commands").emit(args, companion("commands").execute(args, home, globals()), helper)
         return commands[args.command](args, home)
-    except (ValueError, RuntimeError) as error:
-        say("hub.py %s: %s" % (args.command, error), sys.stderr)
+    except companion("commands").CommandLine as error:
+        command_parser.error(str(error))
+    except (ValueError, RuntimeError, OSError) as error:
+        safe_error = companion("commands").scrub(str(error), home, os.environ, SimpleNamespace(**globals()))
+        if args.json:
+            names = args.project if isinstance(args.project, list) else [args.project]
+            for name in names or [""]:
+                _local_result(args, home, name, {"failure": safe_error}, "failed")
+        else:
+            say("hub.py %s: %s" % (args.command, safe_error), sys.stderr)
         return 1
 
 

@@ -347,6 +347,8 @@ Implementation clarification (2026-11-04): API-130 returns `409 checkpoint_state
 - A text comes from `--text TEXT`, or from `--text-file FILE`, where `-` is standard input, in UTF-8; likewise `--reason` and `--reason-file`, `--change` and `--change-file`, and `--source-file`. Before it sends a text, the hub redacts it as it redacts a snapshot: secrets and email addresses become `[redacted]`, and the user's home folder becomes `~` (SPEC-128).
 - `--part PART` names a part; without it a command concerns the project as a whole.
 - `--json` prints, for each project, one line with a JSON object: `command`; `project`; `outcome`, as below; `answer`, the server's answer; `problem`, the server's Problem Details of a refusal; `failure`, the kind of a failure or of the hub's own refusal, such as `no network`, `timeout`, `HTTP 503`, `no service token`, `refused token` or `not in nexus.push`; and `outbox`, how many of its writes were `sent`, `dropped` and are `waiting`. Without it, the hub prints the same in lines for a person.
+  When a write is dropped, `outbox.notices` additionally names its write ID and reason (the Problem Details or the failure kind), never its body. This supplies the drop report below, including seven-day expiry, without exposing a kept text.
+  Only when an agent write cannot be persisted, the failed result also has `recovery`: its original redacted OutboxFile, including its write ID and body. The command shows this once to the calling agent, as SPEC-129 requires; it does not save or log this copy. The agent keeps the text in its session and preserves that ID when recovering it. Ordinary results and outbox listings have no recovery text.
 
 | Exit code | Outcome | When |
 | --- | --- | --- |
@@ -469,6 +471,7 @@ It lists the writes that wait, by project, with their request, when they were ma
 - A write is dropped, and reported with its reason, when the server refuses it for another reason, such as `409` or `404`, since sending it again changes nothing, and 7 days after it was made, since the to-do that it answered has moved on.
 - At each contact with the server for a project, a push, `todo`, a write, `show`, `claim`, `release` or `outbox --send`, the hub first sends that project's outbox, oldest first, each write with its own write ID and session label. It stops at the first write that is kept again, so that the writes keep their order.
 - Each write is one file, `outbox/<project>/<time>.<write>.json` under `~/.corthex/hub/` (TBL-117), in the form of the contract's `OutboxFile`. The hubs of one device take turns on a project's outbox with the lock `outbox/<project>.lock`, as stage 05 says.
+- A fresh agent write enters that queue before its first send. The device-only ID ordering metadata preserves admission order at millisecond ties; neither a concurrent append nor a lost sender's lease makes a new direct send bypass it. Successful first sends remove their transient files too, so the reported drain counts include them.
 - The outbox never holds the service token, and the hub never shows a kept write's text in a log.
 
 ## Formats
@@ -542,6 +545,8 @@ Each picture source has `format: 1` and one of three shapes, the contract's `Dom
 
 An aggregate or read model takes the TERM ID written beside its name, as `Picture (TERM-085)`, or else that of the glossary row, in the same document, whose term is its name, ignoring case and spacing; with none, or with two such rows, it gets a `board-term-missing` warning (SPEC-106).
 
+A command table outside a context's heading keeps its rows under the nearest context heading above it, with a `picture-partial` check. If none precedes it but the document has a context elsewhere, the rows stay in a context whose `id` and `name` are empty, and their aggregates and read models have `context: ""`. A document with no context contributes no DDD board, including none of its dependencies or timeline (SPEC-106).
+
 In a command row's `Events`, commas separate the events, and a leading `or` (`또는`) is not part of a name, so `Payment taken, or Payment failed` gives two events. The timeline is optional: a document without one gives no `timeline`, and the view then shows the board only as a whole (SPEC-141). Each lane keeps its `where`, the line of its row.
 
 **ERD (`05-erd`).** The SQL of [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md) and the stage 05 template, [05-erd.md](../../plugins/corthex/skills/corthex-contract/references/05-erd.md):
@@ -564,6 +569,7 @@ CREATE TABLE pictures (
 - A table is a `CREATE TABLE` that a TBL ID comment defines. The parentheses after its name give its context, a CTX ID, and either its TERM IDs or `terms: none`. A comment with neither leaves `terms` out, which SPEC-121 reports.
 - A column has its name, its type as written and `null`, which is `false` for `NOT NULL` and for a column of the primary key. The primary key comes from `PRIMARY KEY` on a column or in the table; a unique rule from `UNIQUE` on a column or in the table, or from `CREATE UNIQUE INDEX … ON`, with `partial: true` for one with `WHERE`; a foreign key from `REFERENCES` on a column or in the table, or from `ALTER TABLE … ADD [CONSTRAINT …] FOREIGN KEY`, with `on_delete` in lowercase, or `""` without one.
 - A comment line `-- without a table:` followed by TERM IDs, anywhere in the part's SQL, lists the aggregates that the part keeps outside tables.
+- An index expression that cannot be represented as column names is omitted as a whole unique rule, with a `picture-partial` check; a function name is never drawn as a column. Removed status words in table comments use the same vocabulary as other stage items: an explicit `status:` (`상태:`) wins; otherwise a standalone metadata field in parentheses or after a `|` may mark removal. Words in a table name or descriptive title are not its status. Quoted identifier/title spans are excluded before metadata delimiters are read, including escaped quotes; a quoted status value remains a value.
 - The markers `terms: none`, `without a table:` and `without a screen:` are the same in every language, as the code around them is.
 
 **Sitemap (`07-sitemap`).** The YAML of the stage 07 template, [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md), with `terms`, here two screens of NEXUS's own [nexus.yaml](../07-sitemap/nexus.yaml):
@@ -605,6 +611,8 @@ The project settings, `.corthex/project.json`, gain two fields, which the core p
 ### Stage records
 
 The stage records are the file of TBL-115 in stage 05's [Stage records](../05-erd/nexus.md#stage-records-tbl-115), which the contract's `StageRecords` checks: `.corthex/stages/<part>.json` for each part that `parts` names, or `.corthex/stages.json` for a project without parts. The hub reads them from the default branch's commit through Git's object reader and writes them in the working tree with `status` (API-134). A file that is not valid JSON, of another `format` or with a state that is not one of the four gets a `records-invalid` warning, and its stages show as `unknown` (SPEC-109).
+
+`RecordCheckpoint.where` is optional: `status --where` is optional, and SPEC-109 leaves an unsafe link out of a snapshot while retaining the approval, role and date. The status-file fallback preserves phase 1's `checkpoint` and `checkpoint_date` without inventing a role or a NEXUS checkpoint. It never converts that legacy text into a repository checkpoint by itself. A legacy `done` without both a checkpoint and a valid calendar date is shown as `in_progress` with a warning (REQ-085).
 
 ### Outbox files
 

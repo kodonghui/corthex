@@ -107,7 +107,7 @@ class HubCase(unittest.TestCase):
     def snapshot(self, extra=None):
         ((_, project, reason),) = hub.select_projects(self.home, [], self.repo, extra)
         self.assertIsNotNone(project, reason)
-        return hub.make_snapshot(project, hub.load_status(self.home, project.name), NOW)
+        return hub.make_snapshot(project, hub.load_status(self.home, project.name), NOW, home=self.home)
 
     def items(self, snapshot):
         return {item["id"]: item for item in snapshot["items"]}
@@ -239,7 +239,7 @@ class TemplateTest(HubCase):
         snapshot = self.snapshot()
         self.assertEqual(self.refs(snapshot, "unknown-ref"), ["API-002", "FL-002", "REQ-004", "SPEC-002", "SPEC-005", "TC-004"])
         self.assertEqual(self.refs(snapshot, "screen-without-states"), ["SCR-001"])
-        self.assertEqual(snapshot["summary"]["checks"], {"error": 0, "warn": 6, "info": 1})
+        self.assertEqual(snapshot["summary"]["checks"], {"error": 0, "warn": 7, "info": 2})
         stages = snapshot["stages"]
         self.assertEqual(stages["01-domain"]["copied"]["newest"], "2026-01-12T10:00+09:00", "the board's read time")
         self.assertTrue(stages["02-prd"]["default_source"])
@@ -694,7 +694,7 @@ class SourcesTest(HubCase):
             "05-erd": {"skip": True},
         })
         snapshot = self.snapshot()
-        rules = {check["stage"]: (check["rule"], check["level"]) for check in snapshot["checks"]}
+        rules = {check["stage"]: (check["rule"], check["level"]) for check in snapshot["checks"] if check.get("stage") and check["rule"] not in ("picture-left-out", "picture-partial")}
         self.assertEqual(rules["01-domain"], ("unknown-alias", "error"))
         self.assertEqual(rules["02-prd"], ("source-invalid", "error"))
         self.assertEqual(rules["03-user-flow"], ("source-outside", "error"))
@@ -1051,7 +1051,7 @@ class PageTest(HubCase):
         self.assertEqual(page.count("</script>"), read_text(TEMPLATE).count("</script>"))
         data = self.page_data(page)
         self.assertEqual(data["projects"][0]["project"]["title"], title)
-        self.assertEqual((data["schema"], data["origin"], data["lang"]), ("corthex-hub-page/0.1", "local", "en"))
+        self.assertEqual((data["schema"], data["origin"], data["lang"]), ("corthex-hub-page/0.2", "local", "en"))
         self.assertEqual((path, notes), (self.home / ".corthex" / "hub" / "index.html", []))
 
     def test_build_lists_projects_that_cannot_be_read(self):
@@ -1261,7 +1261,8 @@ class PushTest(HubCase):
 
 class CommandLineTest(HubCase):
     def run_hub(self, *args):
-        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        env = {key: value for key, value in os.environ.items() if not key.startswith(("CORTHEX_NEXUS_", "NEXUS_DEV_"))}
+        env["PYTHONIOENCODING"] = "utf-8"
         result = subprocess.run([sys.executable, str(SCRIPT), "--home", str(self.home)] + list(args),
                                 capture_output=True, cwd=str(self.base), env=env, timeout=60)
         return result.returncode, result.stdout.decode("utf-8"), result.stderr.decode("utf-8")
@@ -1277,7 +1278,7 @@ class CommandLineTest(HubCase):
         self.assertEqual(json.loads(out)["stages"]["02-prd"]["next"], "Review REQ-001")
         code, out, err = self.run_hub("build")
         self.assertEqual(code, 0, err)
-        self.assertIn("acme-shop: 0 items, 0 errors, 0 warnings, 1 notes", out)
+        self.assertIn("acme-shop: 0 items, 0 errors, 1 warnings, 2 notes", out)
         self.assertTrue((self.home / ".corthex" / "hub" / "index.html").is_file())
 
     def test_errors_exit_with_one(self):
@@ -1287,10 +1288,18 @@ class CommandLineTest(HubCase):
         for command in (["push"], ["remove", "acme-shop"]):
             code, out, err = self.run_hub(*command)
             self.assertEqual(code, 1)
-            self.assertIn("no NEXUS address", err)
+            self.assertIn("no project is listed" if command[0] == "push" else "no NEXUS address", out + err)
         code, out, err = self.run_hub("snapshot")
         self.assertEqual(code, 1)
         self.assertIn("no .corthex/project.json", err)
+
+    def test_cli_fixture_cannot_inherit_a_real_server_or_credentials(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"CORTHEX_NEXUS_URL": "http://127.0.0.1:1", "CORTHEX_NEXUS_CLIENT_ID": "synthetic-id", "CORTHEX_NEXUS_CLIENT_SECRET": "synthetic-secret"}):
+            code, out, err = self.run_hub("remove", "acme-shop", "--json")
+        self.assertEqual(code, 1)
+        self.assertIn("no NEXUS address", json.loads(out)["failure"])
+        self.assertNotIn("synthetic-secret", out + err)
 
 
 if __name__ == "__main__":

@@ -69,3 +69,24 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 | `review` | any | A finding recorded with `hub.py status --check`. |
 
 The checks find structure, not meaning. Two items can link correctly and still contradict each other; that takes a review, recorded as a `review` finding.
+
+## Picture sources in 0.2
+
+Pictures use only regular blobs from the fetched origin default commit. A picture source has `format: 1`; every element keeps its repository-relative `where` at that commit. Each list stops at its contract limit and an incomplete form adds `picture-partial`.
+
+- **DDD (`01-domain`)**: context headings and purpose/external-system text; English/Korean context summary and command tables, including policy rows; glossary terms for aggregates and read models; dependencies, hotspots and optional timeline lanes with ordered, stacked events. Names match glossary rows ignoring Unicode case and spacing. An explicit TERM ID wins; duplicate glossary matches use the first with a warning. A missing term leaves the element on the board without a term. A document with no context contributes no board.
+- **ERD (`05-erd`)**: inert SQL tokenization of CREATE TABLE, column types/nullability, primary and unique keys, foreign keys (including ALTER TABLE), unique/partial indexes and table metadata comments. CTX/TERM IDs and removed marks belong to their table. `terms: none` is an explicit empty term list; `-- without a table: TERM-001` exempts a board term.
+- **Sitemap (`07-sitemap`)**: the template's YAML list and nested `children`, quoted scalar values, inline/block lists, screens with or without IDs, parent indexes, flows, context/terms, removed status and `# without a screen: TERM-001`. YAML constructors, tags and aliases are not executed or accepted. An unreadable file contributes a check rather than an empty current picture.
+
+| Added rule | Level | Meaning |
+| --- | --- | --- |
+| `pictures-not-sent` | warn | No readable origin default commit; fetch and record origin HEAD |
+| `part-unknown` | info | A pictured document matches no declared part; it belongs to the project picture |
+| `board-term-missing` | warn | An aggregate/read model has no glossary term, or more than one matching row |
+| `ask-before-invalid` | warn | The project/profile value is not a list of strings; use the next inherited list |
+| `ask-before-long` | info | Keep the first 30 distinct actions |
+| `records-in-status-file` | info | No repository records exist at that commit; migrate the explicit device fallback |
+| `records-invalid` | warn | A repository record cannot be read as format 1 or has invalid state/checkpoint data |
+| `parts-invalid` | warn | Ignore invalid project parts |
+| `picture-left-out` | warn | A whole picture was omitted for size or because its source is in another repository |
+| `picture-partial` | warn | The place named in the check was not fully readable or exceeded a picture limit |

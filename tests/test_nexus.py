@@ -99,7 +99,7 @@ class ServerCase(hub_tests.HubCase):
     def save(self, now=hub_tests.NOW):
         ((_, project, reason),) = hub.select_projects(self.home, [], self.repo)
         self.assertIsNotNone(project, reason)
-        snapshot = hub.make_snapshot(project, hub.load_status(self.home, project.name), now)
+        snapshot = hub.make_snapshot(project, hub.load_status(self.home, project.name), now, home=self.home)
         hub.save_snapshot(self.home, snapshot)
         return json.loads(read_text(hub.snapshot_path(self.home, "acme-shop")))
 
@@ -121,11 +121,12 @@ class ServerTest(ServerCase):
         listed = [(p["name"], p["revision"], p["generated_at"]) for p in json.loads(text)["projects"]]
         self.assertEqual((code, listed), (200, [("acme-shop", 1, sent["generated_at"])]))
         code, text = self.get(SNAPSHOTS + "/acme-shop")
-        self.assertEqual((code, json.loads(text)), (200, sent))
+        stored = {key: value for key, value in sent.items() if key != "pictures"}
+        self.assertEqual((code, json.loads(text)), (200, stored))
         code, page = self.get("/")
         start = page.index(DATA_BLOCK) + len(DATA_BLOCK)
         data = json.loads(page[start:page.index("</script>", start)])
-        self.assertEqual((code, data["origin"], data["projects"]), (200, "server", [sent]))
+        self.assertEqual((code, data["origin"], data["projects"]), (200, "server", [stored]))
 
         self.assertEqual(hub.push(self.home, env={}), ["acme-shop: sent, HTTP 200, revision 2"])
         self.save(now="2026-01-11T10:00:00+09:00")
