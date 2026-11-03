@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "project": "corthex",
+  "part": "nexus",
+  "stages": {
+    "10-wbs": {
+      "state": "in_progress",
+      "checkpoints": [],
+      "next": "Review the phase-1 implementation plan; continue authorized trials and database migrations.",
+      "updated": "2026-11-03T22:54:15+09:00"
+    },
+    "12-qa": {
+      "state": "in_progress",
+      "checkpoints": [],
+      "next": "Run each case on its implementation and record the actual environment, commit and evidence.",
+      "updated": "2026-11-03T22:54:15+09:00"
+    }
+  }
+}
