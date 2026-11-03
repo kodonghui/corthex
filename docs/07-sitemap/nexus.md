@@ -2,7 +2,7 @@
 
 [한국어](nexus.ko.md)
 
-Stage 07 of CORTHEX's own project, for NEXUS 0.2: the screens of the hub page and of the NEXUS server, in [nexus.yaml](nexus.yaml), and in this file what each screen shows, the board and the list drawn from that file, and the steps of the user flows that each screen shows. Status: draft of 2026-11-03, written while the memory plugin is being built, as the maintainer chose on 2026-11-02, and on the recommendations of the user flows, the functional spec, the server's data and the interfaces, whose checkpoint is still open. The maintainer checks it together with them. The YAML is the source of the screens; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
+Stage 07 of CORTHEX's own project, for NEXUS 0.2: the screens of the hub page and of the NEXUS server, in [nexus.yaml](nexus.yaml), and in this file what each screen shows, the board and the list drawn from that file, and the steps of the user flows that each screen shows. Status: drafted on 2026-11-03, while the memory plugin is being built, as the maintainer chose on 2026-11-02, on the recommendations of the user flows, the functional spec, the server's data and the interfaces. The maintainer passed its checkpoint the same day, together with stages 03 to 06 and 08. The YAML is the source of the screens; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
 
 Inputs: the user flows in [docs/03-user-flow/nexus/](../03-user-flow/nexus/README.md) (FL-101 to FL-115); the functional spec in [docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md) (SPEC-101 to SPEC-140), above all its [notes for stages 07 and 08](../04-functional-spec/nexus.md#stages-07-and-08-screens); the interfaces in [docs/06-api/nexus.md](../06-api/nexus.md), with the pages' requests API-101 to API-103, the form of a sitemap's picture source and the [notes for stages 07 and 08](../06-api/nexus.md#stages-07-and-08-screens); the server's data in [docs/05-erd/nexus.md](../05-erd/nexus.md), with its [notes for stages 07 and 08](../05-erd/nexus.md#stages-07-and-08-screens); the DDD board and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose read models the screens name and whose words this file keeps; and phase 1's hub page as it runs, [hub.html](../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose views have addresses of their own. The memory plugin has no screens, so this stage has no file for it.
 
@@ -61,7 +61,7 @@ Drawn from nexus.yaml on 2026-11-03, one row for each screen in the order of the
 | SCR-104 | Stage detail | SCR-101 | `/#p={project}&s={stage}` | anyone Cloudflare Access lets in, or the device's user | FL-105, FL-113 | `none` | active |
 | SCR-105 | Picture view | SCR-104 | `/pictures/{project}/{part}/{stage}` | anyone Cloudflare Access lets in, on the server | FL-106, FL-110, FL-115 | CTX-014, TERM-111 | active |
 | SCR-106 | Item | SCR-105 | `/pictures/{project}/{part}/{stage}#item={id}` | anyone Cloudflare Access lets in, on the server | FL-106, FL-107 | CTX-014, TERM-111 | active |
-| SCR-107 | Comment | SCR-105 | `/pictures/{project}/{part}/{stage}#comment={comment}` | anyone Cloudflare Access lets in, on the server | FL-109 | CTX-014, TERM-111 | active |
+| SCR-107 | Comment | SCR-105 | `/pictures/{project}/{part}/{stage}#comment={comment}` | anyone Cloudflare Access lets in, on the server | FL-107, FL-109 | CTX-014, TERM-111 | active |
 | SCR-108 | Proposal | SCR-105 | `/pictures/{project}/{part}/{stage}#proposal={proposal}` | anyone Cloudflare Access lets in, on the server | FL-110 | CTX-014, TERM-111 | active |
 | SCR-109 | Stage overview | SCR-104 | `/overview/{project}/{part}/{stage}` | anyone Cloudflare Access lets in, on the server | FL-113 | CTX-007, TERM-120 | active |
 <!-- end of list -->
@@ -79,7 +79,7 @@ Every step that shows the user something on a screen names that screen. A flow t
 | FL-104 | on the server | none: the hub reports in the session |
 | FL-105 | in a browser, and on a device | SCR-101, SCR-102, SCR-103, SCR-104 |
 | FL-106 | in a browser | SCR-105, SCR-106 |
-| FL-107 | in a browser | SCR-106 |
+| FL-107 | in a browser | SCR-106, SCR-107 |
 | FL-108 | in a session | none: the hub reports in the session |
 | FL-109 | in a session; the comment shows its answers and decisions | SCR-107 |
 | FL-110 | in a browser | SCR-105, SCR-108 |
@@ -125,7 +125,7 @@ NEXUS's cross-check of its own pictures should then find no discrepancy between 
 
 ## Changes to earlier stages
 
-They wait for the checkpoint together with this stage, and the earlier files change once it is passed. The SCR IDs in the flows' steps are this stage's own step and are already in the flows. Stage 06's two examples of a sitemap changed with this stage too: once the hub read the sitemap, it reported the template's two example screen IDs there as mentioned but not defined. Now the example of the YAML shows two screens of nexus.yaml, and the contract's example `picture_data_sitemap` leaves its screens' IDs out; neither changes a rule.
+Applied on 2026-11-03, when the checkpoint passed: 1 and 2 to the user flows, and 3 to the functional spec and, with the maintainer's yes in the same answer, to stage 01's command row. The SCR IDs in the flows' steps are this stage's own step and are already in the flows. Stage 06's two examples of a sitemap changed with this stage too: once the hub read the sitemap, it reported the template's two example screen IDs there as mentioned but not defined. Now the example of the YAML shows two screens of nexus.yaml, and the contract's example `picture_data_sitemap` leaves its screens' IDs out; neither changes a rule.
 
 1. FL-105 gains a branch from "What does the user do?": the user opens a stage's overview, FL-113. SPEC-138 opens the overview from the hub page as well as from a picture view, and the stage detail links it.
 2. FL-107 gains a step after the comment shows on its item: the user and the agent reply under it, and the user can mark it answered, settle it or open it again (REQ-163, REQ-166), on SCR-107. Only SPEC-127 holds this now, and no step of FL-107 shows a comment's replies, so SCR-107's flows hold only FL-109; with the step, FL-107 joins them.
@@ -133,7 +133,7 @@ They wait for the checkpoint together with this stage, and the earlier files cha
 
 ## Choices this stage made
 
-The flows, the spec and the interfaces left these to stage 07. Each can change at the checkpoint.
+The flows, the spec and the interfaces left these to stage 07. The checkpoint of 2026-11-03 kept each as it is.
 
 1. Nine screens: the hub page with the three views to which phase 1 already gives addresses, the search results, the trace view and the stage detail; and NEXUS 0.2's two pages, the picture view with three panels, the item, the comment and the proposal, and the stage overview. A state of a screen, such as an empty server or a picture left out, is not a screen; stage 08 draws it.
 2. The panels get addresses after `#` in the hub page's form, so that a link from the stage overview, the hub page or a session opens the item, the comment or the proposal at once, and the browser's back button closes it. The server never sees them, so no request changes.
@@ -157,7 +157,7 @@ On 2026-11-03, on nexus.yaml, this file, its translation and the flows:
 
 ## For the checkpoint
 
-Waiting, together with the checkpoint of the user flows, the functional spec, the server's data and the interfaces. Most worth a look:
+Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 06 and 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the screens and their addresses stand as drawn. The checkpoint covered:
 
 1. The nine screens and their tree (choices 1 and 3), above all the picture view's three panels as screens of their own, which stage 08 then draws state by state.
 2. The addresses after `#` (choice 2), which let a link open a panel directly, from the stage overview or from a session.

@@ -4,16 +4,16 @@ info:
   version: 0.2.0
   summary: The requests that the NEXUS server of corthex-nexus 0.2 answers
   description: >-
-    Stage 06 of CORTHEX's own project, for NEXUS: the requests of the NEXUS server, for the hub
-    on a device, the picture view in a browser and the hub page. Draft of 2026-11-02, written
-    while the memory plugin is being built, as the maintainer chose that day; the maintainer
-    checks it together with the user flows, the functional spec and the server's data, and after
-    that check it is frozen for NEXUS 0.2. nexus.md beside this file explains it: the common
-    rules of sign-in, write IDs, sessions, errors and headers, the hub's commands, the formats of
-    the snapshot, the picture sources, the stage records and the outbox, the limits and the error
-    codes with their messages. Every GET also answers HEAD with the same status and headers and
-    no body, a method that a path does not take gets 405 with an Allow header, and every reply
-    carries the security headers that nexus.md lists.
+    Stage 06 of CORTHEX's own project, for NEXUS: the requests of the NEXUS server, for the hub on
+    a device, the picture view in a browser and the hub page. Drafted on 2026-11-02, while the
+    memory plugin is being built, as the maintainer chose that day; the maintainer passed its
+    checkpoint on 2026-11-03, together with those of stages 03 to 05, 07 and 08, so it is frozen
+    for NEXUS 0.2, and a later breaking change needs the maintainer's decision. nexus.md beside
+    this file explains it: the common rules of sign-in, write IDs, sessions, errors and headers,
+    the hub's commands, the formats of the snapshot, the picture sources, the stage records and
+    the outbox, the limits and the error codes with their messages. Every GET also answers HEAD
+    with the same status and headers and no body, a method that a path does not take gets 405 with
+    an Allow header, and every reply carries the security headers that nexus.md lists.
 servers:
   - url: https://nexus.example.com
     description: >-
@@ -45,10 +45,12 @@ paths:
       summary: The hub page
       description: >-
         The hub page of phase 1, with the page data corthex-hub-page/0.2 in its JSON script block
-        (HubPageData): every stored snapshot and, for each project that has a space, its
-        pictures, its counts of open comments, proposals and discrepancies, its checkpoints
-        passed in NEXUS that wait for their records and its checkpoint-withdrawn warnings. A
-        server that holds no snapshot shows how a project gets pushed.
+        (HubPageData): every stored snapshot and, for each project that has a space, its pictures,
+        its counts of open comments, proposals and discrepancies, its checkpoints passed in NEXUS
+        that wait for their records and its checkpoint-withdrawn warnings. A server that holds no
+        snapshot shows how a project gets pushed. A refusal or an error is a page of the code's
+        message when the request accepts text/html, as a browser's does, and Problem Details
+        otherwise (Errors in nexus.md).
       x-corthex:
         id: API-101
         spec: [SPEC-113, SPEC-122, SPEC-123, SPEC-124, SPEC-125]
@@ -68,8 +70,8 @@ paths:
                 page:
                   summary: The page, shortened
                   value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>CORTHEX hub</title></head><body><script id="hub-data" type="application/json">{"schema":"corthex-hub-page/0.2","generated_at":"2026-11-03T01:00:00.000Z","lang":"en","origin":"server","projects":[],"spaces":{},"missing":[]}</script></body></html>'
-        "403": {$ref: "#/components/responses/ReadRefused"}
-        default: {$ref: "#/components/responses/Unexpected"}
+        "403": {$ref: "#/components/responses/PageReadRefused"}
+        default: {$ref: "#/components/responses/PageUnexpected"}
 
   /pictures/{project}/{part}/{stage}:
     parameters:
@@ -84,7 +86,9 @@ paths:
         The picture view, with the answer of getPicture in its JSON script block (ViewPageData).
         The page loads its code from /code/ only, lays the picture out, draws it and sends the
         user's writes to this server. When the space holds no picture of that part and stage, the
-        page holds the problem picture_not_found instead, and shows why.
+        page holds the problem picture_not_found instead, and shows why. A refusal or an error is
+        a page of the code's message when the request accepts text/html, as a browser's does, and
+        Problem Details otherwise (Errors in nexus.md).
       x-corthex:
         id: API-102
         spec: [SPEC-113, SPEC-119]
@@ -103,9 +107,9 @@ paths:
                 view:
                   summary: The page, shortened
                   value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><script type="module" src="/code/view.3f9a1c2b.js"></script></head><body><script id="view-data" type="application/json">{"schema":"corthex-view-page/0.2","view":"picture","lang":"en","data":{},"problem":null}</script></body></html>'
-        "403": {$ref: "#/components/responses/ReadRefused"}
-        "404": {$ref: "#/components/responses/PictureTargetNotFound"}
-        default: {$ref: "#/components/responses/Unexpected"}
+        "403": {$ref: "#/components/responses/PageReadRefused"}
+        "404": {$ref: "#/components/responses/PagePictureTargetNotFound"}
+        default: {$ref: "#/components/responses/PageUnexpected"}
 
   /overview/{project}/{part}/{stage}:
     parameters:
@@ -118,7 +122,9 @@ paths:
       summary: The stage overview of one part's stage
       description: >-
         The stage overview, with the answer of getStageOverview in its JSON script block
-        (ViewPageData), from which the user passes or withdraws the stage's checkpoint.
+        (ViewPageData), from which the user passes or withdraws the stage's checkpoint. A refusal
+        or an error is a page of the code's message when the request accepts text/html, as a
+        browser's does, and Problem Details otherwise (Errors in nexus.md).
       x-corthex:
         id: API-103
         spec: [SPEC-113, SPEC-138, SPEC-139]
@@ -137,9 +143,9 @@ paths:
                 overview:
                   summary: The page, shortened
                   value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><script type="module" src="/code/view.3f9a1c2b.js"></script></head><body><script id="view-data" type="application/json">{"schema":"corthex-view-page/0.2","view":"overview","lang":"en","data":{},"problem":null}</script></body></html>'
-        "403": {$ref: "#/components/responses/ReadRefused"}
-        "404": {$ref: "#/components/responses/OverviewNotFound"}
-        default: {$ref: "#/components/responses/Unexpected"}
+        "403": {$ref: "#/components/responses/PageReadRefused"}
+        "404": {$ref: "#/components/responses/PageOverviewNotFound"}
+        default: {$ref: "#/components/responses/PageUnexpected"}
 
   /code/{file}:
     parameters:
@@ -152,8 +158,8 @@ paths:
         The view's scripts, styles and fonts, with the open-source editors of D11, served by the
         Worker from its own code and not as static assets, so that Access's check stays with the
         Worker. Each name carries a digest of its content. Unlike every other reply, these may be
-        kept by the browser, since they hold no project data; that is a change to SPEC-113 that
-        waits for the checkpoint (Changes to earlier stages in nexus.md).
+        kept by the browser, since they hold no project data, as SPEC-113 allows since this
+        stage's checkpoint (Changes to earlier stages in nexus.md).
       x-corthex:
         id: API-104
         spec: [SPEC-113, SPEC-119]
@@ -1771,16 +1777,6 @@ components:
             part-not-found: {$ref: "#/components/examples/part_not_found"}
             project-not-found: {$ref: "#/components/examples/project_not_found"}
             no-such-stage: {$ref: "#/components/examples/not_found"}
-    PictureTargetNotFound:
-      description: No such project, space or part, or a stage without pictures
-      content:
-        application/problem+json:
-          schema: {$ref: "#/components/schemas/Problem"}
-          examples:
-            project-not-found: {$ref: "#/components/examples/project_not_found"}
-            space-not-found: {$ref: "#/components/examples/space_not_found"}
-            part-not-found: {$ref: "#/components/examples/part_not_found"}
-            no-such-stage: {$ref: "#/components/examples/not_found"}
     CommentNotFound:
       description: No such project, space or comment
       content:
@@ -1825,6 +1821,76 @@ components:
     Unexpected:
       description: Any other error, such as one inside the server
       content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+          examples:
+            internal: {$ref: "#/components/examples/internal"}
+            method-not-allowed: {$ref: "#/components/examples/method_not_allowed"}
+    PageReadRefused:
+      description: >-
+        Refused by the access checks: a page of the code's message for a request whose Accept
+        header names text/html, as a browser's does, and Problem Details otherwise (Errors in
+        nexus.md)
+      content:
+        text/html:
+          schema: {type: string}
+          examples:
+            access-missing: {$ref: "#/components/examples/access_missing_page"}
+            access-other-app: {$ref: "#/components/examples/access_other_app_page"}
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+          examples:
+            access-missing: {$ref: "#/components/examples/access_missing"}
+            access-other-app: {$ref: "#/components/examples/access_other_app"}
+    PagePictureTargetNotFound:
+      description: >-
+        No such project, space or part, or a stage without pictures: a page of the code's
+        message for a request whose Accept header names text/html, as a browser's does, and
+        Problem Details otherwise (Errors in nexus.md)
+      content:
+        text/html:
+          schema: {type: string}
+          examples:
+            project-not-found: {$ref: "#/components/examples/project_not_found_page"}
+            space-not-found: {$ref: "#/components/examples/space_not_found_page"}
+            part-not-found: {$ref: "#/components/examples/part_not_found_page"}
+            no-such-stage: {$ref: "#/components/examples/not_found_page"}
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+          examples:
+            project-not-found: {$ref: "#/components/examples/project_not_found"}
+            space-not-found: {$ref: "#/components/examples/space_not_found"}
+            part-not-found: {$ref: "#/components/examples/part_not_found"}
+            no-such-stage: {$ref: "#/components/examples/not_found"}
+    PageOverviewNotFound:
+      description: >-
+        No such project, a part that its snapshot does not hold, or a stage that is not one of
+        the 13: a page of the code's message for a request whose Accept header names text/html,
+        as a browser's does, and Problem Details otherwise (Errors in nexus.md)
+      content:
+        text/html:
+          schema: {type: string}
+          examples:
+            part-not-found: {$ref: "#/components/examples/part_not_found_page"}
+            project-not-found: {$ref: "#/components/examples/project_not_found_page"}
+            no-such-stage: {$ref: "#/components/examples/not_found_page"}
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+          examples:
+            part-not-found: {$ref: "#/components/examples/part_not_found"}
+            project-not-found: {$ref: "#/components/examples/project_not_found"}
+            no-such-stage: {$ref: "#/components/examples/not_found"}
+    PageUnexpected:
+      description: >-
+        Any other error, such as one inside the server: a page of the code's message for a
+        request whose Accept header names text/html, as a browser's does, and Problem Details
+        otherwise (Errors in nexus.md)
+      content:
+        text/html:
+          schema: {type: string}
+          examples:
+            internal: {$ref: "#/components/examples/internal_page"}
+            method-not-allowed: {$ref: "#/components/examples/method_not_allowed_page"}
         application/problem+json:
           schema: {$ref: "#/components/schemas/Problem"}
           examples:
@@ -1985,6 +2051,30 @@ components:
     internal:
       summary: An error inside the server
       value: {title: Something went wrong, status: 500, detail: the server could not finish the request, code: internal, traceId: 8f6c3b2a1d0e9fb2-ICN, error: the server could not finish the request}
+    access_missing_page:
+      summary: The page of access_missing, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>Cloudflare Access did not check this request. Protect the server with Access first.</p><p>Trace ID 8f6c3b2a1d0e9f88-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    access_other_app_page:
+      summary: The page of access_other_app, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>This request was checked for another Access application. Check the server''s Access settings.</p><p>Trace ID 8f6c3b2a1d0e9f89-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    not_found_page:
+      summary: The page of not_found, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>Not found.</p><p>Trace ID 8f6c3b2a1d0e9f8e-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    project_not_found_page:
+      summary: The page of project_not_found, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>This project is not on the server.</p><p>Trace ID 8f6c3b2a1d0e9f8f-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    space_not_found_page:
+      summary: The page of space_not_found, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>This project was pushed only by an older hub, so it has no pictures or checkpoints here yet. Push it with corthex-nexus 0.2.</p><p>Trace ID 8f6c3b2a1d0e9f90-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    part_not_found_page:
+      summary: The page of part_not_found, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>This part is not in the project''s snapshot.</p><p>Trace ID 8f6c3b2a1d0e9f91-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    method_not_allowed_page:
+      summary: The page of method_not_allowed, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>This request is not allowed here. Load the page again.</p><p>Trace ID 8f6c3b2a1d0e9f9a-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
+    internal_page:
+      summary: The page of internal, for a browser
+      value: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NEXUS</title></head><body><main><p>Something went wrong on the server. Try again.</p><p>Trace ID 8f6c3b2a1d0e9fb2-ICN</p><p><a href="">Load again</a> <a href="/">Hub page</a></p></main></body></html>'
 
     comment_left:
       summary: The user's comment, waiting for the agent

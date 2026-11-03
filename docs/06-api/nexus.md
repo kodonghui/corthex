@@ -2,7 +2,7 @@
 
 [한국어](nexus.ko.md)
 
-Stage 06 of CORTHEX's own project, for NEXUS 0.2: the requests that the NEXUS server answers, in the OpenAPI contract [nexus.openapi.yaml](nexus.openapi.yaml), and in this file the rules that the contract follows, the hub's commands and the formats of the files that go with them. Status: draft of 2026-11-02, written while the memory plugin is being built, as the maintainer chose that day, and on the recommendations of the user flows, the functional spec and the server's data, whose checkpoint is still open. The maintainer checks it together with them. After that check the requests, the commands and the formats are frozen for NEXUS 0.2 before stage 10 plans the work, and a later breaking change needs the maintainer's decision. The contract is the source of every request, answer, example and error code that it holds; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
+Stage 06 of CORTHEX's own project, for NEXUS 0.2: the requests that the NEXUS server answers, in the OpenAPI contract [nexus.openapi.yaml](nexus.openapi.yaml), and in this file the rules that the contract follows, the hub's commands and the formats of the files that go with them. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day, on the recommendations of the user flows, the functional spec and the server's data. The maintainer passed its checkpoint on 2026-11-03, together with stages 03 to 05, 07 and 08, so the requests, the commands and the formats are frozen for NEXUS 0.2 before stage 10 plans the work: a later breaking change needs the maintainer's decision. The contract is the source of every request, answer, example and error code that it holds; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
 
 Inputs: the functional spec in [docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md) (SPEC-101 to SPEC-140), above all its [notes for stage 06](../04-functional-spec/nexus.md#stage-06-requests-commands-and-formats); the server's data and the files in [docs/05-erd/nexus.md](../05-erd/nexus.md) and [nexus.sql](../05-erd/nexus.sql) (TBL-101 to TBL-118), with their [notes for stage 06](../05-erd/nexus.md#stage-06-requests-commands-and-formats) and their limits; the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md); the glossary and the DDD board in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps; and phase 1 as it runs: the server in [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js) and [store.js](../../nexus/src/store.js), and the hub in [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py) with its [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md) and [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md). The sitemap (stage 07) comes later, so no screen ID is an input yet; the requests serve the screens that the user flows and the functional spec name.
 
@@ -117,11 +117,11 @@ The contract defines them, and this table lists them. Who may send each: `user`,
 - Every reply carries phase 1's headers: `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-Robots-Tag: noindex, nofollow` and `Cross-Origin-Resource-Policy: same-origin`, so that no reply is cached, shown in a frame of another site or indexed (SPEC-113). A JSON reply adds `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
 - The hub page keeps phase 1's policy, which runs only its own inline script, by its digest, and sends no request: `default-src 'none'; script-src 'sha256-…'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, with `Cross-Origin-Opener-Policy: same-origin`.
 - The picture view and the stage overview load their code from `/code/` and send their requests only to the server (REQ-147): `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, with `Cross-Origin-Opener-Policy: same-origin`. Their data is in a JSON script block, which the page reads as text and never runs.
-- Only the files of the view's code may be kept by the browser, with `Cache-Control: private, max-age=31536000, immutable`: each name carries a digest of the file's content, and they hold no project data. This changes SPEC-113 ([Changes to earlier stages](#changes-to-earlier-stages)).
+- Only the files of the view's code may be kept by the browser, with `Cache-Control: private, max-age=31536000, immutable`: each name carries a digest of the file's content, and they hold no project data. SPEC-113 allows this, as this stage's checkpoint changed it ([Changes to earlier stages](#changes-to-earlier-stages)).
 
 ### Errors
 
-Every refusal and error is Problem Details (RFC 9457), sent as `application/problem+json`, with these members (the contract's `Problem`):
+Every refusal and error is Problem Details (RFC 9457), sent as `application/problem+json`, apart from the pages' answers to a browser below, with these members (the contract's `Problem`):
 
 | Member | Value |
 | --- | --- |
@@ -134,6 +134,8 @@ Every refusal and error is Problem Details (RFC 9457), sent as `application/prob
 | others | The members that the code adds, which [Error codes](#error-codes) names, such as `field` and `limit` |
 
 NEXUS sends no `type`, which RFC 9457 reads as `about:blank`, and no `instance`. A client ignores the members that it does not know, as RFC 9457 says. The view shows the code's message in the user's language, never `detail`; the hub shows `detail`. The server's log holds only the kind of an error and its trace ID, never a stored text or a value of the request (SPEC-113).
+
+The three pages, API-101 to API-103, answer a refusal or an error as `text/html; charset=utf-8` when the request's `Accept` header names `text/html`, as a browser's does when it opens a page, and as Problem Details otherwise, since a browser shows those as raw text. The page holds one message, the code's in the server's language, with the trace ID, Load again and a link to the hub page; it has the reply's status and the policy `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, and stage 08's [rule 9](../08-screens/nexus/README.md#every-screen) draws it. The `/api/` requests and the view's code always answer Problem Details, and a view's own data holds them in `problem`.
 
 ### Which refusal comes first
 
@@ -272,7 +274,7 @@ A push that gets no answer within 30 seconds, or no network, is reported and not
 | One proposal (API-115), edit (API-116) or checkpoint (API-117) | The whole entry, with a proposal's stage source text | |
 | The dry run of a removal (API-110) | What the removal deletes, with the open comments, open proposals, pending reflections and checkpoints that no record names yet by ID | 20 of each, with their totals |
 
-The view finds which comments, proposals and discrepancies are apart, those whose item the current picture no longer holds, since only it reads the picture source's items (SPEC-119). A project without a space, which only hubs of 0.1 pushed, has no pictures: its picture view shows `picture_not_found`, its overview the record and checks only, and its to-do is `404` `space_not_found`.
+The view finds which comments, proposals and discrepancies are apart, those whose item the current picture no longer holds, since only it reads the picture source's items (SPEC-119). A project without a space, which only hubs of 0.1 pushed, has no pictures: its picture view and its to-do are `404` `space_not_found`, and its overview shows the record and checks only.
 
 ### The agent to-do
 
@@ -599,7 +601,7 @@ The stage records are the file of TBL-115 in stage 05's [Stage records](../05-er
 
 ### Outbox files
 
-Each file of the outbox is TBL-117 of stage 05's [Outbox](../05-erd/nexus.md#outbox-tbl-117), with one field more, `path`, the request's path, so that each try goes where the first went; the contract's `OutboxFile` checks it:
+Each file of the outbox is TBL-117 of stage 05's [Outbox](../05-erd/nexus.md#outbox-tbl-117), whose `path`, the request's path, makes each try go where the first went; the contract's `OutboxFile` checks it:
 
 ```json
 {
@@ -735,11 +737,11 @@ Compared with phase 1, as the hub's [snapshot.md](../../plugins/corthex-nexus/sk
 5. A removal deletes the project's space with the snapshot (SPEC-115), and `GET /api/snapshots/{project}` returns a snapshot of 0.2 without its picture sources.
 6. The page data is `corthex-hub-page/0.2`, which the page of 0.2 reads; nothing else reads it.
 
-The checkpoint decides them before 0.2 ships.
+The checkpoint accepted them on 2026-11-03, so 0.2 ships with them: the server first, then every device's hub.
 
 ## Changes to earlier stages
 
-They wait for the checkpoint together with this stage, and the earlier files change once they are passed:
+Applied on 2026-11-03, when the checkpoint passed: 1, 2 and 6 to the functional spec, and 3 to 5 and 7 to the server's data.
 
 1. SPEC-113 says that no reply may be cached. The files of the view's code may be: they hold no project data, each name carries a digest of its content, and the view's speed on a phone needs them kept (REQ-149).
 2. SPEC-108 names a top-level `without a screen` list. The stage 07 template's YAML is a list of screens, which has no place for a key, so the list is a comment line, `# without a screen:`, as the SQL's `-- without a table:` is.
@@ -774,9 +776,16 @@ On 2026-11-02, on the contract and this file:
 - A mock passes most of these by design, so only a real server proves the contract: stage 11 runs the same tool against a development server behind Access, never against the user's own server.
 - The repository's checks, with these files in place: `python -m unittest discover -s tests` (725 tests, 12 skipped), `claude plugin validate --strict` for the marketplace and its three plugins, and `node --test nexus/test/*.test.js` (15 tests) pass. The hub's snapshot of this repository reads API-101 to API-150 once each, with no checks, and every link of this file and its translation resolves.
 
+On 2026-11-03, after the checkpoint's changes, with the same tools:
+
+- The check of this stage and openapi-spec-validator find no problems; each of the contract's 72 examples is used, among them the pages' answers in HTML.
+- Prism's mock answers API-101 to API-103 with a page of the code's message when the request's `Accept` names `text/html`, and with Problem Details otherwise.
+- Schemathesis, with `--experimental=openapi-3.1`, which it asks for an OpenAPI 3.1 contract: all 32 operations pass, in 858 requests, and the four under Pages, the three pages and the view's code, in 103 of them. A third habit was set aside the same way: it builds the service token's two headers, `CF-Access-Client-Id` and `CF-Access-Client-Secret`, from any characters, which Node's HTTP server also refuses with a bare `400`, so the hook gives each a printable stand-in.
+- The repository's checks pass, now with 727 tests (12 skipped), and the hub's snapshot of this repository reads 996 items with no checks.
+
 ## For the checkpoint
 
-Waiting, together with the checkpoint of the user flows, the functional spec and the server's data. Most worth a look:
+Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 05, 07 and 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the requests, the commands and the formats stand as written, with the changes of stage 08. The sign-in (3) stays open until its trial. The checkpoint covered:
 
 1. The [breaking changes](#breaking-changes), above all that every device's hub moves to 0.2 once one has pushed with it, and that the server is deployed first.
 2. The [changes to earlier stages](#changes-to-earlier-stages), above all the cached code of the view (1) and the `# without a screen:` line (2).
@@ -788,7 +797,7 @@ Waiting, together with the checkpoint of the user flows, the functional spec and
 
 ### Stages 07 and 08: screens
 
-- The requests of each screen: the hub page, API-101; the picture view, API-102 and API-104 to load, API-111 to read again, API-114 and API-115 to open a comment or a proposal, and API-118 to API-120, API-124, API-125 and API-127 to write; and the stage overview, API-103, API-112, API-128 and API-129.
+- The requests of each screen: the hub page, API-101; the picture view, API-102 and API-104 to load, API-111 to read again, API-114 and API-115 to open a comment or a proposal, API-116 to read a reflection that the picture no longer lists, closed or dismissed, so that the proposal's panel shows its pull request, and API-118 to API-120, API-124, API-125 and API-127 to write; and the stage overview, API-103 and API-104 to load, API-112 to read again, and API-128 and API-129 to write.
 - The states that the errors lead to: `picture_not_found` with its `why` is empty; `access_missing`, `access_other_app`, `no_kind` and an `opaqueredirect` reply are permission or an expired sign-in; `cross_site` is an error that offers the server's own address; `comment_limit`, `reply_limit`, `space_full` and `text_too_long` keep the text; `proposal_not_open`, `edit_state` and `checkpoint_recorded` are stale, and the view reads again. The view keeps an unsent text with its write ID (SPEC-126).
 - Each message of [Error codes](#error-codes) gets its final words, in English and Korean.
 

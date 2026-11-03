@@ -2,7 +2,7 @@
 
 [한국어](FL-107-leave-a-comment.ko.md)
 
-Serves: REQ-117, REQ-145, REQ-158, REQ-160, REQ-161, REQ-163, REQ-182
+Serves: REQ-117, REQ-145, REQ-158, REQ-160, REQ-161, REQ-163, REQ-166, REQ-182, REQ-202, REQ-203
 
 Context: CTX-014 Discussion. Starts when the user selects a part of a picture in the picture view (FL-106) to comment on it, on a phone or a PC. The agent leaves its comments through the hub (FL-109). New in NEXUS 0.2.
 
@@ -19,7 +19,8 @@ flowchart TD
   F -->|yes| G["Mark the user as its author, from the kind<br/>of Cloudflare Access sign-in<br/>REQ-163"]
   G --> H["Show it open on its item<br/>REQ-145 · SCR-106"]
   H --> I["It waits in the agent to-do, where open comments<br/>come first, until the agent's next work, FL-108<br/>REQ-182"]
-  I --> Z
+  I --> J["Under it, the user and the agent reply, FL-109,<br/>and the user can mark it answered, settle it,<br/>or open it again by replying to it closed<br/>REQ-163, REQ-166, REQ-202, REQ-203 · SCR-107"]
+  J --> Z
 ```
 
 The agent reads comments only when its work starts, so anything urgent goes in the conversation instead (hotspot 6 of stage 01). What is kept when a comment cannot be saved is point 14 of the [README](README.md#points-for-the-functional-spec).

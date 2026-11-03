@@ -2,9 +2,9 @@
 
 [한국어](SCR-107-comment.ko.md)
 
-Purpose: the user reads one comment with all its replies, its decisions and the proposals that answer it, and replies, settles it, marks it answered or opens it again. (FL-109)
+Purpose: the user reads one comment with all its replies, its decisions and the proposals that answer it, and replies, settles it, marks it answered or opens it again. (FL-107, FL-109)
 
-Path `/pictures/{project}/{part}/{stage}#comment={comment}`, a panel of the picture view (SCR-105), on the NEXUS server only, opened from its mark, from the item's panel, from the stage overview or from a link in a session. Who can see it: anyone Cloudflare Access lets in. New in NEXUS 0.2 (SPEC-127, SPEC-132). The rules of [every screen](README.md#every-screen) apply. With change 2 of stage 07, FL-107 shows its replies here too.
+Path `/pictures/{project}/{part}/{stage}#comment={comment}`, a panel of the picture view (SCR-105), on the NEXUS server only, opened from its mark, from the item's panel, from the stage overview or from a link in a session. Who can see it: anyone Cloudflare Access lets in. New in NEXUS 0.2 (SPEC-127, SPEC-132). The rules of [every screen](README.md#every-screen) apply. Since change 2 of stage 07, FL-107 shows its replies here too.
 
 ## Data
 

@@ -1,5 +1,5 @@
 {
-  "$description": "NEXUS 0.2: the light theme's colours and shadows, under the same names in each theme file (stage 09, direction A, 2026-11-03).",
+  "$description": "NEXUS 0.2: the light theme's colours and shadows, under the same names in each theme file (stage 09, direction A, frozen on 2026-11-03).",
   "color": {
     "$type": "color",
     "bg": {
@@ -185,6 +185,22 @@
         "hex": "#c4cbd3"
       },
       "$description": "A stage not started: its border, as phase 1"
+    },
+    "skipped-fg": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.3922, 0.4275, 0.4706],
+        "hex": "#646d78"
+      },
+      "$description": "A skipped stage: its text, on color.sunken with a dotted color.todo-line border; phase 1's, darkened to 4.5:1 in light"
+    },
+    "unknown-line": {
+      "$value": {
+        "colorSpace": "srgb",
+        "components": [0.6667, 0.702, 0.7412],
+        "hex": "#aab3bd"
+      },
+      "$description": "A stage not recorded: its dashed border, on color.surface with color.muted text, as phase 1"
     },
     "control-line": {
       "$value": {
