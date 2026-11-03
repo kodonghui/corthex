@@ -274,6 +274,8 @@ A push that gets no answer within 30 seconds, or no network, is reported and not
 | One proposal (API-115), edit (API-116) or checkpoint (API-117) | The whole entry, with a proposal's stage source text | |
 | The dry run of a removal (API-110) | What the removal deletes, with the open comments, open proposals, pending reflections and checkpoints that no record names yet by ID | 20 of each, with their totals |
 
+Implementation clarification (2026-11-04): `CommentThread.proposals` has no lifetime array cap. The 500-proposal limit applies to open proposals in a space, not to a comment's historical proposals. The OpenAPI schema now agrees with API-114's existing promise to return all of them.
+
 The view finds which comments, proposals and discrepancies are apart, those whose item the current picture no longer holds, since only it reads the picture source's items (SPEC-119). A project without a space, which only hubs of 0.1 pushed, has no pictures: its picture view and its to-do are `404` `space_not_found`, and its overview shows the record and checks only.
 
 ### The agent to-do
@@ -332,6 +334,8 @@ The agent reports the pull request that writes a checkpoint passed in NEXUS into
 - `opened` for a withdrawn checkpoint is refused with `409` `checkpoint_withdrawn`, so no new record names it. `merged` and `closed` are still taken for a withdrawn checkpoint's open pull request, which the agent closes (SPEC-140).
 - A merged pull request does not record the checkpoint: the next push whose stored records name it does, and sets its `recorded_commit`.
 - Repeats and other pull requests are answered as for a reflection.
+
+Implementation clarification (2026-11-04): API-130 returns `409 checkpoint_state` for `merged` or `closed` without a reported open pull request, and for a new `opened` after a stored record names the checkpoint. Repeating its last report still changes nothing. This fills an unspecified refusal without changing SPEC-140's state transitions.
 
 ## The hub's commands
 
@@ -722,6 +726,7 @@ The codes of every request, as the contract's `components.x-corthex.errors` list
 | `entry_closed` | 409 | a claim on a closed entry | none | This entry is closed | the hub skips it |
 | `checkpoint_recorded` | 409 | a stored stage record names the checkpoint, so withdrawing it would change a recorded decision | none | This checkpoint is recorded. Changing it is a new decision | the overview shows the record |
 | `checkpoint_withdrawn` | 409 | the checkpoint was withdrawn, so no new record pull request may write it | none | This checkpoint was withdrawn | the hub reports it, and the agent writes no record |
+| `checkpoint_state` | 409 | no matching open record, or already recorded | none | Read the checkpoint before reporting | read it again |
 | `write_id_reused` | 409 | the write ID was taken by another request | none | This write could not be sent. Try again | the view makes a new ID; the hub reports it as a fault of its own |
 | `snapshot_too_large` | 413 | the snapshot is larger than 1 MiB | `limit` | The snapshot is larger than the server takes | the hub reports it; its own limits keep snapshots smaller |
 | `body_too_large` | 413 | a write's body is larger than 256 KiB | `limit` | This is larger than the server takes | the view and the hub report it |

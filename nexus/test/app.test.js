@@ -9,9 +9,11 @@ import { test } from "node:test";
 import { MAX_PROJECTS, handle, render } from "../src/app.js";
 import { MAX_BYTES } from "../src/snapshot.js";
 import { fakeD1 } from "./fake-d1.js";
+import { testAccess } from "./access-fixture.js";
 
 const template = readFileSync(new URL("../src/hub.html", import.meta.url), "utf8");
-const CHECKED = { access: { aud: "test-aud", getIdentity: async () => ({ email: "user@example.com" }) } };
+const access = await testAccess();
+const CHECKED = access.ctx;
 
 function snapshot(fields = {}) {
   return {
@@ -37,11 +39,11 @@ function snapshot(fields = {}) {
 }
 
 function server(env = {}) {
-  const settings = { DB: fakeD1(), NEXUS_LANGUAGE: "en", ...env };
+  const settings = { DB: fakeD1(), NEXUS_LANGUAGE: "en", ...access.env, ...env };
   return async function call(method, path, options = {}) {
     const { body, headers = {} } = options;
     const ctx = "ctx" in options ? options.ctx : CHECKED;
-    const init = { method, headers: { ...headers } };
+    const init = { method, headers: { ...access.headers(), ...headers } };
     if (body !== undefined) {
       init.body = typeof body === "string" || body instanceof Uint8Array ? body : JSON.stringify(body);
       if (!("Content-Type" in init.headers)) init.headers["Content-Type"] = "application/json";
@@ -99,7 +101,8 @@ test("keeps the newer snapshot of a project", async () => {
   await call("POST", "/api/snapshots", { body: snapshot({ generated_at: "2026-01-12T11:00:00+09:00", truncated: true }) });
   const older = await call("POST", "/api/snapshots", { body: snapshot({ generated_at: "2026-01-12T01:30:00Z" }) });
   assert.equal(older.status, 409);
-  assert.match(older.data().error, /holds a newer snapshot of acme-shop, made at 2026-01-12T11:00:00\+09:00/);
+  assert.equal(older.data().code, "older_snapshot");
+  assert.equal(older.data().stored_at, "2026-01-12T11:00:00+09:00");
   assert.equal((await call("GET", "/api/snapshots/acme-shop")).data().truncated, true);
   const ahead = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const future = await call("POST", "/api/snapshots", { body: snapshot({ generated_at: ahead }) });
@@ -164,7 +167,7 @@ test("limits the number of projects", async () => {
   }
   const full = await call("POST", "/api/snapshots", { body: snapshot() });
   assert.equal(full.status, 409);
-  assert.match(full.data().error, /already holds 30 projects/);
+  assert.equal(full.data().code, "too_many_projects");
   assert.equal((await call("POST", "/api/snapshots", { body: snapshot({ project: { name: "project-0" } }) })).data().revision, 2);
 });
 
@@ -196,7 +199,8 @@ test("serves the hub page with the stored snapshots", async () => {
   assert.equal(reply.headers.get("Content-Type"), "text/html; charset=utf-8");
   assert.equal(reply.headers.get("Cache-Control"), "no-store");
   const data = pageData(reply.text);
-  assert.equal(data.schema, "corthex-hub-page/0.1");
+  assert.equal(data.schema, "corthex-hub-page/0.2");
+  assert.deepEqual(data.spaces, {});
   assert.equal(data.origin, "server");
   assert.equal(data.lang, "en");
   assert.ok(Date.parse(data.generated_at) > 0);

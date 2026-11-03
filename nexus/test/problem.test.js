@@ -21,6 +21,7 @@ test("Problem Details preserves the legacy error and one-line Unicode-safe limit
   assert.equal(Array.from(document.detail).length, 300);
   assert.ok(!document.detail.includes("\n"));
   assert.equal(document.limit, 2000);
+  assert.equal(Array.from(problemDocument(request,new Problem("invalid_snapshot","bad field",{field:"한".repeat(5000)})).field).length,120);
   assert.equal(Object.hasOwn(document, "type"), false);
   assert.equal(Object.hasOwn(document, "instance"), false);
   const fallback = problemDocument(new Request("https://nexus.example.com/", { headers: { "Cf-Ray": "untrusted-text" } }), new Error("stored text must never be returned"));

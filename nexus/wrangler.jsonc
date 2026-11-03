@@ -17,8 +17,10 @@
   "vars": {
     // "ko" for a Korean page, otherwise English.
     "NEXUS_LANGUAGE": "en",
-    // Optional: the AUD tag of the Access application that protects this
-    // Worker. When set, a request checked by any other application is refused.
+    // Required: set this through `wrangler secret put ACCESS_AUD` rather than
+    // committing an application's value. Empty means fail closed.
+    // Also add ACCESS_TEAM_DOMAIN to your local vars, for example
+    // "ACCESS_TEAM_DOMAIN": "your-team.cloudflareaccess.com".
     "ACCESS_AUD": ""
   }
 }

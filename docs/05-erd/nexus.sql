@@ -1,4 +1,4 @@
--- NEXUS server, schema 2: the D1 database that nexus/src/store.js keeps, from NEXUS 0.2.
+-- NEXUS server, schema 3: schema 2 plus internal report metadata for NEXUS 0.2.
 -- Stage 05 of CORTHEX's own project. nexus.md beside this file explains each table and
 -- column, the migrations that bring a database of phase 1 to this schema, and the files on
 -- devices and in repositories that go with it.
@@ -193,6 +193,7 @@ CREATE TABLE edits (
   closed_commit TEXT,
   made_at       TEXT NOT NULL,
   changed_at    TEXT NOT NULL,
+  last_report   TEXT,
   FOREIGN KEY (project, part, stage) REFERENCES pictures (project, part, stage) ON DELETE CASCADE,
   CHECK (proposal IS NOT NULL OR content IS NOT NULL),
   CHECK (state <> 'in-review' OR pull_request IS NOT NULL)
