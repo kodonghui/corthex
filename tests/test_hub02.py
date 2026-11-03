@@ -304,6 +304,22 @@ class PictureReadersTest(unittest.TestCase):
             self.assertEqual(data["timeline"][0]["places"], [["Created"], ["Paid", "Cancelled"]])
             self.assertTrue(any(c["rule"] == "board-term-missing" for c in checks))
 
+    def test_each_alter_action_keeps_its_own_foreign_key_and_delete_rule(self):
+        for first, expected in (("", ""), (" ON DELETE RESTRICT", "restrict"), (" ON DELETE SET NULL", "set null")):
+            with self.subTest(first=first):
+                text = ('CREATE TABLE orders (buyer_id INT, region_id INT, seller_id INT);\n'
+                        'ALTER TABLE orders ADD CONSTRAINT "buyer, link" FOREIGN KEY (buyer_id, region_id)\n'
+                        'REFERENCES buyers(id, region)' + first + ',\n'
+                        'ADD CONSTRAINT seller_link FOREIGN KEY (seller_id) REFERENCES sellers(id) ON DELETE CASCADE,\n'
+                        'ALTER COLUMN buyer_id TYPE NUMERIC(12, 2);\n')
+                data, checks = self.parse("erd", text, "fixture.sql")
+                keys = data["tables"][0]["foreign_keys"]
+                self.assertEqual([(key["columns"], key["table"], key["references"], key["on_delete"]) for key in keys],
+                    [(["buyer_id", "region_id"], "buyers", ["id", "region"], expected),
+                     (["seller_id"], "sellers", ["id"], "cascade")])
+                self.assertEqual([key["where"] for key in keys], ["fixture.sql:3", "fixture.sql:4"])
+                self.assertEqual(checks, [])
+
     def test_sql_types_keys_foreign_keys_and_partial_indexes(self):
         data, checks = self.parse("erd", """-- TBL-001 orders | CTX-001 | terms: TERM-001
 CREATE TABLE orders (id INTEGER PRIMARY KEY, owner_id BIGINT NOT NULL,

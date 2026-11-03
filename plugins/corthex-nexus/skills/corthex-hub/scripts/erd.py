@@ -234,9 +234,10 @@ def parse(documents, checks, h, part):
             continue
         w = words(code)
         if w[:2] == ["ALTER", "TABLE"]:
-            fk = foreign_key(code, h, file)
-            if fk:
-                table["foreign_keys"].append(fk)
+            for action in groups(code, 0):
+                fk = foreign_key(action, h, file)
+                if fk:
+                    table["foreign_keys"].append(fk)
         elif w[:1] == ["CREATE"] and "UNIQUE" in w[:4] and "INDEX" in w[:5] and "ON" in w:
             cols, _ = inside_parens(code, w.index("ON") + 1)
             if cols:
