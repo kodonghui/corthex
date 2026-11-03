@@ -167,7 +167,7 @@ The Worker then checks, as phase 1 does, that Access checked the request (`ctx.a
 - Reads, pushes and removals take any identity that Access let in, as in phase 1, and never answer `no_kind`. A write that only one kind may send answers the other with `user_only` or `agent_only`, whose `needs` names the kind that it takes.
 - Nothing of the identity is kept or logged: an entry keeps only its author's kind, `user` or `agent` (REQ-163).
 - A sign-in can expire while a view is open. The view sends its requests with `redirect: "manual"`, so Access's redirect to its login page reaches it as an `opaqueredirect` reply; the view then says that the sign-in expired, keeps the text and offers to load the page again (SPEC-126).
-- Open: how the Worker reads the identity. It reads it from `ctx.access`, by `getIdentity()` or the token's claims; where that does not give `sub` and `common_name` for both kinds, it reads the header `Cf-Access-Jwt-Assertion` instead and checks the token itself: signed with one of the team's keys, from `https://<ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`, kept for up to an hour; an `aud` that `ACCESS_AUD` names; and not expired. A trial of both kinds on a real Access setup, before stage 11 builds it, decides which, and the contract's security schemes say the same. If neither works, the choice goes back to the maintainer.
+- Chosen on 2026-11-03 by the development Access trial: read the kind from `Cf-Access-Jwt-Assertion`, after requiring `ctx.access` and checking its audience. Verify RS256 with the matching `kid` from the configured team’s public `https://<ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`, the exact team issuer, `ACCESS_AUD`, expiry and any not-before time. `ACCESS_TEAM_DOMAIN` is the configured host, never a host taken from a token. Keep public keys for at most one hour and refresh on an unknown key. Fetch the keys with manual redirects and refuse a non-200 response; the trial’s `redirect: error` request failed before an HTTP response, while manual mode returned the keys and both signatures verified. `getIdentity()` did not give `sub` for the person or `common_name` for the service token. No identity value, JWT, cookie or credential is kept or logged. The security schemes below and in OpenAPI use this selected method.
 
 ## Writes
 
@@ -792,6 +792,27 @@ Again on 2026-11-03, after the maintainer's choice to hold stage 01's event stor
 - The check of this stage finds no problems: the example `picture_data_domain`, which now holds a lane of the timeline, is taken by its schema, and each of the 72 examples is still used.
 - Prism and Schemathesis were not run again: the change adds one optional field to one schema and a lane to one example, which the check of this stage validates.
 - The repository's checks pass, now with 756 tests (12 skipped), and the hub's snapshot of this repository reads 1014 items with no checks.
+
+### Development Access identity trial (2026-11-03)
+
+TASK-201 deployed a temporary diagnostic Worker behind Access without static assets and used a service-token request (this host’s user environment) and a person’s signed-in browser through Aside CLI 1.26.1028.2335. Both returned 200; ctx.access audience and the JWT audience, issuer, expiry and RS256 signature matched. An anonymous browser received Access’s 302. Only field presence, empty and absent are recorded below, never their values.
+
+| Source | Field | Person | Service token |
+| --- | --- | --- | --- |
+| ctx.access | aud | present | present |
+| ctx.access | sub | absent | absent |
+| ctx.access | email | absent | absent |
+| ctx.access | common_name | absent | absent |
+| getIdentity() | aud | absent | absent |
+| getIdentity() | sub | absent | absent |
+| getIdentity() | email | present | absent |
+| getIdentity() | common_name | empty | absent |
+| header JWT | aud | present | present |
+| header JWT | sub | present | empty |
+| header JWT | email | present | absent |
+| header JWT | common_name | absent | present |
+
+The selected header method distinguishes both kinds. Implementation checks of caching, expiry, rotation and refusal, and the full development API contract run are separate from this diagnostic and are not yet counted as complete. After the diagnostic, replace the development probe with the implemented server.
 
 ## For the checkpoint
 

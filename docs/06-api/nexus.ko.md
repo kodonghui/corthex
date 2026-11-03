@@ -167,7 +167,7 @@ NEXUS는 `type`을 보내지 않으며(RFC 9457은 이것을 `about:blank`로 �
 - 읽기, 보내기, 지우기는 1차처럼 Access가 들여보낸 어느 신원이든 받으며, `no_kind`로 답하지 않습니다. 한 종류만 보낼 수 있는 쓰기는 다른 종류에 `user_only`나 `agent_only`로 답하고, 그 `needs`가 받는 종류를 적습니다.
 - 신원은 아무것도 간직하거나 로그에 남기지 않습니다. 항목은 쓴 쪽의 종류, 곧 `user`나 `agent`만 간직합니다(REQ-163).
 - 보기 화면을 연 동안 로그인이 끝날 수 있습니다. 보기 화면은 요청을 `redirect: "manual"`로 보내므로, Access의 로그인 페이지로 가는 리디렉션이 `opaqueredirect` 응답으로 닿습니다. 그러면 보기 화면은 로그인이 끝났다고 말하고, 글을 간직한 채 페이지를 다시 불러오자고 합니다(SPEC-126).
-- 열린 질문: Worker가 신원을 읽는 방법. `ctx.access`에서 `getIdentity()`나 토큰의 클레임으로 읽고, 그것이 두 종류 모두에 `sub`와 `common_name`을 주지 않으면 대신 `Cf-Access-Jwt-Assertion` 헤더를 읽어 토큰을 스스로 검사합니다: `https://<ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`에서 가져와 한 시간까지 간직하는 팀의 키 가운데 하나로 서명됐는지, `ACCESS_AUD`가 적은 `aud`인지, 끝나지 않았는지. 11단계가 만들기 전에 실제 Access 설정에서 두 종류를 시험해 어느 쪽인지 정하며, 계약의 보안 방식도 같은 말을 합니다. 어느 쪽도 되지 않으면 선택은 관리자에게 돌아갑니다.
+- 2026-11-03 개발 Access 시험으로 정한 방법: `ctx.access`와 그 audience를 먼저 확인하고 `Cf-Access-Jwt-Assertion`에서 로그인 종류를 읽습니다. 설정한 팀의 공개 `https://<ACCESS_TEAM_DOMAIN>/cdn-cgi/access/certs`에서 `kid`가 맞는 키로 RS256 서명, 정확한 팀 발급자, `ACCESS_AUD`, 만료와 not-before가 있으면 그 시각을 확인합니다. `ACCESS_TEAM_DOMAIN`은 설정한 호스트이며 토큰이 적은 호스트를 쓰지 않습니다. 공개 키는 한 시간까지만 간직하고 모르는 키는 다시 읽습니다. 키 요청은 manual 리디렉션을 쓰고 200이 아니면 거절합니다. 시험의 `redirect: error` 요청은 HTTP 응답 전에 실패했고 manual에서는 키를 받아 두 서명을 확인했습니다. `getIdentity()`는 사람의 `sub`와 서비스 토큰의 `common_name`을 주지 않았습니다. 신원 값·JWT·쿠키·인증값은 저장하거나 로그에 남기지 않습니다. 이 문서와 OpenAPI의 보안 방식도 이 방법을 따릅니다.
 
 ## 쓰기
 
@@ -793,6 +793,27 @@ CREATE TABLE pictures (
 - 이 단계의 검사: 문제 없음. 이제 타임라인의 흐름 하나를 담은 예시 `picture_data_domain`을 그 스키마가 받고, 예시 72개가 여전히 모두 쓰입니다.
 - Prism과 Schemathesis는 다시 돌리지 않았습니다: 이 변경은 스키마 하나에 선택 항목 하나를, 예시 하나에 흐름 하나를 더하고, 이 단계의 검사가 그것을 확인합니다.
 - 저장소의 검사가 통과하며, 이제 시험은 756개(건너뜀 12개)입니다. 허브가 찍은 이 저장소의 스냅샷은 항목 1014개를 읽고 점검이 없습니다.
+
+### 개발 Access의 두 로그인 시험 (2026-11-03)
+
+TASK-201은 임시 진단 Worker를 정적 자산 없이 Access 뒤에 올리고 서비스 토큰 요청(이 PC의 사용자 환경변수)과 Aside CLI 1.26.1028.2335의 사람 로그인 브라우저에서 실행했습니다. 둘 다 200이며 ctx.access audience와 JWT의 audience·발급자·기한·RS256 서명이 모두 맞았습니다. 로그인하지 않은 브라우저는 Access로 302였습니다. 아래는 필드의 있음(present)·비어 있음(empty)·없음(absent)만 기록하며 값은 기록하지 않았습니다.
+
+| 출처 | 필드 | 사람 | 서비스 토큰 |
+| --- | --- | --- | --- |
+| ctx.access | aud | present | present |
+| ctx.access | sub | absent | absent |
+| ctx.access | email | absent | absent |
+| ctx.access | common_name | absent | absent |
+| getIdentity() | aud | absent | absent |
+| getIdentity() | sub | absent | absent |
+| getIdentity() | email | present | absent |
+| getIdentity() | common_name | empty | absent |
+| header JWT | aud | present | present |
+| header JWT | sub | present | empty |
+| header JWT | email | present | absent |
+| header JWT | common_name | absent | present |
+
+선택한 헤더 방법은 두 종류 모두를 구별합니다. 구현의 캐시·만료·키 교체·거절 시험과 전체 개발 API 계약 시험은 이 진단과 별도이며 아직 완료로 세지 않습니다. 진단 뒤 개발 Worker는 구현한 서버로 되돌립니다.
 
 ## 확인할 것
 

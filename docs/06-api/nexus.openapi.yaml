@@ -1563,18 +1563,20 @@ components:
       name: CF_Authorization
       description: >-
         A person's own Cloudflare Access sign-in, which the browser holds after Access's login
-        page. A request with it is the user (Sign-in in nexus.md). Open: whether the Worker reads
-        the kind from ctx.access.getIdentity() or from the application token's sub and
-        common_name is decided by a trial of both kinds on a real Access setup, before stage 11.
+        page. The development Access trial on 2026-11-03 selected the verified header JWT:
+        after requiring ctx.access and its own audience, the Worker verifies the RS256 signature
+        with the configured team's keys, issuer, audience and expiry, then reads a non-empty
+        sub as the user. getIdentity() did not give the fields for both kinds (Sign-in in nexus.md).
     accessClientId:
       type: apiKey
       in: header
       name: CF-Access-Client-Id
       description: >-
         The service token's client ID, which the hub reads from CORTHEX_NEXUS_CLIENT_ID. With the
-        secret, a request is the agent. Open: Access's documents say that the service token's
-        application token holds this ID in common_name with an empty sub, which a trial on a real
-        Access setup confirms before stage 11 (Sign-in in nexus.md).
+        secret, Access authenticates the agent. The development Access trial on 2026-11-03
+        confirmed common_name with an empty sub in Cf-Access-Jwt-Assertion; the Worker reads it
+        only after verifying RS256, the configured team's issuer and keys, audience and expiry.
+        Neither the client ID nor other identity fields are kept or logged (Sign-in in nexus.md).
     accessClientSecret:
       type: apiKey
       in: header
