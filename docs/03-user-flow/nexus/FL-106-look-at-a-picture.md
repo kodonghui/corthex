@@ -2,9 +2,9 @@
 
 [한국어](FL-106-look-at-a-picture.ko.md)
 
-Serves: REQ-113, REQ-139, REQ-143, REQ-144, REQ-145, REQ-146, REQ-147, REQ-148, REQ-149, REQ-150, REQ-162, REQ-192
+Serves: REQ-113, REQ-139, REQ-143, REQ-144, REQ-145, REQ-146, REQ-147, REQ-148, REQ-149, REQ-150, REQ-162, REQ-192, REQ-209, REQ-211
 
-Context: CTX-012 Pictures, with the discussion of CTX-014 on them. Starts when the user opens a stage's picture from the hub page on the NEXUS server (FL-105), on a phone or a PC. New in NEXUS 0.2.
+Context: CTX-012 Pictures, with the discussion of CTX-014 on them. Starts when the user opens a stage's picture from the hub page on the NEXUS server (FL-105), on a phone or a PC. New in NEXUS 0.2; the step view of a DDD board came with the maintainer's choice of 2026-11-03.
 
 ```mermaid
 flowchart TD
@@ -21,6 +21,11 @@ flowchart TD
   G --> I{"What does the user do?"}
   I -->|selects an item| J["Show the item with its comments,<br/>proposals and discrepancies<br/>REQ-145 · SCR-106"]
   J --> I
+  I -->|goes through a DDD board<br/>step by step| S{"Has the board's stage 01 source<br/>a timeline?<br/>REQ-211"}
+  S -->|no| S1["Show the board only as a whole,<br/>and say why<br/>REQ-211 · SCR-105"]
+  S1 --> I
+  S -->|yes| S2["Show the board as it stood at the chosen step,<br/>from the timeline to the map and tables,<br/>with the marks on their items<br/>REQ-209 · SCR-105"]
+  S2 --> I
   I -->|leaves a comment| K["Leave a comment, FL-107"]
   I -->|opens a proposal| L["Accept or dismiss it, FL-110"]
   I -->|opens the stage overview| M["Pass the checkpoint, FL-113"]
@@ -32,4 +37,4 @@ flowchart TD
   P --> Z
 ```
 
-The view shows the projects' text and the comments only as text, follows the profile's language, and works at every width from 320 to 1440 pixels without sideways scrolling of the page (REQ-146, REQ-148, REQ-150); a picture larger than the screen moves inside its own frame.
+The view shows the projects' text and the comments only as text, follows the profile's language, and works at every width from 320 to 1440 pixels without sideways scrolling of the page (REQ-146, REQ-148, REQ-150); a picture larger than the screen moves inside its own frame. The step view follows the order of stage 01's steps, from the timeline of step 1-b to the map and tables of steps 8-b and 9, which are the whole board, and draws each step from the timeline and the context tables of the stage 01 source; the board itself stays as the source gives it (REQ-138).
