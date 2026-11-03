@@ -413,7 +413,7 @@ export class Store {
         this.db.prepare("SELECT * FROM comments WHERE project=? AND id=?").bind(project,id),
         this.db.prepare("SELECT r.* FROM replies AS r JOIN comments AS c ON c.id=r.comment WHERE c.project=? AND c.id=? ORDER BY r.seq").bind(project,id),
         this.db.prepare("SELECT d.* FROM decisions AS d JOIN comments AS c ON c.id=d.comment WHERE c.project=? AND c.id=? ORDER BY d.seq").bind(project,id),
-        this.db.prepare("SELECT p.*,e.id AS edit FROM proposals AS p LEFT JOIN edits AS e ON e.proposal=p.id WHERE p.project=? AND p.comment=? ORDER BY p.made_at DESC,p.id LIMIT 500").bind(project,id),
+        this.db.prepare("SELECT p.*,e.id AS edit FROM proposals AS p LEFT JOIN edits AS e ON e.proposal=p.id WHERE p.project=? AND p.comment=? ORDER BY p.made_at DESC,p.id").bind(project,id),
       ]);
       const row=comments.results[0]; if(!row)throw new Problem("comment_not_found","no such comment");
       return {...E.comment(row),replies:replies.results.map(E.reply),decisions:decisions.results.map(E.decision),proposals:proposals.results.map((row)=>E.proposal(row))};

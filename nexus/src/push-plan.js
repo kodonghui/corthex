@@ -9,7 +9,7 @@ export function entryId(prefix) {
 export function checkCommit(sent, held) {
   if (!held) return;
   const current = held.default_commit;
-  if (current && sent.defaultCommit !== current && sent.data?.replaces !== current) throw new Problem("commit_not_replaced", "fetch the held default branch commit and push again", { held_commit: current });
+  if (current && (!sent.defaultCommit || (sent.defaultCommit !== current && sent.data?.replaces !== current))) throw new Problem("commit_not_replaced", "fetch the held default branch commit and push again", { held_commit: current });
   if ((!current || current === sent.defaultCommit) && sent.generatedMs < held.generated_ms) throw new Problem("older_snapshot", `the server holds a newer snapshot of ${sent.name}, made at ${held.generated_at}; build it again and send that`, { stored_at: held.generated_at });
 }
 

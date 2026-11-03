@@ -32,6 +32,14 @@ test("a pair merges context and removed reasons, with a stable composite key", (
   assert.notEqual(pairKey(result[0]), pairKey({ ...result[0], part: "other" }));
 });
 
+test("SPEC-120 excludes explicitly exempt terms from pairs, including removed contexts", () => {
+  const b=board({aggregates:[term("TERM-001",{removed:true})]});
+  const e=erd([table(["TERM-001"],{context:"CTX-002",removed:true})]);e.without_table=["TERM-001"];
+  assert.deepEqual(pairPictures("",b,e,"aggregate-table"),[]);
+  const s=sitemap([table(["TERM-002"],{id:"SCR-001",context:"CTX-002",removed:true})]);s.without_screen=["TERM-002"];
+  assert.deepEqual(pairPictures("",b,s,"read-model-screen"),[]);
+});
+
 test("every context that reads a read model is a valid screen context", () => {
   const b = board({ contexts: [{ id: "CTX-001", rows: [{ read_model: "Summary" }] }, { id: "CTX-002", rows: [{ read_model: "summary" }] }] });
   assert.deepEqual(pairPictures("", b, sitemap([table(["TERM-002"], { id: "SCR-001", context: "CTX-002" })]), "read-model-screen"), []);

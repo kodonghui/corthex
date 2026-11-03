@@ -41,6 +41,21 @@ test("commit and address refusals preserve every row", async () => {
   assert.equal(db.prepare("SELECT total_changes() AS n").get().n, before);
 });
 
+test("a matching replaces cannot clear a held default commit", async () => {
+  const { db, store } = context(); const data = fixture();
+  await store.push(parse(data), NOW);
+  const before = db.prepare("SELECT total_changes() AS n").get().n;
+  const held = data.repos["."].default.commit;
+  data.replaces = held;
+  delete data.repos["."].default;
+  data.records = { from: "status-file" };
+  data.pictures = [];
+  await assert.rejects(store.push(parse(data), NOW), (error) => error.code === "commit_not_replaced" && error.fields.held_commit === held);
+  assert.equal(db.prepare("SELECT total_changes() AS n").get().n, before);
+  assert.equal(db.prepare("SELECT default_commit FROM snapshots").get().default_commit, held);
+  assert.equal(db.prepare("SELECT not_current FROM pictures").get().not_current, null);
+});
+
 test("the write batch rolls back its snapshot if a picture statement fails", async () => {
   const { db, binding, store } = context(); await store.ensure();
   const faulty = { prepare: binding.prepare, batch(statements) {

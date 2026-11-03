@@ -113,18 +113,12 @@ export function planEntryWrite(name, body, state, { project, kind, session, now 
       }
       if (body.discrepancy) discrepancy();
       const source = JSON.parse(p.source);
-      const ids = new Set();
-      // A trace ID can belong to any item of a picture (a context or term as
-      // well as a table). No label, quoted text or untrusted object is code.
-      const pending = [source];
-      while (pending.length) {
-        const value = pending.pop();
-        if (Array.isArray(value)) pending.push(...value);
-        else if (value && typeof value === "object") {
-          if (typeof value.id === "string") ids.add(value.id);
-          pending.push(...Object.values(value));
-        }
-      }
+      // Membership follows the picture schema: board terms use `term`,
+      // contexts, tables and screens use `id`. References to another item
+      // (for example a foreign key's target) do not define that item here.
+      const ids = new Set(body.stage === "01-domain"
+        ? [...source.contexts.map((row) => row.id), ...source.aggregates.map((row) => row.term), ...source.read_models.map((row) => row.term)]
+        : (body.stage === "05-erd" ? source.tables : source.screens).map((row) => row.id));
       const unknown = body.items.filter((id) => !ids.has(id) && !(body.adds || []).includes(id));
       if (unknown.length) fail("unknown_item", { items: unknown });
       if (body.comment) { claim(comment.id); if (comment.state === "closed") fail("comment_closed"); }

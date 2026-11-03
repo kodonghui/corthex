@@ -59,6 +59,33 @@ test("a proposal can add an item; withdrawn proposals stop determining waits",as
   assert.equal((await store.readEntry("corthex","comment",c.id)).waits,"agent");
 });
 
+test("board proposals recognize defined aggregate and read-model terms",async()=>{
+  const {store,data,write}=await fixture();
+  const where="docs/01-domain/board.md:1";
+  data.pictures[0]={...data.pictures[0],stage:"01-domain",source:{format:1,
+    contexts:[{id:"CTX-001",name:"Orders",type:"core",purpose:"Orders",removed:false,external:"",rows:[],where}],
+    aggregates:[{name:"Order",context:"CTX-001",term:"TERM-001",removed:false,where}],
+    read_models:[{name:"Summary",context:"CTX-001",term:"TERM-002",removed:false,where}],dependencies:[],hotspots:[]}};
+  await store.push(readSnapshot02(data,Date.parse(NOW)),NOW);
+  const body={part:"nexus",stage:"01-domain",items:["CTX-001","TERM-001","TERM-002"],reason:"Reason",change:"Change"};
+  assert.deepEqual((await write("proposal",null,body)).body.items,body.items);
+  await assert.rejects(write("proposal",null,{...body,items:["TERM-003"]}),code("unknown_item"));
+});
+
+test("comment details retain more than 500 historical proposals",async()=>{
+  const {store,write,comment,proposal}=await fixture();
+  const c=(await comment()).body;
+  const ids=new Set();
+  for(let i=0;i<501;i++){
+    const p=(await proposal({comment:c.id})).body;ids.add(p.id);
+    await write("withdraw-proposal",p.id);
+  }
+  const history=(await store.readEntry("corthex","comment",c.id)).proposals;
+  assert.equal(history.length,501);
+  assert.deepEqual(new Set(history.map((row)=>row.id)),ids);
+  assert.ok(history.every((row)=>row.state==="withdrawn" && !Object.hasOwn(row,"source_text")));
+});
+
 test("acceptance is atomic; reports preserve PR identity even after the receipt expires",async()=>{
   const {db,store,write,proposal}=await fixture();
   const p=(await proposal()).body;
