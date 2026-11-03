@@ -2,6 +2,8 @@
 
 Write minutes from a recording transcript, notes, photos or a chat thread. Keep a link to the original.
 
+From photos or screenshots, first write out what they show and have the user confirm names, dates and numbers, then write the minutes.
+
 ## Template
 
 ```markdown

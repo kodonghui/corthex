@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 0.1.0, 초기 개발 중입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다. `corthex-memory`에는 세션 문맥과 로컬 기록 훅이 있으며 C1은 구현 중입니다. `corthex-nexus`에는 로컬 허브 페이지와 직접 배포하는 첫 NEXUS 서버가 있습니다.
+> 상태: 핵심 `corthex`는 0.2.0, 선택 플러그인은 0.1.0이며 초기 개발 중입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다. `corthex-memory`에는 세션 문맥과 로컬 기록 훅이 있으며 C1은 구현 중입니다. `corthex-nexus`에는 로컬 허브 페이지와 직접 배포하는 첫 NEXUS 서버가 있습니다.
 
 ## 설치
 
@@ -77,6 +77,8 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 - 제품 저장소의 `.corthex/project.json`: 단계마다 사람이 보는 곳(`human`), 텍스트 원본의 위치(`source`), 둘이 다를 때 어느 쪽을 따를지(`truth`).
 - `~/.corthex/projects.json`: 한 기기에 있는 프로젝트 목록.
 - `~/.corthex/hub/`: `corthex-nexus`를 설치했을 때 허브의 스냅샷, 기록한 진행 상태, 페이지.
+
+Notion에 기록할 때는 프로젝트의 `records.location`이나 프로필의 `records.hub`가 기록 데이터베이스를 가리킵니다. 기록은 그 행으로 쓰고, 기록 안의 표는 인라인 데이터베이스로 둡니다. [기록 스킬](plugins/corthex/skills/corthex-record/SKILL.md)을 따릅니다.
 
 설계와 각 형식의 위치는 [구조 설명](docs/architecture.ko.md)에 있습니다.
 

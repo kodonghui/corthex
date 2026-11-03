@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # CORTHEX
@@ -38,8 +38,8 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 3. Check volatile or high-impact claims against current primary sources, and say what those sources do not cover.
 4. Finish what was asked within the authority you were given. Make routine, reversible choices yourself. For a change of direction, give real alternatives, a recommendation and the main counterargument.
 5. Approval is the user's own words, with where and when they said them. Ask before anything listed in `ask_before` and before anything that cannot be undone.
-6. Done means checked. Say what you verified and what you did not.
-7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action.
+6. Done means checked. Say what you verified and what you did not. Copy numbers in records and reports from their named command output or source.
+7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
 
 ## 4. Route to a stage
