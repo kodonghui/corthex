@@ -82,7 +82,7 @@ class _DiagnosticStore(store.MemoryStore):
     def record(self, *args, **kwargs):
         previous = kwargs.pop("precondition", None)
         def check(value):
-            if value["device"] != self.device:
+            if self.device is not None and value["device"] != self.device:
                 raise locks.LostLock()
             if previous is not None:
                 previous(value)
@@ -238,27 +238,47 @@ class Context:
         return apply()
 
     @contextmanager
-    def lock(self, path, kind, force=False, device=None):
+    def lock(self, path, kind, force=False, device=None, report=None):
         """Handlers select the contract's lock and keep its lease until mutation ends."""
         if self.command not in CHANGES or force and self.command not in ("purge", "delete-project"):
             raise ValueError()
         lease = self.memory._lock(path, kind, self.record["device"] if self.record else device)
-        with lease.held(clock.now() + 10, force=force) as held:
+        with lease.held(clock.now() + 10, force=force, report=report) as held:
             held.check()
             yield held
 
 
 def _gates(context):
+    notes = []
+    try:
+        return _read_gates(context, lambda error, count=None: notes.append((error, count)))
+    except locks.LostLock:
+        notes.clear()
+        raise
+    finally:
+        if context.record and notes:
+            try:
+                from .worker_support import BoundDiagnostics
+                logger = BoundDiagnostics(_DiagnosticStore(context.memory, context.record["device"]))
+                for error, count in notes:
+                    logger.failure(error, "restore", clock.now() + 10, count=count)
+            except Exception:
+                pass  # A diagnostic failure never replaces the gate's result.
+
+
+def _read_gates(context, report):
     command, memory = context.command, context.memory
     try:
-        context.record = memory.record(deadline=clock.now() + 10)
+        context.record = memory.record(report, deadline=clock.now() + 10)
     except store.StoreUnavailable as error:
         context.store_error = error.code
         if command in COMMON[error.code][0]:
             return common_result(command, error.code)
     if context.record:
+        if isinstance(memory, _DiagnosticStore):
+            memory.device = context.record["device"]
         try:
-            context.configuration = memory.configuration(deadline=clock.now() + 10)
+            context.configuration = memory.configuration(report, deadline=clock.now() + 10)
         except configuration.ConfigurationInvalid as error:
             context.configuration_error = error.field
             if command in COMMON["configuration-invalid"][0]:
@@ -299,7 +319,10 @@ def run(argv, handlers=None):
         if not str(folder).strip():
             raise UsageError()
         args["folder"] = str(Path(folder).expanduser().resolve())
-        context = Context(command, args, supplied, store.MemoryStore())
+        memory = store.MemoryStore()
+        if memory.folder.exists():
+            memory = _DiagnosticStore(memory, None)  # Pin the existing root before gate recovery.
+        context = Context(command, args, supplied, memory)
         answer = _gates(context)
         if answer is None:
             if handlers is None:

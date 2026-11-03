@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from . import base, clock, commands, configuration, curation, files, locks, projects, store
-from .worker_support import PathFence
+from .worker_support import BoundDiagnostics, PathFence
 
 CONSENT = """CORTHEX memory, consent version 1.
 
@@ -18,8 +18,9 @@ CONSENT = """CORTHEX memory, consent version 1.
 
 
 class CommandStore(store.MemoryStore):
-    def __init__(self, folder):
-        self.fence = PathFence(folder)
+    def __init__(self, folder, fence=None):
+        self.fence = fence if fence is not None else PathFence(folder)
+        self.fence.check(self.fence.root)
         super().__init__(self.fence.root)
 
     def _path_check(self, path):
@@ -70,18 +71,18 @@ def _make_root(folder):
         return False
 
 
-def _read(memory, name, parse, check):
+def _read(memory, name, parse, check, report=None):
     path = memory.folder / name
     def guard():
         check()
         memory.fence.check(path)
         memory.fence.check(path.with_name(path.name + ".bak"))
     deadline = clock.now() + 10
-    return files.read_record(path, parse, holding_lock=True, check=guard, deadline=deadline,
+    return files.read_record(path, parse, report, holding_lock=True, check=guard, deadline=deadline,
                              reader=lambda candidate: memory.fence.read(candidate, deadline))
 
 
-def _project_files(context, check, existed):
+def _project_files(context, check, existed, report):
     memory, device = context.memory, context.record["device"]
     root = memory.folder / "projects" / base.project_folder_name(context.project.name)
     memory.fence.check(root)
@@ -94,8 +95,8 @@ def _project_files(context, check, existed):
         base.private_directory(path)
         check()
         memory.fence.check(path)
-    with memory._lock(root / "curation.lock", "curation", device).held(clock.now() + 10) as owner:
-        with memory._lock(root / "layer.lock", "layer", device).held(clock.now() + 10) as layer:
+    with memory._lock(root / "curation.lock", "curation", device).held(clock.now() + 10, report=report) as owner:
+        with memory._lock(root / "layer.lock", "layer", device).held(clock.now() + 10, report=report) as layer:
             path = root / "curation.json"
             def guard():
                 check()
@@ -106,7 +107,7 @@ def _project_files(context, check, existed):
             try:
                 guard()
                 deadline = clock.now() + 10
-                files.read_record(path, curation.parse, holding_lock=True, check=guard,
+                files.read_record(path, curation.parse, report, holding_lock=True, check=guard,
                                   deadline=deadline, reader=lambda candidate: memory.fence.read(candidate, deadline))
             except FileNotFoundError:
                 if existed:
@@ -118,15 +119,17 @@ def _project_files(context, check, existed):
 def _apply(context, enabled, confirmed=False):
     original, folder = context.record, context.memory.folder
     created, memory, first = False, None, None
+    fence, notes = getattr(context.memory, "fence", None), []
+    report = lambda error, count=None: notes.append((error, count))
     try:
         if original is None:
             release = json.loads((Path(__file__).resolve().parents[4] / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
             first = store.new_record(release)
             created = _make_root(folder)
-        memory = CommandStore(folder)
+        memory = CommandStore(folder, fence)
         context.memory = memory
         device = original["device"] if original else first["device"]
-        with context.lock(memory.folder / "store.lock", "store", device=device) as lease:
+        with context.lock(memory.folder / "store.lock", "store", device=device, report=report) as lease:
             pin = [None, False]
             def check():
                 lease.check()
@@ -141,13 +144,15 @@ def _apply(context, enabled, confirmed=False):
                     if current != pin[0]:
                         raise locks.LostLock()
                 lease.check()
+            validated = [None]
             def header(data):
                 value = store._record(data)
                 if original is not None and value["device"] != original["device"]:
                     raise locks.LostLock()
+                validated[0] = data
                 return value
             try:
-                current = _read(memory, "store.json", header, check)
+                current = _read(memory, "store.json", header, check, report)
             except (ValueError, UnicodeError, files.RestoreNeeded):
                 raise store.StoreUnavailable("store-damaged") from None
             except FileNotFoundError:
@@ -156,9 +161,10 @@ def _apply(context, enabled, confirmed=False):
                 current = None
             context.record = current
             if current is not None:
-                pin[0] = memory.fence.read(memory.folder / "store.json", clock.now() + 10)
+                pin[0] = validated[0]
+                check()
             try:
-                document = _read(memory, "configuration.json", store._configuration, check) if current else {}
+                document = _read(memory, "configuration.json", store._configuration, check, report) if current else {}
             except FileNotFoundError:
                 document = {}
             except (ValueError, UnicodeError, files.RestoreNeeded):
@@ -193,7 +199,7 @@ def _apply(context, enabled, confirmed=False):
                     pin[1] = False
                     context.record = first
                 if enabled:
-                    _project_files(context, check, name in before.document.get("projects", {}))
+                    _project_files(context, check, name in before.document.get("projects", {}), report)
                 check()
                 files.write_json(memory.folder / "configuration.json", checked.document, "TBL-002",
                                  check=check, path_check=memory.fence.check)
@@ -207,6 +213,9 @@ def _apply(context, enabled, confirmed=False):
             if enabled and (confirmed or not context.configuration.consented() or context.supplied is not None):
                 return context.confirm(_data(context, True), "Review the memory consent before enabling this project.", write)
             return write()
+    except locks.LostLock:
+        notes.clear()
+        raise
     except store.StoreUnavailable as error:
         return commands.common_result(context.command, error.code)
     except configuration.ConfigurationInvalid as error:
@@ -215,6 +224,13 @@ def _apply(context, enabled, confirmed=False):
         return commands.common_result(context.command, "not-in-project" if error.clash else error.code,
                                       **({"clash": list(error.clash)} if error.clash else {}))
     finally:
+        if context.record and notes:
+            try:
+                logger = BoundDiagnostics(commands._DiagnosticStore(context.memory, context.record["device"]))
+                for error, count in notes:
+                    logger.failure(error, "restore", clock.now() + 10, count=count)
+            except Exception:
+                pass  # Diagnostics cannot change the command result.
         if created and memory is not None:
             try:
                 memory.fence.check(memory.folder)

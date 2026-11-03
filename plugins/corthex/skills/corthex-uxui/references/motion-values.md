@@ -74,12 +74,17 @@ Motion computed from physics instead of a fixed time. It suits motion that can c
 - Popovers, dropdowns and tooltips grow from where they were opened: set `transform-origin`. Modals are the exception, because they sit in the centre of the screen.
 - Pressable elements get `scale(0.97)` on `:active`, 160 ms decelerating. Keep blur under 20 px.
 - Decide drag-to-dismiss by the speed at release, not by the distance dragged.
+- Nothing pops in or out: what appears has an entrance and stays in the page until its exit has finished.
+- Move only what changed: a number rolls only its changed digits, and the text after it moves by the measured difference.
+- Settle a control's size before its label changes: the label, busy and done states share one box sized for the largest, so the button does not jump.
+- Move what the change affects too: a new row pushes the rows below it down, and a surface that resizes never stretches its text.
+- An open popover, menu or sheet keeps the edge it opened from fixed while its list changes; reserve the height of its longest list. Measure a popup before showing it, so it opens at its final size instead of correcting itself midway.
 - Animate only `transform` and `opacity`. `width`, `height`, `margin`, `padding`, `top` and `left` make the browser lay the page out again.
 - Name the properties to animate instead of `transition: all`.
 - Fixed motion in CSS; motion that changes as it goes, such as dragging, in script or with a spring. For performance in script, `element.animate()` (the Web Animations API).
 - Things that repeat quickly (toasts, toggles) use CSS transitions, which can reverse midway. For an entrance without script, `@starting-style`.
 - Put hover motion inside `@media (hover: hover) and (pointer: fine)`. Touch screens fire a fake hover on a tap.
-- Reduced motion (`prefers-reduced-motion: reduce`): reduce the motion, do not remove it. Drop changes of position and size, and keep the changes of opacity and colour that help understanding. Replace a live background drawn on a canvas with one still frame, and pause it when the tab is hidden.
+- Reduced motion (`prefers-reduced-motion: reduce`): reduce the motion, do not remove it. Drop changes of position and size, and keep the changes of opacity and colour that help understanding. Replace a live background drawn on a canvas with one still frame, and pause it when the tab is hidden. A looping demo shows its poster frame instead ([video.md](video.md) section 7).
 
 ```css
 .sheet { transition: transform 300ms cubic-bezier(0.32, 0.72, 0, 1), opacity 200ms cubic-bezier(0.23, 1, 0.32, 1); }

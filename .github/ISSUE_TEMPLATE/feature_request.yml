@@ -1,0 +1,28 @@
+name: Feature request / 기능 제안
+description: Describe a need and a useful change / 필요한 일과 바라는 변화를 알려 주세요.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public. Use synthetic examples without credentials, personal data, private links or conversation records.
+        이 이슈는 공개됩니다. 인증정보·개인 정보·비공개 링크·대화 기록이 없는 합성 예시를 사용해 주세요.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or need / 해결하려는 문제
+      description: Explain what you want to do and what currently gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change / 바라는 변화
+      description: Describe the result you want, including the affected plugin or NEXUS server.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives / 다른 방법
+      description: Include other approaches you considered, if any.

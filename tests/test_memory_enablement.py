@@ -22,7 +22,7 @@ class EnablementTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.folder = Path(temporary.name)
+        self.folder = Path(temporary.name).resolve()
         self.home, self.memory, self.project = (self.folder / name for name in ("home", "memory", "project"))
         self.project.mkdir()
         self.registry = self.home / ".corthex/projects.json"
@@ -404,6 +404,119 @@ class EnablementTest(unittest.TestCase):
         nothing, _ = self.cli("on")
         self.assertEqual(nothing["outcome"], "nothing")
         self.assertEqual(self.snapshot(), before)
+
+
+    def test_tc077_validated_header_bytes_cannot_be_replaced_before_pinning(self):
+        for mode in ("device", "newer", "damaged"):
+            with self.subTest(header=mode):
+                if self.memory.exists():
+                    shutil.rmtree(self.memory)
+                self.enable()
+                before = self.snapshot()
+                patch = ("import json\noriginal=enablement._read\n"
+                         "def swap(memory,name,parse,check,*args,**kwargs):\n"
+                         " value=original(memory,name,parse,check,*args,**kwargs)\n"
+                         " if name=='store.json':\n"
+                         "  path=memory.folder/name\n"
+                         "  record=json.loads(path.read_bytes())\n")
+                if mode == "device":
+                    patch += "  record.update(device='d_000000000000')\n"
+                elif mode == "newer":
+                    patch += "  record.update(format=2)\n"
+                patch += ("  path.write_bytes(b'{')\n" if mode == "damaged" else
+                          "  path.write_bytes(json.dumps(record).encode())\n")
+                patch += " return value\nenablement._read=swap\n"
+                value, status = self.cli("off", patch=patch)
+                self.assertEqual((value["code"], status), ("internal", 1))
+                others = lambda entries: {n: v for n, v in entries.items() if n != "store.json"}
+                self.assertEqual(others(self.snapshot()), others(before))
+                shutil.rmtree(self.memory)
+
+    def test_tc077_actual_on_off_keep_the_gate_fence_after_root_replacement(self):
+        for command in ("on", "off"):
+            with self.subTest(command=command):
+                if self.memory.exists():
+                    shutil.rmtree(self.memory)
+                self.enable()
+                if command == "on":
+                    self.cli("off")
+                before = self.snapshot()
+                patch = ("import shutil\noriginal=enablement._apply\n"
+                         "def swap(context,*args,**kwargs):\n"
+                         " root=context.memory.folder\n"
+                         " moved=root.with_name('moved-" + command + "')\n"
+                         " root.rename(moved)\n shutil.copytree(moved,root)\n"
+                         " return original(context,*args,**kwargs)\n"
+                         "enablement._apply=swap\n")
+                value, status = self.cli(command, patch=patch)
+                self.assertEqual((value["code"], status), ("internal", 1))
+                self.assertEqual(self.snapshot(), before)
+                shutil.rmtree(self.memory)
+
+    def test_tc077_actual_enablement_logs_locked_backup_restores_once(self):
+        for name in ("store.json", "configuration.json", "projects/demo/curation.json"):
+            for mode in ("missing", "damaged"):
+                with self.subTest(record=name, primary=mode):
+                    if self.memory.exists():
+                        shutil.rmtree(self.memory)
+                    self.enable()
+                    self.cli("off")
+                    path = self.memory / "projects/demo/curation.json"
+                    progress = {"logs": {"claude-code-0000000000000001": 7}, "applies": 9,
+                                "recent": [], "consolidation": {"failures": 2}}
+                    path.write_bytes(json.dumps(progress).encode())
+                    saved = path.read_bytes()
+                    patch = ("original=enablement._apply\n"
+                             "def restore(context,*args,**kwargs):\n"
+                             " path=context.memory.folder/" + repr(name) + "\n"
+                             " path.rename(path.with_name(path.name+'.bak'))\n")
+                    if mode == "damaged":
+                        patch += " path.write_bytes(b'{')\n"
+                    patch += " return original(context,*args,**kwargs)\nenablement._apply=restore\n"
+                    value, status = self.cli("on", patch=patch)
+                    self.assertEqual((value["code"], value["outcome"], status), ("ok", "done", 0))
+                    self.assertEqual(path.read_bytes(), saved)
+                    rows = [json.loads(line) for log in (self.memory / "logs").glob("failures-*.jsonl")
+                            for line in log.read_text(encoding="utf-8").splitlines()]
+                    self.assertEqual([(r["step"], r["error"]) for r in rows], [("restore", "restored")])
+                    self.assertEqual(list(self.memory.rglob("*.lock")), [])
+                    shutil.rmtree(self.memory)
+
+    def test_tc077_release_failures_are_reported_after_data_leases_without_changing_success(self):
+        for command, kind in (("on", "store"), ("on", "curation"), ("on", "layer"), ("off", "store")):
+            for changed in (False, True):
+                with self.subTest(command=command, lease=kind, changed_device=changed):
+                    if self.memory.exists():
+                        shutil.rmtree(self.memory)
+                    self.enable()
+                    if command == "on":
+                        self.cli("off")
+                    expected = {"store", "curation", "layer"} if command == "on" else {"store"}
+                    patch = ("import json\noriginal=enablement.locks.Lock._release\nreleased=set()\n"
+                             "def fail(lease,deadline):\n"
+                             " released.add(lease.path.stem)\n"
+                             " if lease.path.stem==" + repr(kind) + ":\n")
+                    if changed:
+                        patch += ("  path=lease.path.parents[0]" + (".parents[1]" if kind != "store" else "") + "/'store.json'\n"
+                                  "  record=json.loads(path.read_bytes());record['device']='d_000000000000'\n"
+                                  "  path.write_bytes(json.dumps(record).encode())\n")
+                    patch += ("  raise PermissionError('MEMORY_TEST_RELEASE_SECRET_7890')\n"
+                              " return original(lease,deadline)\nenablement.locks.Lock._release=fail\n"
+                              "logging=enablement.BoundDiagnostics.failure\n"
+                              "def bounded(logger,*args,**kwargs):\n"
+                              " assert " + repr(expected) + " <= released\n"
+                              " return logging(logger,*args,**kwargs)\n"
+                              "enablement.BoundDiagnostics.failure=bounded\n")
+                    value, status = self.cli(command, patch=patch)
+                    failed = changed and kind != "store"
+                    self.assertEqual((value["code"], value["outcome"], status),
+                                     ("internal", "failed", 1) if failed else ("ok", "done", 0))
+                    self.assertEqual(load_json(self.memory / "configuration.json")["projects"]["demo"]["enabled"], command == "on" and not failed)
+                    rows = [json.loads(line) for log in (self.memory / "logs").glob("failures-*.jsonl")
+                            for line in log.read_text(encoding="utf-8").splitlines()]
+                    self.assertEqual([(row["step"], row["error"]) for row in rows],
+                                     [] if changed else [("restore", "PermissionError")])
+                    self.assertNotIn("MEMORY_TEST_RELEASE_SECRET_7890", json.dumps(value) + json.dumps(rows))
 
 
 if __name__ == "__main__":

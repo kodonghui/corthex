@@ -1,8 +1,10 @@
 """Checks that nothing private or secret is published with the repository."""
 
+import io
 import re
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from _common import ROOT
 
@@ -38,8 +40,26 @@ class PublicSafetyTest(unittest.TestCase):
         for path, text in text_files():
             for label, pattern in PATTERNS.items():
                 with self.subTest(file=str(path.relative_to(ROOT)), check=label):
-                    match = pattern.search(text)
-                    self.assertIsNone(match, match and match.group(0))
+                    self.assertFalse(
+                        bool(pattern.search(text)),
+                        "Private or secret text detected; value withheld.",
+                    )
+
+
+class PublicSafetyReportingTest(unittest.TestCase):
+    def test_failure_report_omits_detected_value(self):
+        synthetic_key = "sk-" + "x" * 24
+        output = io.StringIO()
+        case = PublicSafetyTest("test_no_private_or_secret_text")
+        with mock.patch(__name__ + ".text_files", return_value=[
+            (ROOT / "synthetic-secret.txt", synthetic_key),
+        ]):
+            result = unittest.TextTestRunner(stream=output).run(case)
+        self.assertEqual(len(result.failures), 1)
+        self.assertEqual(result.errors, [])
+        self.assertIn("OpenAI-style key", output.getvalue())
+        self.assertIn("synthetic-secret.txt", output.getvalue())
+        self.assertNotIn(synthetic_key, output.getvalue())
 
 
 if __name__ == "__main__":

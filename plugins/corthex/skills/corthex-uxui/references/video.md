@@ -173,6 +173,7 @@ ffmpeg -i in.mp4 -af loudnorm=I=-14:TP=-1:LRA=11 -ar 48000 -c:v copy -c:a aac -b
 - Where it plays sets the aspect ratio: talks and YouTube 16:9 (1920×1080), shorts and reels 9:16 (1080×1920) `[default]`. When a kit comes in another ratio, lay the scenes out again.
 - One fps per video: 30 by default; 60 when the motion is fast or there is a lot of moving text.
 - Safe area: text, logos and captions stay 5% in from the edges (the EBU R 95 graphics safe area) `[default]`. When working in HyperFrames, keep inside its guides (content in the 90% action-safe box, captions and key text in the 80% title-safe box). For shorts and reels, the app's buttons and descriptions cover the top and bottom; check the platform's current guidance.
+- Choose the poster frame, the one still most people see: the thumbnail, the view under reduced motion, a screenshot. Pick a moment that tells the story by itself, with the result on screen, never a frame in the middle of a change, such as a number mid-roll or a half-done fade. Test it: from the still alone, can someone tell what happened? If not, choose another moment.
 - A video to lay over other video or slides goes out as WebM (VP9) with a transparent background. The frame PNGs need transparency (capture without a background), encoded as below. Turning transparent PNGs straight into MP4 shows the hidden colours behind the transparent areas.
 
 ```sh

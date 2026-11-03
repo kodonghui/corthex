@@ -66,6 +66,13 @@ When the request uses a feeling word, show two candidates made of names and numb
 
 **Target size**: WCAG 2.5.8 (AA) sets 24×24 CSS px as the floor, with exceptions such as enough spacing around the target or a link inside a sentence; 2.5.5 (AAA) asks for 44×44. Apple asks for 44×44 pt, and Material for 48×48 dp (about 9 mm) with 8 dp between targets. Aim for the platform's convention.
 
+**Alignment by eye**: the eye judges letters and edges, not boxes.
+
+- A line box leaves room below the letters, so capitals beside an icon, in a pill or in a button look low. Centre the capital height instead: `text-box: trim-both cap alphabetic`, where the browser supports it.
+- Nested rounded shapes, such as an icon in a button or a pill in a field, sit at an even distance from every edge, with outer radius = inner radius + that distance.
+- Two edges that almost meet, 1–3 px apart, look accidental: make them meet exactly, or separate them by the layout's gap and by no less than 8 px.
+- When an amount is centred, centre its digits and let the currency sign sit outside that box.
+
 ## 3. Type
 
 | Name | What it is | Instruct like this |
@@ -153,7 +160,7 @@ When the request uses a feeling word, show two candidates made of names and numb
 | Tooltip | A short explanation that appears on hover or focus | "Also appears on keyboard focus; Esc closes it" |
 | Toast, snackbar | A notice that appears in a corner for a moment and goes | "'Saved', 4 s, with 'Undo'. Errors go in an alert, not a toast" |
 | Alert, banner | A notice that stays in place | "A failed payment as a red alert above the form" |
-| Skeleton | Grey shapes of the content, drawn before it arrives | "Three card-shaped skeletons" |
+| Skeleton | Grey shapes of the content, drawn before it arrives | "Three card-shaped skeletons, each the size of the card it stands for" |
 | Spinner, progress bar | The end is unknown / how much is done is known | "A spinner only when it takes over 1 s" |
 | Empty state | What shows when there is nothing to show; complete only with a button for the next step | "'No results', a suggestion to change the search, and 'Clear filters'" |
 | Accordion | Headings that open and close their content | "FAQ, several open at once" |
@@ -165,6 +172,25 @@ When the request uses a feeling word, show two candidates made of names and numb
 
 - Content that appears on hover or focus can be dismissed, and stays while the pointer moves onto it (WCAG 1.4.13).
 - Anything that moves on its own for more than 5 s, such as an auto-advancing carousel or a scrolling ticker, needs a way to pause it (2.2.2).
+
+### Loading without a jump
+
+A loading state is the loaded screen with its content not yet in: when the data arrives, only the content changes and nothing moves.
+
+- Give each placeholder the exact space of what it stands for: the same width, height and number of lines. Images get a `width` and `height`, or an `aspect-ratio`, so their space is known before they load.
+- Show a skeleton only once the data has taken about 150 ms; data that comes sooner appears at once, with no grey flash in between. The 1 s rule for spinners stays (the table above).
+- Skeletons are for the first load only. A refetch keeps the content on screen; if what is shown may now be out of date, that is the stale state (stage 08 in CORTHEX).
+- Draw the shapes from samples of typical length in the screen's language. Korean breaks lines at different points from English, so a skeleton drawn from English samples has the wrong number of lines.
+- If skeletons shimmer, they all shimmer together, in one phase. The swap from skeleton to content is a crossfade within the 300 ms cap ([motion-values.md](motion-values.md) section 3). Under reduced motion, skeletons hold still and the crossfade stays.
+- Mark the loading region `aria-busy="true"` until its content is in, hide the skeleton from screen readers (`aria-hidden="true"`), and give the region a label that says what is loading, such as "Loading profile". Move focus to the content only when the person was waiting for it [proposal].
+- If the shapes are saved between visits, save the shapes only, never the text they were measured from, and clear them on sign-out [proposal].
+
+### Icons and marks
+
+- One icon family per product, with one stroke weight and one size per screen. Compare the strokes, not the boxes: at the same size, a filled icon looks heavier than an outlined one.
+- An AI feature shows what it does: the question, the answer and its sources. A sparkle, a wand or a star, or purple as "the AI colour", says nothing about it. If the product's own icon happens to be a sparkle, it stays.
+- Emoji belong in messages and reactions, not in place of icons.
+- Do not invent a logo, such as an initial on a coloured tile, for a name that has none.
 
 ## 5. Pairs people mix up
 

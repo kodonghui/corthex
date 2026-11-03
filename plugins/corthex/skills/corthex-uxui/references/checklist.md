@@ -4,6 +4,7 @@ Measure on a real render before showing anything. Write "not measured" for what 
 
 - The two scripts only help. Even when their results are clean, a person still looks once (and, for video, watches and listens).
 - Where the scripts cannot run, measure the same criteria by hand and say how you measured.
+- For a fresh-eye review, a reviewer who did not make the work, person or agent, sees only the render or its frames and this checklist. Leave out the maker's plan and reasoning, so the review judges what is on screen.
 
 ## 1. Screens (web, app, HTML slides)
 
@@ -20,6 +21,7 @@ Measure each width on its own: the widths the project supports come first; other
 | Target size | 24×24 px floor (with the spacing, in-sentence link and browser-sized control exceptions); aim for 44 pt on iOS and 48 dp on Android | page-check: `target-size`, `target-goal` |
 | Keyboard | Every control works with Tab; focus is visible (2.4.7), never hidden by something else (2.4.11), and follows the visual order | By hand, with Tab and Shift+Tab |
 | States | Default, hover, pressed, focus, disabled, loading, selected and error, plus the screen's empty, loading and error states | By hand, against the list |
+| Loading | Nothing moves when the data arrives; data that comes within about 150 ms shows with no skeleton; a refetch keeps the content on screen; under reduced motion, skeletons hold still | By hand, with the network slowed in the developer tools; in Chromium, the Performance panel shows layout shifts |
 | Forms | Every field has a label; errors say in text what is wrong and how to fix it (3.3.1, 3.3.3); a placeholder is not a label | page-check: `label`; the wording by hand |
 | Content on hover or focus | It can be dismissed, stays while the pointer moves onto it, and does not vanish by itself (1.4.13) | By hand |
 | Text spacing | No clipping or overlap at line height 1.5, 2em after paragraphs, letter spacing 0.12em and word spacing 0.16em (1.4.12) | Add the snippet below and run page-check again |

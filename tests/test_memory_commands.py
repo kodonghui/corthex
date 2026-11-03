@@ -32,7 +32,7 @@ class CommandsTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.folder = Path(temporary.name)
+        self.folder = Path(temporary.name).resolve()
         self.root, self.home, self.project = (self.folder / name for name in ("memory", "home", "project"))
         self.project.mkdir()
         self.registry = self.home / ".corthex/projects.json"
@@ -465,6 +465,49 @@ class CommandsTest(unittest.TestCase):
         with mock.patch.object(sys, "stdout", new_callable=io.StringIO) as out:
             self.assertEqual(commands.main(["unknown"]), 2)
             self.assertEqual(json.loads(out.getvalue())["command"], "none")
+
+    def test_tc077_gate_backup_restores_are_logged_once_after_release(self):
+        for name in ("store.json", "configuration.json"):
+            with self.subTest(record=name):
+                self.reset_store()
+                before = sum(len(p.read_text(encoding="utf-8").splitlines())
+                             for p in (self.root / "logs").glob("failures-*.jsonl"))
+                path = self.root / name
+                path.rename(path.with_name(path.name + ".bak"))
+                value, status, calls = self.invoke("off")
+                self.assertEqual((value["code"], status, len(calls)), ("ok", 0, 1))
+                self.assertTrue(path.is_file())
+                self.assertFalse(path.with_name(path.name + ".bak").exists())
+                rows = [json.loads(line) for p in (self.root / "logs").glob("failures-*.jsonl")
+                        for line in p.read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(len(rows), before + 1)
+                self.assertEqual((rows[-1]["step"], rows[-1]["error"]), ("restore", "restored"))
+                self.assertFalse((self.root / "store.lock").exists())
+                self.assertFalse((self.root / "logs/failures.lock").exists())
+
+    def test_tc077_gate_backup_notices_never_follow_device_or_root_replacement(self):
+        original = store.MemoryStore.configuration
+        for mode in ("device", "root"):
+            with self.subTest(replacement=mode):
+                self.reset_store()
+                path = self.root / "store.json"
+                path.rename(path.with_name(path.name + ".bak"))
+                after = {}
+
+                def replace(memory, *args, **kwargs):
+                    config = original(memory, *args, **kwargs)
+                    if mode == "device":
+                        files.write_json(path, dict(self.header, device=base.new_id("d")), "TBL-001")
+                    else:
+                        self.root.rename(self.folder / "moved-memory")
+                        self.reset_store()
+                    after.update(self.snapshot())
+                    return config
+
+                with mock.patch.object(store.MemoryStore, "configuration", replace):
+                    self.invoke("off")
+                self.assertEqual(self.snapshot(), after)
+                self.assertEqual(list((self.root / "logs").glob("failures-*.jsonl")), [])
 
     def test_tc077_error_logging_never_adopts_another_device_from_backup(self):
         before = self.snapshot()

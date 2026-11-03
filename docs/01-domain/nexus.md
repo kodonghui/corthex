@@ -6,9 +6,9 @@ synced_at: 2026-10-24T22:44+09:00
 
 [한국어](nexus.ko.md)
 
-Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. At the joint checkpoint of NEXUS's stages 03 to 08 on 2026-11-03, the maintainer approved writing the read model of Edit picture in CTX-010 as Picture view, the name in the glossary, since the board's table of read models already says what the view shows on an edit conflict (stage 07's change 3). This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
 
-This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, and the terms added with the board from TERM-109, after the ones that memory took up to TERM-108. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
+This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, the terms added with the board from TERM-109, after the ones that memory took up to TERM-108, and those added with the functional spec from TERM-124. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
 
 Sources read:
 
@@ -182,7 +182,7 @@ Purpose: the user edits pictures on a PC, and the agent reflects the edits in th
 
 | Given by | Read model | Command | Aggregate | Events |
 | --- | --- | --- | --- | --- |
-| User, on a PC; policy: when Proposal accepted (CTX-014) | Picture view; on a conflict, the user's edit over the new picture | Edit picture | Edit | Picture edited, or Edit conflict found |
+| User, on a PC; policy: when Proposal accepted (CTX-014) | Picture view | Edit picture | Edit | Picture edited, or Edit conflict found |
 | Agent, at its next work | Agent to-do | Reflect in stage source | Edit | Edit reflected |
 
 - Aggregate rules: an edit is bound to the document version that its picture was drawn from, and a newer version makes it a conflict. It closes once it is in the stage sources, and so does an accepted proposal.
@@ -357,6 +357,12 @@ Stage 02 also took up, beyond the hotspots:
 | TERM-121 | Agent to-do | What the agent reads when it starts its work: open comments and discrepancies, and pending reflections; it reads them through the hub (D9 of stage 02, hotspot 13) | CTX-007, CTX-014, CTX-010 | next action (TERM-069), task (TASK is the trace ID of `10-wbs`), inbox |
 | TERM-122 | Tool link | A link from an item in a picture to a record in Notion or a work item in Jira, which shows only its state; each tool stays the source. A candidate for phase ③ | CTX-015 | link alone (TERM-062), sync, import |
 | TERM-123 | Work item | A unit of work in a tracker such as Jira | CTX-015 | task (TASK is the trace ID of `10-wbs`), ticket |
+| TERM-124 | Part | A named portion of one project: the documents whose paths in each stage source start with the part's name, such as `memory` and `nexus` in this repository. Set as `parts` in the project settings; each part has its own pictures and stage records | CTX-006, CTX-007, CTX-012 | module, component |
+| TERM-125 | Picture source | What the hub takes from a part's stage source for one picture: its items, their connections and their terms, without a layout. A snapshot carries it to the NEXUS server, which keeps it as the picture of its document version | CTX-006, CTX-012 | layout, image |
+| TERM-126 | Default branch | The branch that a repository's `origin` remote names as its head, such as `main`. NEXUS takes pictures and stage records only from its commit as the checkout last fetched it | CTX-006 | main (a branch's name, not this role) |
+| TERM-127 | Reply | A note under a comment, by the user or the agent. A user's reply can settle the comment, or open a closed one again | CTX-014 | answer (a comment is answered when it closes) |
+| TERM-128 | Claim | The NEXUS server's hold of one entry of the agent to-do for one agent session: other sessions' writes on the entry are refused until a set time after the session's last write on it (60 minutes by default) or until the entry closes | CTX-007 | lock, lease |
+| TERM-129 | Outbox | The file on a device where the hub keeps the agent's writes that it could not send, until its next contact with the NEXUS server | CTX-014, CTX-009 | queue |
 
 Removed with the board, with their IDs kept:
 
@@ -369,4 +375,4 @@ Removed with the board, with their IDs kept:
 | TERM-095 | Chat client | removed | Removed with CTX-011 |
 | TERM-096 | In-chat view | removed | Removed with CTX-011 |
 
-Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names and definitions under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have only updated contexts; TERM-109 to TERM-123 are new.
+Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names and definitions under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have only updated contexts; TERM-109 to TERM-123 are new. TERM-124 to TERM-129 were added with the functional spec on 2026-11-02 ([docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md#new-words)).

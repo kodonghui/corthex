@@ -53,7 +53,7 @@ Release notes have a human-readable summary of 3–5 lines and an automatically 
 - Pin actions to full commit SHAs, with their versions in comments on the same lines.
 - Use minimum workflow permissions: `permissions: contents: read`.
 
-A separate security reporting policy is planned.
+Report security vulnerabilities through [the private reporting process](SECURITY.md). Use the public issue forms for ordinary bugs and feature requests.
 
 ## AI contributions and privacy
 

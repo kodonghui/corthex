@@ -42,7 +42,9 @@ class PathFence:
         parts = parts[len(self._root_parts):]
         if ".." in parts:
             raise UnsafePath()
-        current, info = self.root, self.root.lstat()
+        current = self.root
+        if not parts:
+            return self.root.lstat()
         for index, part in enumerate(parts):
             current = current / part
             try:
