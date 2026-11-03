@@ -10,6 +10,7 @@ import benchmark_support
 import benchmark_inner
 
 
+@benchmark_support.serialized_fixture
 def main():
     raw = sys.stdin.buffer.read()
     payload = json.loads(raw)

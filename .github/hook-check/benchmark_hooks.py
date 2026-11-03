@@ -6,6 +6,7 @@ scripts. Fixture setup and coordinated restoration are outside the clock.
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -15,6 +16,48 @@ import time
 import uuid
 
 EVENTS = {"start": "SessionStart", "prompt": "UserPromptSubmit", "end-of-turn": "Stop", "end": "SessionEnd"}
+
+
+def serialized_fixture(function):
+    """Serialize fixture setup and observation, outside the product clock."""
+    def guarded():
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/corthex-memory/scripts"))
+        from memory_lib import clock, locks, worker_support
+        hook = sys.argv[1]
+        assert hook in EVENTS
+        root = Path(os.environ["HOME"]) / ".corthex/corthex-memory"
+        folder = Path(os.environ["HOOKCHECK_BENCHMARK_OBSERVATIONS"]).parent / "attempts"
+        folder.mkdir(exist_ok=True)
+        path = folder / (hook + "-" + str(os.getpid()) + ".json")
+        note = {"hook": hook, "pid": os.getpid(), "nonce": os.environ["HOOKCHECK_BENCHMARK_NONCE"]}
+
+        def checkpoint(phase, error=None):
+            note.update(phase=phase, error=error)
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(note) + "\n", encoding="utf-8")
+            temporary.replace(path)
+
+        checkpoint("waiting-fixture")
+        try:
+            memory = worker_support.WorkerStore(root)
+            # This separate fixture path sorts before the nested product leases.
+            with locks.Lock(root.parent / "benchmark-fixture.lock", "curation", memory.device).held(clock.now() + 10):
+                checkpoint("running-fixture")
+                result = function()
+                checkpoint("completed")
+                return result
+        except Exception as error:
+            frame = error.__traceback__
+            while frame.tb_next:
+                frame = frame.tb_next
+            note["failure_frame"] = {"file": Path(frame.tb_frame.f_code.co_filename).name,
+                                     "function": frame.tb_frame.f_code.co_name, "line": frame.tb_lineno}
+            try:
+                checkpoint("failed", type(error).__name__)
+            except OSError:
+                pass
+            raise
+    return guarded
 
 
 def records(root, pattern):

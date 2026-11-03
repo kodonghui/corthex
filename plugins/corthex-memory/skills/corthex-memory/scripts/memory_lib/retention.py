@@ -147,7 +147,9 @@ def retain_project(memory, project, owner, deadline, when=None):
             except ValueError:
                 observed["unreadable_age"] += 1
                 return True
-            if at > now:
+            # The cutoff stays fixed, but a live writer may append after it.
+            # Only dates still ahead when inspected indicate a future clock.
+            if at > now and at > _now(when):
                 observed["future"] += 1
             return at >= cutoff
         def after(result, guarded):
