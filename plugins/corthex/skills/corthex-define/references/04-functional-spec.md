@@ -53,7 +53,7 @@ A behaviour that calls an AI model gets an AI call entry, below the table or in 
 | Not sent | Data that must never reach the model, such as personal data, secrets or answer keys |
 | Output | The format the model must return, such as a JSON schema |
 | Checked by the server | What the server checks before it uses the output, such as that every source the answer cites exists |
-| Failure | What happens when the model fails, is too slow or a usage limit is reached, and what the user sees |
+| Failure | What happens when the model fails, is too slow, the server has no key for it or a usage limit is reached, and what the user sees |
 | Human decision | Where a person accepts or rejects the result before it counts |
 
 Stage 05 records each call, stage 06 lists the failures as responses, and stage 12 tests questions inside and outside the behaviour's scope.
