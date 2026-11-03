@@ -12,7 +12,7 @@ This file lives in the product repository and is committed with it, so everyone 
 | `title` | string | Display name, in any language |
 | `team` | boolean | `true` when several people work on the project |
 | `language` | string | Language for project documents, when it differs from the profile |
-| `records` | object | Where this project's records go: `kind` (`notion`, `git` or `none`) and `location` (a link or a path) |
+| `records` | object | Where this project's records go: `kind` (`notion`, `git` or `none`) and `location` (a link to the records database, or a path) |
 | `repos` | object | Optional. Other repositories that hold some of this project's sources, by a short alias in lowercase letters, digits and hyphens, such as `{ "design": "https://github.com/acme/acme-design" }` |
 | `ids` | object | Optional trace ID formats by kind, described below |
 | `stages` | object | One entry per stage key, described below |

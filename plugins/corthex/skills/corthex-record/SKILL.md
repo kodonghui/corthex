@@ -4,7 +4,7 @@ description: CORTHEX records at any stage. Use when turning meeting notes, a rec
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Records
@@ -25,6 +25,16 @@ Records let a later session, or another person, pick up the work without asking 
 4. When a decision replaces an earlier one, mark the earlier one as replaced and link both ways.
 5. Never copy secrets, credentials or private personal material into a record.
 6. Do not repeat a report that has nothing new.
+
+## Records in Notion
+
+Use one records database per project, one row per record: minutes, decisions, progress, research and reading copies. Its properties are title, kind, stage, status (draft, under discussion, confirmed or replaced), related IDs, source (the repository path), last changed and what changed.
+
+Items followed across several records, such as decisions (DEC) and action items, have their own databases: one row per item, related to the records they came from. Stage items keep their stage databases, including stages 02 to 04 in `corthex-define`.
+
+Create a page only as a row of one of these databases. A table inside a record becomes an inline database in its place; narrative text stays in the row's body.
+
+Read the schema before writing. Reuse existing databases and the row for the same work; mark rows replaced or removed instead of deleting them. The project's `records.location`, or the profile's `records.hub`, points to the records database.
 
 ## Finding past decisions
 

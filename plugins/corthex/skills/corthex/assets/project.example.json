@@ -3,7 +3,7 @@
   "title": "Acme Shop",
   "team": true,
   "language": "en",
-  "records": { "kind": "notion", "location": "<link to the project's records>" },
+  "records": { "kind": "notion", "location": "<link to the project's records database>" },
   "repos": { "design": "https://github.com/example/acme-shop-design" },
   "ids": {
     "requirement": { "prefix": "REQ", "digits": 2 },

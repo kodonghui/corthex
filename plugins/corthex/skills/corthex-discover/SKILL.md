@@ -4,7 +4,7 @@ description: CORTHEX stage 01, domain discovery. Use when the user runs or summa
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Domain discovery

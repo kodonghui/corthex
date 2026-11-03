@@ -14,7 +14,7 @@ Claude Code and Codex read the same file. The file never holds secrets.
 | `address_as` | string | `사용자님` when `language` is `ko`, otherwise unset | How to address the user |
 | `language` | string | the language the user writes in | Language for replies and new documents, as a BCP 47 tag such as `ko` or `en` |
 | `records.default` | string | unset | Where records go by default, such as `notion`, `git` or `none` |
-| `records.hub` | string | unset | Link or path to the records hub, such as a Notion page or a folder |
+| `records.hub` | string | unset | Link or path to the records hub, such as a Notion database or a folder |
 | `ask_before` | array of strings | the list in the example | Kinds of actions to ask about first, in addition to anything that cannot be undone |
 | `nexus` | object | unset | Settings of the optional `corthex-nexus` plugin: `url`, the address of your own NEXUS server, and `push`, the projects that may be sent there |
 
@@ -28,7 +28,7 @@ The same file is in this skill's folder at `assets/profile.example.json`:
 {
   "address_as": "사용자님",
   "language": "ko",
-  "records": { "default": "notion", "hub": "<link to your records hub>" },
+  "records": { "default": "notion", "hub": "<link to your records database or folder>" },
   "ask_before": ["external messages", "deploys", "payments", "deletions", "publishing"]
 }
 ```
