@@ -27,7 +27,7 @@
 - **`.env` holds no secrets.** It holds only settings that are not secret, such as the model name and timeouts, and `.gitignore` lists it. Commit a `.env.example` with those settings and no values that are secret, and say in the README which environment variables hold keys.
 - **One settings class reads the key.** In Python, a pydantic-settings class reads it into a `SecretStr` field, so printing or logging the settings shows `**********`, and an environment variable wins over a value in `.env`. Call `get_secret_value()` only where the client is built. In another language, one settings module reads the environment at start and keeps the key out of its text form, logs and errors.
 - **One function builds the client**, and the code that calls the model receives it, in FastAPI through `Depends`. With a key, it builds the real client. Without one, in local development it returns a fake client that gives fixed answers in the format of the AI call entry (stage 04).
-- **Tests use the fake client.** The test setup removes the key from the environment and overrides the function, so a key set on a developer's machine never makes the test suite call the paid API. Tests that call the real model are marked and run only when asked, with a key set (stage 12).
+- **Tests use the fake client.** The test setup removes the key from the environment and overrides the function, so a key set on a developer's machine never makes the test suite call the paid API. Tests that call the real model carry a marker: the setup leaves them the key and the real client, the default run leaves them out, and they run only when asked, with a key set (stage 12).
 - **A deployed server never uses the fake client.** Without a key, its AI operations return the contract's error for an unavailable model, such as 503 `ai_unavailable`, the rest keeps working, and its log at start names the missing variable, never a value. So the setting that names the environment defaults to production, and only a developer's `.env` sets development.
 - **Never in logs or commits.** Never write the key, a request header that carries it or settings with it revealed into logs, error messages, responses, records or commits. If a key was ever committed, pasted or logged, revoke it at the provider and make a new one first; deleting the commit or the log does not undo the leak.
 - **One key per product and environment**, such as development and production, so that one can be revoked without stopping the others.
@@ -86,13 +86,24 @@ def get_ai_client(settings: Annotated[Settings, Depends(get_settings)]):
 import pytest
 from app.ai import FakeAIClient, get_ai_client
 from app.main import app
+from app.settings import get_settings
 
 @pytest.fixture(autouse=True)
-def fake_ai(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    app.dependency_overrides[get_ai_client] = FakeAIClient
+def fake_ai(request, monkeypatch):
+    if request.node.get_closest_marker("real_model") is None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        app.dependency_overrides[get_ai_client] = FakeAIClient
+    get_settings.cache_clear()
     yield
     app.dependency_overrides.clear()
+    get_settings.cache_clear()
+```
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+markers = ["real_model: calls the real AI model and costs money"]
+addopts = "-m 'not real_model'"  # run them with OPENAI_API_KEY set: pytest -m real_model
 ```
 
 ## Checks
