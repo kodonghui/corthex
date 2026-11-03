@@ -416,9 +416,10 @@ class CommandsTest(unittest.TestCase):
             self.assertEqual(stale["code"], "confirm-stale")
 
     def test_tc073_entry_runs_from_another_folder_and_keeps_one_object(self):
-        for target, expected, status in ((self.folder / "missing", "no-store", 0), (self.root, "internal", 1)):
+        for target, expected, status, command in ((self.folder / "missing", "no-store", 0, "status"),
+                                                 (self.root, "internal", 1, "resume")):
             environment = dict(os.environ, CORTHEX_MEMORY_HOME=str(target))
-            completed = subprocess.run([sys.executable, str(SCRIPTS / "memory.py"), "status"], cwd=str(self.project),
+            completed = subprocess.run([sys.executable, str(SCRIPTS / "memory.py"), command], cwd=str(self.project),
                                        env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
             self.assertEqual((completed.returncode, completed.stderr), (status, b""))
             self.assertEqual(completed.stdout.count(b"\n"), 1)
