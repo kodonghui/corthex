@@ -52,7 +52,7 @@ Rewrite the request in the form below and build from that sentence. When the dir
 
 ### 4. Build
 
-- Screens: give each control its eight states (default, hover, pressed, focus, disabled, loading, selected and error), and give the screen its empty, loading and error states, with any others its screen definition lists. For Korean text, set `word-break: keep-all` and `overflow-wrap: break-word`.
+- Screens: give each control its eight states (default, hover, pressed, focus, disabled, loading, selected and error), and give the screen its empty, loading and error states, with any others its screen definition lists. A loading state keeps the loaded layout, so nothing moves when the data arrives. For Korean text, set `word-break: keep-all` and `overflow-wrap: break-word`.
 - UI motion: cut or shorten what people see dozens of times a day. Animate only `transform` and `opacity`. Under `prefers-reduced-motion`, drop changes of position and size and keep changes of opacity and colour.
 - Video: build each scene in HTML so that **the same time t always gives the same frame**. Use no clock time, network, random numbers without a seed or motion outside the timeline. Engines and version pinning are in [tools.md](references/tools.md).
 - Never make up numbers, reviews or customers, imitate a real service's logo, or copy someone else's cards or prompt text.
@@ -91,11 +91,11 @@ Measure on a real render before showing anything. Always measure these four wher
 | Task at hand | Read |
 | --- | --- |
 | Choosing references, the likeness, colours as values, diagrams for slides | [design-references.md](references/design-references.md) |
-| Names and instructions for layout, spacing, type, parts and states; Korean text | [ui-terms.md](references/ui-terms.md) |
+| Names and instructions for layout, spacing, type, parts and states; Korean text; loading without a jump; icons | [ui-terms.md](references/ui-terms.md) |
 | Names and instructions for motion, camera and transitions; turning them into HTML | [motion-terms.md](references/motion-terms.md) |
-| Time, curves and springs of UI motion; speed, frames and beats of video | [motion-values.md](references/motion-values.md) |
+| Time, curves and springs of UI motion, and its continuity; speed, frames and beats of video | [motion-values.md](references/motion-values.md) |
 | The video brief, gates, scene table, same t same frame, sound, output, slides | [video.md](references/video.md) |
-| Engines, libraries, version pinning and licenses | [tools.md](references/tools.md) |
+| Engines, libraries, an optional skill for promotional demos, version pinning and licenses | [tools.md](references/tools.md) |
 | Every check, and how to run the two scripts | [checklist.md](references/checklist.md) |
 | Sources, where they disagree, and why each default was chosen | [sources.md](references/sources.md) |
 
