@@ -89,15 +89,19 @@ class HostCaptureTest(unittest.TestCase):
         self.raw.write_text("".join(json.dumps(row)+"\n" for row in wrong),encoding="utf-8")
         self.assertFalse(self.fixture.capture(self.home)["end_ok"])
 
-    def run_fake_host(self, label="fixture", failed=None, inventory=None, evidence=False):
+    def run_fake_host(self, label="fixture", failed=None, inventory=None, evidence=False, benchmark=False):
         good = {k: True for k in ("start_ok", "prompt_ok", "answer_ok", "end_ok", "same_turn",
                                  "korean_intact", "timings_ok", "failures_ok", "boundary_ok")}
         with tempfile.TemporaryDirectory() as output:
             value = {"requests": [{"path": "/v1/messages", "context": 1}], "capture": good,
                      "install": {"memory": {"exit": 7 if failed == "install" else 0}},
                      "run": {"exit": 7 if failed == "run" else 0},
-                     **{key:{"verified":True} for key in ("lifetime","network","reinstall","outer_clock","input_identity")}}
-            with mock.patch.object(self.fixture.sys, "argv", ["run.py", label, output, "claude"] + (["--evidence"] if evidence else [])), \
+                     **{key:{"verified":True} for key in ("lifetime","network","reinstall","outer_clock","input_identity")},
+                     "input_contract":{"verified":failed != "contract"},
+                     "benchmark":{"verified":failed != "benchmark","measurement_valid":failed != "benchmark"}}
+            if failed in ("contract-missing","benchmark-missing"):
+                value.pop("input_contract" if failed=="contract-missing" else "benchmark")
+            with mock.patch.object(self.fixture.sys, "argv", ["run.py", label, output, "claude"] + (["--evidence"] if evidence or benchmark else []) + (["--benchmark100"] if benchmark else [])), \
                  mock.patch.object(self.fixture, "Mock"), mock.patch.object(self.fixture, "market", return_value=["slow-diag"]), \
                  mock.patch.object(self.fixture.native_evidence, "package_copy", return_value=(ROOT, {})), \
                  mock.patch.object(self.fixture, "facts", return_value=inventory or {}), \
@@ -170,3 +174,8 @@ class HostCaptureTest(unittest.TestCase):
         self.assertEqual(progress["logs"], {})
         self.assertEqual(progress["applies"], 0)
         self.assertTrue((root / "configuration.json").exists())
+
+    def test_evidence_cannot_accept_missing_or_failed_field_and_measurement_checks(self):
+        for failed in ("contract", "contract-missing", "benchmark", "benchmark-missing"):
+            with self.subTest(failed=failed):
+                self.assertEqual(self.run_fake_host(failed=failed, evidence=True, benchmark=failed.startswith("benchmark")),1)

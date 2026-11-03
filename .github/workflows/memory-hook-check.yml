@@ -31,9 +31,9 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code@2.1.310 @openai/codex@0.164.0
       - name: Four hooks in both installed hosts
         run: python .github/hook-check/run.py native "${{ runner.temp }}/memory-hook-check" claude,codex
-      - name: Outer clocks, worker lifetime and uninstall preservation
+      - name: Outer clocks, worker lifetime, preservation and 100-sample timings
         if: ${{ !cancelled() }}
-        run: python .github/hook-check/run.py evidence "${{ runner.temp }}/memory-hook-check" claude,codex --evidence
+        run: python .github/hook-check/run.py evidence "${{ runner.temp }}/memory-hook-check" claude,codex --evidence --benchmark100
       - name: Redaction benchmark for the 512 KiB synthetic input
         if: ${{ !cancelled() }}
         run: python tests/bench_memory_redaction.py --samples 10

@@ -117,3 +117,44 @@ class NativeEvidenceTest(unittest.TestCase):
         self.assertEqual((child.returncode, stdout, stderr), (0, b"", b""), stderr.decode("utf-8", "replace"))
         self.assertTrue(result["verified"],json.dumps(result))
         self.assertEqual((result["expired_record_removed"],result["barrier_timed_out"]),(True,False))
+
+    def test_used_input_type_drift_names_the_changed_field(self):
+        sys.path.insert(0, str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"))
+        expected = json.loads((ROOT / ".github/hook-check/host-inputs.json").read_bytes())["hosts"]["claude"]
+        folder = self.root / "inputs"
+        folder.mkdir()
+        values = {"str": "synthetic 한글", "dict": {}, "list": [], "bool": False, "NoneType": None}
+        for event, fields in expected["events"].items():
+            value = {name: values[kind] for name, kind in fields.items()}
+            value["hook_event_name"] = event
+            (folder / (event + ".json")).write_text(json.dumps(value), encoding="utf-8")
+        self.assertTrue(self.evidence.input_contract(self.root, "claude", expected["version"])["verified"])
+        path = folder / "UserPromptSubmit.json"
+        value = json.loads(path.read_bytes())
+        value["prompt"] = []
+        path.write_text(json.dumps(value), encoding="utf-8")
+        changed = self.evidence.input_contract(self.root, "claude", expected["version"])
+        self.assertFalse(changed["verified"])
+        self.assertEqual(changed["changed_fields"], {"UserPromptSubmit": ["prompt"]})
+
+    def test_drift_values_name_versions_and_stop_reentry_changes(self):
+        sys.path.insert(0,str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"))
+        from memory_lib import hooks
+        expected=json.loads((ROOT / ".github/hook-check/host-inputs.json").read_bytes())["hosts"]["claude"]
+        folder=self.root / "inputs"
+        folder.mkdir()
+        values={"str":"fixture","dict":{},"list":[],"bool":False,"NoneType":None}
+        for event,fields in expected["events"].items():
+            row={name:values[kind] for name,kind in fields.items()}
+            row["hook_event_name"]=event
+            (folder/(event+".json")).write_text(json.dumps(row),encoding="utf-8")
+        for change in ("version","Stop.stop_hook_active","prefix.version"):
+            with self.subTest(change=change):
+                stop=folder / "Stop.json"
+                row=json.loads(stop.read_bytes())
+                row["stop_hook_active"]=change=="Stop.stop_hook_active"
+                stop.write_text(json.dumps(row),encoding="utf-8")
+                with mock.patch.object(hooks,"HOST_PROMPTS_VERSION","changed" if change=="prefix.version" else "host-prompts-1"):
+                    result=self.evidence.input_contract(self.root,"claude","0.0.0" if change=="version" else expected["version"])
+                self.assertFalse(result["verified"])
+                self.assertIn(change,result.get("changed_values",{}))

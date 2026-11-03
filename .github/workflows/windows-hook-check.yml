@@ -57,10 +57,10 @@ jobs:
           if exist "C:\Program Files\Git.hidden" ren "C:\Program Files\Git.hidden" Git
           if exist "C:\Program Files\PowerShell\7.hidden" ren "C:\Program Files\PowerShell\7.hidden" 7
           exit /b 0
-      - name: Outer clocks, worker lifetime and uninstall preservation
+      - name: Outer clocks, worker lifetime, preservation and 100-sample timings
         if: ${{ !cancelled() }}
         shell: cmd
-        run: python .github\hook-check\run.py evidence "%RUNNER_TEMP%\hook-check" claude,codex --evidence
+        run: python .github\hook-check\run.py evidence "%RUNNER_TEMP%\hook-check" claude,codex --evidence --benchmark100
       - name: Redaction benchmark for the 512 KiB synthetic input
         if: ${{ !cancelled() }}
         shell: cmd

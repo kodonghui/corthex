@@ -1,6 +1,6 @@
 """Runs session context and recording hooks in isolated Claude Code and Codex.
 
-Usage: python run.py LABEL OUTDIR [HOSTS] [--evidence]
+Usage: python run.py LABEL OUTDIR [HOSTS] [--evidence] [--benchmark100]
 
 Both hosts talk only to a mock model server on 127.0.0.1 that records each
 request and streams a fixed Korean answer, with fake keys, so no model is called. Each host gets
@@ -29,6 +29,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_evidence
+import benchmark_hooks
+import native_benchmark
 from network_proxy import NetworkProxy
 
 REPO = Path(__file__).resolve().parents[2]
@@ -195,6 +197,7 @@ def base_env(home):
 
 def prepare(base):
     """A home folder with a profile and a demo project, as a user would have them."""
+    base = base.resolve()
     home, demo = base / "home", base / "work" / "demo"
     (home / ".corthex").mkdir(parents=True, exist_ok=True)
     (demo / ".corthex").mkdir(parents=True, exist_ok=True)
@@ -362,6 +365,17 @@ def install_steps(exe, env, cwd, steps):
     return results
 
 
+def capture_benchmark(plugin, host, base, pins, model):
+    # Measure the original package, rather than the native observation's barrier worker.
+    worker = native_evidence.digest(plugin / "scripts/worker.py")
+    assert worker == pins["worker"]
+    assert native_evidence.digest(plugin / "scripts/hook.py") == native_evidence.digest(MEMORY / "scripts/hook.py")
+    value = native_benchmark.measure(plugin.parents[1], host, base / "benchmark-native", model, samples=100)
+    value["worker_sha256"] = worker
+    value["goal_status"] = "pass" if value["meets_100_ms_target"] else "fail"
+    return value
+
+
 def native_session(host, done):
     field = "session_id" if host == "claude" else "thread_id"
     events = [json.loads(line) for line in done["stdout"].splitlines() if line.lstrip().startswith("{")]
@@ -370,7 +384,7 @@ def native_session(host, done):
     return ids.pop()
 
 
-def claude(label, out, mock, folder, plugins, pins=None):
+def claude(label, out, mock, folder, plugins, pins=None, benchmark_plugin=None):
     base = out / "claude"
     home, demo = prepare(base)
     env = base_env(home)
@@ -403,6 +417,7 @@ def claude(label, out, mock, folder, plugins, pins=None):
     if pins:
         result["outer_clock"] = native_evidence.external_clocks(base)
         result["input_identity"] = native_evidence.input_identity(base, session)
+        result["input_contract"] = native_evidence.input_contract(base, "claude", result["version"], session)
         done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
         result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
         memory_observed, host_observed = memory_network.finish(), network.finish()
@@ -411,6 +426,8 @@ def claude(label, out, mock, folder, plugins, pins=None):
                              "attribution": "dedicated child proxy for product hooks and inherited workers; host proxy kept separate"}
         result["reinstall"] = native_evidence.reinstall(exe, "claude", env, demo, home, run)
         captured = capture(home, host="claude-code", session=session)
+    if benchmark_plugin is not None:
+        result["benchmark"] = capture_benchmark(benchmark_plugin, "claude", base, pins, mock)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "pid": done.get("pid"),
                      "started_monotonic_ns": done.get("started_monotonic_ns"), "ended_monotonic_ns": done.get("ended_monotonic_ns"), "stdout": short(done["stdout"], 500),
@@ -423,7 +440,7 @@ def claude(label, out, mock, folder, plugins, pins=None):
     return scrub_mock_key(result, env["ANTHROPIC_API_KEY"])
 
 
-def codex(label, out, mock, folder, plugins, pins=None):
+def codex(label, out, mock, folder, plugins, pins=None, benchmark_plugin=None):
     base = out / "codex"
     home, demo = prepare(base)
     codex_home = base / "codex-home"
@@ -457,6 +474,7 @@ def codex(label, out, mock, folder, plugins, pins=None):
     if pins:
         result["outer_clock"] = native_evidence.external_clocks(base)
         result["input_identity"] = native_evidence.input_identity(base, session)
+        result["input_contract"] = native_evidence.input_contract(base, "codex", result["version"], session)
         done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
         result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
         memory_observed, host_observed = memory_network.finish(), network.finish()
@@ -465,6 +483,8 @@ def codex(label, out, mock, folder, plugins, pins=None):
                              "attribution": "dedicated child proxy for product hooks and inherited workers; host proxy kept separate"}
         result["reinstall"] = native_evidence.reinstall(exe, "codex", env, demo, home, run)
         captured = capture(home, host="codex", session=session)
+    if benchmark_plugin is not None:
+        result["benchmark"] = capture_benchmark(benchmark_plugin, "codex", base, pins, mock)
     mock.log = None
     result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "pid": done.get("pid"),
                      "started_monotonic_ns": done.get("started_monotonic_ns"), "ended_monotonic_ns": done.get("ended_monotonic_ns")}
@@ -561,6 +581,14 @@ def summary(report):
                     timing["hook"], timing["milliseconds"], timing["exit"]))
             lines.append("  controlled native-worker lifetime: %s; uninstall/reinstall preserves store: %s; outer samples alone make no p95 claim" % (
                 r.get("lifetime", {}).get("verified"), r.get("reinstall", {}).get("verified")))
+        if "benchmark" in r:
+            bench = r["benchmark"]
+            for row in bench["rows"]:
+                lines.append("  %s: n=%d, entries=1000, median %.3f ms, p95 %.3f ms, target<100ms=%s" % (
+                    row["hook"],row["samples"],row["median_ms"],row["p95_ms"],row["under_100_ms"]))
+            lines.append("  REQ-011 Should target: " + bench["goal_status"] + "; measurement validity is separate from the product goal")
+            if not bench["meets_100_ms_target"]:
+                print("::warning title=REQ-011 performance goal::Capture hook p95 exceeds 100 ms; retain the failed QA goal for its issue and trial go/no-go.")
         for tag, records in sorted(r["hooks"].items()):
             for record in records:
                 chain = " <- ".join(p["name"] or "?" for p in record["parents"])
@@ -593,7 +621,11 @@ def main():
     expected = [host for host in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if host]
     out.mkdir(parents=True, exist_ok=True)
     report = {"label": label}
-    evidence = len(sys.argv) > 4 and sys.argv[4] == "--evidence"
+    flags = set(sys.argv[4:])
+    if flags - {"--evidence", "--benchmark100"} or "--benchmark100" in flags and "--evidence" not in flags:
+        raise ValueError("--benchmark100 requires --evidence; unknown fixture option")
+    evidence = "--evidence" in flags
+    benchmark_plugin = MEMORY if "--benchmark100" in flags else None
     pins = None
     if evidence:
         REPO, pins = native_evidence.package_copy(REPO, out)
@@ -604,8 +636,8 @@ def main():
     if evidence:
         plugins = []
     sections = (("facts", facts), ("shells", lambda: {} if evidence else shells(out)),
-                ("claude", lambda: claude(label, out, mock, out / "hk", plugins, pins)),
-                ("codex", lambda: codex(label, out, mock, out / "hk", plugins, pins)))
+                ("claude", lambda: claude(label, out, mock, out / "hk", plugins, pins, benchmark_plugin)),
+                ("codex", lambda: codex(label, out, mock, out / "hk", plugins, pins, benchmark_plugin)))
     for name, step in sections:
         try:
             report[name] = step()
@@ -623,7 +655,10 @@ def main():
         missing = sorted(set(missing) | set(expected))
     if evidence:
         missing = sorted(set(missing) | {host for host in expected if not all(
-            report.get(host, {}).get(name, {}).get("verified") for name in ("lifetime", "network", "reinstall", "outer_clock", "input_identity"))})
+            report.get(host, {}).get(name, {}).get("verified") for name in ("lifetime", "network", "reinstall", "outer_clock", "input_identity", "input_contract"))})
+    if benchmark_plugin is not None:
+        missing = sorted(set(missing) | {host for host in expected if not all(
+            report.get(host, {}).get("benchmark", {}).get(key) for key in ("verified", "measurement_valid"))})
     report["expected"] = {"hosts": expected, "missing": missing}
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     text = summary(report) + "\nrequired context, hooks and native evidence from %s: %s" % (

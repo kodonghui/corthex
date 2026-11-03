@@ -135,3 +135,35 @@ def input_identity(base, session):
     verified = session is not None and len(inputs) == 4 and events == {"SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"} and not changed
     return {"verified": verified, "changed_fields": changed,
             "scope": "native CLI/input session identity; TC-106 field/version/prefix drift remains follow-up"}
+
+
+def input_contract(base, host, version, session=None):
+    from memory_lib import hooks
+    contract = json.loads(Path(__file__).with_name("host-inputs.json").read_bytes())
+    expected = contract["hosts"][host]
+    inputs = [json.loads(path.read_bytes()) for path in (base / "inputs").glob("*.json")]
+    observed = {(value.get("hook_event_name") if isinstance(value.get("hook_event_name"), str) else "<invalid-event>"):
+                {k: type(v).__name__ for k, v in value.items()} for value in inputs}
+    changed = {event: sorted(k for k in set(expected["events"].get(event, {})) | set(observed.get(event, {}))
+               if expected["events"].get(event, {}).get(k) != observed.get(event, {}).get(k))
+               for event in set(expected["events"]) | set(observed)}
+    for value in inputs:
+        if session is not None and value.get("session_id") != session:
+            changed.setdefault(value["hook_event_name"], []).append("session_id:value")
+    changed = {event: keys for event, keys in changed.items() if keys}
+    prefixes = sorted({p for value in inputs for p in hooks.HOST_PROMPTS
+                       if isinstance(value.get("prompt"), str) and value["prompt"].startswith(p)})
+    changed_values = {}
+    if expected["version"] not in version.split():
+        changed_values["version"] = {"expected": expected["version"], "observed": version}
+    stops = [value.get("stop_hook_active") for value in inputs if value.get("hook_event_name") == "Stop"]
+    if stops != [False]:
+        changed_values["Stop.stop_hook_active"] = {"expected": [False], "observed": stops}
+    if list(hooks.HOST_PROMPTS) != contract["host_prompt_prefixes"]:
+        changed_values["prefix.values"] = {"expected": contract["host_prompt_prefixes"], "observed": list(hooks.HOST_PROMPTS)}
+    if hooks.HOST_PROMPTS_VERSION != contract["host_prompts_version"]:
+        changed_values["prefix.version"] = {"expected": contract["host_prompts_version"], "observed": hooks.HOST_PROMPTS_VERSION}
+    verified = not changed and not changed_values and len(inputs) == len(observed) == 4
+    return {"verified": verified, "observed_types": observed, "changed_fields": changed, "changed_values": changed_values,
+            "host_prompt_prefixes_observed": prefixes, "prefix_contract": hooks.HOST_PROMPTS_VERSION,
+            "prefix_observation_scope": "only prefixes actually emitted in this synthetic native session"}
