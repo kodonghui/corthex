@@ -18,7 +18,7 @@ CORTHEX 자신의 프로젝트 10단계입니다. 상태: 2026-11-03 계획 확�
 
 | ID | 작업 | 근거 | 건드리는 곳 | 선행 작업 | 담당 | 크기 | 끝났다고 볼 때 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-201 | Access 로그인 두 종류 시험 | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | 실제 개발 Access의 사람·서비스 토큰에서 ctx.access·aud·sub·email·common_name의 있음/비어 있음을 기록하고 로그인 구현 전에 확인 방법을 정합니다. | in progress |
+| TASK-201 | Access 로그인 두 종류 시험 | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | 실제 개발 Access의 사람·서비스 토큰에서 ctx.access·aud·sub·email·common_name의 있음/비어 있음을 기록하고 로그인 구현 전에 확인 방법을 정합니다. | done (#92) |
 | TASK-202 | 1단계 DB를 보존하는 이주 1 | SPEC-114 | TBL-101, TBL-113 | none | agent | S | 빈 DB와 1단계 DB에 이주 1이 원자적으로 적용되고 기존 스냅샷 바이트와 revision이 그대로 남습니다. | in progress |
 | TASK-203 | 설계 스키마로 옮기는 이주 2 | SPEC-114 | TBL-101–TBL-113 | TASK-202 | agent | M | 이주 결과와 nexus.sql의 표·열·키·색인·CHECK가 같으며 실패·동시 적용 뒤 부분 스키마가 남지 않습니다. | in progress |
 | TASK-204 | 스냅샷 0.2와 그림 자료 검증 | SPEC-104, SPEC-105, SPEC-109, SPEC-110, SPEC-114 | API-105, TBL-114 | TASK-203 | agent | M | 두 스냅샷 판과 그림 자료의 형식·UTF-8·한도를 검사하고 모르는 스냅샷 필드는 보존하며 그림 자료는 따로 저장합니다. | todo |

@@ -708,7 +708,7 @@ TC는 TC-601, BUG는 BUG-501부터입니다. 근거는 수용 기준·API 응답
 | TC-1266 | Two hubs drain one device outbox | SPEC-129, TBL-117 | TASK-234 | unittest | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1267 | Withdraw while checkpoint record PR is open | SPEC-140, API-129, API-130 | TASK-220 | api, agent | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1268 | NEXUS compares its own pictures | SPEC-106, SPEC-107, SPEC-108, SPEC-120 | TASK-252 | unittest, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
-| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | pass: dev Access identity trial 2026-11-03; local synthetic audience/signature tests; see Access evidence below |
+| TC-1269 | Real user and service-token sign-ins | SPEC-113, SPEC-116 | TASK-201 | manual, api | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | pass: dev Access identity trial 2026-11-03; synthetic audience/signature checks, Node 24.18.0; 51cc0d3, #92 |
 | TC-1270 | Largest push on free Workers/D1 | REQ-081, REQ-124 | TASK-223 | api, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1271 | Twenty 4G mobile editor openings | REQ-149, REQ-146, REQ-147, REQ-148 | TASK-224 | agent, manual | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
 | TC-1272 | Expired sign-in and recovered draft | SPEC-126, SCR-107#permission | TASK-243 | agent, e2e | 영어 원본의 같은 TC가 적은 자료·순서·역할·환경을 그대로 실행하고 실제 값을 남깁니다. | 원본 TC의 상태·코드·데이터 효과와 수치 기준을 모두 만족해야 통과이며, 실행하지 않은 것은 통과로 세지 않습니다. | not run |
@@ -777,3 +777,5 @@ PR은 실제 돌린 사례만 바꾸고 원래 근거를 가리킵니다. 계약
 실제 Access/Problem 모듈을 쓰는 임시 개발 진입점에서 사람은 `/` 200·`/user-only` 200·`/agent-only` 403 agent_only, 서비스는 `/` 200·`/agent-only` 200·`/user-only` 403 user_only였습니다. 다른 audience·위조/만료 토큰·키 회전/조회 실패·비정형 assertion·없음/null sub는 Node 24.18.0의 합성 서명 자료로 확인했으며 실제 신원을 바꾼 시험은 아닙니다. 이 브랜치의 Node 29개(Access/Problem 14개와 기존 15개)를 통과했습니다. 읽기 전용 코드·보안 리뷰가 앞 버전의 두 문제(갱신 실패 때 유효한 키 캐시 삭제, sub 없음/null도 서비스 역할 허용)를 찾았고 둘 다 수정 후 독립 재검증했습니다.
 
 로그인 기반 모듈과 임시 진입점의 검증입니다. app.js는 아직 1단계 라우터를 쓰므로 TASK-209·210은 진행 중이며 이 근거로 API-101–API-132 응답·화면·흐름을 제공/수용 통과로 세지 않습니다.
+
+`51cc0d3`가 위 Access 기반 시험의 커밋입니다. Windows/Python 3.13 전체 817개(14개 건너뜀)와 Claude 플러그인 엄격 검사 네 개도 통과했습니다. 바뀐 OpenAPI는 openapi-spec-validator 0.7.1을 통과했으며 전체 개발 API 계약과 화면은 아직 시험하지 않았습니다.

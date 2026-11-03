@@ -18,7 +18,7 @@ Current plan: 53 tasks (S 6, M 39, L 8). The [QA plan](../12-qa/nexus.md) lists 
 
 | ID | Task | From | Touches | Depends on | Owner | Estimate | Done when | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TASK-201 | Trial both Access identities | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | Real development Access returns presence/absence of ctx.access, aud, sub, email and common_name for both identities; document the selected verifier before authentication code. | in progress |
+| TASK-201 | Trial both Access identities | SPEC-113, SPEC-116 | API-101–API-104 | none | agent | M | Real development Access returns presence/absence of ctx.access, aud, sub, email and common_name for both identities; document the selected verifier before authentication code. | done (#92) |
 | TASK-202 | Preserve the phase-1 database as migration 1 | SPEC-114 | TBL-101, TBL-113 | none | agent | S | An empty and an existing phase-1 database acquire migration 1 atomically; existing snapshot bytes and revisions remain unchanged. | in progress |
 | TASK-203 | Apply schema migration 2 | SPEC-114 | TBL-101–TBL-113 | TASK-202 | agent | M | Migration output and nexus.sql agree on tables, columns, primary/foreign keys, indexes and CHECK constraints; concurrent/failing migration retries leave no partial schema. | in progress |
 | TASK-204 | Validate snapshot 0.2 and picture sources | SPEC-104, SPEC-105, SPEC-109, SPEC-110, SPEC-114 | API-105, TBL-114 | TASK-203 | agent | M | Both snapshot versions and every source shape meet the frozen contract, UTF-8 and limits; unknown snapshot fields survive and picture sources are separated from stored snapshots. | todo |
