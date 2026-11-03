@@ -49,4 +49,5 @@ These principles apply to every CORTHEX task, in every stage. The user's current
 
 - Never write secrets, tokens or keys into logs, records, public material or summaries, and never print them.
 - Do not copy credentials, keys, cookies or browser profiles between machines or providers.
+- When product code calls an AI model's API, such as OpenAI's or Anthropic's, its key stays in an environment variable or the deployment's secret store, never in the repository, `.env`, a log or the browser, and the tests run on a fake client. Stage 11 in the `corthex-build` skill has the rules.
 - Keep private data private: personal learning material, customer data and unpublished work stay where they are unless the user decides otherwise.
