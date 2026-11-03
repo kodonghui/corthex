@@ -197,6 +197,7 @@ def base_env(home):
 
 def prepare(base):
     """A home folder with a profile and a demo project, as a user would have them."""
+    base = base.resolve()
     home, demo = base / "home", base / "work" / "demo"
     (home / ".corthex").mkdir(parents=True, exist_ok=True)
     (demo / ".corthex").mkdir(parents=True, exist_ok=True)

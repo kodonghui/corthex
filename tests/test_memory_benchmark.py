@@ -1,7 +1,10 @@
 """Exercise real subprocess samples without mistaking a short smoke run for p95."""
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,6 +13,45 @@ from _common import ROOT
 
 
 class WholeHookBenchmarkTest(unittest.TestCase):
+    def test_fixture_home_and_project_use_real_paths_below_an_aliased_temp_parent(self):
+        spec = importlib.util.spec_from_file_location("aliased_profile_fixture", ROOT / ".github/hook-check/run.py")
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as temporary:
+            owned = Path(temporary).resolve()
+            target, alias = owned / "target", owned / "alias"
+            target.mkdir()
+            try:
+                alias.symlink_to(target, target_is_directory=True)
+            except OSError:
+                program = shutil.which("cmd.exe") if os.name == "nt" else None
+                if not program or not Path(program).is_absolute():
+                    self.skipTest("directory aliases require host support")
+                if any(char in str(alias) + str(target) for char in '%&|<>!^"'):
+                    self.skipTest("junction fixture paths need shell escaping")
+                made = subprocess.run([program, "/d", "/c", "mklink", "/J", str(alias), str(target)],
+                                      capture_output=True, timeout=10)
+                if made.returncode:
+                    self.skipTest("directory aliases unavailable")
+            self.assertEqual(alias.resolve(), target)
+            try:
+                home, project = runner.prepare(alias / "profile")
+                self.assertEqual(home, home.resolve())
+                self.assertEqual(project, project.resolve())
+                from memory_lib import clock, worker_support
+                root = home / ".corthex/corthex-memory"
+                memory = worker_support.WorkerStore(root)
+                deadline = clock.now() + 10
+                with memory.lease(root / "projects/demo/curation.lock", "curation", deadline,
+                                  acquire_deadline=deadline):
+                    self.assertEqual(memory.fence.root, root)
+            finally:
+                self.assertEqual(alias.resolve(), target)
+                if os.name == "nt":
+                    alias.rmdir()
+                else:
+                    alias.unlink()
+
     def native_fixture(self, root):
         spec = importlib.util.spec_from_file_location("native_benchmark_fixture", ROOT / ".github/hook-check/run.py")
         runner = importlib.util.module_from_spec(spec)
