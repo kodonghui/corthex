@@ -2,9 +2,9 @@
 
 [한국어](README.ko.md)
 
-Stage 09 of CORTHEX's own project, for NEXUS 0.2: the design tokens in [design/nexus/](../../../design/nexus/base.tokens.json), and the mockups of direction A, Hub pages, on one page, [mockup.html](mockup.html): every state of the five new screens, SCR-105 to SCR-109, and of the hub page and its stage detail, SCR-101 and SCR-104, with what 0.2 adds to them, drawn for the phone first, at 320 pixels. Status: the maintainer chose direction A on 2026-11-03, the stage's first checkpoint, and the states were then drawn in it. The maintainer passed the second checkpoint, frozen tokens, the same day at 11:39 KST, together with the joint checkpoint of stages 03 to 08, whose recommendations the mockups follow: the tokens are frozen for NEXUS 0.2 before development uses them, and a later change needs the maintainer's decision. When a file and its Korean translation differ, the English file is the source.
+Stage 09 of CORTHEX's own project, for NEXUS 0.2: the design tokens in [design/nexus/](../../../design/nexus/base.tokens.json), and the mockups of direction A, Hub pages, on one page, [mockup.html](mockup.html): every state of the five new screens, SCR-105 to SCR-109, and of the hub page and its stage detail, SCR-101 and SCR-104, with what 0.2 adds to them, drawn for the phone first, at 320 pixels. Status: the maintainer chose direction A on 2026-11-03, the stage's first checkpoint, and the states were then drawn in it. The maintainer passed the second checkpoint, frozen tokens, the same day at 11:39 KST, together with the joint checkpoint of stages 03 to 08, whose recommendations the mockups follow: the tokens are frozen for NEXUS 0.2 before development uses them, and a later change needs the maintainer's decision. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS added the step control of a DDD board above the picture and five frames of its steps, drawn with the frozen tokens, which wait for the maintainer's check ([For the checkpoint](#for-the-checkpoint)). When a file and its Korean translation differ, the English file is the source.
 
-Inputs: the screen definitions of [stage 08](../../08-screens/nexus/README.md), [SCR-101](../../08-screens/nexus/SCR-101-hub-page.md), [SCR-104](../../08-screens/nexus/SCR-104-stage-detail.md) and [SCR-105](../../08-screens/nexus/SCR-105-picture-view.md) to [SCR-109](../../08-screens/nexus/SCR-109-stage-overview.md), with their states, their layouts at 320 and 1440 pixels, the final words of the messages and the [notes for stage 09](../../08-screens/nexus/README.md#stage-09-mockups); the hub page's rows of the [functional spec](../../04-functional-spec/nexus.md), SPEC-122 to SPEC-125; phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose colours, type, spacing, cards and words the tokens and the hub's frames take; and the event storming board of [stage 01](../../01-domain/nexus.md), drawn in the frames as the sample picture. No brand assets or liked references were given: NEXUS has no logo of its own, so the mockups keep phase 1's look.
+Inputs: the screen definitions of [stage 08](../../08-screens/nexus/README.md), [SCR-101](../../08-screens/nexus/SCR-101-hub-page.md), [SCR-104](../../08-screens/nexus/SCR-104-stage-detail.md) and [SCR-105](../../08-screens/nexus/SCR-105-picture-view.md) to [SCR-109](../../08-screens/nexus/SCR-109-stage-overview.md), with their states, their layouts at 320 and 1440 pixels, the final words of the messages and the [notes for stage 09](../../08-screens/nexus/README.md#stage-09-mockups); the hub page's rows of the [functional spec](../../04-functional-spec/nexus.md), SPEC-122 to SPEC-125; phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose colours, type, spacing, cards and words the tokens and the hub's frames take; and the event storming board of [stage 01](../../01-domain/nexus.md), drawn in the frames as the sample picture, with its timeline for the steps of SPEC-141. No brand assets or liked references were given: NEXUS has no logo of its own, so the mockups keep phase 1's look.
 
 The stage's default human view is Figma or Claude Design. Here it is one page drawn from the tokens by a script, [mockup.html](mockup.html), with every frame in light and dark and in English and Korean, which a browser can measure: line breaks, contrast, target sizes and overflow. Figma is not connected to this project, and a page drawn from the tokens keeps a token name in every value. People look at it as a private published page whose link is in the project's records, as the repository is public. `.corthex/project.json` records the choice.
 
@@ -26,6 +26,7 @@ The picture view and the stage overview read like phase 1's hub page: the same t
 
 - The opening view of a picture shows the context with the most marks at a zoom where the board's text is about 10 pixels high on a phone; at 1,440 pixels the whole picture fits.
 - Marks keep their size at every zoom. At the whole picture on a phone, the marks of each context merge into a 32-pixel circle with their count, which zooms in. A mark that counts one entry opens that entry's panel, and a count of several opens the item's panel.
+- On a DDD board, the step control above the picture opens at the last step, 8-b–9, the whole board. A step is laid out from the board's timeline and context tables, the same way each time: a lane for each flow, its places from left to right, with the events of one place stacked; from step 2 the external systems, and from step 4 the hotspots, in a column beside the first event of their context; from step 3 each command left of its events, from step 5 its actors below it as small stickies, and from step 6 its aggregate above it; from step 7 each sticky of a context with the context's ID; and at step 8-a the policy and the read model left of the command. A place widens when a step gives it a column. On a phone a step opens at the start of its first lane, at the zoom of the opening view; at 1,440 pixels the whole step fits.
 - The list of items puts the items with marks first, then the rest, and names a part without an ID as such.
 - A refusal or an error shows its message above the box or the buttons it concerns, with its trace ID, and what the user wrote stays. While something loads, still grey shapes stand where its content will be.
 - Korean text breaks between words, dates never break inside, and long IDs break rather than widen the page. Under reduced motion, sheets fade instead of moving.
@@ -64,13 +65,13 @@ Format 2025.10 of the Design Tokens Community Group, with the modes of the Resol
 
 ## Frames
 
-Fifty frames, each in light and dark and in English and Korean: every state of the seven screens at 320 pixels, and the normal state of five of them at 1,440. The sample data is made up for them: two projects, the board of stage 01, five comments, two proposals, two discrepancies, commits, times and a trace ID. The words of NEXUS itself are stage 08's.
+Fifty-five frames, each in light and dark and in English and Korean: every state of the seven screens at 320 pixels, with the steps of a DDD board, and the normal state of five of them at 1,440, with one step. The sample data is made up for them: two projects, the board of stage 01 with its timeline, five comments, two proposals, two discrepancies, commits, times and a trace ID. The words of NEXUS itself are stage 08's.
 
 | Screen | At 320 pixels | At 1,440 |
 | --- | --- | --- |
 | SCR-101 Hub page | normal, on the server and on a device; empty; stale; error, data that could not be read; permission, `access_missing` | normal |
 | SCR-104 Stage detail | normal; empty; stale; error, a project not on the page | normal |
-| SCR-105 Picture view | loading, before the view's code runs and while it draws; normal, opened and as the whole picture; large; empty; stale; error; code-failed; permission, a sign-in that expired | normal |
+| SCR-105 Picture view | loading, before the view's code runs and while it draws; normal, opened, as the whole picture, at the steps 1-b, 6 and 8-a, and on a board without a timeline; large; empty; stale; error; code-failed; permission, a sign-in that expired | normal; step 3 |
 | SCR-106 Item | normal; empty; loading; error, `comment_limit`; permission, `no_kind`; gone | normal |
 | SCR-107 Comment | loading; normal; stale; error, `reply_limit`; permission, a sign-in that expired; gone | none |
 | SCR-108 Proposal | loading; normal, open and accepted; stale; error, `reflection_limit`; permission, `user_only`; gone | none |
@@ -80,7 +81,7 @@ SCR-102 and SCR-103, the search results and the trace view, keep phase 1's desig
 
 ## Words
 
-The words that the frames need and stage 08 had not written joined stage 08's messages as [Words the mockups added](../../08-screens/nexus/README.md#words-the-mockups-added): the hub page's open counts, waiting checkpoints and actions to ask about first; the names of the zoom buttons, the merged marks and the legend; the headings of the list of items, the panels and the stage overview; the loading lines for screen readers; "New" on a reply; and "Back to the picture". B's own words, such as its tabs and filter chips, left with it.
+The words that the frames need and stage 08 had not written joined stage 08's messages as [Words the mockups added](../../08-screens/nexus/README.md#words-the-mockups-added): the hub page's open counts, waiting checkpoints and actions to ask about first; the names of the zoom buttons, the merged marks and the legend; the headings of the list of items, the panels and the stage overview; the loading lines for screen readers; "New" on a reply; and "Back to the picture". B's own words, such as its tabs and filter chips, left with it. The step control's words, "Steps" and "No timeline", came with stage 08's change of 2026-11-03 (SPEC-141).
 
 ## Checks run
 
@@ -95,8 +96,11 @@ On 2026-11-03, on the tokens, the page and its 50 frames, and again after the fr
 - Looked at as images after the freeze: the hub page's and the stage detail's normal frames at 320 and 1,440 pixels, in English and light and in Korean and dark, with the skipped and not-recorded stages.
 - The hub's snapshot of this repository finds `design/nexus/` as the stage's source and adds no check result.
 - The repository's checks with these files pass: `python -m unittest discover -s tests`, `claude plugin validate --strict` for the marketplace and its three plugins, `node --test nexus/test/*.test.js` and `git diff --check`.
+- Again on 2026-11-03, after the step view: the mockups' styles hold only token names, and the 42 contrast pairs of each theme are unchanged, since the step control uses only the frozen tokens. The page check on each of the 55 frames in both themes, 220 runs, reports nothing new, only the drawing inside the picture cut off by its frame and the numbers on the marks, and the step control's buttons are 44 pixels. The page in Chromium at 320, 390, 1,280 and 1,440 pixels, 16 runs, has no sideways scrolling, no element past its frame's edge and no console error. Looked at as images: the five new frames, in English and light and in Korean and dark; and of the frames that the control moved, the opened picture in Korean and light, the stale picture and a proposal's sheet in English and light, and the picture at 1,440 pixels in English and light, with the item beside it in Korean and dark.
 
 ## For the checkpoint
+
+The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, waits for the maintainer's check: the step control above a DDD board, with stage 08's words, and the five frames of the steps, which show how a step is laid out from the timeline ([Across the screens](#across-the-screens)). The tokens stay frozen: the control uses only them, and the steps' stickies keep the editor's colours, with pink for external systems and pale yellow for actors, as stage 01's legend has them.
 
 Passed on 2026-11-03 at 11:39 KST, together with the joint checkpoint of stages 03 to 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the tokens are frozen for NEXUS 0.2 as recommended below. The checkpoint covered:
 
@@ -115,7 +119,9 @@ Passed on 2026-11-03 at 11:39 KST, together with the joint checkpoint of stages 
 - The views take every colour and length from the tokens; the picture's own drawing keeps the editor's colours, inverted in dark mode as the editor does.
 - Marks are buttons with names that say what they count, as the frames name them; they keep their size at every zoom and merge for each context at the whole picture.
 - In the frames an item's ID is text with the look of phase 1's button; the hub page keeps the button, which opens the trace view.
+- The step view lays each step out from the picture source's timeline and context tables, as the five frames show, and keeps no layout (SPEC-141).
 
 ### Stage 12: QA
 
 - Each state at 320 and 1440 pixels, in both themes and languages, measured with the page check and looked at as images, with the contrast pairs above computed again from the frozen tokens.
+- The step control at the first and the last step, on a board without a timeline, and with an address that holds `step=` (SPEC-141).

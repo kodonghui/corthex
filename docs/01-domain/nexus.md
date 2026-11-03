@@ -6,9 +6,9 @@ synced_at: 2026-10-24T22:44+09:00
 
 [한국어](nexus.ko.md)
 
-Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. At the joint checkpoint of NEXUS's stages 03 to 08 on 2026-11-03, the maintainer approved writing the read model of Edit picture in CTX-010 as Picture view, the name in the glossary, since the board's table of read models already says what the view shows on an edit conflict (stage 07's change 3). This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the server in [`nexus/`](../../nexus/). Status: steps 0 to 9 done on an event storming board, checkpoints 1 to 3 passed on 2026-10-24. Stage 02's scope check answered hotspots 2, 4, 8 and 13 on 2026-10-25. At the joint checkpoint of NEXUS's stages 03 to 08 on 2026-11-03, the maintainer approved writing the read model of Edit picture in CTX-010 as Picture view, the name in the glossary, since the board's table of read models already says what the view shows on an edit conflict (stage 07's change 3). On 2026-11-03 the maintainer also chose to hold stage 01's event storming in NEXUS: section 1 gained the exception of a work board to the principle about pictures, CTX-012 the step view, section 6 hotspot 14 and the glossary TERM-130 to TERM-134. These came from the maintainer's choice, not from the board, which keeps the steps of 2026-10-24; the work board's own steps are drawn when phase ② is designed (hotspot 14). This version replaces the draft of the same day, which started from the hub built in phase 1; the board started again from the maintainer's own words about what NEXUS is for. When this file and its Korean translation differ, this file is the source.
 
-This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, the terms added with the board from TERM-109, after the ones that memory took up to TERM-108, and those added with the functional spec from TERM-124. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
+This file holds the contexts and the glossary of NEXUS. Its IDs continue after those of CORTHEX-MEMORY in [memory.md](memory.md): contexts from CTX-006 and terms from TERM-047, the terms added with the board from TERM-109, after the ones that memory took up to TERM-108, those added with the functional spec from TERM-124, and those of the maintainer's choice of 2026-11-03 from TERM-130. Contexts and terms that went away keep their IDs and are marked as removed. The terms that memory.md already defines keep their meaning here, such as Agent, Session, Project settings and Project list; where NEXUS uses a word differently, its glossary row says how.
 
 Sources read:
 
@@ -34,12 +34,12 @@ What only NEXUS does, since NEXUS builds only what existing tools cannot do:
 - It joins the DDD board, the ERD and the sitemap by ID and finds where they disagree, such as an ERD table with no matching aggregate.
 - It keeps all the pictures of a project in one place.
 
-Pictures that the AI drafts and people correct are not by themselves a reason to build: Miro does that, as the board of this stage shows.
+Pictures that the AI drafts and people correct were not by themselves a reason to build: Miro does that, as the board of this stage shows. The maintainer's words of 2026-11-03 widened this for stage 01's event storming, translated: "I meant to do it in NEXUS with all of Miro's features." So NEXUS 0.2 also shows the DDD board step by step, as the board's frames built it, and phase ② adds a work board, where the user and the agent hold the workshop itself. The work board starts with what event storming needs: stickies in the legend's colours, step frames, arrows, groups and comments. Unlike a board in another tool, it keeps the workshop in the same place and behind the same sign-in as the document's pictures, and the agent drafts on it through the hub, as it comments.
 
-- In scope: a space of pictures for each project; discussion and editing by the user and the AI; keeping the pictures and the stage sources equal; checks across pictures; later, links to Notion and Jira.
+- In scope: a space of pictures for each project; discussion and editing by the user and the AI; keeping the pictures and the stage sources equal; checks across pictures; the DDD board step by step, and later stage 01's event storming on a work board; later, links to Notion and Jira.
 - Out of scope: building Notion or Jira again (NEXUS links to them); building a picture editor from scratch (NEXUS embeds an open-source one); memory (CORTHEX-MEMORY).
 
-The plan, decided on 2026-10-24: NEXUS is built in stages, phase ① discussion over pictures, phase ② editing with an embedded open-source editor and phase ③ links to Notion and Jira. The hub of phase 1 stays as each project's home page. Stages 01 and 02 decide what to build; building comes after the memory plugin.
+The plan, decided on 2026-10-24: NEXUS is built in stages, phase ① discussion over pictures, phase ② editing with an embedded open-source editor and phase ③ links to Notion and Jira. The hub of phase 1 stays as each project's home page. Stages 01 and 02 decide what to build; building comes after the memory plugin. On 2026-11-03 the maintainer added stage 01's event storming to it: phase ① also shows the DDD board step by step, drawn from the stage 01 document, and phase ② adds the work board, on Excalidraw, for the user and the agent first. Team members' real-time work on it comes with team members; until then, team workshops stay on Miro.
 
 Answers at checkpoint 1, the AI's recommendations as approved:
 
@@ -54,15 +54,15 @@ Answers at checkpoint 1, the AI's recommendations as approved:
 
 What follows from these answers, in every context:
 
-- NEXUS draws the pictures; the AI does not.
+- NEXUS draws the pictures; the AI does not. The one exception, from phase ②, is a work board, which is not a picture: on it the user and the agent place the stickies of stage 01's event storming themselves, and while the workshop runs, the board leads. At each of the workshop's checkpoints the agent writes the stage 01 document from it, and NEXUS draws the DDD board only from the document.
 - The AI is an actor. It comes at its next work, reads what waits for it and answers; NEXUS never calls it.
 - NEXUS never writes to Git. The AI reflects edits and decisions in the stage sources by pull request.
 - Positions in a picture stay in NEXUS; only the content goes to the stage sources.
 
 Actors and external systems:
 
-- User: discusses, edits pictures on a PC, accepts or dismisses proposals and passes checkpoints. At first the maintainer alone.
-- Agent (TERM-002), the AI on the board: comments, proposes, records decisions and reflects edits, at its next work in a session.
+- User: discusses, edits pictures on a PC, accepts or dismisses proposals and passes checkpoints, and from phase ② holds stage 01's workshop on a work board. At first the maintainer alone.
+- Agent (TERM-002), the AI on the board: comments, proposes, records decisions and reflects edits, at its next work in a session; from phase ②, it also drafts a workshop's steps on the work board and writes the stage 01 document from it.
 - Git repository (external): holds the stage sources. The agent writes decisions and stage states there.
 - Session (TERM-003), the conversation on the board (external): where long talks happen; the agent writes down what was decided.
 - Notion and Jira (external, phase ③): the sources of records and work items.
@@ -133,7 +133,7 @@ The hub contexts, CTX-006, CTX-008 and CTX-009, come last: they are built and ke
 
 ### CTX-012 Pictures
 
-Purpose: draw a project's pictures, the DDD board, the ERD and the sitemap, from its stage sources in Git.
+Purpose: draw a project's pictures, the DDD board, the ERD and the sitemap, from its stage sources in Git, and show the DDD board also step by step, as its event storming built it (from 2026-11-03, TERM-131).
 
 | Given by | Read model | Command | Aggregate | Events |
 | --- | --- | --- | --- | --- |
@@ -188,7 +188,7 @@ Purpose: the user edits pictures on a PC, and the agent reflects the edits in th
 - Aggregate rules: an edit is bound to the document version that its picture was drawn from, and a newer version makes it a conflict. It closes once it is in the stage sources, and so does an accepted proposal.
 - External systems: Git repository, where the agent opens a pull request. The open-source editor is embedded in NEXUS.
 - Links: asks Pictures for the picture to edit and its document version (call); follows Proposal accepted of Discussion (event); Stage progress asks for the pending reflections (call).
-- Hotspots: 8 which editor (answered in stage 02: Excalidraw and ERD Editor); 9 conflicts and 10 writing to Git (answered).
+- Hotspots: 8 which editor (answered in stage 02: Excalidraw and ERD Editor); 9 conflicts and 10 writing to Git (answered); 14 the work board of phase ②, placed here until its steps are drawn (open).
 
 ### CTX-007 Stage progress
 
@@ -268,7 +268,7 @@ On the board a solid arrow is a call (sync) and a dashed one an event (async), a
 
 ## 6. Hotspots
 
-The answers to eight hotspots are the AI's recommendations, approved at checkpoint 2. Number 13 was added at step 8. Stage 02 answered numbers 2, 4, 8 and 13 with its decisions D8, D10, D11 and D9, which the maintainer approved at its scope check on 2026-10-25.
+The answers to eight hotspots are the AI's recommendations, approved at checkpoint 2. Number 13 was added at step 8. Stage 02 answered numbers 2, 4, 8 and 13 with its decisions D8, D10, D11 and D9, which the maintainer approved at its scope check on 2026-10-25. Number 14 came with the maintainer's choice of 2026-11-03.
 
 | Hotspot | Context | State | Answer or next step |
 | --- | --- | --- | --- |
@@ -285,6 +285,7 @@ The answers to eight hotspots are the AI's recommendations, approved at checkpoi
 | 11. What remains: can a stage pass with open discrepancies or comments? | CTX-007 | answered | They are shown together, and the user decides |
 | 12. Reading the state of Notion and Jira: with what permissions? | CTX-015 | open | Decided when the links are built, in phase ③ |
 | 13. Where the agent reads its to-do: the hub on a device, an API of the server or another way? | CTX-014, CTX-007 | answered | Through the hub, which reads it from the server's API with the service token (stage 02, D9) |
+| 14. The work board of phase ②: a context of its own, or part of Editing? Its aggregates, commands and events, how the agent places stickies and reads the board, and team members' real-time work | CTX-010 | open | Decided when phase ② is designed, by drawing steps 1 to 9 in new frames for the contexts that change, as stage 01 does when it adds to a product. Team members' real-time work comes with team members |
 
 Stage 02 also took up, beyond the hotspots:
 
@@ -297,7 +298,7 @@ Stage 02 also took up, beyond the hotspots:
 
 | ID | Term | Definition | Context | Avoid |
 | --- | --- | --- | --- | --- |
-| TERM-047 | NEXUS | The part of CORTHEX where the user and the agent discuss each project's pictures, drawn from its stage sources, and edit them, with the hub as each project's home; later it also links records and work items. Made of the `corthex-nexus` plugin and the NEXUS server | all | hub (one of its parts) |
+| TERM-047 | NEXUS | The part of CORTHEX where the user and the agent discuss each project's pictures, drawn from its stage sources, and edit them, with the hub as each project's home; it also shows the DDD board step by step, and later holds stage 01's event storming on a work board and links records and work items. Made of the `corthex-nexus` plugin and the NEXUS server | all | hub (one of its parts) |
 | TERM-048 | Hub | The `corthex-hub` skill and its script `hub.py`, which read projects, record progress, build the hub page and push snapshots on a device. Built in phase 1 and kept as each project's home | CTX-006, CTX-007, CTX-008, CTX-009 | NEXUS (the whole), dashboard |
 | TERM-049 | Device | A computer where the user runs a host and the hub, with its own project list, checkouts and status files. A cloud session runs on a device whose files are lost when the session's container is reclaimed | all | machine, computer |
 | TERM-050 | Project (NEXUS) | A project in the project list together with the other repositories that its settings name under `repos`, read and shown as one. For memory (TERM-005), a project is the repository that a session runs in | CTX-006, CTX-008, CTX-009, CTX-012 | workspace, repo |
@@ -335,13 +336,13 @@ Stage 02 also took up, beyond the hotspots:
 | TERM-082 | Cloudflare Access | The sign-in in front of the NEXUS server; the server answers only the requests that it checked | CTX-009 | login, auth |
 | TERM-083 | Service token | The Cloudflare Access credential that a push uses, read from environment variables | CTX-009 | API key, password |
 | TERM-084 | Allowed people | The people that an Access policy lets open the NEXUS server; for one person, their own account | CTX-009 | users, members |
-| TERM-085 | Picture | A diagram that NEXUS draws from a stage source, such as the DDD board, the ERD or the sitemap: one for each document version, always equal to it. Its nodes are items, so comments, discrepancies and tool links attach to their trace IDs, not to positions | CTX-012, CTX-013, CTX-014, CTX-010 | structure diagram (its earlier name), canvas, whiteboard |
+| TERM-085 | Picture | A diagram that NEXUS draws from a stage source, such as the DDD board, the ERD or the sitemap: one for each document version, always equal to it. Its nodes are items, so comments, discrepancies and tool links attach to their trace IDs, not to positions. A work board (TERM-133) is not a picture | CTX-012, CTX-013, CTX-014, CTX-010 | structure diagram (its earlier name), canvas, whiteboard |
 | TERM-088 | Proposal | A change to a picture that the agent puts on it at its next work, with its reason; only the user accepts or dismisses it, and an accepted proposal waits to be reflected | CTX-014, CTX-010 | suggestion |
 | TERM-089 | Accept | The user's taking a proposal; the picture is then edited as proposed, and the agent reflects the edit like any other | CTX-014, CTX-010 | import (its earlier name), merge |
 | TERM-091 | Edit conflict | An edit made on a picture whose document version is no longer the latest, because the stage source changed meanwhile; the edit is shown again over the new picture, and the user chooses | CTX-010 | |
 | TERM-092 | Reflect | The agent's writing edits and accepted proposals into the stage sources, by pull request at its next work; NEXUS never writes to Git | CTX-010 | apply (its earlier name), sync, publish, deploy |
 | TERM-093 | Team project | A project that several people work on, with `team: true` in its settings | CTX-009, CTX-010 | shared project |
-| TERM-097 | Phase | One step of the plan for NEXUS: phase 1, the hub and the server, is built; the plan of 2026-10-24 follows it with phase ① discussion over pictures, phase ② editing pictures and phase ③ links to Notion and Jira | all | stage (TERM-053), release |
+| TERM-097 | Phase | One step of the plan for NEXUS: phase 1, the hub and the server, is built; the plan of 2026-10-24 follows it with phase ① discussion over pictures, phase ② editing pictures, with the work board of stage 01's event storming since 2026-11-03, and phase ③ links to Notion and Jira | all | stage (TERM-053), release |
 | TERM-109 | Project space | The place in NEXUS for one project's pictures, bound to its repository: one for each project, and at first one repository for each space | CTX-012 | workspace, board |
 | TERM-110 | Document version | The stage sources at one commit in Git. A picture is drawn for one document version, and an edit is bound to the version that its picture was drawn from | CTX-012, CTX-010 | revision (TERM-081 counts snapshots), board revision |
 | TERM-111 | Picture view | A picture with its comments, proposals and discrepancies on it: what the user looks at before commenting, accepting or dismissing a proposal and editing | CTX-012, CTX-014, CTX-010 | canvas |
@@ -351,7 +352,7 @@ Stage 02 also took up, beyond the hotspots:
 | TERM-115 | Decision | What the user settles about a comment, which the agent writes down as the user said: specs into the stage sources in Git, the user's choices into the records | CTX-014 | approval, user decision (TERM-020, a memory item) |
 | TERM-116 | Edit | A change to a picture, made by the user on a PC with the open-source editor or by an accepted proposal. It is bound to the document version that its picture was drawn from, and it closes once it is reflected | CTX-010 | change, patch |
 | TERM-117 | Pending reflection | An edit, or an accepted proposal, that is not yet reflected in the stage sources | CTX-010, CTX-007 | draft, unsaved change |
-| TERM-118 | Open-source editor | An existing editor that NEXUS embeds for editing pictures, such as Excalidraw, ERD Editor or draw.io; stage 02 chose Excalidraw and ERD Editor (D11, hotspot 8). NEXUS does not build an editor from scratch | CTX-010 | canvas |
+| TERM-118 | Open-source editor | An existing editor that NEXUS embeds for editing pictures, such as Excalidraw, ERD Editor or draw.io; stage 02 chose Excalidraw and ERD Editor (D11, hotspot 8), and the work board uses Excalidraw too. NEXUS does not build an editor from scratch | CTX-010 | canvas |
 | TERM-119 | Stage record | What Stage progress keeps for one stage: its state, its checkpoints and its next action. Only the user passes a checkpoint, and the agent writes the stage state to Git | CTX-007 | status file (TERM-071, where phase 1 keeps it) |
 | TERM-120 | Stage overview | What is left in a stage before its checkpoint: its open discrepancies, comments and pending reflections, shown together so that the user decides | CTX-007 | dashboard, stage state (TERM-067) |
 | TERM-121 | Agent to-do | What the agent reads when it starts its work: open comments and discrepancies, and pending reflections; it reads them through the hub (D9 of stage 02, hotspot 13) | CTX-007, CTX-014, CTX-010 | next action (TERM-069), task (TASK is the trace ID of `10-wbs`), inbox |
@@ -363,6 +364,11 @@ Stage 02 also took up, beyond the hotspots:
 | TERM-127 | Reply | A note under a comment, by the user or the agent. A user's reply can settle the comment, or open a closed one again | CTX-014 | answer (a comment is answered when it closes) |
 | TERM-128 | Claim | The NEXUS server's hold of one entry of the agent to-do for one agent session: other sessions' writes on the entry are refused until a set time after the session's last write on it (60 minutes by default) or until the entry closes | CTX-007 | lock, lease |
 | TERM-129 | Outbox | The file on a device where the hub keeps the agent's writes that it could not send, until its next contact with the NEXUS server | CTX-014, CTX-009 | queue |
+| TERM-130 | Timeline | The domain events of a stage 01 document in the order in which they happen, one lane for each flow, as step 1-b of event storming orders them; outcomes of which only one happens share a place. NEXUS draws the step view from it | CTX-012 | event list, flow (FL is the trace ID of `03-user-flow`) |
+| TERM-131 | Step view | The DDD board shown one step of event storming at a time (steps 0 to 9 of stage 01, not stages, TERM-053), from the timeline to the context map and tables, each step adding the layer that the board's frame of that step adds. NEXUS draws it read-only from the stage 01 document, as it draws the whole board | CTX-012 | frame, slide |
+| TERM-132 | Workshop | Stage 01's event storming as people hold it on a board, step by step, from step 0 to its last checkpoint, with checkpoints after steps 1-b, 7 and 9; in NEXUS, from phase ②, the user and the agent hold it on a work board. While it runs, the board leads, and at each checkpoint the agent writes the stage 01 document from it. Stage 01's way of working called workshop, where people go first, is one way of holding it | CTX-010 | session (TERM-003), meeting |
+| TERM-133 | Work board | The board of a workshop in NEXUS, from phase ②: a frame for each step, each starting as a copy of the previous one, with stickies, arrows, groups and comments that the user and the agent place. It is not a picture: NEXUS draws nothing on it from the stage sources, and after the last checkpoint it stays read-only, as material | CTX-010 | picture (TERM-085), canvas, whiteboard |
+| TERM-134 | Sticky | One note on a work board, of a kind in the board's legend, such as a domain event, a command or a hotspot, shown in that kind's colour, with who placed it | CTX-010 | card, item (TERM-059) |
 
 Removed with the board, with their IDs kept:
 
@@ -375,4 +381,4 @@ Removed with the board, with their IDs kept:
 | TERM-095 | Chat client | removed | Removed with CTX-011 |
 | TERM-096 | In-chat view | removed | Removed with CTX-011 |
 
-Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names and definitions under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have only updated contexts; TERM-109 to TERM-123 are new. TERM-124 to TERM-129 were added with the functional spec on 2026-11-02 ([docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md#new-words)).
+Changed with the board on 2026-10-24: TERM-085, TERM-089 and TERM-092 have new names and definitions under the same IDs; TERM-047, TERM-048, TERM-054, TERM-056, TERM-071, TERM-088, TERM-091 and TERM-097 have new definitions; TERM-050, TERM-059, TERM-065, TERM-072, TERM-076 and TERM-082 have only updated contexts; TERM-109 to TERM-123 are new. TERM-124 to TERM-129 were added with the functional spec on 2026-11-02 ([docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md#new-words)). TERM-130 to TERM-134 were added, and TERM-047, TERM-085, TERM-097 and TERM-118 got new definitions, with the maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS.

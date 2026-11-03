@@ -37,7 +37,7 @@
           name: Picture view
           path: "/pictures/{project}/{part}/{stage}"
           access: anyone Cloudflare Access lets in, on the server
-          flows: [FL-106, FL-110, FL-115]
+          flows: [FL-106, FL-110, FL-115, FL-116]
           terms: [CTX-014, TERM-111]
           status: active
           children:
