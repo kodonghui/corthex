@@ -32,7 +32,7 @@ class CommandsTest(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.folder = Path(temporary.name)
+        self.folder = Path(temporary.name).resolve()
         self.root, self.home, self.project = (self.folder / name for name in ("memory", "home", "project"))
         self.project.mkdir()
         self.registry = self.home / ".corthex/projects.json"
