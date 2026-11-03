@@ -31,7 +31,7 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   ├── references/          principles, profile, project, stage contract
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
-│   │       ├── corthex-record/          minutes, decisions, progress
+│   │       ├── corthex-record/          minutes, decisions, progress, retrospectives
 │   │       └── corthex-uxui/            craft for screens, motion and video
 │   │           ├── references/          names, values, video, checks and their sources
 │   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
@@ -102,7 +102,7 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-screen` | 07 sitemap, 08 screen states, 09 mockup |
 | `corthex-build` | 10 WBS, 11 development, 12 QA |
 | `corthex-present` | 13 presentation |
-| `corthex-record` | minutes, decisions and progress, at any stage |
+| `corthex-record` | minutes, decisions, progress and retrospectives, at any stage |
 | `corthex-uxui` | the craft of screens, motion and video, with its checks: in 08, 09 and 13, or on its own |
 
 `corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).

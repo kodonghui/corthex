@@ -4,7 +4,7 @@ description: CORTHEX stages 05 and 06, the data and API contracts. Use when desi
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.3.0"
+  version: "0.4.0"
 ---
 
 # Data and API contracts

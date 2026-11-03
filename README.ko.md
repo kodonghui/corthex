@@ -67,7 +67,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 | `corthex-screen` | 07–09 | 사이트맵, 화면 상태, 목업과 디자인 토큰 |
 | `corthex-build` | 10–12 | 작업 분해, 개발, QA |
 | `corthex-present` | 13 | 발표 대본, 장면표, 슬라이드 |
-| `corthex-record` | 상시 | 회의록, 결정 로그, 진행 기록 |
+| `corthex-record` | 상시 | 회의록, 결정 로그, 진행 기록, 회고 |
 | `corthex-uxui` | 08·09·13 또는 단독 | 화면·모션·영상의 막연한 디자인 표현을 부품 이름과 숫자로 바꾸고, 결과를 보이기 전에 줄바꿈·대비·터치 크기·번쩍임·음량을 잴 때 |
 | `corthex-hub` | 전체, `corthex-nexus`에 있음 | 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지로 보고, 단계마다 진행 상태를 기록할 때 |
 

@@ -31,7 +31,7 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │       │   ├── references/          원칙, 프로필, 프로젝트, 단계 계약
 │   │       │   └── assets/              profile.json과 project.json 예시
 │   │       ├── corthex-discover/ …      단계 스킬, 단계마다 참고 문서 하나
-│   │       ├── corthex-record/          회의록, 결정, 진행 기록
+│   │       ├── corthex-record/          회의록, 결정, 진행 기록, 회고
 │   │       └── corthex-uxui/            화면·모션·영상을 만드는 법
 │   │           ├── references/          용어, 값, 영상, 점검과 그 출처
 │   │           └── scripts/             읽기만 하는 점검 둘: 페이지 안의 page-check.js, FFmpeg를 쓰는 media-check.py
@@ -102,7 +102,7 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 | `corthex-screen` | 07 사이트맵, 08 화면 상태, 09 목업 |
 | `corthex-build` | 10 WBS, 11 개발, 12 QA |
 | `corthex-present` | 13 발표 |
-| `corthex-record` | 회의록, 결정, 진행 기록. 어느 단계에서나 |
+| `corthex-record` | 회의록, 결정, 진행 기록, 회고. 어느 단계에서나 |
 | `corthex-uxui` | 화면·모션·영상을 만드는 법과 그 점검. 08·09·13단계에서, 또는 단독으로 |
 
 `corthex-nexus`는 스킬 `corthex-hub` 하나를 더합니다([프로젝트 허브](#프로젝트-허브) 참고).

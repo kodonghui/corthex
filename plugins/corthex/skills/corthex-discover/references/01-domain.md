@@ -21,6 +21,8 @@ Event storming is a conversation held on a board. At the start, agree on who put
 
 Mistakes in early steps carry into later ones and are harder to see at the end, so suggest the one-pass draft only when the user wants speed more than review.
 
+When the knowledge comes from interviews or chats with people, plan and run them as [interviews.md](interviews.md) says.
+
 ## Steps
 
 Each step adds one layer to the board. Start each step in a copy of the previous step's frame, placed below it, so the board keeps every step.

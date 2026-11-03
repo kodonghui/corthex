@@ -15,7 +15,7 @@
 2. Group it into tables named with the glossary's words and one naming convention.
 3. Write keys, foreign keys with their on-delete behaviour, unique rules and indexes for the reads the spec needs. Translate aggregate rules the database can enforce into unique, foreign-key or check constraints, and name each rule in a comment.
 4. Write a migration for every change; never edit a migration that has been applied somewhere.
-5. When the product calls an AI model (see the AI call entries in stage 04), add a table that records each call: when it was sent, the model and the prompt version, the token counts, the time to the first token and to the end, the result (success, failure or a reached limit) and the request's trace ID. Keep personal data and secrets out of it, and keep the prompt and the answer only when the product needs them.
+5. When the product calls an AI model (see the AI call entries in stage 04), add a table that records each call: when it was sent, the model and the prompt version, the token counts, the time to the first token and to the end, the result (success, failure or a reached limit) and the request's trace ID. Keep personal data and secrets out of it, and keep the prompt and the answer only when the product needs them. Record also why the model stopped (the provider's stop reason), the cached tokens read and written, the reasoning settings, such as effort or thinking, each tool call with its name, result, conversation ID and target ID and its arguments with personal data masked, and why a fallback answer was used. The same personal-data and secret exclusions apply to all these fields.
 
 ## Checks
 
