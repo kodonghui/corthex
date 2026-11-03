@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from _common import PLUGINS, read_text
@@ -85,8 +86,12 @@ class HubCase(unittest.TestCase):
         self.repo = self.base / "work" / "acme-shop"
         (self.home / ".corthex").mkdir(parents=True)
         self.repo.mkdir(parents=True)
+        self.record_home_patch = mock.patch.object(hub.companion("records"), "guard_home", return_value=self.home)
+        self.record_home_patch.start()
+        self.addCleanup(self.record_home_patch.stop)
 
     def tearDown(self):
+        self.record_home_patch.stop()
         self.tmp.cleanup()
 
     def write(self, path, data):

@@ -1,4 +1,5 @@
 """Atomic repository stage records; never commits, pushes or opens a PR."""
+import hashlib
 import json
 import os
 import re
@@ -15,6 +16,65 @@ def safe_link(value, h, home=None):
 def role(value, h, home=None):
     return (isinstance(value, str) and bool(value.strip()) and len(value) <= 120 and not h.CONTROL.search(value) and
             h.companion("commands").scrub(value, home or Path.home(), os.environ, h) == value)
+
+
+def guard_home():
+    """Per-user serialization also spans separate --home configuration roots."""
+    return Path.home()
+
+
+def directory_identity(path):
+    if os.name != "nt":
+        info = path.stat()
+        return info.st_dev, info.st_ino
+    # Python's Windows stat device width differs between supported runtimes.
+    # Use the same native API in all of them, including directory aliases.
+    import ctypes
+    from ctypes import wintypes
+    class Information(ctypes.Structure):
+        _fields_ = [("attributes", wintypes.DWORD), ("created", wintypes.FILETIME),
+                    ("accessed", wintypes.FILETIME), ("written", wintypes.FILETIME),
+                    ("volume", wintypes.DWORD), ("size_high", wintypes.DWORD),
+                    ("size_low", wintypes.DWORD), ("links", wintypes.DWORD),
+                    ("index_high", wintypes.DWORD), ("index_low", wintypes.DWORD)]
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                  ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    kernel.CreateFileW.restype = wintypes.HANDLE
+    kernel.GetFileInformationByHandle.argtypes = (wintypes.HANDLE, ctypes.POINTER(Information))
+    kernel.GetFileInformationByHandle.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.CreateFileW(str(path), 0, 7, None, 3, 0x02000000, None)
+    if handle is None or handle == ctypes.c_void_p(-1).value:
+        raise OSError("the repository record directory identity is unavailable")
+    try:
+        info = Information()
+        if not kernel.GetFileInformationByHandle(handle, ctypes.byref(info)):
+            raise OSError("the repository record directory identity is unavailable")
+        return info.volume, info.index_high, info.index_low
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def guard_path(target, repository=None):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    key = (":".join(str(value) for value in directory_identity(target.parent)) + ":" + target.name).encode("utf8")
+    root = guard_home().resolve()
+    for name in (".corthex", "hub", "record-locks"):
+        root = root / name
+        root.mkdir(mode=0o700, exist_ok=True)
+        info = root.lstat()
+        if root.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("the repository record guard must not follow a redirected directory")
+    if repository is not None:
+        try:
+            root.resolve().relative_to(repository.resolve())
+        except ValueError:
+            pass
+        else:
+            raise ValueError("the repository record guard must stay outside the repository")
+    return root / (hashlib.sha256(key).hexdigest() + ".guard")
 
 
 def write(project, home, args, api, now=None):
@@ -46,6 +106,15 @@ def write(project, home, args, api, now=None):
         if current_path.is_symlink():
             raise ValueError("repository records must not follow a symbolic link")
         current_path = current_path.parent
+    boxes = h.companion("outbox")
+    try:
+        with boxes.guard(guard_path(target, project.root)):
+            return update(project, home, args, h, target, part, now)
+    except boxes.Busy:
+        raise ValueError("another hub is recording this file; try status again")
+
+
+def update(project, home, args, h, target, part, now):
     if target.exists():
         data = h.load_json(target)
         if (not isinstance(data, dict) or type(data.get("format")) is not int or data.get("format") != 1 or

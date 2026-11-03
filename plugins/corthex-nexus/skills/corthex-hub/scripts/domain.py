@@ -58,6 +58,7 @@ def partial(checks, h, file, line, why, part):
 def parse(documents, checks, h, part):
     picture = {"format": 1, "contexts": [], "aggregates": [], "read_models": [], "dependencies": [], "hotspots": []}
     for file, text in documents:
+        text = h.STRUCK.sub(" ", text)
         lines = text.splitlines()
         rows = list(tables(lines, h))
         glossary, removed = {}, set()
@@ -163,7 +164,7 @@ def parse(documents, checks, h, part):
                 picture["hotspots"].append(hotspot)
             if {"lane", "events"} <= row.keys():
                 places = []
-                for place in row["events"].split(" → ")[:200]:
+                for place in re.split(r"\s*→\s*", row["events"])[:200]:
                     names = re.split(r",?\s+(?:or|또는)\s+", place)
                     cleaned = [h.plain(x, 120) for x in names if h.plain(x, 120)][:10]
                     if cleaned:

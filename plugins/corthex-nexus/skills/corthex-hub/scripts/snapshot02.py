@@ -78,18 +78,19 @@ class ObjectTree:
         if self.sizes[rel] > self.h.MAX_FILE_BYTES:
             return None
         data = self.h.run_git(self.root, ["cat-file", "blob", oid])
-        return data.decode("utf-8", "replace") if data is not None else None
+        return data.decode("utf-8-sig", "replace") if data is not None else None
 
-    def source_files(self, source):
+    def source_files(self, source, extensions):
         rel = source.rstrip("/")
         if rel == ".":
             rel = ""
         selected = [name for name in sorted(self.files)
                     if (not rel or name == rel or name.startswith(rel + "/")) and
+                    PurePosixPath(name).suffix.lower() in extensions and
                     not self.h.secret_path(self.root / name, self.root)]
         paths = set(Path(name) for name in selected)
         # A translation next to its original is not another picture source.
-        return [name for name in selected if not self.h.original_of(Path(name), paths)][:self.h.MAX_FILES]
+        return [name for name in selected if not self.h.original_of(Path(name), paths)]
 
 
 def default_tree(project, snapshot, h):
@@ -314,9 +315,12 @@ def augment(snapshot, project, home, api, parse_picture):
             if h.is_absolute(rel) or "\\" in rel or ".." in PurePosixPath(rel).parts:
                 continue
             groups = {}
-            for name in tree.source_files(rel):
-                if PurePosixPath(name).suffix.lower() not in {"01-domain": {".md", ".markdown"}, "05-erd": {".sql"}, "07-sitemap": {".yaml", ".yml"}}[key]:
-                    continue
+            names = tree.source_files(rel, {"01-domain": {".md", ".markdown"}, "05-erd": {".sql"}, "07-sitemap": {".yaml", ".yml"}}[key])
+            if len(names) > h.MAX_FILES:
+                checks.append(h.check("picture-partial", "warn", names[h.MAX_FILES] + ":1: first of " +
+                    str(len(names) - h.MAX_FILES) + " supported sources omitted after " + str(h.MAX_FILES) + " files",
+                    stage=key, args={"limit": h.MAX_FILES, "omitted": len(names) - h.MAX_FILES}))
+            for name in names[:h.MAX_FILES]:
                 text = tree.read(name)
                 if text is None:
                     checks.append(h.check("picture-partial", "warn", name + ": source object is unreadable or exceeds 1 MB", stage=key))

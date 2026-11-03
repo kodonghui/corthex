@@ -69,6 +69,43 @@ class GitSourcesFixture(HubCase):
 
 
 class GitSourcesTest(GitSourcesFixture):
+    def test_bom_git_objects_match_the_working_tree_text_reader(self):
+        for path in ("docs/01-domain/domain.md", "db/schema.sql", "docs/07-sitemap/site.yaml", ".corthex/stages.json"):
+            current = self.repo / path
+            current.write_text("\ufeff" + current.read_text(encoding="utf8"), encoding="utf8")
+        head = self.commit("BOM sources")
+        self.git("update-ref", "refs/remotes/origin/main", head)
+        snapshot = self.snapshot()
+        by_stage = {p["stage"]: p["source"] for p in snapshot["pictures"]}
+        self.assertEqual(by_stage["01-domain"]["contexts"][0]["id"], "CTX-001")
+        self.assertEqual(by_stage["05-erd"]["tables"][0]["name"], "original")
+        self.assertEqual(by_stage["07-sitemap"]["screens"][0]["id"], "SCR-001")
+        self.assertEqual(snapshot["stages"]["05-erd"]["state"], "done")
+
+    def test_picture_file_budget_ignores_unsupported_files(self):
+        self.project(stages={"05-erd": {"source": "db/"}})
+        for index in range(400):
+            self.write(self.repo / ("db/a-%03d.png" % index), "not a picture source")
+        head = self.commit("unrelated binary filenames")
+        self.git("update-ref", "refs/remotes/origin/main", head)
+        snapshot = self.snapshot()
+        picture = next(p for p in snapshot["pictures"] if p["stage"] == "05-erd")
+        self.assertEqual(picture["source"]["tables"][0]["id"], "TBL-001")
+        self.assertFalse(any("supported sources omitted" in c["message"] for c in snapshot["checks"]))
+
+    def test_supported_sources_over_the_budget_have_an_explicit_check(self):
+        self.project(stages={"05-erd": {"source": "db/"}})
+        for index in range(400):
+            self.write(self.repo / ("db/a-%03d.sql" % index), "CREATE TABLE t%d (id INT);\n" % index)
+        head = self.commit("supported source overflow")
+        self.git("update-ref", "refs/remotes/origin/main", head)
+        snapshot = self.snapshot()
+        picture = next(p for p in snapshot["pictures"] if p["stage"] == "05-erd")
+        self.assertEqual(len(picture["source"]["tables"]), 400)
+        warning = next(c for c in self.found(snapshot, "picture-partial") if c.get("args", {}).get("omitted"))
+        self.assertEqual(warning["args"], {"limit": 400, "omitted": 1})
+        self.assertIn("db/schema.sql:1", warning["message"])
+
     def test_default_objects_exclude_branch_and_uncommitted_material(self):
         self.git("checkout", "-b", "work")
         self.write(self.repo / "db/schema.sql", "CREATE TABLE branch_only (id INT);\n")
@@ -164,6 +201,31 @@ class PictureReadersTest(unittest.TestCase):
         helper = SimpleNamespace(**vars(hub), picture_ids=hub.IdFormat({}))
         data = hub.companion(name).parse([(path or "fixture." + {"domain": "md", "erd": "sql", "sitemap": "yaml"}[name], text)], checks, helper, "demo")
         return data, checks
+
+    def test_struck_timeline_boundaries_do_not_leave_phantom_events(self):
+        for sequence, expected in (("~~Old~~ → Saved", [["Saved"]]),
+                ("Started → ~~Old~~", [["Started"]]), ("~~Old~~ → ~~Gone~~", []),
+                ("Started → ~~Old~~ → Saved", [["Started"], ["Saved"]]),
+                ("Started → Saved", [["Started"], ["Saved"]])):
+            with self.subTest(sequence=sequence):
+                text = "## CTX-001 Shop\n\n| Lane | Events |\n| --- | --- |\n| User | " + sequence + " |\n"
+                data, checks = self.parse("domain", text)
+                self.assertEqual(data["timeline"][0]["places"], expected)
+                self.assertEqual(checks, [])
+
+    def test_struck_domain_terms_commands_and_events_are_not_resurrected(self):
+        text = ("## CTX-001 Shop\n"
+                "| Context | Type | Aggregates |\n| --- | --- | --- |\n| CTX-001 | core | ~~Old order (TERM-001)~~, Live order (TERM-003) |\n\n"
+                "| Given by | Read model | Command | Aggregate | Events |\n| --- | --- | --- | --- | --- |\n"
+                "| User | Summary | Save | Live order | ~~Old event~~, Saved |\n"
+                "| ~~Old user~~ | ~~Old summary~~ | ~~Old command~~ | ~~Old order (TERM-001)~~ | ~~Old event~~ |\n\n"
+                "| ID | Term |\n| --- | --- |\n| ~~TERM-001~~ | ~~Old order~~ |\n| TERM-002 | Summary |\n| TERM-003 | Live order |\n")
+        data, checks = self.parse("domain", text)
+        self.assertEqual([row["name"] for row in data["aggregates"]], ["Live order"])
+        self.assertEqual([row["name"] for row in data["read_models"]], ["Summary"])
+        self.assertEqual(data["contexts"][0]["rows"][0]["events"], ["Saved"])
+        self.assertNotIn("Old", json.dumps(data))
+        self.assertEqual(checks, [])
 
     def test_command_rows_outside_context_headings_keep_their_names(self):
         row = "| Given by | Read model | Command | Aggregate | Events |\n| --- | --- | --- | --- | --- |\n| User | Summary | Save | Order | Saved |\n"
@@ -293,6 +355,190 @@ ALTER TABLE orders ADD FOREIGN KEY (code) REFERENCES codes(value) ON DELETE SET 
 
 
 class SettingsAndRecordsTest(HubCase):
+    def record_fixture(self):
+        self.project(parts=["nexus", "other"])
+        self.register()
+        self.record_target = self.repo / ".corthex/stages/nexus.json"
+        data = {"format": 1, "project": "acme-shop", "part": "nexus", "stages": {
+            "05-erd": {"state": "in_progress", "checkpoints": [], "next": "Original", "updated": NOW}}}
+        self.write(self.record_target, data)
+        self.write(self.repo / ".corthex/stages/other.json", dict(data, part="other"))
+        return hub.select_projects(self.home, ["acme-shop"])[0][1]
+
+    def record_args(self, stage):
+        return hub.parser().parse_args(["status", "acme-shop", stage, "--part", "nexus", "--repository",
+                                       "--state", "in_progress", "--next", stage + " next"])
+
+    def test_record_identity_uses_stable_native_windows_information(self):
+        self.record_fixture()
+        identity = RECORD.directory_identity(self.record_target.parent)
+        if os.name == "nt":
+            with mock.patch.object(RECORD.os, "stat", side_effect=AssertionError("version-dependent stat was used")):
+                self.assertEqual(RECORD.directory_identity(self.record_target.parent), identity)
+            self.assertEqual(RECORD.directory_identity(Path(str(self.record_target.parent).upper())), identity)
+        else:
+            stat = self.record_target.parent.stat()
+            self.assertEqual(identity, (stat.st_dev, stat.st_ino))
+
+    @unittest.skipUnless(os.name == "nt", "Windows junction control")
+    def test_record_guard_refuses_a_junction_into_the_repository(self):
+        project = self.record_fixture()
+        destination = self.repo / "guard-destination"
+        destination.mkdir()
+        root = self.home / ".corthex/hub/record-locks"
+        root.parent.mkdir(parents=True, exist_ok=True)
+        command = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32/cmd.exe"
+        made = subprocess.run([str(command), "/d", "/c", "mklink", "/J", str(root), str(destination)],
+                              capture_output=True, timeout=10)
+        if made.returncode:
+            self.skipTest("junction creation is unavailable")
+        before = self.record_target.read_bytes()
+        try:
+            self.assertFalse(root.is_symlink())
+            with self.assertRaisesRegex(ValueError, "redirected"):
+                RECORD.write(project, self.home, self.record_args("02-prd"), vars(hub), NOW)
+            self.assertEqual(self.record_target.read_bytes(), before)
+            self.assertEqual(list(destination.iterdir()), [])
+        finally:
+            os.rmdir(str(root))
+
+    def test_record_guard_refuses_a_hardlinked_leaf_before_initialization(self):
+        project = self.record_fixture()
+        guard = RECORD.guard_path(self.record_target)
+        unrelated = self.base / "unrelated-empty-file"
+        unrelated.write_bytes(b"")
+        os.link(str(unrelated), str(guard))
+        before = self.record_target.read_bytes()
+        with self.assertRaisesRegex(ValueError, "another hub"):
+            RECORD.write(project, self.home, self.record_args("02-prd"), vars(hub), NOW)
+        self.assertEqual(unrelated.read_bytes(), b"")
+        self.assertEqual(self.record_target.read_bytes(), before)
+
+    def test_record_guard_refuses_metadata_inside_the_repository(self):
+        project = self.record_fixture()
+        before = self.record_target.read_bytes()
+        with mock.patch.object(RECORD, "guard_home", return_value=self.repo):
+            with self.assertRaisesRegex(ValueError, "outside the repository"):
+                RECORD.write(project, self.home, self.record_args("02-prd"), vars(hub), NOW)
+        self.assertEqual(self.record_target.read_bytes(), before)
+        self.assertFalse(list(self.repo.rglob("*.guard")))
+
+    def test_record_read_modify_replace_serializes_threads(self):
+        project = self.record_fixture()
+        first_read, second_read, release = threading.Event(), threading.Event(), threading.Event()
+        original = hub.load_json
+        errors = []
+        def read(path, *args, **kwargs):
+            value = original(path, *args, **kwargs)
+            if Path(path) == self.record_target:
+                if threading.current_thread().name == "record-first":
+                    first_read.set()
+                    if not release.wait(5):
+                        raise RuntimeError("synthetic writer was not released")
+                else:
+                    second_read.set()
+            return value
+        def update(stage):
+            try:
+                RECORD.write(project, self.home, self.record_args(stage), vars(hub), NOW)
+            except Exception as error:
+                errors.append(type(error).__name__)
+        first = threading.Thread(name="record-first", target=update, args=("02-prd",))
+        second = threading.Thread(name="record-second", target=update, args=("03-user-flow",))
+        with mock.patch.object(hub, "load_json", side_effect=read):
+            try:
+                first.start()
+                self.assertTrue(first_read.wait(5))
+                second.start()
+                self.assertFalse(second_read.wait(0.25), "the second writer read before the first published")
+            finally:
+                release.set()
+                first.join(5)
+                if second.ident is not None:
+                    second.join(5)
+        self.assertFalse(first.is_alive() or second.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(set(hub.load_json(self.record_target)["stages"]), {"02-prd", "03-user-flow", "05-erd"})
+
+    def start_record_writer(self, home, stage, tag, wait=False):
+        probe = self.base / "record-writer.py"
+        probe.write_text('''import importlib.util, sys, time
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("record_writer_probe", sys.argv[1])
+hub = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hub)
+home, target, base = map(Path, sys.argv[2:5])
+stage, tag, wait = sys.argv[5:8]
+original = hub.load_json
+def read(path, *args, **kwargs):
+    value = original(path, *args, **kwargs)
+    if Path(path) == target:
+        (base / (tag + "-read")).write_text("read", encoding="utf8")
+        if wait == "1":
+            deadline = time.monotonic() + 10
+            while not (base / "release").exists():
+                if time.monotonic() > deadline:
+                    raise RuntimeError("synthetic writer was not released")
+                time.sleep(.01)
+    return value
+hub.load_json = read
+(base / (tag + "-ready")).write_text("ready", encoding="utf8")
+raise SystemExit(hub.main(["--home", str(home), "--json", "status", "acme-shop", stage,
+    "--part", "nexus", "--repository", "--state", "in_progress", "--next", tag]))
+''', encoding="utf8")
+        env = {key: value for key, value in os.environ.items() if not key.startswith(("CORTHEX_NEXUS_", "NEXUS_DEV_"))}
+        env.update(HOME=str(self.home), USERPROFILE=str(self.home), PYTHONIOENCODING="utf-8")
+        return subprocess.Popen([sys.executable, str(probe), str(SCRIPT), str(home), str(self.record_target),
+            str(self.base), stage, tag, "1" if wait else "0"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def wait_record_marker(self, name):
+        deadline = time.monotonic() + 5
+        while not (self.base / name).exists():
+            self.assertLess(time.monotonic(), deadline, "the synthetic writer did not reach its marker")
+            time.sleep(0.01)
+
+    def test_record_processes_with_different_profiles_keep_both_stages(self):
+        self.record_fixture()
+        other = self.base / "other-profile"
+        self.write(other / ".corthex/projects.json", {"projects": [{"name": "acme-shop", "path": str(self.repo)}]})
+        sibling = (self.repo / ".corthex/stages/other.json").read_bytes()
+        first = self.start_record_writer(self.home, "02-prd", "first", True)
+        second = None
+        try:
+            self.wait_record_marker("first-read")
+            second = self.start_record_writer(other, "03-user-flow", "second")
+            self.wait_record_marker("second-ready")
+            time.sleep(0.25)
+            self.assertFalse((self.base / "second-read").exists(), "a second profile bypassed the record guard")
+            self.write(self.base / "release", "go")
+            first.communicate(timeout=10)
+            second.communicate(timeout=10)
+            self.assertEqual((first.returncode, second.returncode), (0, 0))
+        finally:
+            for process in (first, second):
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                    process.communicate(timeout=10)
+        self.assertEqual(set(hub.load_json(self.record_target)["stages"]), {"02-prd", "03-user-flow", "05-erd"})
+        self.assertEqual((self.repo / ".corthex/stages/other.json").read_bytes(), sibling)
+        self.assertFalse(list(self.repo.rglob("*.guard")))
+
+    def test_killed_record_writer_releases_native_guard_without_partial_data(self):
+        project = self.record_fixture()
+        original = self.record_target.read_bytes()
+        first = self.start_record_writer(self.home, "02-prd", "crashed", True)
+        try:
+            self.wait_record_marker("crashed-read")
+            first.terminate()
+            first.communicate(timeout=10)
+            self.assertEqual(self.record_target.read_bytes(), original)
+            RECORD.write(project, self.home, self.record_args("03-user-flow"), vars(hub), NOW)
+            self.assertEqual(set(hub.load_json(self.record_target)["stages"]), {"03-user-flow", "05-erd"})
+        finally:
+            if first.poll() is None:
+                first.terminate()
+                first.communicate(timeout=10)
+
     def test_canonical_origins_remove_transport_credentials_and_suffix(self):
         upper_host = "example.com".upper()
         for raw in ("git@" + upper_host + ":team/shop.git", "ssh://git@" + upper_host + ":2222/team/shop.git/", "https://user:password@" + upper_host + "/team/shop.git", "http://" + upper_host + "/team/shop/"):

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -46,10 +47,32 @@ def atomic(path, data):
 
 
 @contextlib.contextmanager
+def guard_file(path):
+    flags = os.O_RDWR | os.O_CREAT | os.O_APPEND
+    for option in ("O_BINARY", "O_NOFOLLOW", "O_NONBLOCK", "O_NOINHERIT"):
+        flags |= getattr(os, option, 0)
+    descriptor = None
+    try:
+        descriptor = os.open(str(path), flags, 0o600)
+        info, named = os.fstat(descriptor), path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or
+                not stat.S_ISREG(named.st_mode) or getattr(named, "st_file_attributes", 0) & 0x400 or
+                (info.st_dev, info.st_ino) != (named.st_dev, named.st_ino)):
+            raise Busy("outbox guard must be a single-link regular file")
+        handle = os.fdopen(descriptor, "a+b")
+        descriptor = None
+    except OSError:
+        raise Busy("outbox guard is unavailable")
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    with handle:
+        yield handle
+
+
+@contextlib.contextmanager
 def guard(path):
-    if path.is_symlink():
-        raise Busy("outbox guard is a symbolic link")
-    with open(path, "a+b") as handle:
+    with guard_file(path) as handle:
         handle.seek(0, 2)
         if not handle.tell():
             handle.write(b"\0")

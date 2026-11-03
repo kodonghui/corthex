@@ -76,7 +76,10 @@ Pictures use only regular blobs from the fetched origin default commit. A pictur
 
 - **DDD (`01-domain`)**: context headings and purpose/external-system text; English/Korean context summary and command tables, including policy rows; glossary terms for aggregates and read models; dependencies, hotspots and optional timeline lanes with ordered, stacked events. Names match glossary rows ignoring Unicode case and spacing. An explicit TERM ID wins; duplicate glossary matches use the first with a warning. A missing term leaves the element on the board without a term. A document with no context contributes no board.
 - **ERD (`05-erd`)**: inert SQL tokenization of CREATE TABLE, column types/nullability, primary and unique keys, foreign keys (including ALTER TABLE), unique/partial indexes and table metadata comments. CTX/TERM IDs and removed marks belong to their table. `terms: none` is an explicit empty term list; `-- without a table: TERM-001` exempts a board term.
+
 - **Sitemap (`07-sitemap`)**: the template's YAML list and nested `children`, quoted scalar values, inline/block lists, screens with or without IDs, parent indexes, flows, context/terms, removed status and `# without a screen: TERM-001`. YAML constructors, tags and aliases are not executed or accepted. An unreadable file contributes a check rather than an empty current picture.
+
+Git text objects use the same UTF-8 BOM handling as working-tree sources. Picture readers count the first 400 supported original documents of their stage, after filtering formats and translations; a check names the first omitted file and the omitted count when that limit is reached. The DDD reader removes struck-through Markdown text before reading its tables, as the existing item reader does.
 
 | Added rule | Level | Meaning |
 | --- | --- | --- |
