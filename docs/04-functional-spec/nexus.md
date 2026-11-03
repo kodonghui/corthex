@@ -2,7 +2,7 @@
 
 [한국어](nexus.ko.md)
 
-Stage 04 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day. The maintainer passed its checkpoint on 2026-11-03, together with the user flows of stage 03 and with stages 05 to 08, so the rows are frozen for NEXUS 0.2: a later change to a row needs the maintainer's decision. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS changed SPEC-106 and SPEC-119 and added SPEC-141 and SPEC-142, which wait for the maintainer's check ([For the checkpoint](#for-the-checkpoint)). When this file and its Korean translation differ, this file is the source.
+Stage 04 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day. The maintainer passed its checkpoint on 2026-11-03, together with the user flows of stage 03 and with stages 05 to 08, so the rows are frozen for NEXUS 0.2: a later change to a row needs the maintainer's decision. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS changed SPEC-106 and SPEC-119 and added SPEC-141 and SPEC-142, which the maintainer passed the same day ([For the checkpoint](#for-the-checkpoint)). When this file and its Korean translation differ, this file is the source.
 
 Inputs: the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md) (REQ-066 to REQ-193 and REQ-197 to REQ-218), the user flows in [docs/03-user-flow/nexus/](../03-user-flow/nexus/README.md) (FL-101 to FL-116) and the glossary in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps. This stage adds six words to the glossary (see [New words](#new-words)). The IDs of these rows start at SPEC-101, apart from memory's SPEC-001 to SPEC-039, so that both parts can add rows at the same time.
 
@@ -179,7 +179,7 @@ Added to the [glossary](../01-domain/nexus.md#7-glossary) on 2026-11-02 as TERM-
 
 ## For the checkpoint
 
-The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, waits for the maintainer's check:
+The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, passed at 16:54 KST the same day, together with the changes that it made to the other stages: on a decision card in the project's thread the maintainer chose to pass the step view and the work board as drawn ("모두 그린 대로 통과", pass all as drawn). The checkpoint covered:
 
 1. SPEC-106 takes the board's timeline (REQ-210), which the stage 01 skill has the agent write (REQ-212), and its acceptance criterion follows the stage 01 template as it now reads, with three dependencies, one of them to an external system, and three hotspots.
 2. SPEC-141, the step view of NEXUS 0.2 (REQ-209, REQ-211): nine steps, the last of which is the whole board, laid out from the timeline and the context tables.
