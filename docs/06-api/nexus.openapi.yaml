@@ -1447,12 +1447,13 @@ paths:
         "403": {$ref: "#/components/responses/AgentWriteRefused"}
         "404": {$ref: "#/components/responses/CheckpointNotFound"}
         "409":
-          description: Withdrawn, held by another pull request, claimed, or the write ID was taken
+          description: Withdrawn, no matching open record, held by another pull request, claimed, or the write ID was taken
           content:
             application/problem+json:
               schema: {$ref: "#/components/schemas/Problem"}
               examples:
                 checkpoint-withdrawn: {$ref: "#/components/examples/checkpoint_withdrawn"}
+                checkpoint-state: {$ref: "#/components/examples/checkpoint_state"}
                 pull-request-reported: {$ref: "#/components/examples/pull_request_reported"}
                 pull-request-mismatch: {$ref: "#/components/examples/pull_request_mismatch"}
                 claimed: {$ref: "#/components/examples/claimed"}
@@ -2035,6 +2036,9 @@ components:
     checkpoint_withdrawn:
       summary: A record pull request for a withdrawn checkpoint
       value: {title: The checkpoint is withdrawn, status: 409, detail: the user withdrew this checkpoint; write no record of it, code: checkpoint_withdrawn, traceId: 8f6c3b2a1d0e9fac-ICN, error: the user withdrew this checkpoint; write no record of it}
+    checkpoint_state:
+      summary: No reported open record pull request, or a record already stores the checkpoint
+      value: {title: The checkpoint has no matching open record, status: 409, detail: this report does not fit the checkpoint's current record state, code: checkpoint_state, traceId: 8f6c3b2a1d0e9fac-ICN, error: this report does not fit the checkpoint's current record state}
     write_id_reused:
       summary: The write ID of another request
       value: {title: The write ID is taken, status: 409, detail: "the write ID nw_6t9w2z5c8f1j was taken by a reply; make a new ID for each write", code: write_id_reused, traceId: 8f6c3b2a1d0e9fad-ICN, error: "the write ID nw_6t9w2z5c8f1j was taken by a reply; make a new ID for each write"}
@@ -2494,7 +2498,7 @@ components:
 
     ErrorCode:
       type: string
-      enum: [invalid_request, invalid_snapshot, clock_ahead, unknown_item, access_missing, access_other_app, cross_site, user_only, agent_only, no_kind, not_found, project_not_found, space_not_found, part_not_found, picture_not_found, comment_not_found, discrepancy_not_found, proposal_not_found, edit_not_found, checkpoint_not_found, entry_not_found, method_not_allowed, older_snapshot, commit_not_replaced, too_many_projects, repository_mismatch, comment_limit, reply_limit, proposal_limit, reflection_limit, space_full, comment_closed, proposal_not_open, edit_state, pull_request_reported, pull_request_mismatch, claimed, entry_closed, checkpoint_recorded, checkpoint_withdrawn, write_id_reused, snapshot_too_large, body_too_large, text_too_long, json_required, internal]
+      enum: [invalid_request, invalid_snapshot, clock_ahead, unknown_item, access_missing, access_other_app, cross_site, user_only, agent_only, no_kind, not_found, project_not_found, space_not_found, part_not_found, picture_not_found, comment_not_found, discrepancy_not_found, proposal_not_found, edit_not_found, checkpoint_not_found, entry_not_found, method_not_allowed, older_snapshot, commit_not_replaced, too_many_projects, repository_mismatch, comment_limit, reply_limit, proposal_limit, reflection_limit, space_full, comment_closed, proposal_not_open, edit_state, pull_request_reported, pull_request_mismatch, claimed, entry_closed, checkpoint_recorded, checkpoint_withdrawn, checkpoint_state, write_id_reused, snapshot_too_large, body_too_large, text_too_long, json_required, internal]
     Problem:
       description: >-
         Problem Details (RFC 9457), sent as application/problem+json. NEXUS sends no type, which
@@ -3783,6 +3787,7 @@ components:
       entry_closed: {status: 409, meaning: "a claim on a closed entry", message: "This entry is closed", client: "the hub skips it"}
       checkpoint_recorded: {status: 409, meaning: "a stored stage record names the checkpoint, so withdrawing it would change a recorded decision", message: "This checkpoint is recorded. Changing it is a new decision", client: "the overview shows the record"}
       checkpoint_withdrawn: {status: 409, meaning: "the checkpoint was withdrawn, so no new record pull request may write it", message: "This checkpoint was withdrawn", client: "the hub reports it, and the agent writes no record"}
+      checkpoint_state: {status: 409, meaning: "the checkpoint has no reported open record pull request for merged or closed, or is already recorded for opened", message: "Read the checkpoint's current record state before reporting", client: "the hub reports it, and the agent reads the checkpoint again"}
       write_id_reused: {status: 409, meaning: "the write ID was taken by another request", message: "This write could not be sent. Try again", client: "the view makes a new ID; the hub reports it as a fault of its own"}
       snapshot_too_large: {status: 413, meaning: "the snapshot is larger than 1 MiB", message: "The snapshot is larger than the server takes", client: "the hub reports it; its own limits keep snapshots smaller"}
       body_too_large: {status: 413, meaning: "a write's body is larger than 256 KiB", message: "This is larger than the server takes", client: "the view and the hub report it"}

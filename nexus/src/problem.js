@@ -42,6 +42,7 @@ export const ERRORS = Object.freeze({
   entry_closed: [409, "The entry is closed"],
   checkpoint_recorded: [409, "The checkpoint is recorded"],
   checkpoint_withdrawn: [409, "The checkpoint is withdrawn"],
+  checkpoint_state: [409, "The checkpoint has no matching open record"],
   write_id_reused: [409, "The write ID is taken"],
   snapshot_too_large: [413, "The snapshot is too large"],
   body_too_large: [413, "The request is too large"],
@@ -77,7 +78,7 @@ export class Problem extends Error {
     this.fields = {};
     for (const [key, value] of Object.entries(fields)) {
       if (!EXTRA_FIELDS.has(key)) throw new TypeError("unknown problem member");
-      this.fields[key] = value;
+      this.fields[key] = key === "field" ? shorten(value,120) : value;
     }
     // The only per-error HTTP header stage 06 defines is Allow.
     this.headers = headers.Allow ? { Allow: headers.Allow } : {};

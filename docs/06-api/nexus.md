@@ -333,6 +333,8 @@ The agent reports the pull request that writes a checkpoint passed in NEXUS into
 - A merged pull request does not record the checkpoint: the next push whose stored records name it does, and sets its `recorded_commit`.
 - Repeats and other pull requests are answered as for a reflection.
 
+Implementation clarification (2026-11-04): API-130 returns `409 checkpoint_state` for `merged` or `closed` without a reported open pull request, and for a new `opened` after a stored record names the checkpoint. Repeating its last report still changes nothing. This fills an unspecified refusal without changing SPEC-140's state transitions.
+
 ## The hub's commands
 
 ### Running a command
@@ -722,6 +724,7 @@ The codes of every request, as the contract's `components.x-corthex.errors` list
 | `entry_closed` | 409 | a claim on a closed entry | none | This entry is closed | the hub skips it |
 | `checkpoint_recorded` | 409 | a stored stage record names the checkpoint, so withdrawing it would change a recorded decision | none | This checkpoint is recorded. Changing it is a new decision | the overview shows the record |
 | `checkpoint_withdrawn` | 409 | the checkpoint was withdrawn, so no new record pull request may write it | none | This checkpoint was withdrawn | the hub reports it, and the agent writes no record |
+| `checkpoint_state` | 409 | no matching open record, or already recorded | none | Read the checkpoint before reporting | read it again |
 | `write_id_reused` | 409 | the write ID was taken by another request | none | This write could not be sent. Try again | the view makes a new ID; the hub reports it as a fault of its own |
 | `snapshot_too_large` | 413 | the snapshot is larger than 1 MiB | `limit` | The snapshot is larger than the server takes | the hub reports it; its own limits keep snapshots smaller |
 | `body_too_large` | 413 | a write's body is larger than 256 KiB | `limit` | This is larger than the server takes | the view and the hub report it |

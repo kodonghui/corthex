@@ -248,6 +248,7 @@ An accepted proposal makes one, in the same write as the acceptance (SPEC-131); 
 | `closed_commit` | commit, or NULL | The commit whose stage source already held the change, when the agent reported that instead of a pull request |
 | `made_at` | time | |
 | `changed_at` | time | When its state last changed |
+| `last_report` | JSON, or NULL | Internal event, pull request or commit of its last report. It distinguishes a repeated `closed` report after the pull request field was cleared from an invalid first `closed` report. Never returned by an API |
 
 ### Checkpoints (TBL-110)
 
@@ -287,10 +288,12 @@ While a claim lasts, the server refuses the agent's writes on the entry from oth
 | `project` | project name | |
 | `id` | `nw_` ID | Made by the page or the hub for one write, and sent with each try of it (SPEC-126, SPEC-128) |
 | `request` | name of a request | Which request took the write, such as `reply` or `accept`, as stage 06 names them. The same ID with another request is refused |
-| `result` | JSON | The first answer, which a write sent again gets without any change (SPEC-128) |
+| `result` | JSON | An internal envelope with the first answer's status and body, plus a random per-attempt transaction token that is never returned. A write sent again gets that status and body without any change (SPEC-128) |
 | `received_at` | time | The space's next write deletes the row 7 days after this. The outbox drops a write 7 days after it was made, so no write is sent again once its ID is gone |
 
 Only the writes that the server took are kept. A write that it refused leaves no row, so it can be sent again once the reason is gone.
+
+The transaction token distinguishes a newly inserted write from an already stored ID, even when retries have the same clock millisecond and answer. Every later statement checks this token; an ID conflict therefore cannot run the first write's mutations again. The token is storage metadata, not part of an API answer or an outbox file, and changes no schema column.
 
 ### Migrations (TBL-113)
 
@@ -430,7 +433,7 @@ One statement, `DELETE FROM snapshots WHERE name = ?`, deletes the snapshot, and
 
 ## Format version and migrations
 
-- The schema's version is in `migrations` (TBL-113). Phase 1's server made `snapshots` at its first use and kept no version: that is version 1. Version 2, for NEXUS 0.2, is [nexus.sql](nexus.sql). nexus.sql records no version, so the server's database is always set up by store.js, and one made from nexus.sql alone serves only to compare the schemas.
+- The schema's version is in `migrations` (TBL-113). Phase 1's unversioned `snapshots` is version 1. Version 2 adds NEXUS 0.2's space tables; version 3 adds the internal `edits.last_report` metadata needed for SPEC-133's repeated reports. Released migrations 1 and 2 stay unchanged. [nexus.sql](nexus.sql) describes the latest schema, records no version, and serves only to compare the schemas; store.js always initializes a server database.
 - store.js keeps every migration. At its first use of a database it runs nexus.sql's statement for `migrations`, which makes the table only when it is missing, and then runs, in order, each migration whose version the table does not hold, each in one batch with the row that records it. A batch that fails, as when another instance applied the same version first, changes nothing, and store.js reads the versions again.
 - Migration 1 is phase 1's statement, which changes nothing in a database that already holds the table:
 

@@ -58,8 +58,8 @@ test("TASK-202/203: migration output has exactly the stage-05 tables, columns, k
   const actual = new DatabaseSync(":memory:");
   await new Store(fakeD1(actual)).ensure();
   assert.deepEqual(describe(actual), describe(expected));
-  assert.deepEqual(plain(actual.prepare("SELECT version FROM migrations ORDER BY version").all()), [{ version: 1 }, { version: 2 }]);
-  assert.equal(actual.prepare("SELECT COUNT(*) AS n FROM migrations WHERE applied_at IS NOT NULL").get().n, 2);
+  assert.deepEqual(plain(actual.prepare("SELECT version FROM migrations ORDER BY version").all()), [{ version: 1 }, { version: 2 }, { version: 3 }]);
+  assert.equal(actual.prepare("SELECT COUNT(*) AS n FROM migrations WHERE applied_at IS NOT NULL").get().n, 3);
   actual.close(); expected.close();
 });
 
@@ -99,7 +99,7 @@ test("TASK-203: a failed schema-2 transaction rolls back and a later attempt ret
   assert.deepEqual(plain(raw.prepare("SELECT version FROM migrations").all()), [{ version: 1 }]);
   await store.ensure();
   assert.equal(raw.prepare("PRAGMA table_info(snapshots)").all().length, 9);
-  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM migrations").get().n, 2);
+  assert.equal(raw.prepare("SELECT COUNT(*) AS n FROM migrations").get().n, 3);
   raw.close();
 });
 
@@ -121,7 +121,7 @@ test("TASK-202/203: two Worker isolates applying the same migrations converge wi
   }
   await Promise.all(bindings.map((binding) => new Store(binding).ensure()));
   assert.equal(arrivals, 2);
-  assert.deepEqual(plain(raw.prepare("SELECT version FROM migrations ORDER BY version").all()), [{ version: 1 }, { version: 2 }]);
+  assert.deepEqual(plain(raw.prepare("SELECT version FROM migrations ORDER BY version").all()), [{ version: 1 }, { version: 2 }, { version: 3 }]);
   const expected = new DatabaseSync(":memory:"); expected.exec(schema);
   assert.deepEqual(describe(raw), describe(expected));
   raw.close(); expected.close();

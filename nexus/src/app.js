@@ -1,199 +1,127 @@
-// The NEXUS server: it stores the snapshots that `hub.py push` sends and
-// serves the same hub page the plugin builds on the user's machine.
-// Cloudflare Access protects the whole Worker; a request that Access did not
-// check is refused, so a missing or broken Access setup shows no data.
-
-import { MAX_BYTES, NAME, Refused, readSnapshot } from "./snapshot.js";
+// NEXUS: checked Access requests, contract ordering, and D1 transactions.
+import { Refused, readSnapshot } from "./snapshot.js";
+import { readSnapshot02 } from "./snapshot02.js";
 import { Store } from "./store.js";
+import { preflight } from "./preflight.js";
+import { jsonBody } from "./body.js";
+import { COMMON_HEADERS, Problem, problemDocument, problemResponse } from "./problem.js";
 
-const PAGE_SCHEMA = "corthex-hub-page/0.1";
-const PLACEHOLDER = "__CORTHEX_HUB_DATA__";
 export const MAX_PROJECTS = 30;
+const PLACEHOLDER = "__CORTHEX_HUB_DATA__";
+const INPUTS = Object.freeze({comment:"NewComment",reply:"NewReply",decision:"NewDecision",proposal:"NewProposal",
+  "report-edit":"EditReport",checkpoint:"NewCheckpoint","report-checkpoint":"CheckpointReport"});
+const lang = (env) => String(env.NEXUS_LANGUAGE || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+const escaped = (value) => String(value).replace(/[&<>"']/g,(ch)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+const dataText = (value) => JSON.stringify(value).replace(/[<>&]/g,(ch)=>({"<":"\\u003c",">":"\\u003e","&":"\\u0026"}[ch]));
+export const VIEW_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-const COMMON = {
-  "Cache-Control": "no-store",
-  "Referrer-Policy": "no-referrer",
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-Robots-Tag": "noindex, nofollow",
-  "Cross-Origin-Resource-Policy": "same-origin",
-};
-
-export async function handle(request, env, ctx, template) {
+export async function handle(request,env,ctx,template,views={}) {
+  env ||= {};
   try {
-    return await route(request, env || {}, ctx, template);
-  } catch (error) {
-    if (error instanceof Refused) return json({ error: error.message }, error.status, error.headers);
-    // The message may hold stored text, so only the kind of error is logged.
-    console.error("nexus: request failed", error && error.name);
-    return json({ error: "the server could not finish the request" }, 500);
-  }
-}
-
-async function route(request, env, ctx, template) {
-  checkAccess(ctx, env);
-  const { pathname } = new URL(request.url);
-  const method = request.method;
-  if (pathname === "/") {
-    allow(method, ["GET", "HEAD"]);
-    return page(request, env, template);
-  }
-  if (pathname === "/api/snapshots") {
-    allow(method, ["GET", "HEAD", "POST"]);
-    return method === "POST" ? receive(request, env) : listing(request, env);
-  }
-  const match = /^\/api\/snapshots\/([^/]+)$/.exec(pathname);
-  if (match) {
-    allow(method, ["GET", "HEAD", "DELETE"]);
-    const name = match[1];
-    if (!NAME.test(name)) throw new Refused(404, "no such project");
-    return method === "DELETE" ? remove(request, env, name) : snapshot(request, env, name);
-  }
-  throw new Refused(404, "not found");
-}
-
-function checkAccess(ctx, env) {
-  const access = ctx && ctx.access;
-  if (!access) {
-    throw new Refused(403, "Cloudflare Access did not check this request; protect this Worker with Access first");
-  }
-  const wanted = String(env.ACCESS_AUD || "").split(",").map((aud) => aud.trim()).filter(Boolean);
-  const audiences = [].concat(access.aud || []);
-  if (wanted.length && !audiences.some((aud) => wanted.includes(aud))) {
-    throw new Refused(403, "another Access application than ACCESS_AUD names checked this request");
-  }
-}
-
-function allow(method, methods) {
-  if (!methods.includes(method)) throw new Refused(405, "method not allowed", { Allow: methods.join(", ") });
-}
-
-function store(env) {
-  if (!env.DB) throw new Refused(500, "the Worker has no D1 database bound as DB");
-  return new Store(env.DB);
-}
-
-// Browsers mark requests from other sites; only the user's own tools may change data.
-function checkSameOrigin(request) {
-  const site = request.headers.get("Sec-Fetch-Site");
-  if (site && site !== "same-origin" && site !== "none") {
-    throw new Refused(403, "a request from another site cannot change the hub");
-  }
-}
-
-async function readBody(request) {
-  const declared = Number(request.headers.get("Content-Length"));
-  if (declared > MAX_BYTES) throw new Refused(413, `the snapshot is larger than ${MAX_BYTES} bytes`);
-  const chunks = [];
-  let size = 0;
-  if (request.body) {
-    const reader = request.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > MAX_BYTES) {
-        await reader.cancel();
-        throw new Refused(413, `the snapshot is larger than ${MAX_BYTES} bytes`);
+    const route=await preflight(request,env,ctx);
+    if(!env.DB)throw new Problem("internal","the Worker has no D1 database bound as DB");
+    const store=new Store(env.DB),p=route.params,head=request.method==="HEAD";
+    switch(route.operation) {
+      case "pushSnapshot": {
+        const {data,text}=await jsonBody(request,null,true);
+        let sent;
+        if(data?.schema==="corthex-hub/0.2")sent=readSnapshot02(data,Date.now());
+        else {
+          try {sent=readSnapshot(text,Date.now());}
+          catch(error) {
+            if(!(error instanceof Refused))throw error;
+            const code=error.status===413?"snapshot_too_large":/dated in the future/.test(error.message)?"clock_ahead":"invalid_snapshot";
+            throw new Problem(code,error.message,code==="invalid_snapshot"?{field:"body"}:{});
+          }
+        }
+        return json(await store.push(sent));
       }
-      chunks.push(value);
+      case "listSnapshots": return json({projects:await store.list()},200,head);
+      case "getSnapshot": {
+        const body=await store.body(p.project);
+        if(body==null)throw new Problem("project_not_found","no such project");
+        return new Response(head?null:body,{headers:jsonHeaders()});
+      }
+      case "removeProject": {
+        if(!await store.remove(p.project))throw new Problem("project_not_found","no such project");
+        return json({name:p.project,removed:true});
+      }
+      case "getHeldCommit": return json(await store.heldCommit(p.project),200,head);
+      case "getRemovalDryRun": return json(await store.removalDryRun(p.project),200,head);
+      case "getPicture": return json(await store.readPicture(p.project,p.part,p.stage),200,head);
+      case "getStageOverview": return json(await store.readOverview(p.project,p.part,p.stage),200,head);
+      case "getAgentTodo": return json(await store.readTodo(p.project,route.session),200,head);
+      case "getComment": return json(await store.readEntry(p.project,"comment",p.comment),200,head);
+      case "getProposal": return json(await store.readEntry(p.project,"proposal",p.proposal),200,head);
+      case "getEdit": return json(await store.readEntry(p.project,"edit",p.edit),200,head);
+      case "getCheckpoint": return json(await store.readEntry(p.project,"checkpoint",p.checkpoint),200,head);
+      case "claimEntry": return json(await store.claimEntry(p.project,p.entry,route.session));
+      case "releaseEntry": return json(await store.claimEntry(p.project,p.entry,route.session,true));
+      case "getHubPage": {
+        const [bodies,spaces]=await Promise.all([store.bodies(),store.readSpaces()]);
+        const data={schema:"corthex-hub-page/0.2",generated_at:new Date().toISOString(),lang:lang(env),origin:"server",projects:bodies.map(JSON.parse),spaces,missing:[]};
+        return html(head?null:render(template,JSON.stringify(data)),await pagePolicy(template));
+      }
+      case "getViewCode": {
+        const file=views.code?.[p.file];
+        if(!file)throw new Problem("not_found","no such file of the view's code");
+        return new Response(head?null:file.body,{headers:{...COMMON_HEADERS,"Content-Type":file.type,"Cache-Control":"private, max-age=31536000, immutable","Content-Security-Policy":"default-src 'none'; frame-ancestors 'none'"}});
+      }
+      case "getPictureViewPage":
+      case "getStageOverviewPage": {
+        const view=route.operation==="getPictureViewPage"?"picture":"overview";
+        const data=await(view==="picture"?store.readPicture(p.project,p.part,p.stage):store.readOverview(p.project,p.part,p.stage));
+        const payload={schema:"corthex-view-page/0.2",lang:lang(env),view,data,problem:null};
+        const viewTemplate=views.template || '<!doctype html><html><head><meta charset="utf-8"><title>NEXUS</title></head><body><main id="view"></main><script id="view-data" type="application/json">__CORTHEX_VIEW_DATA__</script></body></html>';
+        return html(head?null:renderView(viewTemplate,payload),VIEW_POLICY);
+      }
+      default: {
+        if(!route.writeName)throw new Error("unhandled operation");
+        const body=INPUTS[route.writeName]?(await jsonBody(request,INPUTS[route.writeName])).data:{};
+        const id=p.comment||p.proposal||p.edit||p.checkpoint||null;
+        const result=await store.writeEntry(route.writeName,p.project,id,body,{kind:route.kind,session:route.session,write:route.write});
+        return json(result.body,result.status);
+      }
     }
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), size };
-  } catch {
-    throw new Refused(400, "the body is not UTF-8 text");
+  } catch(error) {
+    const path=new URL(request.url).pathname;
+    if((path==="/"||path.startsWith("/pictures/")||path.startsWith("/overview/")) && /(?:^|[,;\s])text\/html(?:[,;\s]|$)/i.test(request.headers.get("Accept")||""))return refusalPage(request,env,error);
+    return problemResponse(request,error);
   }
 }
 
-async function receive(request, env) {
-  checkSameOrigin(request);
-  const type = request.headers.get("Content-Type") || "";
-  if (!/^application\/json\s*(?:;|$)/i.test(type)) throw new Refused(415, "send the snapshot as application/json");
-  const { text } = await readBody(request);
-  const now = Date.now();
-  const sent = readSnapshot(text, now);
-  const db = store(env);
-  const bytes = new TextEncoder().encode(sent.body).byteLength;
-  const revision = await db.put(sent.name, sent.generatedMs, sent.generatedAt, new Date(now).toISOString(), sent.body, bytes, MAX_PROJECTS);
-  if (revision === null) {
-    const stored = await db.meta(sent.name);
-    if (!stored) throw new Refused(409, `the hub already holds ${MAX_PROJECTS} projects; remove one with hub.py remove first`);
-    throw new Refused(409, `the server holds a newer snapshot of ${sent.name}, made at ${stored.generated_at}; build it again and send that`);
-  }
-  return json({ name: sent.name, revision });
+function refusalPage(request,env,error) {
+  const p=problemDocument(request,error),ko=lang(env)==="ko";
+  console.error("nexus",{kind:p.code,traceId:p.traceId});
+  const messages={project_not_found:"이 프로젝트는 서버에 없습니다.",space_not_found:"아직 그림을 서버에 보내지 않았습니다.",part_not_found:"이 프로젝트에 없는 부분입니다.",picture_not_found:"이 단계와 부분의 그림이 아직 없습니다.",access_missing:"로그인을 확인하지 못했습니다.",access_other_app:"이 서버의 로그인으로 확인되지 않았습니다.",not_found:"페이지를 찾지 못했습니다.",method_not_allowed:"이 요청 방법으로 열 수 없습니다.",internal:"페이지를 불러오지 못했습니다."};
+  const message=ko?(messages[p.code]||"요청을 처리하지 못했습니다."):p.title;
+  const body=`<!doctype html><html lang="${ko?"ko":"en"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEXUS</title></head><body><main><h1>${escaped(message)}</h1><p>${ko?"확인 번호":"Trace ID"}: ${escaped(p.traceId)}</p><p><a href="">${ko?"다시 불러오기":"Load again"}</a> · <a href="/">${ko?"허브로":"Hub"}</a></p></main></body></html>`;
+  return new Response(request.method==="HEAD"?null:body,{status:p.status,headers:{...COMMON_HEADERS,"Content-Type":"text/html; charset=utf-8","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",...(error instanceof Problem?error.headers:{})}});
 }
 
-async function listing(request, env) {
-  return json({ projects: await store(env).list() }, 200, {}, request.method === "HEAD");
+export function render(template,data) {
+  const at=template.indexOf(PLACEHOLDER);
+  if(at<0||template.indexOf(PLACEHOLDER,at+1)>=0)throw new Error("the hub template must hold its placeholder once");
+  const payload=data.replace(/</g,"\\u003c").replace(/>/g,"\\u003e").replace(/&/g,"\\u0026");
+  return template.slice(0,at)+payload+template.slice(at+PLACEHOLDER.length);
 }
-
-async function snapshot(request, env, name) {
-  const body = await store(env).body(name);
-  if (body === null || body === undefined) throw new Refused(404, "no such project");
-  return new Response(request.method === "HEAD" ? null : body, { headers: jsonHeaders() });
+export function renderView(template,data) {
+  const marker="__CORTHEX_VIEW_DATA__",at=template.indexOf(marker);
+  if(at<0 || template.indexOf(marker,at+1)>=0)throw new Error("the view template must hold its placeholder once");
+  // A replacement string interprets $', $` and $$ even after HTML escaping.
+  // A callback inserts the exact JSON characters without template expansion.
+  return template.replace(marker,()=>dataText(data));
 }
-
-async function remove(request, env, name) {
-  checkSameOrigin(request);
-  if (!(await store(env).remove(name))) throw new Refused(404, "no such project");
-  return json({ name, removed: true });
-}
-
-async function page(request, env, template) {
-  const bodies = await store(env).bodies();
-  const lang = String(env.NEXUS_LANGUAGE || "").toLowerCase().startsWith("ko") ? "ko" : "en";
-  // The stored snapshots are already JSON, so the page data is put together as text.
-  const data = `{"schema":"${PAGE_SCHEMA}","generated_at":"${new Date().toISOString()}","lang":"${lang}",` +
-    `"origin":"server","projects":[${bodies.join(",")}],"missing":[]}`;
-  const headers = {
-    ...COMMON,
-    "Content-Type": "text/html; charset=utf-8",
-    "Content-Security-Policy": await pagePolicy(template),
-    "Cross-Origin-Opener-Policy": "same-origin",
-  };
-  return new Response(request.method === "HEAD" ? null : render(template, data), { headers });
-}
-
-// The page template with the data in its JSON script block, as hub.py writes it.
-export function render(template, data) {
-  const at = template.indexOf(PLACEHOLDER);
-  if (at < 0 || template.indexOf(PLACEHOLDER, at + 1) >= 0) throw new Error("the hub template must hold its placeholder once");
-  // Inside <script>, "<" could end the block; JSON allows these escapes.
-  const payload = data.replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
-  return template.slice(0, at) + payload + template.slice(at + PLACEHOLDER.length);
-}
-
-// Like the page's own policy, but the script is allowed by its hash instead of
-// as any inline script, and no site may frame the page.
-const policies = new Map();
-
+const policies=new Map();
 export async function pagePolicy(template) {
-  if (!policies.has(template)) {
-    const start = template.lastIndexOf("<script>") + "<script>".length;
-    const script = template.slice(start, template.indexOf("</script>", start));
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(script)));
-    const hash = btoa(String.fromCharCode(...digest));
-    policies.set(template, `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+  if(!policies.has(template)) {
+    const start=template.lastIndexOf("<script>")+"<script>".length;
+    const script=template.slice(start,template.indexOf("</script>",start));
+    const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(script)));
+    policies.set(template,`default-src 'none'; script-src 'sha256-${btoa(String.fromCharCode(...digest))}'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
   return policies.get(template);
 }
-
-function jsonHeaders(extra) {
-  return {
-    ...COMMON,
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
-    ...extra,
-  };
-}
-
-function json(data, status = 200, extra = {}, headOnly = false) {
-  return new Response(headOnly ? null : JSON.stringify(data), { status, headers: jsonHeaders(extra) });
-}
+function html(body,policy) {return new Response(body,{headers:{...COMMON_HEADERS,"Content-Type":"text/html; charset=utf-8","Content-Security-Policy":policy,"Cross-Origin-Opener-Policy":"same-origin"}});}
+function jsonHeaders() {return {...COMMON_HEADERS,"Content-Type":"application/json; charset=utf-8","Content-Security-Policy":"default-src 'none'; frame-ancestors 'none'"};}
+function json(data,status=200,head=false) {return new Response(head?null:JSON.stringify(data),{status,headers:jsonHeaders()});}
