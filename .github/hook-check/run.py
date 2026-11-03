@@ -1,6 +1,6 @@
 """Runs session context and recording hooks in isolated Claude Code and Codex.
 
-Usage: python run.py LABEL OUTDIR [HOSTS]
+Usage: python run.py LABEL OUTDIR [HOSTS] [--evidence]
 
 Both hosts talk only to a mock model server on 127.0.0.1 that records each
 request and streams a fixed Korean answer, with fake keys, so no model is called. Each host gets
@@ -27,18 +27,23 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import native_evidence
+from network_proxy import NetworkProxy
+
 REPO = Path(__file__).resolve().parents[2]
 MEMORY = REPO / "plugins" / "corthex-memory"
 DIAG = Path(__file__).resolve().parent / "diag.py"
 GIT_BASH = Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Git" / "bin" / "bash.exe"
 CONTEXT = "CORTHEX session context"
 ASK = "MARK-ASK-7731"
+PROMPT = "한국어 질문을 기록해 주세요."
 REPLY = "한국어 최종 답변을 기록합니다."
 KEEP = (
     "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP",
     "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS", "USERNAME", "USERDOMAIN", "COMPUTERNAME",
     "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "PROGRAMDATA", "COMMONPROGRAMFILES",
-    "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432", "PSMODULEPATH",
+    "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432", "PSMODULEPATH", "TMPDIR", "LANG", "LC_ALL",
 )
 CODEX_CONFIG = """model_provider = "mock"
 
@@ -141,6 +146,7 @@ class Mock:
 def run(args, env, cwd=None, stdin="", timeout=180, line=None):
     """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe."""
     start = time.time()
+    started_ns = native_evidence.clock_ns()
     try:
         process = subprocess.Popen(line or args, env=env, cwd=cwd, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -157,7 +163,8 @@ def run(args, env, cwd=None, stdin="", timeout=180, line=None):
             os.killpg(process.pid, signal.SIGKILL)
         out, err = process.communicate()
         code = "timeout"
-    return {"exit": code, "seconds": round(time.time() - start, 1),
+    return {"exit": code, "seconds": round(time.time() - start, 1), "pid": process.pid,
+            "started_monotonic_ns": started_ns, "ended_monotonic_ns": native_evidence.clock_ns(),
             "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace")}
 
 
@@ -199,15 +206,17 @@ def prepare(base):
     scripts = MEMORY / "skills/corthex-memory/scripts"
     if str(scripts) not in sys.path:
         sys.path.insert(0, str(scripts))
-    from memory_lib import base as memory_base, files, store, clock as memory_clock
-    memory = store.MemoryStore(home / ".corthex/corthex-memory")
-    memory_base.private_directory(memory.folder / "logs")
-    files.write_json(memory.folder / "store.json", store.new_record("0.2.0"), "TBL-001")
-    at = memory_base.utc_time()
-    memory.write_configuration({"consent": {"at": at, "version": 1},
-        "projects": {"demo": {"enabled": True, "since": at}}}, memory_clock.now() + 2)
-    for name in ("raw", "unprocessed"):
-        memory_base.private_directory(memory.folder / "projects" / memory_base.project_folder_name("demo") / name)
+    command = [sys.executable, "-B", str(scripts / "memory.py"), "on", "--folder", str(demo)]
+    environment = base_env(home)
+    preview = run(command, environment, demo)
+    assert preview["exit"] == 0, preview
+    proposed = json.loads(preview["stdout"])
+    assert preview["exit"] == 0 and proposed["outcome"] == "confirm"
+    applied = run(command + ["--confirm", proposed["confirm"]], environment, demo)
+    final = json.loads(applied["stdout"])
+    assert applied["exit"] == 0 and final["outcome"] == "done"
+    (base / "bootstrap.json").write_text(json.dumps({"preview": proposed, "result": final,
+        "synthetic_fixture_response": "yes", "real_user_consent": False}, ensure_ascii=False), encoding="utf-8")
     return home, demo
 
 
@@ -229,6 +238,8 @@ def market(folder):
              "commandWindows": 'python -I "{abs}/diag.py" commandWindows'},
         ],
     }
+    if os.name != "nt":
+        plugins = {"hk-diag": plugins["hk-diag"]}
     claude, codex = [], []
     for name, hooks in plugins.items():
         root = folder / "plugins" / name
@@ -267,6 +278,10 @@ def facts():
     found = {name: shutil.which(name, path=env.get("PATH")) for name in names}
     result = {"platform": platform.platform(), "python": sys.version.split()[0], "found": found,
               "git_bash": str(GIT_BASH) if GIT_BASH.exists() else None}
+    system = os.environ.get("SystemRoot")
+    result["wsl_launcher"] = str(Path(system)/"System32/bash.exe") if os.name == "nt" and system else None
+    folders = (Path(folder.strip('"')) for folder in env.get("PATH", "").split(os.pathsep))
+    result["bash_candidates"] = [str(folder/name) for folder in folders if folder.is_absolute() for name in ("bash.exe", "sh.exe") if (folder/name).is_file()] if os.name == "nt" else []
     for name in ("pwsh", "powershell"):
         if found[name]:
             result[name + "_version"] = run([found[name], "-NoProfile", "-NonInteractive", "-Command",
@@ -347,7 +362,15 @@ def install_steps(exe, env, cwd, steps):
     return results
 
 
-def claude(label, out, mock, folder, plugins):
+def native_session(host, done):
+    field = "session_id" if host == "claude" else "thread_id"
+    events = [json.loads(line) for line in done["stdout"].splitlines() if line.lstrip().startswith("{")]
+    ids = {value[field] for value in events if value.get(field)}
+    assert len(ids) == 1 and all(isinstance(value, str) for value in ids), "native CLI session identity missing"
+    return ids.pop()
+
+
+def claude(label, out, mock, folder, plugins, pins=None):
     base = out / "claude"
     home, demo = prepare(base)
     env = base_env(home)
@@ -355,6 +378,9 @@ def claude(label, out, mock, folder, plugins):
                 "ANTHROPIC_BASE_URL": "http://127.0.0.1:%d" % mock.port,
                 "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_AUTOUPDATER": "1",
                 "HOOKCHECK_LOG": str(base / "diag")})
+    if pins:
+        settings, old = native_evidence.configure_lifetime(base, home, pins)
+        env.update(settings, HOOKCHECK_MEASURE_DIR=str(base / "measurements"), HOOKCHECK_CAPTURE_INPUT_DIR=str(base / "inputs"))
     exe = shutil.which("claude", path=env["PATH"])
     if not exe:
         return {"error": "claude not found"}
@@ -365,12 +391,29 @@ def claude(label, out, mock, folder, plugins):
     steps += [("install " + name, ["plugin", "install", name + "@hk"]) for name in plugins]
     result["install"] = install_steps(exe, env, demo, steps)
     mock.log = base / "requests.jsonl"
-    done = run([exe, "-p", "hello", "--output-format", "json",
+    network = NetworkProxy() if pins else None
+    memory_network = NetworkProxy() if pins else None
+    if network:
+        env.update(network.environment(), HOOKCHECK_MEMORY_PROXY=memory_network.url)
+    done = run([exe, "-p", PROMPT, "--output-format", "json",
                 "--debug-file", str(base / "debug.txt")], env, demo, timeout=180)
     done = scrub_mock_key(done, env["ANTHROPIC_API_KEY"])
-    captured = wait_for_capture(home)
+    session = native_session("claude", done)
+    captured = wait_for_capture(home, host="claude-code", session=session)
+    if pins:
+        result["outer_clock"] = native_evidence.external_clocks(base)
+        result["input_identity"] = native_evidence.input_identity(base, session)
+        done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
+        result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
+        memory_observed, host_observed = memory_network.finish(), network.finish()
+        result["network"] = {"verified": memory_observed["verified"] and host_observed["positive_control"],
+                             "memory": memory_observed, "host": host_observed,
+                             "attribution": "dedicated child proxy for product hooks and inherited workers; host proxy kept separate"}
+        result["reinstall"] = native_evidence.reinstall(exe, "claude", env, demo, home, run)
+        captured = capture(home, host="claude-code", session=session)
     mock.log = None
-    result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "stdout": short(done["stdout"], 500),
+    result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "pid": done.get("pid"),
+                     "started_monotonic_ns": done.get("started_monotonic_ns"), "ended_monotonic_ns": done.get("ended_monotonic_ns"), "stdout": short(done["stdout"], 500),
                      "stderr": short(done["stderr"], 500)}
     result["requests"] = requests(base / "requests.jsonl")
     result["capture"] = captured
@@ -380,7 +423,7 @@ def claude(label, out, mock, folder, plugins):
     return scrub_mock_key(result, env["ANTHROPIC_API_KEY"])
 
 
-def codex(label, out, mock, folder, plugins):
+def codex(label, out, mock, folder, plugins, pins=None):
     base = out / "codex"
     home, demo = prepare(base)
     codex_home = base / "codex-home"
@@ -388,6 +431,9 @@ def codex(label, out, mock, folder, plugins):
     (codex_home / "config.toml").write_text(CODEX_CONFIG % mock.port, encoding="utf-8")
     env = base_env(home)
     env.update({"CODEX_HOME": str(codex_home), "MOCK_KEY": "fixture-" + secrets.token_hex(12), "HOOKCHECK_LOG": str(base / "diag")})
+    if pins:
+        settings, old = native_evidence.configure_lifetime(base, home, pins)
+        env.update(settings, HOOKCHECK_MEASURE_DIR=str(base / "measurements"), HOOKCHECK_CAPTURE_INPUT_DIR=str(base / "inputs"))
     exe = shutil.which("codex", path=env["PATH"])
     if not exe:
         return {"error": "codex not found"}
@@ -399,12 +445,29 @@ def codex(label, out, mock, folder, plugins):
     steps += [("add " + name, ["plugin", "add", name + "@hk"]) for name in plugins]
     result["install"] = install_steps(exe, env, demo, steps)
     mock.log = base / "requests.jsonl"
+    network = NetworkProxy() if pins else None
+    memory_network = NetworkProxy() if pins else None
+    if network:
+        env.update(network.environment(), HOOKCHECK_MEMORY_PROXY=memory_network.url)
     done = run([exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-hook-trust",
-                "hello"], env, demo, timeout=180)
+                PROMPT], env, demo, timeout=180)
     done = scrub_mock_key(done, env["MOCK_KEY"])
-    captured = wait_for_capture(home)
+    session = native_session("codex", done)
+    captured = wait_for_capture(home, host="codex", session=session)
+    if pins:
+        result["outer_clock"] = native_evidence.external_clocks(base)
+        result["input_identity"] = native_evidence.input_identity(base, session)
+        done["hooks_ended_monotonic_ns"] = max((row["ended_monotonic_ns"] for row in result["outer_clock"]["rows"]), default=0)
+        result["lifetime"] = native_evidence.release_lifetime(base, env, done, old)
+        memory_observed, host_observed = memory_network.finish(), network.finish()
+        result["network"] = {"verified": memory_observed["verified"] and host_observed["positive_control"],
+                             "memory": memory_observed, "host": host_observed,
+                             "attribution": "dedicated child proxy for product hooks and inherited workers; host proxy kept separate"}
+        result["reinstall"] = native_evidence.reinstall(exe, "codex", env, demo, home, run)
+        captured = capture(home, host="codex", session=session)
     mock.log = None
-    result["run"] = {"exit": done["exit"], "seconds": done["seconds"]}
+    result["run"] = {"exit": done["exit"], "seconds": done["seconds"], "pid": done.get("pid"),
+                     "started_monotonic_ns": done.get("started_monotonic_ns"), "ended_monotonic_ns": done.get("ended_monotonic_ns")}
     result["requests"] = requests(base / "requests.jsonl")
     result["capture"] = captured
     result["hooks"] = diag_records(base / "diag")
@@ -418,40 +481,49 @@ def with_context(result):
     return model, sum(1 for q in model if q["context"])
 
 
-def capture(home):
+def capture(home, host=None, session=None):
     """Retain only counts and comparisons of the generated conversation."""
     memory = home / ".corthex/corthex-memory"
     rows = [json.loads(line) for path in memory.glob("projects/*/raw/*.jsonl")
             for line in path.read_text(encoding="utf-8").splitlines()]
-    prompts = [row for row in rows if row.get("kind") == "prompt" and row.get("text") == "hello"]
-    answers = [row for row in rows if row.get("kind") == "answer" and row.get("text", "").strip() == REPLY]
-    endings = [row for row in rows if row.get("kind") == "end" and "text" not in row]
-    joined = any(p["host"] == a["host"] and p["session"] == a["session"] and p["turn"] == a["turn"]
-                 for p in prompts for a in answers)
+    scoped = [row for row in rows if (host is None or row.get("host") == host) and (session is None or row.get("session") == session)]
+    prompts = [row for row in scoped if row.get("kind") == "prompt" and row.get("text") == PROMPT]
+    answers = [row for row in scoped if row.get("kind") == "answer" and row.get("text", "").strip() == REPLY]
+    starts = [row for row in scoped if row.get("kind") == "start" and "text" not in row]
+    endings = [row for row in scoped if row.get("kind") == "end" and "text" not in row]
+    paired = {(p["host"], p["session"]) for p in prompts for a in answers
+              if p["host"] == a["host"] and p["session"] == a["session"] and p["turn"] == a["turn"]}
+    boundary_matches = lambda records: any((row.get("host"), row.get("session")) in paired for row in records)
     timings = [json.loads(line) for path in memory.glob("logs/hooks-*.jsonl")
                for line in path.read_text(encoding="utf-8").splitlines()]
+    timings = [row for row in timings if host is None or row.get("host") == host]
     timing_ok = all(any(row.get("hook") == hook and row.get("outcome") == "ok" for row in timings)
-                    for hook in ("prompt", "end-of-turn", "end"))
+                    for hook in ("start", "prompt", "end-of-turn", "end"))
     failures = [json.loads(line) for path in memory.glob("logs/failures-*.jsonl")
                 for line in path.read_text(encoding="utf-8").splitlines()]
     outcomes = {hook: [row["outcome"] for row in timings if row.get("hook") == hook]
-                for hook in ("prompt", "end-of-turn", "end")}
+                for hook in ("start", "prompt", "end-of-turn", "end")}
     return {"entries": len(rows), "prompt_ok": bool(prompts), "answer_ok": bool(answers),
-            "end_ok": bool(endings), "same_turn": joined, "korean_intact": bool(answers), "timings_ok": timing_ok,
+            "start_ok": "ok" in outcomes["start"] and boundary_matches(starts),
+            "end_ok": boundary_matches(endings), "same_turn": bool(paired),
+            "korean_intact": bool(prompts) and bool(answers), "timings_ok": timing_ok,
+            "failures_ok": not failures,
+            "boundary_ok": all(row.get("kind") in ("start", "prompt", "answer", "end") and
+                               (row.get("kind") not in ("start", "end") or "text" not in row) for row in rows),
             "hook_outcomes": outcomes, "failure_errors": sorted({row["error"] for row in failures})}
 
 
-def wait_for_capture(home,timeout=6):
+def wait_for_capture(home,timeout=6,host=None,session=None):
     """Observe an already launched hook through its final timing line.
 
     A host can return while its SessionEnd command is still starting. Once all
     timings exist, retain their verdict even on failure; never rerun a hook.
     """
     started = time.perf_counter()
-    value = capture(home)
+    value = capture(home, host=host, session=session)
     while not all(value["hook_outcomes"].values()) and time.perf_counter()-started < timeout:
         time.sleep(0.05)
-        value = capture(home)
+        value = capture(home, host=host, session=session)
     value["capture_wait_ms"] = round((time.perf_counter()-started)*1000,3)
     return value
 
@@ -483,6 +555,12 @@ def summary(report):
             len(model), context, sum(1 for q in model if q["ask"]),
             sorted({t for q in model for t in q["diag"]})))
         lines.append("  recording: " + json.dumps(r.get("capture", {}), sort_keys=True))
+        if "outer_clock" in r:
+            for timing in r["outer_clock"]["rows"]:
+                lines.append("  %s whole child process: %.3f ms, exit %s (interpreter startup included; wrapper/host startup excluded)" % (
+                    timing["hook"], timing["milliseconds"], timing["exit"]))
+            lines.append("  controlled native-worker lifetime: %s; uninstall/reinstall preserves store: %s; outer samples alone make no p95 claim" % (
+                r.get("lifetime", {}).get("verified"), r.get("reinstall", {}).get("verified")))
         for tag, records in sorted(r["hooks"].items()):
             for record in records:
                 chain = " <- ".join(p["name"] or "?" for p in record["parents"])
@@ -491,7 +569,21 @@ def summary(report):
     return "\n".join(lines)
 
 
+def shell_variant_ok(label, info):
+    found = info.get("found", {})
+    if label in ("git-bash","no-git-bash","powershell-5.1-only") and (not isinstance(found,dict) or not found or "crash" in info):
+        return False
+    bashes, launcher = [found.get("bash")] + info.get("bash_candidates", []), info.get("wsl_launcher")
+    no_bash = not info.get("git_bash") and all(not bash or bool(launcher) and Path(bash).as_posix().casefold() == Path(launcher).as_posix().casefold() for bash in bashes)
+    if label == "no-git-bash":
+        return no_bash
+    if label == "powershell-5.1-only":
+        return no_bash and not found.get("pwsh") and bool(found.get("powershell")) and info.get("powershell_version", "").startswith("5.1.")
+    return label != "git-bash" or bool(info.get("git_bash"))
+
+
 def main():
+    global REPO, MEMORY
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except AttributeError:
@@ -501,22 +593,40 @@ def main():
     expected = [host for host in (sys.argv[3] if len(sys.argv) > 3 else "").split(",") if host]
     out.mkdir(parents=True, exist_ok=True)
     report = {"label": label}
+    evidence = len(sys.argv) > 4 and sys.argv[4] == "--evidence"
+    pins = None
+    if evidence:
+        REPO, pins = native_evidence.package_copy(REPO, out)
+        MEMORY = REPO / "plugins/corthex-memory"
+        report["instrumentation"] = pins
     mock = Mock()
     plugins = market(out / "hk")
-    sections = (("facts", facts), ("shells", lambda: shells(out)),
-                ("claude", lambda: claude(label, out, mock, out / "hk", plugins)),
-                ("codex", lambda: codex(label, out, mock, out / "hk", plugins)))
+    if evidence:
+        plugins = []
+    sections = (("facts", facts), ("shells", lambda: {} if evidence else shells(out)),
+                ("claude", lambda: claude(label, out, mock, out / "hk", plugins, pins)),
+                ("codex", lambda: codex(label, out, mock, out / "hk", plugins, pins)))
     for name, step in sections:
         try:
             report[name] = step()
         except Exception:
             report[name] = {"crash": traceback.format_exc()}
-    missing = [host for host in expected if not with_context(report.get(host, {}))[1] or
+    missing = [host for host in expected if report.get(host, {}).get("run", {}).get("exit") != 0 or
+               not report.get(host, {}).get("install") or
+               any(row.get("exit") != 0 for row in report.get(host, {}).get("install", {}).values()) or
+               not with_context(report.get(host, {}))[1] or
                not all(report.get(host, {}).get("capture", {}).get(key)
-                       for key in ("prompt_ok", "answer_ok", "end_ok", "same_turn", "korean_intact", "timings_ok"))]
+                       for key in ("start_ok", "prompt_ok", "answer_ok", "end_ok", "same_turn", "korean_intact",
+                                   "timings_ok", "failures_ok", "boundary_ok"))]
+    report["shell_variant_ok"] = shell_variant_ok(label, report.get("facts", {}))
+    if not report["shell_variant_ok"]:
+        missing = sorted(set(missing) | set(expected))
+    if evidence:
+        missing = sorted(set(missing) | {host for host in expected if not all(
+            report.get(host, {}).get(name, {}).get("verified") for name in ("lifetime", "network", "reinstall", "outer_clock", "input_identity"))})
     report["expected"] = {"hosts": expected, "missing": missing}
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
-    text = summary(report) + "\nmemory context expected from %s: %s" % (
+    text = summary(report) + "\nrequired context, hooks and native evidence from %s: %s" % (
         ", ".join(expected) or "no host", "missing from " + ", ".join(missing) if missing else "ok")
     print(text)
     print("== %s: full report ==" % label)
