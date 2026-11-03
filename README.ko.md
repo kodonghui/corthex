@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 핵심 `corthex`는 0.3.0, 선택 플러그인은 0.1.0이며 초기 개발 중입니다. 단계 스킬은 실제로 쓰면서 채워 갈 뼈대입니다. `corthex-memory`에는 세션 문맥과 로컬 기록 훅이 있으며 C1은 구현 중입니다. `corthex-nexus`에는 로컬 허브 페이지와 직접 배포하는 첫 NEXUS 서버가 있습니다.
+> 상태: 핵심 `corthex`는 0.3.0, `corthex-memory` 0.2.0 C1 패키지는 출시 판단·태그 전의 QA·시범 운영 준비 중이며, `corthex-nexus`는 0.1.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
 
 ## 설치
 
@@ -34,16 +34,20 @@ codex plugin add corthex@corthex
 
 ### 선택: 세션 시작 문맥
 
-`corthex-memory`는 세션이 시작될 때 일하는 원칙, 프로필, 현재 프로젝트 설정을 넣습니다. 이 기기에서만 동작하고 네트워크에 연결하지 않습니다. 기억 저장소가 이미 있으면 훅의 진단에는 안전한 오류 코드만 남기며, 늦은 실패도 본래 코드를 유지합니다. 늦게 끝난 것만으로 결과를 실패로 바꾸지 않으며, 훅 기한은 가리기·기록을 건너뛰지 않고 정해진 뒤 단계만 건너뛰거나 줄입니다. 저장소가 없으면 아무것도 쓰지 않습니다. PATH에서 Python 3을 찾을 수 있어야 하고(`python3`, `python`, Windows의 `py` 실행기를 차례로 찾습니다), Windows의 Claude Code에서는 Git for Windows나 PowerShell 7도 있어야 합니다.
+`corthex-memory` 0.2.0은 세션 문맥과 로컬 대화 기록을 더합니다. 동의를 확인하고 등록한 프로젝트에서 켜야 기록을 시작합니다. 가리기를 거친 프롬프트·최종 답변·세션 종료 경계를 담으며, 도구 호출·도구 결과·파일은 기록 입력이 아닙니다. C1은 모델이나 네트워크를 호출하지 않습니다. 모델 정리·의미 검색·회상은 C2 작업입니다.
 
-로컬 기억 저장소가 이미 있고, 동의와 켠 등록 프로젝트가 있으면 훅이 가리기를 거친 프롬프트·최종 답변·세션 종료 경계도 기록합니다. 이 기록은 이 기기에 남으며 훅은 기억 저장소를 만들지 않습니다. 기록은 다른 프로세스의 잠금을 50ms까지 기다리며, 잠금을 잡으면 읽기·덧붙이기·표지를 마치므로 느린 디스크에서는 훅의 전체 기한보다 늦게 끝날 수 있습니다.
+기억 저장소는 `~/.corthex/corthex-memory/`, 또는 `CORTHEX_MEMORY_HOME`에 지정한 절대 경로입니다. 원문은 기본 100일 보관하며 `retention`으로 기간을 바꾸면 이후 세션 시작 작업자가 적용합니다. 저장소가 없으면 `on` 명령이 만들며 훅은 만들지 않습니다. 모델 키가 없어도 C1 기록은 동작합니다. 관리 스킬은 키의 존재 여부만 확인하고 대화에서 키를 묻지 않습니다.
+
+기억 스킬에 기록 켜기·끄기, 상태 보기, 폴더나 글 종류 제외, 보관 기간 변경, 로컬 기억 전체 삭제, 저장소 정보 복구를 요청하세요. C1 명령은 `on`, `off`, `status`, `leave-out`, `retention`, `purge`, `repair`입니다. 확인이 필요한 작업은 제안을 보여 주고 사용자가 좋다고 한 뒤 확인 코드를 적용합니다. 전체 삭제에서 읽을 수 없는 정보는 확인 불가로 표시하고 정확한 폴더를 보여 줍니다. `off`는 기존 기억을 보존하고 보관 처리는 계속하며, 플러그인을 지워도 저장소는 남습니다. 확인한 `purge`는 그 로컬 폴더만 지우며 호스트 대화 기록과 바깥의 사본은 남습니다.
+
+PATH에 Python 3.8 이상이 있어야 합니다(훅은 `python3`, `python`, Windows의 `py` 실행기를 차례로 찾습니다). Windows의 Claude Code에는 Git for Windows나 PowerShell 7도 필요합니다. 훅 진단은 안전한 메타데이터와 오류 코드를 남깁니다. 기록 잠금을 잡으면 훅 기한을 넘더라도 읽기·덧붙이기·표지를 마칠 때까지 유지합니다.
 
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code, corthex도 함께 설치
 codex plugin add corthex-memory@corthex        # Codex, corthex를 추가한 뒤
 ```
 
-Codex에서는 `/hooks`를 한 번 열어 이 플러그인의 훅을 신뢰해 주세요. 신뢰하기 전에는 Codex가 플러그인 훅을 돌리지 않습니다. 끄려면 플러그인을 끄거나 지웁니다. 자세한 내용은 [세션 시작 문맥](docs/architecture.ko.md#세션-시작-문맥)에 있습니다.
+Codex에서는 `/hooks`에서 플러그인의 훅을 검토하고 신뢰해 주세요. 기록은 [기억 스킬](plugins/corthex-memory/skills/corthex-memory/SKILL.md)로 관리합니다. 패키지의 실제 호스트 C1 QA·관리자 시범 운영·출시 판단을 마친 뒤 릴리스 태그를 정합니다. 자세한 내용은 [세션 시작 문맥](docs/architecture.ko.md#세션-시작-문맥)에 있습니다.
 
 ### 선택: 프로젝트 허브
 
@@ -54,7 +58,7 @@ claude plugin install corthex-nexus@corthex   # Claude Code, corthex도 함께 �
 codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 ```
 
-설치한 뒤 허브를 보여 달라고 하거나 `/corthex-nexus:corthex-hub`를 실행하세요. Python 3.8 이상이 필요합니다. 내 도메인의 NEXUS 서버로 프로젝트 스냅샷을 보낼 수도 있지만, 목록에 적어 둔 프로젝트만 보냅니다. 서버는 Cloudflare Access 뒤에서 도는 Cloudflare Worker로, 내 Cloudflare 계정에 직접 배포합니다: [nexus/](nexus/README.ko.md). 자세한 내용은 [프로젝트 허브](docs/architecture.ko.md#프로젝트-허브)에 있습니다.
+설치한 뒤 허브를 보여 달라고 하거나 `/corthex-nexus:corthex-hub`를 실행하세요. Python 3.8 이상이 필요합니다. 내 도메인의 NEXUS 서버로 프로젝트 스냅샷을 보낼 수도 있지만, 목록에 적어 둔 프로젝트만 보냅니다. 서버와 브라우저 화면은 별도 제품 저장소에 있습니다. Access·Tunnel 뒤의 Node/SQLite 실행부를 만들며 Worker 호환성도 유지합니다: [nexus/](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.ko.md). 자세한 내용은 [프로젝트 허브](docs/architecture.ko.md#프로젝트-허브)에 있습니다.
 
 ## 스킬
 
@@ -99,7 +103,6 @@ claude plugin validate --strict .
 claude plugin validate --strict plugins/corthex
 claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
-node --test nexus/test/*.test.js     # Node 22.13 이상
 ```
 
 ## 라이선스

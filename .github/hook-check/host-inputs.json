@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "source": "Synthetic native Windows observation; only field names and types are retained.",
+  "package_tree": "81406c427955cf1d31bca0fbd11e46a364511620",
+  "host_prompts_version": "host-prompts-1",
+  "host_prompt_prefixes": [
+    "<task-notification>",
+    "<cross-session-message",
+    "<teammate-message"
+  ],
+  "hosts": {
+    "claude": {
+      "version": "2.1.310",
+      "events": {
+        "SessionEnd": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "prompt_id": "str",
+          "reason": "str",
+          "session_id": "str",
+          "transcript_path": "str"
+        },
+        "Stop": {
+          "background_tasks": "list",
+          "cwd": "str",
+          "effort": "dict",
+          "hook_event_name": "str",
+          "last_assistant_message": "str",
+          "permission_mode": "str",
+          "prompt_id": "str",
+          "session_crons": "list",
+          "session_id": "str",
+          "stop_hook_active": "bool",
+          "transcript_path": "str"
+        },
+        "UserPromptSubmit": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "permission_mode": "str",
+          "prompt": "str",
+          "prompt_id": "str",
+          "session_id": "str",
+          "transcript_path": "str"
+        },
+        "SessionStart": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "session_id": "str",
+          "source": "str",
+          "transcript_path": "str"
+        }
+      }
+    },
+    "codex": {
+      "version": "0.164.0",
+      "events": {
+        "SessionEnd": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "reason": "str",
+          "session_id": "str",
+          "transcript_path": "NoneType"
+        },
+        "Stop": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "last_assistant_message": "str",
+          "model": "str",
+          "permission_mode": "str",
+          "session_id": "str",
+          "stop_hook_active": "bool",
+          "transcript_path": "NoneType",
+          "turn_id": "str"
+        },
+        "UserPromptSubmit": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "model": "str",
+          "permission_mode": "str",
+          "prompt": "str",
+          "session_id": "str",
+          "transcript_path": "NoneType",
+          "turn_id": "str"
+        },
+        "SessionStart": {
+          "cwd": "str",
+          "hook_event_name": "str",
+          "model": "str",
+          "permission_mode": "str",
+          "session_id": "str",
+          "source": "str",
+          "transcript_path": "NoneType"
+        }
+      }
+    }
+  }
+}

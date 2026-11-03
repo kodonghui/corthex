@@ -127,4 +127,4 @@ CORTHEX-MEMORY의 맥락과 용어집을 한 파일에 둡니다. 프로젝트�
 | TERM-107 | 프로젝트 지운 기록 | 프로젝트의 기억을 지웠다는 기록. 동기화가 되살리지 않게 함. REQ-194, SPEC-037 | CTX-004, CTX-005 | |
 | TERM-108 | 가격표 | 사용량 기록이 비용을 추정할 때 쓰는 토큰당 가격. 언제 어디서 가져왔는지 함께 둠 | CTX-005 | 청구서, 요율표 |
 
-기능 명세([docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md))가 2026-10-24에 TERM-098부터 TERM-108까지를 더하고, 정리된 층(TERM-032)에 고정을 넣었습니다. 이 ID는 TERM-047부터 TERM-097까지를 쓰는 NEXUS의 [nexus.ko.md](nexus.ko.md) 다음에 이어집니다.
+기능 명세([docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md))가 2026-10-24에 TERM-098부터 TERM-108까지를 더하고, 정리된 층(TERM-032)에 고정을 넣었습니다. 이 ID는 TERM-047부터 TERM-097까지를 쓰는 NEXUS의 [nexus.ko.md](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/docs/01-domain/nexus.ko.md) 다음에 이어집니다.
