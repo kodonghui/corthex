@@ -79,6 +79,7 @@ Stages 04, 06 and 12 use the same kinds. For each kind that reaches the screen, 
 Wireframes show structure and states, not looks, so the review stays on what each screen does.
 
 - Draw them from the screen definitions, one frame per state, labelled with the state's ID, such as `SCR-002#empty`. Use greys, the system font and placeholder text only; design tokens come in stage 09.
+- Draw the loading frame in the normal frame's layout, with grey shapes in the space of the content they stand for, so the review can see that nothing moves when the data arrives.
 - Show each frame at the narrowest and the widest width the project supports, such as 360 and 1280 pixels.
 - Put all the frames on one page, by default `docs/08-screens/wireframes.html`, and draw it again in the same change as the definitions. Where the host can publish a page, such as an artifact in Claude Code, publish it and put its link in `link`.
 - A team that sketches in a design tool, such as Figma, names it in `human`; the definitions stay the source.
