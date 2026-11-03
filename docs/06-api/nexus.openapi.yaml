@@ -2580,9 +2580,9 @@ components:
             commit: {$ref: "#/components/schemas/Commit"}
             time: {$ref: "#/components/schemas/ZonedTime"}
     RecordCheckpoint:
-      description: A checkpoint as a stage record holds it (TBL-115)
+      description: A checkpoint as a stage record holds it (TBL-115); where is omitted when absent or unsafe (SPEC-109)
       type: object
-      required: [approved, by, where, date]
+      required: [approved, by, date]
       additionalProperties: false
       properties:
         approved: {type: string, minLength: 1, maxLength: 2000}

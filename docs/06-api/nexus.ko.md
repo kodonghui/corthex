@@ -348,6 +348,8 @@ TBL-112가 쓰기마다 간직하고, 보낼 편지함이 에이전트의 쓰기
 - 글은 `--text TEXT`에서, 또는 `--text-file FILE`에서 UTF-8로 가져오며, `-`는 표준 입력입니다. `--reason`과 `--reason-file`, `--change`와 `--change-file`, `--source-file`도 그렇습니다. 허브는 글을 보내기 전에 스냅샷처럼 가립니다: 비밀값과 이메일 주소는 `[redacted]`가 되고, 사용자의 홈 폴더는 `~`가 됩니다(SPEC-128).
 - `--part PART`는 부분을 적습니다. 없으면 명령은 프로젝트 전체에 관한 것입니다.
 - `--json`은 프로젝트마다 JSON 객체 한 줄을 찍습니다: `command`; `project`; 아래의 `outcome`; 서버의 응답인 `answer`; 거절에 대한 서버의 문제 세부 정보인 `problem`; 실패나 허브 자신의 거절의 종류인 `failure`, 이를테면 `no network`, `timeout`, `HTTP 503`, `no service token`, `refused token`, `not in nexus.push`; 그리고 보낼 편지함의 쓰기 가운데 몇 개를 보냈고(`sent`), 버렸고(`dropped`), 기다리는지(`waiting`) 적은 `outbox`. 이것이 없으면 허브는 같은 것을 사람이 읽는 줄로 찍습니다.
+  쓰기를 버리면 `outbox.notices`에 쓰기 ID와 까닭(문제 세부 정보나 실패 종류)을 덧붙이고 본문은 담지 않습니다. 아래의 버림 보고와 7일 만료 보고를 제공하면서 간직한 글을 드러내지 않게 합니다.
+  에이전트 쓰기를 저장하지 못했을 때만 실패 결과에 원래 ID와 본문을 포함한 가린 OutboxFile인 `recovery`를 더합니다. SPEC-129대로 호출한 에이전트에게 한 번 보여 주고, 이 사본을 파일이나 로그에 남기지 않습니다. 에이전트는 세션에 글을 남기고 복구할 때 원래 ID를 지킵니다. 보통 결과나 보낼 편지함 목록에는 복구 글이 없습니다.
 
 | 종료 코드 | 결과 | 언제 |
 | --- | --- | --- |
@@ -470,6 +472,7 @@ hub.py outbox [PROJECT ...] [--send]
 - 서버가 `409`나 `404`처럼 다른 까닭으로 거절한 쓰기는 버리고 그 까닭과 함께 알립니다. 다시 보내도 바뀌는 것이 없기 때문입니다. 만든 지 7일이 지난 쓰기도 버립니다. 그것이 답한 할 일이 이미 다른 데로 넘어갔기 때문입니다.
 - 프로젝트로 서버에 닿을 때마다, 곧 보내기, `todo`, 쓰기, `show`, `claim`, `release`, `outbox --send`마다, 허브는 먼저 그 프로젝트의 보낼 편지함을 오래된 것부터, 쓰기마다 자기 쓰기 ID와 세션 이름표로 보냅니다. 다시 간직하게 된 첫 쓰기에서 멈추므로, 쓰기는 그 순서를 지킵니다.
 - 쓰기마다 `~/.corthex/hub/` 아래의 파일 하나, 곧 `outbox/<project>/<time>.<write>.json`(TBL-117)이며, 계약의 `OutboxFile` 꼴입니다. 한 기기의 허브들은 05단계가 말하는 대로 잠금 `outbox/<project>.lock`으로 프로젝트의 보낼 편지함을 차례로 씁니다.
+- 새 에이전트 쓰기도 처음 보내기 전에 이 대기열에 넣습니다. 기기 안의 ID 순서 자료가 같은 밀리초의 순서도 지키므로, 동시 추가나 잠금 상실 때문에 새 글이 직접 앞질러 가지 않습니다. 처음 보내기에 성공한 임시 보관 파일도 지우며, 보내기 개수에 그것도 포함합니다.
 - 보낼 편지함은 절대 서비스 토큰을 담지 않고, 허브는 간직한 쓰기의 글을 절대 로그에 보이지 않습니다.
 
 ## 형식
@@ -543,6 +546,8 @@ hub.py outbox [PROJECT ...] [--send]
 
 애그리거트나 읽기 모델은 `Picture (TERM-085)`처럼 그 이름 옆에 적은 TERM ID를, 아니면 같은 문서에서 대소문자와 띄어쓰기를 가리지 않고 그 이름이 용어인 용어집 줄의 것을 가져옵니다. 그런 줄이 없거나 둘이면 `board-term-missing` 경고를 받습니다(SPEC-106).
 
+컨텍스트 제목 밖의 명령 표는 위쪽에서 가장 가까운 컨텍스트에 그 줄들을 남기고 `picture-partial` 검사를 붙입니다. 앞에 그런 제목이 없지만 문서의 다른 곳에 컨텍스트가 있으면, `id`와 `name`이 빈 컨텍스트에 줄들을 남기고 그 애그리거트와 읽기 모델의 `context`는 `""`로 둡니다. 컨텍스트가 하나도 없는 문서는 의존이나 타임라인을 포함해 DDD 보드를 내지 않습니다(SPEC-106).
+
 명령 줄의 `Events`에서는 쉼표가 사건을 가르고, 맨 앞의 `or`(`또는`)는 이름에 들지 않습니다. 그래서 `Payment taken, or Payment failed`는 사건 둘입니다. 타임라인은 없어도 됩니다: 타임라인이 없는 문서는 `timeline`을 주지 않고, 그러면 그림 보기는 보드를 전체로만 보여 줍니다(SPEC-141). 흐름마다 그 줄의 자리인 `where`를 둡니다.
 
 **ERD(`05-erd`).** [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md)와 05단계 양식 [05-erd.md](../../plugins/corthex/skills/corthex-contract/references/05-erd.md)의 SQL입니다:
@@ -565,6 +570,7 @@ CREATE TABLE pictures (
 - 표는 TBL ID 주석이 정하는 `CREATE TABLE`입니다. 그 이름 뒤의 괄호가 그 컨텍스트인 CTX ID와, 그 TERM ID나 `terms: none`을 줍니다. 둘 다 없는 주석은 `terms`를 빼며, SPEC-121이 그것을 알립니다.
 - 열에는 그 이름, 적힌 그대로의 유형, `null`이 있으며, `null`은 `NOT NULL`인 열과 기본 키의 열에서 `false`입니다. 기본 키는 열이나 표의 `PRIMARY KEY`에서 옵니다. 유일 규칙은 열이나 표의 `UNIQUE`, 또는 `CREATE UNIQUE INDEX … ON`에서 오며, `WHERE`가 있는 것은 `partial: true`입니다. 외래 키는 열이나 표의 `REFERENCES`, 또는 `ALTER TABLE … ADD [CONSTRAINT …] FOREIGN KEY`에서 오며, `on_delete`는 소문자로, 없으면 `""`입니다.
 - 부분의 SQL 어디에든 있는, TERM ID가 뒤따르는 주석 줄 `-- without a table:`은 부분이 표 밖에 두는 애그리거트를 적습니다.
+- 열 이름으로 나타낼 수 없는 수식 인덱스는 그 고유 규칙 전체를 빼고 `picture-partial` 검사를 붙입니다. 함수 이름을 열로 그리지 않습니다. 표 주석의 삭제 상태는 다른 단계 항목과 같은 상태말을 읽습니다. 명시한 `status:`(`상태:`)가 우선이며, 그것이 없으면 괄호 안이나 `|` 뒤의 독립된 메타데이터 칸이 삭제를 표시할 수 있습니다. 표 이름이나 설명 제목의 낱말은 상태로 읽지 않습니다. 이스케이프된 따옴표까지 구분해, 인용한 이름·제목 안의 구분자는 메타데이터로 읽지 않습니다. 상태의 인용된 값은 값으로 읽습니다.
 - 표지 `terms: none`, `without a table:`, `without a screen:`은 둘레의 코드처럼 모든 언어에서 같습니다.
 
 **사이트맵(`07-sitemap`).** 07단계 양식 [07-sitemap.md](../../plugins/corthex/skills/corthex-screen/references/07-sitemap.md)의 YAML에 `terms`를 더한 것입니다. 아래는 NEXUS 자신의 [nexus.yaml](../07-sitemap/nexus.yaml)에 있는 화면 둘입니다:
@@ -606,6 +612,8 @@ CREATE TABLE pictures (
 ### 단계 기록
 
 단계 기록은 05단계의 [단계 기록](../05-erd/nexus.ko.md#단계-기록-tbl-115)에 있는 TBL-115의 파일이고, 계약의 `StageRecords`가 그것을 검사합니다: `parts`가 적은 부분마다 `.corthex/stages/<part>.json`, 또는 부분이 없는 프로젝트에서는 `.corthex/stages.json`. 허브는 그것을 기본 브랜치의 커밋에서 Git의 객체 읽기로 읽고, `status`(API-134)로 작업 트리에 씁니다. 올바른 JSON이 아니거나, 다른 `format`이거나, 네 가지가 아닌 상태가 있는 파일은 `records-invalid` 경고를 받고, 그 단계는 `unknown`으로 보입니다(SPEC-109).
+
+`RecordCheckpoint.where`는 선택 필드입니다. `status --where`도 선택이며, SPEC-109는 스냅샷에서 안전하지 않은 링크를 빼되 승인한 것·역할·날짜는 남깁니다. 상태 파일을 대신 읽을 때는 1차의 `checkpoint`와 `checkpoint_date`를 보존하고 역할이나 NEXUS 확인 지점을 지어내지 않습니다. 이 옛 글을 자동으로 저장소 확인 지점으로 바꾸지 않습니다. 옛 `done`에 확인 지점과 유효한 날짜가 모두 있지 않으면 경고와 함께 `in_progress`로 보입니다(REQ-085).
 
 ### 보낼 편지함의 파일
 

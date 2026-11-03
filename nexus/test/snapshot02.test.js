@@ -61,6 +61,18 @@ test("snapshot list caps, parts and checkpoint records are enforced without trim
   bad((d) => { d.stages["05-erd"].parts.memory.checkpoints[0].date = "2026-02-30"; });
 });
 
+test("a repository checkpoint retains approval without an absent or unsafe link", () => {
+  const data = fixture();
+  const checkpoint = data.stages["05-erd"].parts.memory.checkpoints[0];
+  delete checkpoint.where;
+  const parsed = readSnapshot02(data, NOW);
+  const stored = JSON.parse(parsed.body).stages["05-erd"].parts.memory.checkpoints[0];
+  assert.equal(stored.approved, checkpoint.approved);
+  assert.equal(stored.date, checkpoint.date);
+  assert.equal(Object.hasOwn(stored, "where"), false);
+  bad((d) => { d.stages["05-erd"].parts.memory.checkpoints[0].where = "file:///private"; });
+});
+
 test("names count Unicode code points and preserve exact code and source text", () => {
   const data = fixture();
   data.items[0].title = "😀".repeat(120);
