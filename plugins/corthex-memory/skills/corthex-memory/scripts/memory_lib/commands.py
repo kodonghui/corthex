@@ -326,9 +326,9 @@ def run(argv, handlers=None):
         answer = _gates(context)
         if answer is None:
             if handlers is None:
-                from . import enablement, status, recording_exclusions
+                from . import enablement, status, recording_exclusions, retention_settings
                 handlers = {"on": enablement.on, "off": enablement.off, "status": status.status,
-                            "leave-out": recording_exclusions.leave_out}
+                            "leave-out": recording_exclusions.leave_out, "retention": retention_settings.retention}
             handler = (handlers or {}).get(command)
             if handler is None:
                 unimplemented = True
