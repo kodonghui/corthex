@@ -370,12 +370,15 @@ class RawRewriteTest(StoreCase):
         self.assertEqual(self.path.read_bytes(), self.original)
         self.assertEqual(self.record.read_bytes(), self.original_record)
 
-    def _metadata_change_stops_raw_io(self, change):
+    def _metadata_change_stops_raw_io(self, change, *, backup=False):
         original, opened, now = self.worker.fence.check, Path.open, clock.now
+        target = self.path.with_name(self.path.name + ".bak") if backup else self.path
+        if backup:
+            self.path.rename(target)
         changed, payload_opens, expired = [], [], now() + 100
         def check(path):
             result = original(path)
-            if (path == self.path and not changed and
+            if (path == target and not changed and
                     any(lease.policy == locks.POLICIES["raw"] for lease in self.worker.held)):
                 changed.append(True)
                 if change == "lease":
@@ -386,7 +389,7 @@ class RawRewriteTest(StoreCase):
                     os.replace(str(other), str(self.root / "store.json"))
             return result
         def open_raw(path, *args, **kwargs):
-            if changed and path == self.path:
+            if path == target and (changed or backup):
                 payload_opens.append(True)
             return opened(path, *args, **kwargs)
         expected = locks.LockBusy if change == "deadline" else locks.LostLock
@@ -397,7 +400,9 @@ class RawRewriteTest(StoreCase):
                 self.rewrite(lambda entry: True)
         self.assertTrue(changed)
         self.assertEqual(payload_opens, [])
-        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(target.read_bytes(), self.original)
+        if backup:
+            self.assertFalse(self.path.exists())
         self.assertEqual(self.record.read_bytes(), self.original_record)
 
     def test_tc336_lease_loss_during_raw_metadata_stops_before_raw_io(self):
@@ -408,6 +413,43 @@ class RawRewriteTest(StoreCase):
 
     def test_tc336_expiry_during_raw_metadata_stops_before_raw_io(self):
         self._metadata_change_stops_raw_io("deadline")
+
+    def test_tc336_backup_metadata_lease_loss_stops_before_backup_payload(self):
+        self._metadata_change_stops_raw_io("lease", backup=True)
+
+    def test_tc336_lease_loss_after_a_raw_chunk_stops_before_next_payload_read(self):
+        payload = b"".join(self.encoded(self.entry(n)) for n in range(1, 1001))
+        self.assertGreater(len(payload), worker_support.CHUNK)
+        self.assertNotEqual(payload[worker_support.CHUNK - 1:worker_support.CHUNK], b"\n")
+        self.path.write_bytes(payload)
+        opened, reads, lost = Path.open, [], []
+        class Incoming:
+            def __init__(self, source):
+                self.source = source
+            def __enter__(self):
+                self.source.__enter__()
+                return self
+            def __exit__(self, *args):
+                return self.source.__exit__(*args)
+            def __getattr__(self, name):
+                return getattr(self.source, name)
+            def read(self, size=-1):
+                reads.append(size)
+                return self.source.read(size)
+        def opening(path, *args, **kwargs):
+            source = opened(path, *args, **kwargs)
+            return Incoming(source) if path == self.path else source
+        def keep(entry):
+            if not lost:
+                (self.project / "curation.lock").unlink()
+                lost.append(True)
+            return True
+        with mock.patch.object(Path, "open", opening), self.assertRaises(locks.LostLock):
+            self.rewrite(keep)
+        self.assertEqual(len(reads), 1)
+        self.assertTrue(lost)
+        self.assertEqual(self.path.read_bytes(), payload)
+        self.assertEqual(self.record.read_bytes(), self.original_record)
 
     def test_tc336_path_prefix_cache_preserves_spelling_and_rechecks_root_identity(self):
         fence = self.worker.fence

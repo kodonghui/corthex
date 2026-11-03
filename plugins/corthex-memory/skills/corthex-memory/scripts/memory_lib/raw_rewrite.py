@@ -26,7 +26,7 @@ class Rewritten:
 
 
 def _chunks(memory, path, check, start=0, size=None, digest=None):
-    files._access(check, memory.fence.check, path)
+    """Read under a guard that fences this path, then checks current authority."""
     with files._retry(lambda: files._checked(check, lambda: path.open("rb"))) as source:
         info = os.fstat(source.fileno())
         named = memory.fence.check(path)
@@ -36,7 +36,7 @@ def _chunks(memory, path, check, start=0, size=None, digest=None):
         left = info.st_size - start if size is None else size
         source.seek(start)
         while left:
-            files._access(check, memory.fence.check, path)
+            check()
             chunk = source.read(min(left, worker_support.CHUNK))
             if not chunk:
                 raise locks.LostLock()
@@ -117,7 +117,8 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
         if memory.fence.check(path) is None:
             with memory.lease(path.with_suffix(".lock"), "raw", deadline):
                 def probe(candidate):
-                    for _ in _lines(_chunks(memory, candidate, basic)):
+                    guard = lambda: files._access(basic, memory.fence.check, candidate)
+                    for _ in _lines(_chunks(memory, candidate, guard)):
                         pass
                     return True
                 files.read_record(path, lambda value: value, memory.note, holding_lock=True,
