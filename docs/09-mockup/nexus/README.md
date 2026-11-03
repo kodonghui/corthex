@@ -2,7 +2,7 @@
 
 [한국어](README.ko.md)
 
-Stage 09 of CORTHEX's own project, for NEXUS 0.2: the design tokens in [design/nexus/](../../../design/nexus/base.tokens.json), and the mockups of direction A, Hub pages, on one page, [mockup.html](mockup.html): every state of the five new screens, SCR-105 to SCR-109, and of the hub page and its stage detail, SCR-101 and SCR-104, with what 0.2 adds to them, drawn for the phone first, at 320 pixels. Status: the maintainer chose direction A on 2026-11-03, the stage's first checkpoint, and the states were then drawn in it. The second checkpoint, frozen tokens, waits for the maintainer and comes before development uses them. Everything follows the recommendations of stages 03 to 08, whose joint checkpoint is still open. When a file and its Korean translation differ, the English file is the source.
+Stage 09 of CORTHEX's own project, for NEXUS 0.2: the design tokens in [design/nexus/](../../../design/nexus/base.tokens.json), and the mockups of direction A, Hub pages, on one page, [mockup.html](mockup.html): every state of the five new screens, SCR-105 to SCR-109, and of the hub page and its stage detail, SCR-101 and SCR-104, with what 0.2 adds to them, drawn for the phone first, at 320 pixels. Status: the maintainer chose direction A on 2026-11-03, the stage's first checkpoint, and the states were then drawn in it. The maintainer passed the second checkpoint, frozen tokens, the same day at 11:39 KST, together with the joint checkpoint of stages 03 to 08, whose recommendations the mockups follow: the tokens are frozen for NEXUS 0.2 before development uses them, and a later change needs the maintainer's decision. When a file and its Korean translation differ, the English file is the source.
 
 Inputs: the screen definitions of [stage 08](../../08-screens/nexus/README.md), [SCR-101](../../08-screens/nexus/SCR-101-hub-page.md), [SCR-104](../../08-screens/nexus/SCR-104-stage-detail.md) and [SCR-105](../../08-screens/nexus/SCR-105-picture-view.md) to [SCR-109](../../08-screens/nexus/SCR-109-stage-overview.md), with their states, their layouts at 320 and 1440 pixels, the final words of the messages and the [notes for stage 09](../../08-screens/nexus/README.md#stage-09-mockups); the hub page's rows of the [functional spec](../../04-functional-spec/nexus.md), SPEC-122 to SPEC-125; phase 1's hub page as it runs, [hub.html](../../../plugins/corthex-nexus/skills/corthex-hub/assets/hub.html), whose colours, type, spacing, cards and words the tokens and the hub's frames take; and the event storming board of [stage 01](../../01-domain/nexus.md), drawn in the frames as the sample picture. No brand assets or liked references were given: NEXUS has no logo of its own, so the mockups keep phase 1's look.
 
@@ -40,7 +40,7 @@ SCR-101 and SCR-104 are drawn as phase 1's hub.html draws them, with its words, 
 - On an empty server, the four steps that push a project (SPEC-124). On a device, a line that says that the pictures, comments and stage overviews are on the server.
 - In the stage detail, each part's state, last checkpoint and next action, with Picture and Stage overview beside the state at 1,440 pixels and on their own line at 320.
 
-Where the frames differ from phase 1, as proposals for the checkpoint:
+Where the frames differ from phase 1, as the checkpoint accepted them:
 
 - The search field's border takes `color.control-line`, 3:1 against the page, where phase 1's line is lighter.
 - The stages keep phase 1's borders, under 3:1 against the card. Each stage is a button that its text names, so its border carries nothing that the text does not; WCAG 1.4.11 asks 3:1 of what is needed to identify a control.
@@ -52,14 +52,14 @@ Format 2025.10 of the Design Tokens Community Group, with the modes of the Resol
 | File | Holds |
 | --- | --- |
 | [base.tokens.json](../../../design/nexus/base.tokens.json) | 46 tokens that every theme shares: `font` (families, five sizes, three weights, three line heights), `space` (2 to 32 pixels), `radius`, `border`, `size` (targets, marks, boxes, the side panel, the overview's column and the hub's stages), `opacity`, `layout` (shares of the screen's height), `breakpoint`, `duration` and `easing` |
-| [theme/light.tokens.json](../../../design/nexus/theme/light.tokens.json) | The light theme's 30 colours and shadows |
-| [theme/dark.tokens.json](../../../design/nexus/theme/dark.tokens.json) | The dark theme's 30, under the same names |
+| [theme/light.tokens.json](../../../design/nexus/theme/light.tokens.json) | The light theme's 32 colours and shadows |
+| [theme/dark.tokens.json](../../../design/nexus/theme/dark.tokens.json) | The dark theme's 32, under the same names |
 | [tokens.resolver.json](../../../design/nexus/tokens.resolver.json) | Base first, then the theme: `light` by default, or `dark` |
 
 - From phase 1's hub page: the system fonts with the Korean ones, body text of 15 pixels, the page's and the cards' colours, the accent, the colours of the stages done, in progress and not started, a stage's least size, and the corners of 6, 8 and 12 pixels and the pill.
 - New for 0.2: `color.control-line` for the border of a field, a chip or a check box, which needs 3:1 against the page and a surface (WCAG 1.4.11) where phase 1's line is lighter; `color.mark.*` for the marks and the halo that keeps them apart from the picture's colours; `color.scrim` and `color.picture-ground`; `color.warn` and `color.info` with their grounds; the sheet's shadow; `size.target`, 44 pixels, the least width and height of anything a finger selects; the sizes of marks, boxes and panels; and the shares of the phone's height for the picture and the sheets.
 - Since the choice: added `color.progress-bg`, `color.progress-fg`, `color.progress-line`, `color.todo-line` and `size.stage`, phase 1's values for the hub's stages, which the frames of SCR-101 and SCR-104 draw; removed B's `size.tab`, `layout.sheet-peek` and `shadow.float`.
-- Not tokens yet: the colours of a skipped stage and of a stage not recorded, which no frame draws. In phase 1, a skipped stage's text is 4.13:1 on its ground in the light theme, under 4.5:1.
+- At the freeze: added `color.skipped-fg` and `color.unknown-line`, phase 1's colours of a skipped stage's text and of a stage not recorded's dashed border, which the second sample project's stages now draw on SCR-101 and SCR-104. A skipped stage keeps `color.sunken` with a dotted `color.todo-line` border, and one not recorded `color.surface` with `color.muted` text, as in phase 1. A skipped stage's text in the light theme is darkened from phase 1's 4.13:1 on its ground to 4.63:1; in the dark theme it keeps 4.89:1.
 - In the page, each token is a custom property named by its path, such as `--nx-color-mark-ink`. Outside the drawing inside the picture, the mockups' styles use no colour or length but these names, and every token is used, apart from `breakpoint.side-panel`: the frames are drawn at fixed widths, and the views will use it in their media query.
 
 ## Frames
@@ -84,24 +84,25 @@ The words that the frames need and stage 08 had not written joined stage 08's me
 
 ## Checks run
 
-On 2026-11-03, on the tokens, the page and its 50 frames:
+On 2026-11-03, on the tokens, the page and its 50 frames, and again after the freeze:
 
-- The tokens: each of the 46 base tokens and the 30 of each theme has one `$value` and a type, its own or its group's; colours are sRGB objects whose `hex` matches their components, and dimensions are objects in `px` or `rem`; both themes hold the same 30 names, and none of them is in the base file; the resolver lists the three files.
+- The tokens: each of the 46 base tokens and the 32 of each theme has one `$value` and a type, its own or its group's; colours are sRGB objects whose `hex` matches their components, and dimensions are objects in `px` or `rem`; both themes hold the same 32 names, and none of them is in the base file; the resolver lists the three files.
 - The mockups' styles: no colour or length outside the token names, only 0, whole shares such as 50 per cent and the picture's height in container units; every token used apart from `breakpoint.side-panel`.
-- Contrast, computed from the tokens for each pair the frames draw, 41 in each theme: text at least 4.5:1, and the borders of fields, focus rings, outlines, marks and error icons at least 3:1 against what is behind them.
+- Contrast, computed from the tokens for each pair the frames draw, 42 in each theme: text at least 4.5:1, and the borders of fields, focus rings, outlines, marks and error icons at least 3:1 against what is behind them.
 - `corthex-uxui`'s page check on each frame on its own, at 320 × 640 or 1440 × 900, in both themes: 200 runs. No sideways scrolling, no split word, no text past its box, no missing label and no target under 24 pixels. What it reports is the drawing inside the picture cut off by its frame, which is how a picture larger than its frame moves (stage 08's rule 1), and the numbers on the marks, which sit on shapes that the check cannot see and were computed from the token pairs instead. Its 44-pixel goal is met everywhere but by the check box, 24 pixels in a row of 44, and two links inside a sentence: phase 1's "open" for a human view and a pull request's number.
 - The page in Chromium at 320, 390, 1,280 and 1,440 pixels, in light and dark and in both languages, 16 runs: no sideways scrolling, no element past its frame's edge, no console error; the page check on it reports only the drawing inside the pictures and a few short last lines, which it counts as information or a warning.
 - Looked at as images: every frame at 320 pixels in English and light and in Korean and dark, and the five at 1,440 pixels in English and light, with the stage detail's in Korean and dark as well. What looking changed: the stage detail's stale frame counts both waiting checkpoints, the comment's loading frame shows its last reply whole, the actions to ask about first follow SPEC-125, the Close button of the stage detail keeps its width, and a long variable name in the empty server's steps no longer splits a Korean word.
+- Looked at as images after the freeze: the hub page's and the stage detail's normal frames at 320 and 1,440 pixels, in English and light and in Korean and dark, with the skipped and not-recorded stages.
 - The hub's snapshot of this repository finds `design/nexus/` as the stage's source and adds no check result.
 - The repository's checks with these files pass: `python -m unittest discover -s tests`, `claude plugin validate --strict` for the marketplace and its three plugins, `node --test nexus/test/*.test.js` and `git diff --check`.
 
 ## For the checkpoint
 
-The stage's second checkpoint, frozen tokens, comes before development uses them. Most worth a look before it:
+Passed on 2026-11-03 at 11:39 KST, together with the joint checkpoint of stages 03 to 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the tokens are frozen for NEXUS 0.2 as recommended below. The checkpoint covered:
 
 1. The states drawn after the choice, above all the hub page's additions on SCR-101 and SCR-104 and the panels' loading, stale and gone states.
 2. The words the mockups added to stage 08's messages.
-3. The two differences from phase 1 above, and whether the skipped and not-recorded stages join the tokens, with a skipped stage's text darkened to 4.5:1.
+3. The two differences from phase 1 above, and the skipped and not-recorded stages, which joined the tokens with a skipped stage's text darkened to 4.5:1.
 
 ## Notes for later stages
 

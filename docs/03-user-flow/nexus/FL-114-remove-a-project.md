@@ -2,13 +2,13 @@
 
 [한국어](FL-114-remove-a-project.ko.md)
 
-Serves: REQ-105, REQ-113, REQ-120
+Serves: REQ-105, REQ-113, REQ-120, REQ-206
 
 Context: CTX-009 Sharing. Starts when the user asks to remove a project from the NEXUS server. Built in phase 1 for snapshots; NEXUS 0.2 deletes the project space as well (REQ-120).
 
 ```mermaid
 flowchart TD
-  A(["The user asks to remove a project<br/>from the NEXUS server"]) --> B["Show a dry run of what the removal deletes:<br/>the snapshot and the project space, with its pictures,<br/>comments, proposals, pending reflections<br/>and passed checkpoints"]
+  A(["The user asks to remove a project<br/>from the NEXUS server"]) --> B["Show a dry run of what the removal deletes:<br/>the snapshot and the project space, with its pictures,<br/>comments, proposals, pending reflections<br/>and passed checkpoints<br/>REQ-206"]
   B --> C{"Does the user confirm?"}
   C -->|no| C1["Send nothing"]
   C1 --> Z(["End"])

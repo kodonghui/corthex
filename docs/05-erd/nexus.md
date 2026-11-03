@@ -2,7 +2,7 @@
 
 [한국어](nexus.ko.md)
 
-Stage 05 of CORTHEX's own project, for NEXUS 0.2: the tables of the NEXUS server, in [nexus.sql](nexus.sql), and the files that go with them: the snapshot that carries a project to the server, the stage records in the project's repository and the hub's outbox on a device. Status: draft of 2026-11-02, written while the memory plugin is being built, as the maintainer chose that day, and on the recommendations of the user flows and the functional spec, whose checkpoint is still open. The maintainer checks it together with them. After that check the schema is frozen for NEXUS 0.2 before stage 06 writes the API contract, and a later breaking change needs the maintainer's decision and a new schema version. When this file and its Korean translation differ, this file is the source.
+Stage 05 of CORTHEX's own project, for NEXUS 0.2: the tables of the NEXUS server, in [nexus.sql](nexus.sql), and the files that go with them: the snapshot that carries a project to the server, the stage records in the project's repository and the hub's outbox on a device. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day, on the recommendations of the user flows and the functional spec. The maintainer passed its checkpoint on 2026-11-03, together with stages 03, 04 and 06 to 08, so the schema is frozen for NEXUS 0.2: a later breaking change needs the maintainer's decision and a new schema version. When this file and its Korean translation differ, this file is the source.
 
 Inputs: the functional spec in [docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md) (SPEC-101 to SPEC-140), above all its [notes for stage 05](../04-functional-spec/nexus.md#stage-05-the-servers-data-and-the-files); the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md), of which REQ-116, REQ-118, REQ-120, REQ-123 and REQ-124 shape the data most; the glossary and the DDD board in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps and whose aggregates the tables name; and phase 1's table in [nexus/src/store.js](../../nexus/src/store.js). Cloudflare's D1 documents were read on 2026-11-02: its [limits](https://developers.cloudflare.com/d1/platform/limits/), [pricing](https://developers.cloudflare.com/d1/platform/pricing/), [foreign keys](https://developers.cloudflare.com/d1/sql-api/foreign-keys/), [JSON functions](https://developers.cloudflare.com/d1/sql-api/query-json/) and [batches](https://developers.cloudflare.com/d1/worker-api/d1-database/).
 
@@ -138,9 +138,9 @@ Each picture source starts with its `format`, `1` in NEXUS 0.2, and each of its 
 
 | Stage | A picture source holds |
 | --- | --- |
-| `01-domain` | The contexts, each with its ID, name, type and purpose, its command rows (who gives each, its read model, command, aggregate and events, and whether it is a policy) and its external systems; the aggregates and read models, each with its name, its context, its term and whether the term is marked removed; the dependencies, with their two contexts, kind, reason and data; and the hotspots, with their number, context, state and answer (SPEC-106) |
+| `01-domain` | The contexts, each with its ID, name, type and purpose, its command rows (who gives each, its read model, command, aggregate and events, and whether it is a policy) and its external systems; the aggregates and read models, each with its name, its context, its term and whether the term is marked removed; the dependencies, with their two contexts, kind, reason and data; and the hotspots, with their context, state and answer, and their number when their text starts with one (SPEC-106) |
 | `05-erd` | The tables, each with its ID, name, context and terms or `none`, its columns with their types and whether they may be empty, its primary key, its unique rules and its foreign keys, with the table that each references and what a delete does; and the terms listed after `without a table:` (SPEC-107) |
-| `07-sitemap` | The screens, each with its ID, name, path, who can see it, its flows, its parent, its context and its terms or `none`; and the terms listed under `without a screen` (SPEC-108) |
+| `07-sitemap` | The screens, each with its ID, name, path, who can see it, its flows, its parent, its context and its terms or `none`; and the terms listed after `# without a screen:` (SPEC-108) |
 
 ### Discrepancies (TBL-104)
 
@@ -377,6 +377,7 @@ The agent's writes that the hub could not send (SPEC-129), one file for each wri
 | `write` | `nw_` ID | Sent with each try (TBL-112) |
 | `project` | project name | |
 | `request` | name of a request | Which write it is, such as `reply`, `proposal`, `decision`, or a report of a reflection or of a record's pull request |
+| `path` | the request's path | Where the write goes, such as `/api/spaces/corthex/comments/nc_3a6d9g2j5m8r/replies`, so that each try goes where the first went |
 | `session` | session label | The session that made it, whose claims it counts for |
 | `made` | time | When the agent made it. The hub drops it 7 days after, and says so |
 | `body` | object | The write as the hub sends it, already redacted (SPEC-128) |
@@ -421,7 +422,7 @@ One statement, `DELETE FROM snapshots WHERE name = ?`, deletes the snapshot, and
 ### Reads
 
 - The hub page reads every snapshot's body, and for each project the counts of open comments, open proposals and open discrepancies and of the checkpoints that wait for their records (SPEC-123), in one batch.
-- The picture view reads the picture; its open comments, with their replies and decisions; its open proposals; its edits that are not closed, with their proposals; and the open discrepancies of its part (SPEC-119).
+- The picture view reads the picture; its open comments, each with its count of replies and its last reply; its open proposals, without their stage source text; its edits that are not closed, with their proposals; and the open discrepancies of its part (SPEC-119). A comment's own read gives all its replies and decisions, and a proposal's own read its stage source text, so that a picture's answer stays small (stage 06).
 - The agent to-do reads, in its order, the open comments that wait for the agent, the open discrepancies, the edits that are neither closed nor dismissed, and the checkpoints: the passed ones that no stored record names, and the withdrawn ones that an open pull request or a stored record still names. Each list holds up to 50 with its total, and the to-do also reads the space's claims (SPEC-135).
 - The stage overview reads the same for one part and stage, with the snapshot's records and checks (SPEC-138).
 
@@ -484,6 +485,7 @@ Lengths in characters count code points. The numbers that come from the requirem
 | A link: a decision's or a pull request's | 2,000 characters | this file |
 | A session label | 1 to 100 ASCII letters, digits, `.`, `_`, `:` and `-` | this file |
 | Text in a space: its comments, replies, decisions, proposals and edits | 8 MiB of UTF-8 | this file |
+| The body of a write | 256 KiB | stage 06 |
 | A claim | 60 minutes after the session's last write on the entry | SPEC-136 |
 | Write IDs | 7 days after the server took the write | the functional spec's notes for stage 05 |
 | A write in the outbox | 7 days after it was made | SPEC-129 |
@@ -621,7 +623,7 @@ erDiagram
 
 ## Choices this stage made
 
-The functional spec left these to stage 05. Each can change at the checkpoint.
+The functional spec left these to stage 05. The checkpoint of 2026-11-03 kept each as it is.
 
 1. The server's data in its D1 database, in tables in SQL that SQLite and Postgres share but for the two differences that the notes for stage 11 name, all of it run by store.js (REQ-123), with the limits in the code and constraints only for what is always true.
 2. One picture for each part and pictured stage: the last one drawn, current or not, which each new document version replaces. The comments, proposals and edits keep the commit that they were made on, so no earlier picture is kept, and a space's pictures stay within the size of its stage sources.
@@ -637,7 +639,7 @@ The functional spec left these to stage 05. Each can change at the checkpoint.
 
 ## For the checkpoint
 
-Waiting, together with the checkpoint of the user flows and the functional spec. Most worth a look:
+Passed on 2026-11-03 at 11:39 KST, together with stages 03, 04 and 06 to 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the choices below stand as drawn, with the changes of stage 06. The checkpoint covered:
 
 1. One picture for each part and stage (choice 2). Keeping each document version's picture would let the view show earlier versions, which no requirement asks for, at the cost of space on the free plan.
 2. The 8 MiB of text in each space (choice 8), a new limit with a new refusal.

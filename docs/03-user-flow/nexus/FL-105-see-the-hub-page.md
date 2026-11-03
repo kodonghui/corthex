@@ -2,9 +2,9 @@
 
 [한국어](FL-105-see-the-hub-page.ko.md)
 
-Serves: REQ-091, REQ-092, REQ-093, REQ-094, REQ-095, REQ-096, REQ-097, REQ-098, REQ-099, REQ-100, REQ-101, REQ-102, REQ-103, REQ-104, REQ-113, REQ-189, REQ-190, REQ-197
+Serves: REQ-091, REQ-092, REQ-093, REQ-094, REQ-095, REQ-096, REQ-097, REQ-098, REQ-099, REQ-100, REQ-101, REQ-102, REQ-103, REQ-104, REQ-113, REQ-176, REQ-189, REQ-190, REQ-197
 
-Context: CTX-008 Overview. Starts when the user opens the hub page, built on a device or served by the NEXUS server, on a phone or a PC. Built in phase 1; NEXUS 0.2 adds the explanation on an empty server and the pictures' links and counts (REQ-102, REQ-189, REQ-190), and R4 of 2026-11-02 adds each project's actions to ask about first (REQ-197).
+Context: CTX-008 Overview. Starts when the user opens the hub page, built on a device or served by the NEXUS server, on a phone or a PC. Built in phase 1; NEXUS 0.2 adds the explanation on an empty server, the pictures' links and counts and the stages' overviews (REQ-102, REQ-176, REQ-189, REQ-190), and R4 of 2026-11-02 adds each project's actions to ask about first (REQ-197).
 
 ```mermaid
 flowchart TD
@@ -28,11 +28,13 @@ flowchart TD
   I -->|searches| K["List the items that match the ID<br/>or the words of a title<br/>REQ-094 · SCR-102"]
   I -->|opens a stage's tool| L["Open the stage's human view<br/>from its link in the settings<br/>REQ-095 · SCR-104"]
   I -->|opens a picture| M["Open the picture view, FL-106<br/>REQ-189"]
+  I -->|opens a stage's overview| N["Open the stage overview, FL-113<br/>REQ-176"]
   I -->|leaves| Z
   J --> I
   K --> I
   L --> Z
   M --> Z
+  N --> Z
 ```
 
 On every path the page loads nothing from the network, shows the projects' text only as text, follows the profile's language and the system's light or dark mode, and works at every width from 320 to 1440 pixels without sideways scrolling (REQ-097, REQ-098, REQ-099, REQ-100, REQ-101).
