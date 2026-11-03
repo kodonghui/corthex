@@ -62,7 +62,7 @@ class ConfirmationTest(unittest.TestCase):
         self.assertEqual(schema["properties"]["models"]["properties"]["curator"]["default"], "claude-haiku-5-5")
         self.assertEqual(schema["properties"]["models"]["properties"]["effort"]["default"], "xhigh")
 
-    def test_answered_decision_history_and_nexus_links_are_preserved(self):
+    def test_answered_decision_history_and_nexus_ownership_are_preserved(self):
         for name, heading, link in (("memory.md", "## Open decisions", "memory.md#open-decisions"),
                                     ("memory.ko.md", "## 열린 결정", "memory.ko.md#열린-결정")):
             text = read_text(DOCS / "02-prd" / name)
@@ -77,7 +77,10 @@ class ConfirmationTest(unittest.TestCase):
             self.assertIn("NEXUS", rows[3][3])
             self.assertIn("Postgres", rows[3][3])
             self.assertIn("claude -p", rows[4][3])
-            self.assertIn(link, read_text(DOCS / "02-prd" / name.replace("memory", "nexus")))
+            # The NEXUS PRD and its links moved to the product repository.
+            # Its pinned upstream-link checks run there; this repository keeps
+            # the original MEMORY decisions and an explicit ownership route.
+            self.assertIn("kodonghui/corthex-nexus", read_text(ROOT / "AGENTS.md"))
             scope = section(text, "## 범위" if name.endswith(".ko.md") else "## Scope")
             outside = next(line for line in scope.splitlines() if line.startswith("- 제외:" if name.endswith(".ko.md") else "- Out:"))
             self.assertNotIn("NEXUS", outside)

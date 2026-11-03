@@ -127,4 +127,4 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-107 | Project tombstone | A record that a project's memory was deleted, so that sync does not bring it back; REQ-194, SPEC-037 | CTX-004, CTX-005 | |
 | TERM-108 | Price list | The prices per token that the usage log's estimates use, with when and where they were taken | CTX-005 | bill, rate card |
 
-The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](nexus.md), which uses TERM-047 to TERM-097.
+The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/docs/01-domain/nexus.md), which uses TERM-047 to TERM-097.

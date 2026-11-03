@@ -8,15 +8,11 @@ name: windows-hook-check
 # log, the job summary and the hook-check artifact.
 
 on:
-  pull_request:
-    paths:
-      - ".github/hook-check/**"
-      - ".github/workflows/windows-hook-check.yml"
-      - "plugins/corthex-memory/**"
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: windows-hook-check-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -46,13 +42,13 @@ jobs:
         if: ${{ !cancelled() }}
         shell: cmd
         run: |
-          ren "C:\Program Files\Git" Git.hidden || echo Git could not be hidden
+          ren "C:\Program Files\Git" Git.hidden || exit /b 1
           python .github\hook-check\run.py no-git-bash "%RUNNER_TEMP%\hook-check" claude,codex
       - name: With only Windows PowerShell 5.1
         if: ${{ !cancelled() }}
         shell: cmd
         run: |
-          ren "C:\Program Files\PowerShell\7" 7.hidden || echo PowerShell 7 could not be hidden
+          ren "C:\Program Files\PowerShell\7" 7.hidden || exit /b 1
           python .github\hook-check\run.py powershell-5.1-only "%RUNNER_TEMP%\hook-check" codex
       - name: Restore Git and PowerShell 7
         if: always()
@@ -61,6 +57,14 @@ jobs:
           if exist "C:\Program Files\Git.hidden" ren "C:\Program Files\Git.hidden" Git
           if exist "C:\Program Files\PowerShell\7.hidden" ren "C:\Program Files\PowerShell\7.hidden" 7
           exit /b 0
+      - name: Outer clocks, worker lifetime, preservation and 100-sample timings
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\run.py evidence "%RUNNER_TEMP%\hook-check" claude,codex --evidence --benchmark100
+      - name: Redaction benchmark for the 512 KiB synthetic input
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python tests/bench_memory_redaction.py --samples 10
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
