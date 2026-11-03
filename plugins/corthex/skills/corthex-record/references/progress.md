@@ -9,7 +9,7 @@ Write a progress record when a unit of work ends, when a decision is made and wh
 
 - Done: what was done
 - Why: the request or decision it serves
-- Result: what exists now, with links
+- Result: what exists now, with links. Numbers are copied from the command output or source, which is named.
 - Checked: what was verified, and what was not
 - Next: the next action and who takes it
 ```

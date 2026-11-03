@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: 0.1.0, early development. The stage skills are outlines that will grow with real use. `corthex-memory` has session context and local recording hooks; C1 remains in progress. `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
+> Status: core `corthex` 0.2.0; optional plugins 0.1.0, early development. The stage skills are outlines that will grow with real use. `corthex-memory` has session context and local recording hooks; C1 remains in progress. `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
 
 ## Install
 
@@ -77,6 +77,8 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 - `.corthex/project.json` in each product repository says, stage by stage, where people look at the work (`human`), where the text source lives (`source`) and which side wins when they differ (`truth`).
 - `~/.corthex/projects.json` lists the projects on one machine.
 - `~/.corthex/hub/` holds the hub's snapshots, the progress you recorded and the page, when `corthex-nexus` is installed.
+
+When records go to Notion, the project's `records.location` or the profile's `records.hub` points to the records database. Records are rows, and tables inside a record are inline databases. See the [record skill](plugins/corthex/skills/corthex-record/SKILL.md).
 
 [The architecture notes](docs/architecture.md) explain the design and link to each format.
 

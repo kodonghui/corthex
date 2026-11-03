@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: 0.1.0. The core plugin, `corthex`, exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub and a NEXUS server to deploy yourself). The rest of both is planned (see [Roadmap](#roadmap)).
+Status: core `corthex` 0.2.0; optional plugins 0.1.0. The core plugin exists, and so do the first parts of `corthex-memory` (the session start context) and `corthex-nexus` (the local project hub and a NEXUS server to deploy yourself). The rest of both is planned (see [Roadmap](#roadmap)).
 
 ## Goals
 
@@ -148,6 +148,8 @@ The fields are in [profile.md](../plugins/corthex/skills/corthex/references/prof
 - The profile never holds secrets. Keys belong in the host's secret store or in environment variables.
 - `project.json` is committed so that everyone on a team sees the same settings. `projects.json` stays on the machine because paths differ between machines.
 - Unknown fields are kept and ignored, so a later version can add fields without breaking an older one.
+
+Notion records use one records database per project. Decisions and action items followed across records have their own item databases, and stage items keep their stage databases. Each record page is a database row, its tables are inline databases, and its narrative is the row's body. The project's `records.location`, or the profile's `records.hub`, points to the records database.
 
 ## Session start context
 
