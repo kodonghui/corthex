@@ -59,6 +59,36 @@ class UsageError(Exception):
     pass
 
 
+class _DiagnosticStore(store.MemoryStore):
+    """Keep best-effort diagnostics bound to the operation's readable device."""
+    def __init__(self, memory, device):
+        from .worker_support import PathFence
+        self.device = device
+        self.fence = getattr(memory, "fence", None)
+        if self.fence is None:
+            self.fence = PathFence(memory.folder)
+        self.folder, self.held = self.fence.root, ()
+
+    def _path_check(self, path):
+        return self.fence.check(path)
+
+    def _lock(self, path, kind, device):
+        return locks.Lock(path, kind, device, path_check=self._path_check)
+
+    def _read_record(self, path, parse, deadline, report, **options):
+        return super()._read_record(path, parse, deadline, report,
+                                    reader=lambda candidate: self.fence.read(candidate, deadline), **options)
+
+    def record(self, *args, **kwargs):
+        previous = kwargs.pop("precondition", None)
+        def check(value):
+            if self.device is not None and value["device"] != self.device:
+                raise locks.LostLock()
+            if previous is not None:
+                previous(value)
+        return super().record(*args, precondition=check, **kwargs)
+
+
 class Parser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, add_help=False, allow_abbrev=False, **kwargs)
@@ -212,23 +242,43 @@ class Context:
         """Handlers select the contract's lock and keep its lease until mutation ends."""
         if self.command not in CHANGES or force and self.command not in ("purge", "delete-project"):
             raise ValueError()
-        lease = locks.Lock(path, kind, self.record["device"] if self.record else device)
+        lease = self.memory._lock(path, kind, self.record["device"] if self.record else device)
         with lease.held(clock.now() + 10, force=force) as held:
             held.check()
             yield held
 
 
 def _gates(context):
+    notes = []
+    try:
+        return _read_gates(context, lambda error, count=None: notes.append((error, count)))
+    except locks.LostLock:
+        notes.clear()
+        raise
+    finally:
+        if context.record and notes:
+            try:
+                from .worker_support import BoundDiagnostics
+                logger = BoundDiagnostics(_DiagnosticStore(context.memory, context.record["device"]))
+                for error, count in notes:
+                    logger.failure(error, "restore", clock.now() + 10, count=count)
+            except Exception:
+                pass  # A diagnostic failure never replaces the gate's result.
+
+
+def _read_gates(context, report):
     command, memory = context.command, context.memory
     try:
-        context.record = memory.record(deadline=clock.now() + 10)
+        context.record = memory.record(report, deadline=clock.now() + 10)
     except store.StoreUnavailable as error:
         context.store_error = error.code
         if command in COMMON[error.code][0]:
             return common_result(command, error.code)
     if context.record:
+        if isinstance(memory, _DiagnosticStore):
+            memory.device = context.record["device"]
         try:
-            context.configuration = memory.configuration(deadline=clock.now() + 10)
+            context.configuration = memory.configuration(report, deadline=clock.now() + 10)
         except configuration.ConfigurationInvalid as error:
             context.configuration_error = error.field
             if command in COMMON["configuration-invalid"][0]:
@@ -269,7 +319,10 @@ def run(argv, handlers=None):
         if not str(folder).strip():
             raise UsageError()
         args["folder"] = str(Path(folder).expanduser().resolve())
-        context = Context(command, args, supplied, store.MemoryStore())
+        memory = store.MemoryStore()
+        if memory.folder.exists():
+            memory = _DiagnosticStore(memory, None)  # Pin the existing root before gate recovery.
+        context = Context(command, args, supplied, memory)
         answer = _gates(context)
         if answer is None:
             handler = (handlers or {}).get(command)
@@ -295,10 +348,14 @@ def run(argv, handlers=None):
                 kind = answer["data"]["error"]
             if unimplemented:
                 answer["say"] = "This operation is not implemented in this stage. No command effects were applied."
-            if context is not None and context.record is not None:
+            # Losing the lease or path identity forbids further writes, even
+            # diagnostics that could otherwise restore a different header.
+            if context is not None and context.record is not None and not isinstance(error, locks.LostLock):
                 try:
-                    diagnostics.Diagnostics(context.memory).failure(kind, "skill", clock.now() + 10,
-                                                                   project=context.project.name if context.project else None)
+                    from .worker_support import BoundDiagnostics
+                    memory = _DiagnosticStore(context.memory, context.record["device"])
+                    BoundDiagnostics(memory).failure(kind, "skill", clock.now() + 10,
+                                                     project=context.project.name if context.project else None)
                 except Exception:
                     pass
     # A failed loader/validator is never reused to build or check its fallback.
