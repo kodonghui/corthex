@@ -54,7 +54,7 @@ Stale has no state of its own here: the panel shows the picture's data, and SCR-
 | Outside services | None: the comment goes only to the server |
 | Data exposure | Only the item's entries; a comment shows its author's kind, never a name or an email address (REQ-163) |
 | Empty and streamed answers | No entry on the item: SCR-106#empty. No stream |
-| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-106) |
+| Screen states | Every state at 320 and 1440 pixels, in the [wireframes](wireframes.html#scr-106); as stage 09 drew them in direction A, in the [mockups](../../09-mockup/nexus/mockup.html#scr-106) |
 | AI answers | None: NEXUS calls no AI model (REQ-121); the agent's comments are text written through the hub |
 
 ## Layout

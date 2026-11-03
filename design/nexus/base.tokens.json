@@ -1,5 +1,5 @@
 {
-  "$description": "NEXUS 0.2: the tokens that every theme shares, drafted in stage 09 on 2026-11-03 from phase 1's hub page. Colours and shadows are in theme/light.tokens.json and theme/dark.tokens.json, which tokens.resolver.json chooses between.",
+  "$description": "NEXUS 0.2: the tokens that every theme shares, drafted in stage 09 on 2026-11-03 from phase 1's hub page and kept for direction A, Hub pages, chosen that day. Colours and shadows are in theme/light.tokens.json and theme/dark.tokens.json, which tokens.resolver.json chooses between.",
   "font": {
     "family": {
       "$type": "fontFamily",
@@ -199,14 +199,7 @@
         "value": 24,
         "unit": "px"
       },
-      "$description": "Candidate A: a corner pin as drawn; its target is size.target"
-    },
-    "tab": {
-      "$value": {
-        "value": 24,
-        "unit": "px"
-      },
-      "$description": "Candidate B: a tab as drawn, on the item's top edge and above its label; its target is size.target"
+      "$description": "A corner pin as drawn; its target is size.target"
     },
     "cluster": {
       "$value": {
@@ -254,6 +247,13 @@
         "unit": "px"
       },
       "$description": "The stage overview's column, as phase 1's page"
+    },
+    "stage": {
+      "$value": {
+        "value": 4.2,
+        "unit": "rem"
+      },
+      "$description": "The least height and width of a stage in the hub's strip of 13, as phase 1"
     }
   },
   "opacity": {
@@ -272,10 +272,6 @@
     "sheet-height": {
       "$value": 0.85,
       "$description": "A bottom sheet at most this share of the screen's height"
-    },
-    "sheet-peek": {
-      "$value": 0.55,
-      "$description": "Candidate B: a bottom sheet first opens to this share, so that the item stays in sight above it"
     }
   },
   "breakpoint": {
