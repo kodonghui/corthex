@@ -31,7 +31,29 @@ class Statement {
   }
 }
 
-export function fakeD1() {
-  const db = new DatabaseSync(":memory:");
-  return { prepare: (sql) => new Statement(db, sql) };
+export function fakeD1(db = new DatabaseSync(":memory:")) {
+  db.exec("PRAGMA foreign_keys = ON");
+  return {
+    prepare: (sql) => new Statement(db, sql),
+    async batch(statements) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const results = [];
+        for (const statement of statements) {
+          const before = Number(db.prepare("SELECT total_changes() AS n").get().n);
+          const prepared = db.prepare(statement.sql);
+          const rows = prepared.columns().length
+            ? prepared.all(...statement.params).map((row) => ({ ...row }))
+            : (prepared.run(...statement.params), []);
+          const after = Number(db.prepare("SELECT total_changes() AS n").get().n);
+          results.push({ success: true, results: rows, meta: { changes: after - before } });
+        }
+        db.exec("COMMIT");
+        return results;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    },
+  };
 }

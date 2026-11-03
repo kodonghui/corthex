@@ -751,7 +751,7 @@ Pending: no go/no-go has been requested or inferred. Before asking, complete all
 
 ## Coverage
 
-Planning inventory: 677 cases; 36 active SPEC rows; 32 server operations; 410 named response examples; 18 hub commands; 45 declared screen states. Passing: 0. Browser paths walked: 0. Mock-only cases passed: 0. All cases above are not run. Recompute from actual results at each bundle; never turn planning coverage into a pass count.
+Planning inventory: 677 cases; 36 active SPEC rows; 32 server operations; 410 named response examples; 18 hub commands; 45 declared screen states. Passing: 4 (TC-1274–TC-1277). Browser paths walked: 0. Mock-only cases passed: 0. The other 673 cases are not run. Recompute from actual results at each bundle; never turn planning coverage into a pass count.
 
 ## Bugs
 
@@ -765,7 +765,13 @@ Each implementation PR updates only the cases it actually ran and cites raw evid
 
 | ID | Case | From | Task | Runs as | Steps | Expected | Last result |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TC-1274 | Schema 2 equals stage 05 | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Build one empty SQLite database from nexus.sql and one through Store.ensure; compare table/column/key/index/CHECK metadata. | Exactly equal schemas; versions 1 and 2 are recorded once. | not run |
-| TC-1275 | Phase-1 snapshots survive | SPEC-114, TBL-101, TBL-113 | TASK-202 | node, local D1 | Seed a phase-1 snapshot with non-ASCII text and an existing revision, migrate twice and compare bytes and metadata. | Original body/revision/timestamps remain; new columns are NULL; rerun preserves migration timestamps. | not run |
-| TC-1276 | Failed migration rolls back and retries | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Inject a failure after schema-2 ALTER statements inside the D1 batch, then retry the same Store. | No partial columns or version-2 marker after failure; retry installs the complete schema. | not run |
-| TC-1277 | Two migration isolates converge | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Synchronize two independent DB bindings before their migration-1 batch, then let them race. | Both finish with exact stage-05 schema and one marker per version; no partial schema. | not run |
+| TC-1274 | Schema 2 equals stage 05 | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Build one empty SQLite database from nexus.sql and one through Store.ensure; compare table/column/key/index/CHECK metadata. | Exactly equal schemas; versions 1 and 2 are recorded once. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+| TC-1275 | Phase-1 snapshots survive | SPEC-114, TBL-101, TBL-113 | TASK-202 | node, local D1 | Seed a phase-1 snapshot with non-ASCII text and an existing revision, migrate twice and compare bytes and metadata. | Original body/revision/timestamps remain; new columns are NULL; rerun preserves migration timestamps. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+| TC-1276 | Failed migration rolls back and retries | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Inject a failure after schema-2 ALTER statements inside the D1 batch, then retry the same Store. | No partial columns or version-2 marker after failure; retry installs the complete schema. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+| TC-1277 | Two migration isolates converge | SPEC-114, TBL-101, TBL-113 | TASK-203 | node, local D1 | Synchronize two independent DB bindings before their migration-1 batch, then let them race. | Both finish with exact stage-05 schema and one marker per version; no partial schema. | pass: Node 24.18.0 / SQLite, Windows, 2026-11-03, afbb3c8; #91 |
+
+## Migration evidence (#91)
+
+On 2026-11-03, Node 24.18.0 on Windows ran all 19 server tests at `afbb3c8`, including the four migration cases above. They use Node SQLite through the transactional fake D1 binding. These include failure injection and a two-binding race; they are not claimed as live D1 fault injection. The phase-1 fixture keeps its Unicode body, revision and timestamps byte for byte.
+
+Wrangler 4.153.0 also installed the migrations in local D1 and the development D1 (`corthex-nexus-dev`). Their normalized CREATE statements equal stage 05: 13 tables and 10 explicit indexes, versions 1 and 2, no uploaded snapshots. Windows Python 3.13 ran 817 tests (14 skipped); all four strict Claude plugin validations passed. GitHub check run 41652400735 passed Linux/macOS/Windows, Worker dry build, plugin validation and all-checks. A read-only code/security review found no actionable issue in the three implementation files; this is one reviewer covering two review scopes. This does not mark any 0.2 API as provided or accepted.
