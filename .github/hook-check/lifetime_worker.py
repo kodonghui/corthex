@@ -54,7 +54,12 @@ def main():
             write("heartbeat")
             release = folder / "release.json"
             if release.exists():
-                value = json.loads(release.read_bytes())
+                try:
+                    value = json.loads(release.read_bytes())
+                except PermissionError:
+                    # A Windows file observer can briefly deny this read.
+                    # Keep the original barrier deadline and nonce check.
+                    value = {}
                 if value.get("nonce") == nonce:
                     write("resumed", host_exit_monotonic_ns=value["host_exit_monotonic_ns"])
                     return

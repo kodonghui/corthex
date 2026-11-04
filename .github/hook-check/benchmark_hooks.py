@@ -16,6 +16,13 @@ import time
 import uuid
 
 EVENTS = {"start": "SessionStart", "prompt": "UserPromptSubmit", "end-of-turn": "Stop", "end": "SessionEnd"}
+_fixture_stage = "not-started"
+
+
+def fixture_stage(name):
+    """A fixed diagnostic label, never a path, input or exception value."""
+    global _fixture_stage
+    _fixture_stage = name
 
 
 def serialized_fixture(function):
@@ -32,26 +39,31 @@ def serialized_fixture(function):
         note = {"hook": hook, "pid": os.getpid(), "nonce": os.environ["HOOKCHECK_BENCHMARK_NONCE"]}
 
         def checkpoint(phase, error=None):
-            note.update(phase=phase, error=error)
+            note.update(phase=phase, error=error, last_stage=_fixture_stage)
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(note) + "\n", encoding="utf-8")
             temporary.replace(path)
 
+        fixture_stage("open-store")
         checkpoint("waiting-fixture")
         try:
             memory = worker_support.WorkerStore(root)
             # This separate fixture path sorts before the nested product leases.
+            fixture_stage("acquire-fixture-lease")
             with locks.Lock(root.parent / "benchmark-fixture.lock", "curation", memory.device).held(clock.now() + 10):
+                fixture_stage("call-wrapper")
                 checkpoint("running-fixture")
                 result = function()
                 checkpoint("completed")
                 return result
         except Exception as error:
             frame = error.__traceback__
-            while frame.tb_next:
+            frames = []
+            while frame:
+                frames.append({"file": Path(frame.tb_frame.f_code.co_filename).name,
+                               "function": frame.tb_frame.f_code.co_name, "line": frame.tb_lineno})
                 frame = frame.tb_next
-            note["failure_frame"] = {"file": Path(frame.tb_frame.f_code.co_filename).name,
-                                     "function": frame.tb_frame.f_code.co_name, "line": frame.tb_lineno}
+            note["failure_frame"], note["failure_frames"] = frames[-1], frames
             try:
                 checkpoint("failed", type(error).__name__)
             except OSError:
