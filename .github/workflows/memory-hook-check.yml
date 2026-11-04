@@ -41,6 +41,12 @@ jobs:
       - name: Actual native background-agent notification
         if: ${{ !cancelled() }}
         run: python .github/hook-check/native_prefix.py "${{ runner.temp }}/memory-hook-check/native-prefix"
+      - name: Actual own-parent agent message and completion
+        if: ${{ !cancelled() }}
+        run: python .github/hook-check/native_prefix.py "${{ runner.temp }}/memory-hook-check/agent-message" --kind agent
+      - name: Actual cross-session message between owned fixtures
+        if: ${{ !cancelled() }}
+        run: python .github/hook-check/cross_session.py "${{ runner.temp }}/memory-hook-check/cross-session"
       - name: Codex 0.1.0 trust, update and native retrust UI
         if: ${{ !cancelled() }}
         run: python .github/hook-check/trust_update.py "${{ runner.temp }}/memory-hook-check/trust-update"
