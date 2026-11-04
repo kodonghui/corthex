@@ -268,6 +268,18 @@ class HookRecordingTest(HookCase):
         self.assertEqual(len(self.raw()), 1)
         self.outcome("left-out")
 
+    def test_tc040_actual_agent_message_is_left_out_and_inline_quote_is_kept(self):
+        marker = "AGENT_ONLY_FIXTURE_141421"
+        message = '<agent-message from="fixture-agent">\n' + marker + '\n</agent-message>'
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=" \n\t" + message))
+        self.assertEqual(self.raw(), [])
+        self.outcome("left-out")
+        self.assertFalse(any(marker.encode() in p.read_bytes() for p in self.root.rglob("*") if p.is_file()))
+        quoted = "A user quote contains " + message
+        self.run_functional("prompt", dict(self.event("prompt"), prompt=quoted))
+        self.assertEqual(self.raw()[0]["text"], quoted)
+        self.outcome("ok")
+
     def test_tc041_redaction_failure_has_no_entry_or_error_text(self):
         patch = ("from memory_lib import redaction\ndef fail(*args):\n"
                  "    raise RuntimeError('private-redaction-error-fixture')\nredaction.redact = fail")

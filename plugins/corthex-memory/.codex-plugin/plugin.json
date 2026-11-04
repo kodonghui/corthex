@@ -1,7 +1,7 @@
 {
   "name": "corthex-memory",
-  "version": "0.1.0",
-  "description": "Adds the CORTHEX working principles, your profile and the current project's settings to the start of each Claude Code and Codex session. Reads local files only and makes no network calls.",
+  "version": "0.2.0",
+  "description": "Records redacted prompts and final answers for enabled CORTHEX projects on this device, adds session context and provides local memory controls. C1 makes no model or network calls.",
   "author": {
     "name": "kodonghui",
     "url": "https://github.com/kodonghui"
@@ -9,10 +9,19 @@
   "homepage": "https://github.com/kodonghui/corthex",
   "repository": "https://github.com/kodonghui/corthex",
   "license": "Apache-2.0",
-  "keywords": ["memory", "context", "hooks", "session-start", "profile", "projects"],
+  "keywords": [
+    "memory",
+    "context",
+    "hooks",
+    "session-start",
+    "profile",
+    "projects",
+    "recording",
+    "retention"
+  ],
   "interface": {
     "displayName": "CORTHEX Memory",
-    "shortDescription": "Session context from your CORTHEX profile and project",
+    "shortDescription": "Record and manage conversation memory on this device",
     "developerName": "kodonghui",
     "category": "Productivity",
     "logo": "./assets/icon.png",

@@ -209,18 +209,17 @@ class HookFrameworkTest(HookCase):
         self.assertEqual(timing["outcome"],"deadline")
         self.assertGreaterEqual(timing["ms"],300)
 
-    def test_tc035_broken_context_keeps_both_entry_points_quiet_and_successful(self):
+    def test_tc035_broken_context_keeps_the_current_entry_quiet_and_successful(self):
         plugin = self.folder / "incomplete-plugin"
         shutil.copytree(PLUGIN,plugin,ignore=shutil.ignore_patterns("__pycache__","*.pyc"))
         context = plugin / "skills/corthex-memory/scripts/memory_lib/context.py"
         context.rename(context.with_suffix(".hidden"))
-        for name,args in (("session_start.py",[]),("hook.py",["start"])):
-            run = subprocess.run([sys.executable,str(plugin/"scripts"/name)]+args,input=json.dumps(self.event("start")).encode(),
-                                 env=self.environment(),cwd=str(self.repo),capture_output=True,timeout=15)
-            self.assertEqual(run.returncode,0)
-            self.assertEqual(run.stdout,b"")
-            self.assertEqual(len(run.stderr.splitlines()),1)
-            self.assertTrue(run.stderr.startswith(b"corthex-memory: "))
+        run = subprocess.run([sys.executable,str(plugin/"scripts/hook.py"),"start"],input=json.dumps(self.event("start")).encode(),
+                             env=self.environment(),cwd=str(self.repo),capture_output=True,timeout=15)
+        self.assertEqual(run.returncode,0)
+        self.assertEqual(run.stdout,b"")
+        self.assertEqual(len(run.stderr.splitlines()),1)
+        self.assertTrue(run.stderr.startswith(b"corthex-memory: "))
 
     def test_tc011_configuration_notice_precedes_the_consent_gate(self):
         path = self.root / "configuration.json"

@@ -2,9 +2,9 @@
 
 [한국어](nexus.ko.md)
 
-Stage 06 of CORTHEX's own project, for NEXUS 0.2: the requests that the NEXUS server answers, in the OpenAPI contract [nexus.openapi.yaml](nexus.openapi.yaml), and in this file the rules that the contract follows, the hub's commands and the formats of the files that go with them. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day, on the recommendations of the user flows, the functional spec and the server's data. The maintainer passed its checkpoint on 2026-11-03, together with stages 03 to 05, 07 and 08, so the requests, the commands and the formats are frozen for NEXUS 0.2 before stage 10 plans the work: a later breaking change needs the maintainer's decision. The contract is the source of every request, answer, example and error code that it holds; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
+Stage 06 of CORTHEX's own project, for NEXUS 0.2: the requests that the NEXUS server answers, in the OpenAPI contract [nexus.openapi.yaml](nexus.openapi.yaml), and in this file the rules that the contract follows, the hub's commands and the formats of the files that go with them. Status: drafted on 2026-11-02, while the memory plugin is being built, as the maintainer chose that day, on the recommendations of the user flows, the functional spec and the server's data. The maintainer passed its checkpoint on 2026-11-03, together with stages 03 to 05, 07 and 08, so the requests, the commands and the formats are frozen for NEXUS 0.2 before stage 10 plans the work: a later breaking change needs the maintainer's decision. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS added the optional `timeline` to the DDD board's picture source, a compatible change, and named the work board of phase ② beside editing; the maintainer passed both the same day ([For the checkpoint](#for-the-checkpoint)). The contract is the source of every request, answer, example and error code that it holds; this file explains them and is the source of the rest. When this file and its Korean translation differ, this file is the source.
 
-Inputs: the functional spec in [docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md) (SPEC-101 to SPEC-140), above all its [notes for stage 06](../04-functional-spec/nexus.md#stage-06-requests-commands-and-formats); the server's data and the files in [docs/05-erd/nexus.md](../05-erd/nexus.md) and [nexus.sql](../05-erd/nexus.sql) (TBL-101 to TBL-118), with their [notes for stage 06](../05-erd/nexus.md#stage-06-requests-commands-and-formats) and their limits; the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md); the glossary and the DDD board in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps; and phase 1 as it runs: the server in [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js) and [store.js](../../nexus/src/store.js), and the hub in [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py) with its [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md) and [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md). The sitemap (stage 07) comes later, so no screen ID is an input yet; the requests serve the screens that the user flows and the functional spec name.
+Inputs: the functional spec in [docs/04-functional-spec/nexus.md](../04-functional-spec/nexus.md) (SPEC-101 to SPEC-142), above all its [notes for stage 06](../04-functional-spec/nexus.md#stage-06-requests-commands-and-formats); the server's data and the files in [docs/05-erd/nexus.md](../05-erd/nexus.md) and [nexus.sql](../05-erd/nexus.sql) (TBL-101 to TBL-118), with their [notes for stage 06](../05-erd/nexus.md#stage-06-requests-commands-and-formats) and their limits; the requirements in [docs/02-prd/nexus.md](../02-prd/nexus.md); the glossary and the DDD board in [docs/01-domain/nexus.md](../01-domain/nexus.md), whose words this file keeps; and phase 1 as it runs: the server in [app.js](../../nexus/src/app.js), [snapshot.js](../../nexus/src/snapshot.js) and [store.js](../../nexus/src/store.js), and the hub in [hub.py](../../plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py) with its [snapshot.md](../../plugins/corthex-nexus/skills/corthex-hub/references/snapshot.md) and [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md). The sitemap (stage 07) comes later, so no screen ID is an input yet; the requests serve the screens that the user flows and the functional spec name.
 
 The stage's default contract is `api/openapi.yaml`, read in Swagger UI. The NEXUS server has an HTTP API, so its contract is OpenAPI 3.1, as the stage asks, kept beside the other part's interfaces as `docs/06-api/nexus.openapi.yaml`. People read it in the Korean copy in the project's Notion records, and the file itself in any OpenAPI viewer, such as Swagger UI; `.corthex/project.json` records the choice. The hub's commands are no HTTP requests, so this file defines them, in the form of MEMORY's [interfaces](memory.md): each with an API ID, the behaviours that it serves and its outcomes.
 
@@ -15,7 +15,7 @@ The stage's default contract is `api/openapi.yaml`, read in Swagger UI. The NEXU
 - A response is written as its request's ID and its status, as `API-105#409`, and an outcome of a command as its ID and the outcome, as `API-136#refused`.
 - An error code is written as `commit_not_replaced`. [Error codes](#error-codes) lists each with its status, its meaning, the members that it adds, the message that the user sees and what the client does, as the contract's `components.x-corthex.errors` holds them.
 - Times from the server are in UTC with milliseconds, as `2026-11-03T09:00:00.000Z`; times from a device or from Git keep their zone. Sizes in bytes count UTF-8, and lengths in characters count code points, as in stage 05.
-- Status: `built` for what phase 1 serves as it runs, `active` for what NEXUS 0.2 adds or changes. Editing on a PC (SPEC-134) is phase ②, which adds its requests then.
+- Status: `built` for what phase 1 serves as it runs, `active` for what NEXUS 0.2 adds or changes. Editing on a PC (SPEC-134) and the work board (SPEC-142) are phase ②, which adds their requests then.
 - `~/.corthex/` is the CORTHEX folder in the user's home folder, `%USERPROFILE%\.corthex\` on Windows. The hub's files are under `~/.corthex/hub/`, as in phase 1.
 
 ## Sources
@@ -31,7 +31,7 @@ Not yet seen: both kinds of sign-in on a real Access setup, and what `getIdentit
 
 ## Interfaces
 
-Every behaviour of the functional spec has an interface, apart from editing on a PC (SPEC-134), which phase ② adds.
+Every behaviour of the functional spec has an interface, apart from editing on a PC (SPEC-134) and the work board (SPEC-142), which phase ② adds. The step view (SPEC-141) has no request of its own: it shows the picture that the view reads (API-111).
 
 ### Requests of the server
 
@@ -49,7 +49,7 @@ The contract defines them, and this table lists them. Who may send each: `user`,
 | API-108 | `DELETE /api/snapshots/{project}` | `removeProject` | either | SPEC-113, SPEC-115 | active |
 | API-109 | `GET /api/snapshots/{project}/held` | `getHeldCommit` | either | SPEC-111, SPEC-112, SPEC-113 | active |
 | API-110 | `GET /api/snapshots/{project}/removal` | `getRemovalDryRun` | either | SPEC-113, SPEC-115 | active |
-| API-111 | `GET /api/spaces/{project}/pictures/{part}/{stage}` | `getPicture` | either | SPEC-113, SPEC-118, SPEC-119 | active |
+| API-111 | `GET /api/spaces/{project}/pictures/{part}/{stage}` | `getPicture` | either | SPEC-113, SPEC-118, SPEC-119, SPEC-141 | active |
 | API-112 | `GET /api/spaces/{project}/overview/{part}/{stage}` | `getStageOverview` | either | SPEC-113, SPEC-138 | active |
 | API-113 | `GET /api/spaces/{project}/todo` | `getAgentTodo` | either | SPEC-113, SPEC-135, SPEC-136 | active |
 | API-114 | `GET /api/spaces/{project}/comments/{comment}` | `getComment` | either | SPEC-113, SPEC-127, SPEC-132, SPEC-135 | active |
@@ -534,8 +534,11 @@ Each picture source has `format: 1` and one of three shapes, the contract's `Dom
 | The hotspots | A table with the columns `Hotspot`, `Context`, `State` and `Answer or next step`. A number at the start of the text, such as `1.`, is the hotspot's `number`, and the CTX IDs under `Context` its contexts | `핫스팟`, `컨텍스트`, `상태`, `답이나 다음 할 일` |
 | The glossary | A table with an `ID` column of TERM IDs and a `Term` column | `ID`, `용어` |
 | Removed contexts and terms | A table with an `ID` column and a `Status` column that says removed | `ID`, `상태`, with `삭제` |
+| The timeline | A table with the columns `Lane` and `Events`, one row for each lane, in order. In `Events`, ` → ` separates the places, from left to right, and `, or ` the events stacked in one place | `흐름`, `사건`; ` 또는 `, with or without a comma before it |
 
 An aggregate or read model takes the TERM ID written beside its name, as `Picture (TERM-085)`, or else that of the glossary row, in the same document, whose term is its name, ignoring case and spacing; with none, or with two such rows, it gets a `board-term-missing` warning (SPEC-106).
+
+In a command row's `Events`, commas separate the events, and a leading `or` (`또는`) is not part of a name, so `Payment taken, or Payment failed` gives two events. The timeline is optional: a document without one gives no `timeline`, and the view then shows the board only as a whole (SPEC-141). Each lane keeps its `where`, the line of its row.
 
 **ERD (`05-erd`).** The SQL of [reading.md](../../plugins/corthex-nexus/skills/corthex-hub/references/reading.md) and the stage 05 template, [05-erd.md](../../plugins/corthex/skills/corthex-contract/references/05-erd.md):
 
@@ -783,7 +786,16 @@ On 2026-11-03, after the checkpoint's changes, with the same tools:
 - Schemathesis, with `--experimental=openapi-3.1`, which it asks for an OpenAPI 3.1 contract: all 32 operations pass, in 858 requests, and the four under Pages, the three pages and the view's code, in 103 of them. A third habit was set aside the same way: it builds the service token's two headers, `CF-Access-Client-Id` and `CF-Access-Client-Secret`, from any characters, which Node's HTTP server also refuses with a bare `400`, so the hook gives each a printable stand-in.
 - The repository's checks pass, now with 727 tests (12 skipped), and the hub's snapshot of this repository reads 996 items with no checks.
 
+Again on 2026-11-03, after the maintainer's choice to hold stage 01's event storming in NEXUS:
+
+- openapi-spec-validator 0.7.1: the contract, with the optional `timeline` of `DomainSource`, is valid OpenAPI 3.1.
+- The check of this stage finds no problems: the example `picture_data_domain`, which now holds a lane of the timeline, is taken by its schema, and each of the 72 examples is still used.
+- Prism and Schemathesis were not run again: the change adds one optional field to one schema and a lane to one example, which the check of this stage validates.
+- The repository's checks pass, now with 756 tests (12 skipped), and the hub's snapshot of this repository reads 1014 items with no checks.
+
 ## For the checkpoint
+
+The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, passed at 16:54 KST the same day, together with the changes that it made to the other stages: on a decision card in the project's thread the maintainer chose to pass the step view and the work board as drawn ("모두 그린 대로 통과", pass all as drawn). The checkpoint covered: the optional `timeline` of `DomainSource`, with its forms in [Picture sources](#picture-sources), which is a compatible change, since a picture source without it stays valid and a snapshot of the frozen form still passes; and the work board of phase ② (SPEC-142), which adds its requests then, beside those of editing (SPEC-134).
 
 Passed on 2026-11-03 at 11:39 KST, together with stages 03 to 05, 07 and 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so the requests, the commands and the formats stand as written, with the changes of stage 08. The sign-in (3) stays open until its trial. The checkpoint covered:
 

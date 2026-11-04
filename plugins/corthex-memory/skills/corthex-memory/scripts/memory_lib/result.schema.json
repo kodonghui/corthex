@@ -574,18 +574,18 @@
       "required": ["folder", "projects", "deleted", "sync"],
       "properties": {
         "folder": {"description": "The memory store's folder, with the home folder written as ~.", "type": "string", "minLength": 1, "maxLength": 1000},
-        "projects": {"type": "array", "items": {"$ref": "#/$defs/project-name"}},
+        "projects": {"description": "null when the full project list cannot be verified.", "anyOf": [{"type": "null"}, {"type": "array", "items": {"$ref": "#/$defs/project-name"}}]},
         "deleted": {
           "type": "object",
           "additionalProperties": false,
           "required": ["items", "entries", "usage"],
           "properties": {
-            "items": {"$ref": "#/$defs/count"},
-            "entries": {"$ref": "#/$defs/count"},
-            "usage": {"description": "Lines of the usage log.", "$ref": "#/$defs/count"}
+            "items": {"description": "null when this count cannot be verified.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]},
+            "entries": {"description": "null when this count cannot be verified.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]},
+            "usage": {"description": "Lines of all usage logs; null when the count cannot be verified.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]}
           }
         },
-        "sync": {"description": "on: the sync remote and the other devices keep their copies.", "$ref": "#/$defs/on-off"},
+        "sync": {"description": "on: remote and other devices keep their copies; unknown: sync state cannot be verified.", "enum": ["on", "off", "unknown"]},
         "left": {"description": "With files-left: the files that could not be deleted, relative to the memory store.", "type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 1000}}
       }
     },

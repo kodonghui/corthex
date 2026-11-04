@@ -83,7 +83,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 | 턴 끝 훅 | Stop | Stop | `hook.py end-of-turn` | 5초 | 300ms |
 | 세션 끝 훅 | SessionEnd | SessionEnd | `hook.py end` | 2초 | 500ms |
 
-스크립트 하나, `scripts/hook.py`가 훅의 이름을 인자로 받아 네 훅을 모두 맡습니다. 0.1.0 판의 `session_start.py`를 대신하며, 그 시작 요약을 기본 부분으로 이어받습니다. 0.2.0 판의 `hooks/hooks.json`:
+스크립트 하나, `scripts/hook.py`가 훅의 이름을 인자로 받아 네 훅을 모두 맡습니다. 0.1.0 판의 호환 진입점을 대신하며, 그 시작 요약을 기본 부분으로 이어받습니다. 0.2.0 판의 `hooks/hooks.json`:
 
 ```json
 {
@@ -145,7 +145,7 @@ Codex는 자기 플러그인의 훅에 `PLUGIN_ROOT`와 함께 `CLAUDE_PLUGIN_RO
 
 ### 도구가 만든 프롬프트와 붙여 넣은 글
 
-Claude Code는 세션의 예약 작업이 돌 때, 뒤에서 도는 하위 에이전트가 결과를 알릴 때, 다른 세션이 메시지를 보낼 때도 UserPromptSubmit 훅을 돌립니다(문서에 있음). 문서는 이런 프롬프트의 형식을 알려 주지 않습니다. Claude Code 2.1.310에서는 이런 프롬프트가 `<task-notification>`, `<cross-session-message`, `<teammate-message`로 시작합니다(프로그램에서 관찰, 문서에는 없음). 앞의 공백 뒤 글이 이 가운데 하나로 시작하는 프롬프트는 도구가 만든 프롬프트입니다. 프롬프트 훅은 이런 프롬프트를 기록하지 않고, 불러오지 않고, 넣기 기록 줄도 쓰지 않으며, 아무것도 내보내지 않습니다. 그 훅 소요 시간의 결과는 `left-out`입니다. 이 시작 표시 목록은 코드에 `host-prompts-1`이라는 판으로 두며, 12단계가 두 도구의 판마다 확인합니다. 이런 종류의 프롬프트라도 이 가운데 어느 것으로도 시작하지 않으면, 예약 작업에 저장된 프롬프트가 그럴 수 있듯이, 다른 프롬프트처럼 기록합니다. 도구가 만든 프롬프트에 대한 에이전트의 최종 답변은 자기 턴으로 기록합니다(TBL-007).
+Claude Code는 세션의 예약 작업이 돌 때, 뒤에서 도는 하위 에이전트가 결과를 알릴 때, 다른 세션이 메시지를 보낼 때도 UserPromptSubmit 훅을 돌립니다(문서에 있음). 문서는 이런 프롬프트의 형식을 알려 주지 않습니다. Claude Code 2.1.310에서는 이런 프롬프트가 `<task-notification>`, `<cross-session-message`, `<agent-message`로 시작하는 실제 호스트 입력을 관찰했습니다. 작업 완료·자기 부모 알림은 실험용 팀 설정 없이 관찰했습니다. 두 임시 세션 사이 관찰은 `crossSessionInbound: accept`와 `isolatePeerMachines: true`를 명시했으므로 기본 수신 설정을 입증하지 않습니다. 기존 `<teammate-message`도 호환성을 위해 유지하지만 현재 기본 설정의 실제 입력으로 검증했다고 보지 않습니다(프로그램 관찰과 호환 목록이며 문서에는 형식이 없음). 앞의 공백 뒤 글이 이 가운데 하나로 시작하는 프롬프트는 도구가 만든 프롬프트입니다. 프롬프트 훅은 이런 프롬프트를 기록하지 않고, 불러오지 않고, 넣기 기록 줄도 쓰지 않으며, 아무것도 내보내지 않습니다. 그 훅 소요 시간의 결과는 `left-out`입니다. 이 시작 표시 목록은 코드에 `host-prompts-2`이라는 판으로 두며, 12단계가 두 도구의 판마다 확인합니다. 이런 종류의 프롬프트라도 이 가운데 어느 것으로도 시작하지 않으면, 예약 작업에 저장된 프롬프트가 그럴 수 있듯이, 다른 프롬프트처럼 기록합니다. 도구가 만든 프롬프트에 대한 에이전트의 최종 답변은 자기 턴으로 기록합니다(TBL-007).
 
 Claude Code가 사용자가 붙여 넣은 글을 표시할 때, 펼친 글은 `<pasted_content id="…">` 줄과 `</pasted_content id="…">` 줄 사이에 있습니다(문서에 있음). 원문 기록은 이 줄을 그대로 두므로, 정리 모델은 무엇을 붙여 넣었는지 볼 수 있습니다. 결정 인용이 이런 구간 안에 있거나, 닫는 줄이 없는 여는 줄 뒤에 있는 결정은 코드가 버리고, 버린 다른 변경과 함께 셉니다(SPEC-016). 정리 모델의 지시문은 붙여 넣은 글이 사용자 자신의 말이 아니라고 알려 줍니다. Codex에서는 이런 표시를 알지 못하므로 지시문만 적용됩니다.
 
@@ -322,7 +322,7 @@ Windows의 첫 Popen이 실패하면 winerror가 5이고 NULL JobHandle의 IsPro
 
 치우기는 해석한 기억 루트 안에서 지원하는 C1 기록에 대해 플러그인이 소유하고 생성 규칙을 아는 sidecar 이름만 다룹니다. symlink나 루트 밖 경로를 따라가지 않고 비소유 후보와 알 수 없는 C2 기록 종류를 보존합니다. unlink 전에 파일 동일성·나이·해당 기록의 쓰기 임대·고정한 저장소를 다시 확인합니다. 정확히 600초 된 임시·stale 파일과 미래 시각 파일은 보존하며 600초보다 오래된 것만 대상입니다. 백업은 현재 원본을 실제 구현된 C1 typed pure parser나 스키마로 완전히 판독했을 때만 지웁니다. JSONL은 손상행을 허용하는 reader가 아니라 완전하고 올바른 기록 줄이어야 합니다. 원본이 없거나 열리지 않거나 망가졌거나 스키마에 맞지 않거나 지원 대상이 아니면 백업을 보존합니다. 치우기 자체가 백업을 복원하지는 않습니다. C2 작업이 구현될 때 지원 판독기 종류를 확장합니다. 원문 다시 쓰기 산출물은 일치하는 원문 임대와 layer 임대도 보호하므로 실행 중 다시 쓰기의 임시 파일을 지우지 않습니다. 폴더를 만들지 않으며 원문 항목·표지·정리 진행·사용량 기록을 보관 기간 처리 대신 치우기로 지우지 않습니다.
 
-C1 보관 기간 처리의 직접 경계는 추적한 프로젝트 정리 임대 아래의 `retain_project(memory, project, owner, deadline, when=None)`와 모든 데이터 임대를 해제한 뒤의 `retain_logs(memory, deadline, when=None)`입니다. 호출자는 기존 bound store와 절대 phase 기한을 주며 두 helper는 폴더를 만들거나 프로세스를 띄우지 않습니다. 설정한 기한보다 엄격히 이전인 항목만 지우고 정확한 경계·미래 항목은 남기며 불가능한 달력 시각은 나이를 읽을 수 없는 수로 세고 남깁니다. 프로젝트 결과는 완료한 다시 쓰기(`files`), 보존한 정상 항목(`kept`), 만료된 초기 항목(`removed`), 손상행(`damaged`), 미래이거나 나이를 읽을 수 없는 초기 항목(`future`, `unreadable_age`), 지운 표지(`markers`), 건너뛴 후보(`skipped`)를 셉니다. `kept`와 `damaged`에는 늦은 suffix 행도 포함하며 나이 집계는 첫 snapshot만 대상으로 합니다. 늦은 suffix는 다음 순회를 위해 필터 없이 보존하므로 상태 명령의 전체 목록을 대신하지 않습니다. 선택한 원문 바이트는 최대 64-KiB씩 staging하고 마지막 초기 묶음도 원문 임대를 잡기 전에 내려보내며 실제 I/O의 guard는 모두 유지합니다.
+C1 보관 기간 처리의 직접 경계는 추적한 프로젝트 정리 임대 아래의 `retain_project(memory, project, owner, deadline, when=None)`와 모든 데이터 임대를 해제한 뒤의 `retain_logs(memory, deadline, when=None)`입니다. 호출자는 기존 bound store와 절대 phase 기한을 주며 두 helper는 폴더를 만들거나 프로세스를 띄우지 않습니다. 설정한 기한보다 엄격히 이전인 항목만 지우고 정확한 경계·미래 항목은 남기며 불가능한 달력 시각은 나이를 읽을 수 없는 수로 세고 남깁니다. 삭제 경계는 시작할 때 고정합니다. `when`을 지정하지 않으면 미래 시각 후보를 읽는 때의 현재 시각으로 다시 확인하여, 정상적인 동시 덧붙임을 시계가 미래인 기록으로 알리지 않습니다. `when`을 지정하면 두 판단 모두 그 시각을 기준으로 합니다. 프로젝트 결과는 완료한 다시 쓰기(`files`), 보존한 정상 항목(`kept`), 만료된 초기 항목(`removed`), 손상행(`damaged`), 미래이거나 나이를 읽을 수 없는 초기 항목(`future`, `unreadable_age`), 지운 표지(`markers`), 건너뛴 후보(`skipped`)를 셉니다. `kept`와 `damaged`에는 늦은 suffix 행도 포함하며 나이 집계는 첫 snapshot만 대상으로 합니다. 늦은 suffix는 다음 순회를 위해 필터 없이 보존하므로 상태 명령의 전체 목록을 대신하지 않습니다. 선택한 원문 바이트는 최대 64-KiB씩 staging하고 마지막 초기 묶음도 원문 임대를 잡기 전에 내려보내며 실제 I/O의 guard는 모두 유지합니다.
 
 원문 다시 쓰기를 staging한 뒤 마지막 원문 임대를 잡을 때만 기존 절대 phase 기한 안에서 최대 50 ms 동안 재시도합니다. 이는 임대 획득 구간이며 payload I/O의 새 기한이 아닙니다. 획득 뒤 모든 payload guard는 원래 phase 기한을 그대로 씁니다. 그래도 바쁜 원문 임대는 조용히 건너뜁니다. 치우기와 누락 파일 복원을 포함한 다른 원문·로그 임대는 기다리지 않습니다. 잠깐의 append 충돌 때문에 staging한 작업 전체를 되풀이하지 않도록 한 CT의 명시적 운영 선택이며 훅·phase·임대 수명이나 Windows 공유 위반·해제 재시도는 늘리지 않습니다.
 
@@ -489,11 +489,11 @@ confirm = nv4zxpnv
 - `open`: `project`, `items`. 항목마다 종류, 상태, 그것을 대체한 항목이나 그것이 합친 항목들, 제목, 글, 저장한 시각, 그리고 인용들이 있습니다. 인용마다 기록 줄, 원문 기록, 기기, 말한 사람, 시각, 말, `held`(이 기기의 원문 기록이 그 기록 줄을 가지고 있으면 `here`, 이 기기가 썼는데 없어졌으면 `deleted`, 다른 기기가 썼으면 `elsewhere`), 그리고 `--around`가 있으면 인용 앞뒤의 글 `before`와 `after`가 있습니다. `item-not-found`일 때: 어느 항목도 가리키지 않는 인자 `missing`과, 항목 목록에서 가장 가까운 줄 `matches`.
 - `pin`과 `unpin`: `project`, `item`, `pins`. `item-not-found`일 때 `matches`. `item-not-current`일 때 그것을 대체한 항목 `current`.
 - `forget`: `project`, `item`, `with`(`--with`로 지정한 항목), `also`(같은 원문을 인용하는 다른 항목. `--with`로 지정하지 않으면 남음), `state_lines`(없어지는 줄과 그 글), `pinned`(그 항목 가운데 고정한 것), `raw`(인용한 범위를 바꿀 이 기기의 기록 줄과, 남는 항목을 위해 통째로 두는 범위), `outside`(기억이 지울 수 없는 것: `host-transcript`, `providers`, `devices-without-sync`). `item-not-found`일 때 `missing`과 `matches`.
-- `delete-project`: `project`, `deleted`(항목, 기록 줄, 고정의 수), `sync`. `purge`: `folder`, `projects`, `deleted`(항목, 기록 줄, 사용량 줄의 수), `sync`. `files-left`일 때는 둘 다 지울 수 없었던 파일 `left`를 더합니다.
+- `delete-project`: `project`, `deleted`(항목, 기록 줄, 고정의 수), `sync`. `purge`: `folder`, `projects`, `deleted`(항목, 기록 줄, 사용량 줄의 수), `sync`. `files-left`일 때는 둘 다 지울 수 없었던 파일 `left`를 더합니다. `purge`에서만 전체 프로젝트 목록이나 개별 개수를 확인할 수 없으면 `null`, 동기화 여부를 확인할 수 없으면 `unknown`으로 표시합니다. 실제로 비어 있으면 `[]`·`0`·`off`를 유지합니다. 에이전트는 이를 ‘확인 불가’로 보여 주고 정확한 `folder`의 전체 삭제를 먼저 확인받습니다. 더 새로운 판이나 이전 중인 미지원 구조의 내용을 해석하지 않습니다. 지원되는 백업의 일반 복원과 `lock-busy`는 공통 관문에서 유지하며, 유효한 확인 전에는 purge 삭제나 강제 잠금 인수를 하지 않습니다.
 - `leave-out`: `project`, 그리고 그 뒤에 빠져 있는 `folders`와 `kinds`. `folder-outside`일 때 `outside`. `retention`: `days`, `was`, 그리고 물을 때는 다음 세션 시작이 지울 기록 줄의 수 `entries`.
 - `sync`: `state`(`on`이나 `off`), `address`, `branch`, `checked_by`, `now`일 때 `pulled`와 `pushed`, `other-files`일 때 `other` 경로 20개까지.
 - `setup`: `project`, `at`, 그리고 환경의 설정에 넣을 글 `script`([아래](#임시-기기를-위한-설정)).
-- `repair`: `device`. 끝나면 새 기기 ID.
+- `repair`: `device`, 끝나면 새 기기 ID이며, 읽을 수 있는 정보가 있으면 현재 기기 ID와 `nothing`입니다. 기억 디렉터리 자체가 없으면 빈 data와 `nothing`, `on` 안내를 돌려주며 그 디렉터리는 `on`만 만듭니다. 복구는 기존 디렉터리에서 복원할 수 없는 저장소 정보만 다시 쓰고 설정·동의·나머지 기억은 보존합니다.
 
 ### 동의 문구, 판 1
 

@@ -274,6 +274,10 @@ def _read_gates(context, report):
         context.store_error = error.code
         if command in COMMON[error.code][0]:
             return common_result(command, error.code)
+    except OSError:
+        if command != "purge":
+            raise
+        context.store_error = "unreadable"
     if context.record:
         if isinstance(memory, _DiagnosticStore):
             memory.device = context.record["device"]
@@ -283,6 +287,10 @@ def _read_gates(context, report):
             context.configuration_error = error.field
             if command in COMMON["configuration-invalid"][0]:
                 return common_result(command, "configuration-invalid", field=error.field)
+        except OSError:
+            if command != "purge":
+                raise
+            context.configuration_error = "unreadable"
         except store.StoreUnavailable as error:
             context.record, context.store_error = None, error.code
             if command in COMMON[error.code][0]:
@@ -320,14 +328,20 @@ def run(argv, handlers=None):
             raise UsageError()
         args["folder"] = str(Path(folder).expanduser().resolve())
         memory = store.MemoryStore()
+        if command == "purge":
+            from . import store_deletion
+            memory.folder = store_deletion.protect(memory.folder)  # Before gate recovery.
         if memory.folder.exists():
             memory = _DiagnosticStore(memory, None)  # Pin the existing root before gate recovery.
+        if command == "purge" and store_deletion.protect(base.memory_home()) != memory.folder:
+            raise locks.LostLock()
         context = Context(command, args, supplied, memory)
         answer = _gates(context)
         if answer is None:
             if handlers is None:
-                from . import enablement
-                handlers = {"on": enablement.on, "off": enablement.off}
+                from . import enablement, status, recording_exclusions, retention_settings, store_deletion, store_repair
+                handlers = {"on": enablement.on, "off": enablement.off, "status": status.status,
+                            "leave-out": recording_exclusions.leave_out, "retention": retention_settings.retention, "purge": store_deletion.purge, "repair": store_repair.repair}
             handler = (handlers or {}).get(command)
             if handler is None:
                 unimplemented = True

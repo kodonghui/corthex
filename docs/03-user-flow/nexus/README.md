@@ -2,11 +2,11 @@
 
 [한국어](README.ko.md)
 
-Stage 03 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: drafted on 2026-11-02; the stage's checkpoint, whose two choices the maintainer made the same day, passed on 2026-11-03 together with those of stages 04 to 08. The maintainer chose on 2026-11-02 to design NEXUS from this stage on while the memory plugin is being built, and to decide when to build NEXUS after memory's first release. When a file here and its Korean translation differ, the English file is the source.
+Stage 03 of CORTHEX's own project, for NEXUS: the `corthex-nexus` plugin and the NEXUS server. Status: drafted on 2026-11-02; the stage's checkpoint, whose two choices the maintainer made the same day, passed on 2026-11-03 together with those of stages 04 to 08. The maintainer's choice of 2026-11-03 to hold stage 01's event storming in NEXUS added the step view to FL-106, the timeline to FL-101 and the workshop of phase ② as FL-116, which the maintainer passed the same day ([For the checkpoint](#for-the-checkpoint)). The maintainer chose on 2026-11-02 to design NEXUS from this stage on while the memory plugin is being built, and to decide when to build NEXUS after memory's first release. When a file here and its Korean translation differ, the English file is the source.
 
-Inputs: the requirements in [docs/02-prd/nexus.md](../../02-prd/nexus.md) (REQ-066 to REQ-193, with the scope and D8 to D13 approved on 2026-10-25, REQ-197 and REQ-198, added with R4 on 2026-11-02, and REQ-199 to REQ-208, added at this stage's checkpoint on 2026-11-03 from the functional spec), and the contexts and glossary in [docs/01-domain/nexus.md](../../01-domain/nexus.md), whose meanings the words here keep. The IDs of these flows start at FL-101, apart from memory's FL-001 to FL-012, so that both parts can add flows at the same time without taking the same number.
+Inputs: the requirements in [docs/02-prd/nexus.md](../../02-prd/nexus.md) (REQ-066 to REQ-193, with the scope and D8 to D13 approved on 2026-10-25, REQ-197 and REQ-198, added with R4 on 2026-11-02, REQ-199 to REQ-208, added at this stage's checkpoint on 2026-11-03 from the functional spec, and REQ-209 to REQ-218, added with the maintainer's choice of that day), and the contexts and glossary in [docs/01-domain/nexus.md](../../01-domain/nexus.md), whose meanings the words here keep. The IDs of these flows start at FL-101, apart from memory's FL-001 to FL-012, so that both parts can add flows at the same time without taking the same number.
 
-Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. The flows draw NEXUS 0.2, which is phase ①: the hub and the server built in phase 1 are drawn as they run now, with the steps that 0.2 adds, and FL-115 draws the editing of phase ②, so that the data of 0.2 leaves room for it. The tool links of phase ③ have no flow yet.
+Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. The flows draw NEXUS 0.2, which is phase ①: the hub and the server built in phase 1 are drawn as they run now, with the steps that 0.2 adds, and FL-115 and FL-116 draw the editing and the workshop of phase ②, so that the data of 0.2 leaves room for them. The tool links of phase ③ have no flow yet.
 
 | ID | Flow | Context | Release | Starts when |
 | --- | --- | --- | --- | --- |
@@ -25,6 +25,7 @@ Each flow has its own file with a Mermaid flowchart, and each step names the req
 | FL-113 | [Pass a stage's checkpoint](FL-113-pass-a-checkpoint.md) | CTX-007 | 0.2 | The user looks at whether a stage is ready |
 | FL-114 | [Remove a project from the NEXUS server](FL-114-remove-a-project.md) | CTX-009 | phase 1, changed in 0.2 | The user asks to remove a project |
 | FL-115 | [Edit a picture on a PC](FL-115-edit-a-picture.md) | CTX-010 | phase ② | The user opens a picture to edit it |
+| FL-116 | [Hold a workshop on a work board](FL-116-hold-a-workshop.md) | CTX-010 | phase ② | The user and the agent start a part's stage 01 event storming in NEXUS |
 
 ## Where the flows run
 
@@ -32,14 +33,14 @@ Each flow has its own file with a Mermaid flowchart, and each step names the req
 | --- | --- |
 | On a device, in the hub | FL-101, FL-102 and FL-114, and FL-105 when the hub page is built there |
 | On the NEXUS server, when it stores a snapshot | FL-103, then FL-104 |
-| In a browser, on a phone or a PC | FL-105 on the server, FL-106, FL-107, FL-110 and the stage overview of FL-113; FL-115 on a PC only |
-| In a session, where the agent works | FL-108, which leads to FL-109, FL-111, FL-112 and the agent's part of FL-113 |
+| In a browser, on a phone or a PC | FL-105 on the server, FL-106, FL-107, FL-110 and the stage overview of FL-113; FL-115 and FL-116 on a PC only |
+| In a session, where the agent works | FL-108, which leads to FL-109, FL-111, FL-112 and the agent's part of FL-113, and in phase ② of FL-116 |
 
 The agent reaches NEXUS only through the hub, with the service token, and NEXUS never calls the agent: what the user leaves in NEXUS waits for the agent's next work (FL-108).
 
 ## Requirements that no flow uses
 
-REQ-082 (Python 3.8 and its standard library), REQ-083 (Linux, macOS and Windows), REQ-121 (no AI model on the server), REQ-122 (no rights on any repository), REQ-123 (the database code in one module), REQ-124 (the free plans) and REQ-126 (the guide to deploying a server) hold for the whole hub or server rather than for one flow; the functional spec states them, and QA checks them. REQ-186 to REQ-188, the tool links of phase ③, wait for that phase, where hotspot 12 is decided. REQ-199 to REQ-201, REQ-204, REQ-205, REQ-207 and REQ-208, which this stage's checkpoint added on 2026-11-03 from the functional spec's answers, say how steps run underneath the flows, such as which commit gives the pictures or how a claim holds an entry; the functional spec's rows trace them (SPEC-105, SPEC-109, SPEC-111, SPEC-114, SPEC-118, SPEC-123, SPEC-129, SPEC-136, SPEC-137, SPEC-139 and SPEC-140). Every other requirement appears in at least one flow.
+REQ-082 (Python 3.8 and its standard library), REQ-083 (Linux, macOS and Windows), REQ-121 (no AI model on the server), REQ-122 (no rights on any repository), REQ-123 (the database code in one module), REQ-124 (the free plans) and REQ-126 (the guide to deploying a server) hold for the whole hub or server rather than for one flow; the functional spec states them, and QA checks them. REQ-186 to REQ-188, the tool links of phase ③, wait for that phase, where hotspot 12 is decided. REQ-199 to REQ-201, REQ-204, REQ-205, REQ-207 and REQ-208, which this stage's checkpoint added on 2026-11-03 from the functional spec's answers, say how steps run underneath the flows, such as which commit gives the pictures or how a claim holds an entry; the functional spec's rows trace them (SPEC-105, SPEC-109, SPEC-111, SPEC-114, SPEC-118, SPEC-123, SPEC-129, SPEC-136, SPEC-137, SPEC-139 and SPEC-140). REQ-212, the timeline that the stage 01 skill has the agent write into the domain design document, belongs to the stage skill's own work, which these flows do not draw; the functional spec traces it (SPEC-106). Every other requirement appears in at least one flow.
 
 ## Points for the functional spec
 
@@ -65,6 +66,8 @@ Drawing the flows raised these questions, which the requirements leave open. The
 18. **The actions to ask about first.** Under R4, a project's settings may set their own `ask_before`, which replaces the profile's for that project, while anything that cannot be undone is still asked; the core plugin's project settings define the field. NEXUS only shows the list that applies (REQ-197, REQ-198) and enforces nothing. The spec decides what the snapshot holds when a list is not a list of strings, or when neither the settings nor the profile set one, so that the profile's default list applies; what the page shows for an empty list; and how many entries it shows. A change to the profile reaches the server only with each project's next push. Project settings come from the repository and are read as data (TERM-041), so a change to the repository can shorten the list: the page names where the list comes from, so that the user sees when a project asks about less than the profile. R4 also suggested showing a level beside the list, from proposals only to deploys; the settings hold no level now, so the page shows the list alone, and a level would first need a field in the core plugin's settings.
 
 ## For the checkpoint
+
+The maintainer's choice of 2026-11-03, to hold stage 01's event storming in NEXUS, passed at 16:54 KST the same day, together with the requirements that it added and the changes that it made to the other stages: on a decision card in the project's thread the maintainer chose to pass the step view and the work board as drawn ("모두 그린 대로 통과", pass all as drawn). The checkpoint covered: the step view's branch of FL-106 (REQ-209, REQ-211), the timeline that FL-101 keeps (REQ-210), and FL-116, which draws the workshop of phase ② as the requirements put it, until that phase draws the work board's own steps (hotspot 14 of stage 01).
 
 Passed on 2026-11-03 at 11:39 KST, together with stages 04 to 08: on a decision card in the project's thread the maintainer chose all the recommendations ("모두 추천대로", all as recommended), so each flow's main path and its main failure paths stand as drawn, with the two steps that stage 07 added to FL-105 and FL-107. Two points needed the maintainer's choice, and the maintainer chose both recommendations on 2026-11-02 at 19:46 KST, on a decision card in the project's thread ("both as recommended"); the other choices stay here as they were weighed:
 

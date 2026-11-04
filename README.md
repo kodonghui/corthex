@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.3.0; optional plugins 0.1.0, early development. The stage skills are outlines that will grow with real use. `corthex-memory` has session context and local recording hooks; C1 remains in progress. `corthex-nexus` has the local hub page and a first NEXUS server that you deploy yourself.
+> Status: core `corthex` 0.3.0; the `corthex-memory` 0.2.0 C1 package is in QA and trial preparation, before a release decision/tag; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 ## Install
 
@@ -34,16 +34,20 @@ codex plugin add corthex@corthex
 
 ### Optional: session start context
 
-`corthex-memory` adds the working principles, your profile and the current project's settings at the start of each session. It stays on the local machine and makes no network calls. With an existing memory store, hook diagnostics contain only safe error codes; late failures keep their original codes. Late completion alone does not turn success into failure; hook deadlines skip or shorten only the specified later steps, and never skip redaction or recording. Without a store, nothing is written. It needs Python 3 on the PATH (it tries `python3`, `python` and the Windows `py` launcher), and with Claude Code on Windows also Git for Windows or PowerShell 7.
+`corthex-memory` 0.2.0 adds session context and local conversation recording. Recording starts only after you accept the consent and turn it on for a registered project. It captures redacted prompts, final answers and session-end boundaries; tool calls, tool results and files are not recording inputs. C1 makes no model or network calls. Model curation, semantic search and recall are C2 work.
 
-With an existing local memory store, consent and an enabled registered project, hooks also record prompts, final answers and session-end boundaries after redaction. These records stay on this machine; hooks create no memory store. Recording waits up to 50ms for another process's lock, then finishes reading, appending and its marker under the acquired lock, so a slow disk can take it past the whole-hook deadline.
+The memory store is `~/.corthex/corthex-memory/`, or the absolute directory in `CORTHEX_MEMORY_HOME`. Raw recordings use 100 days of retention by default; `retention` changes the period and a later session-start worker applies it. The `on` command creates a missing store. Hooks create none. Missing model keys do not prevent C1 recording; the management skill checks key presence and never asks for a key in chat.
+
+Ask the memory skill to enable or stop recording, show status, exclude folders or entry kinds, change retention, delete all local memory, or repair its store record. Its C1 commands are `on`, `off`, `status`, `leave-out`, `retention`, `purge` and `repair`. It shows a proposal and obtains your yes before a confirmation code is applied. Unverifiable purge metadata is shown as unknown alongside the exact folder. `off` keeps existing memory and retention continues; removing the plugin also keeps the store. Confirmed `purge` deletes only that local folder, while host transcripts and any outside copies remain.
+
+Python 3.8 or later must be on PATH (the hooks try `python3`, `python` and the Windows `py` launcher). Claude Code on Windows also needs Git for Windows or PowerShell 7. Hook diagnostics contain safe metadata and error codes; the acquired recording lock is held until its read, append and marker finish, even beyond a hook deadline.
 
 ```bash
 claude plugin install corthex-memory@corthex   # Claude Code; installs corthex too
 codex plugin add corthex-memory@corthex        # Codex, after corthex
 ```
 
-In Codex, open `/hooks` once and trust the plugin's hook; Codex skips plugin hooks until you do. To stop it, disable or remove the plugin. Details: [Session start context](docs/architecture.md#session-start-context).
+In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recording with the [memory skill](plugins/corthex-memory/skills/corthex-memory/SKILL.md). The package's installed-host C1 QA, maintainer trial and release decision precede a release tag. Details: [Session start context](docs/architecture.md#session-start-context).
 
 ### Optional: project hub
 
