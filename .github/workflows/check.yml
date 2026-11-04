@@ -67,7 +67,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: Verify the local hub and every command boundary
+      # Discovery includes test_hub_cli_outcomes.py: one method per TASK-250 TC,
+      # with isolated homes and loopback-only HTTP, never service credentials.
+      - name: Verify the local hub and every command boundary, including CLI outcomes
         env:
           PYTHONIOENCODING: utf-8
         run: python -m unittest discover -s tests -p "test_hub*.py" -v
