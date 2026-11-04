@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.5.0; the `corthex-memory` 0.2.0 C1 package is in QA and trial preparation, before a release decision/tag; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.7.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.2.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -49,7 +49,7 @@ claude plugin install corthex-memory@corthex   # Claude Code; installs corthex t
 codex plugin add corthex-memory@corthex        # Codex, after corthex
 ```
 
-In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recording with the [memory skill](plugins/corthex-memory/skills/corthex-memory/SKILL.md). The package's installed-host C1 QA, maintainer trial and release decision precede a release tag. Details: [Session start context](docs/architecture.md#session-start-context).
+In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recording with the [memory skill](plugins/corthex-memory/skills/corthex-memory/SKILL.md). The C1 0.2.0 release passed installed-host QA and its release decision; the maintainer removed the C1 one-week trial on 2026-11-04. See the [release qualification](docs/12-qa/runs/2026-11-04-memory-020-release.md). Details: [Session start context](docs/architecture.md#session-start-context).
 
 ### Optional: project hub
 
@@ -61,6 +61,8 @@ codex plugin add corthex-nexus@corthex        # Codex, after corthex
 ```
 
 Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 or later. It can also send project snapshots to a NEXUS server on your own domain, but only for the projects you list. The server and browser application now live in the separate product repository, with an approved Node/SQLite runtime behind Access and a Tunnel and retained Worker compatibility: [nexus/](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Details: [Project hub](docs/architecture.md#project-hub).
+
+For an authorized server, the core entry and stage skills read agent work once per session/project, keep your explicit task first and coordinate claims, accepted changes and checkpoint records through the hub. Missing credentials leave local work available. The first real snapshot send still requires your confirmation. See the [NEXUS workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
 
 ## Skills
 
@@ -94,6 +96,12 @@ When records go to Notion, the project's `records.location` or the profile's `re
 - Codex and other [Agent Plugins](https://agent-plugins.org) clients read `.agents/plugins/marketplace.json` and the core plugin's root `plugin.json`. `corthex-memory` has hooks, so it has `.codex-plugin/plugin.json` instead and works in Claude Code and Codex only. `corthex-nexus` has no hooks and keeps a root `plugin.json`.
 - The skills follow the [Agent Skills](https://agentskills.io) format and are shared by both, so each skill can also be used on its own.
 - `corthex-uxui` has two optional check scripts, which only read. `page-check.js` runs inside the page under test, pasted into the browser's console or passed to a browser automation tool such as Playwright; `media-check.py` needs Python 3.8 or later and FFmpeg.
+
+## Working with NEXUS0.2
+
+For a configured NEXUS project, the entry and stage skills use the installed hub to read work once per session/project. Do the user's current request first, then comments, discrepancies, reflections and checkpoints. Missing credentials or an unavailable server do not stop local work. Respect claims/open PRs and the repository's PR rules for decisions, reflections and stage records. The first real send has its own confirmation. [Optional workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
+
+The current NEXUS hub is0.2.0. Server/browser setup, migration and rollback belong to [the separate product repository](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Upgrade the server to a0.2-compatible runtime before the hub. The Node/SQLite runtime stays behind Access and a Tunnel, with the Worker/D1 compatibility path retained. Package numbers here do not assert a published tag or a production switch.
 
 ## Development
 

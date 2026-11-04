@@ -102,6 +102,51 @@ class RetentionTest(StoreCase):
         self.assertEqual(process.exitcode, 0)
         connection.close()
 
+    def test_tc337_prompt_survives_snapshot_and_progress_durability(self):
+        # Hand a real writer each durability interval. A slow disk must not
+        # spend the prompt's fixed 50ms wait on maintenance preparation.
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                self.write([self.entry(1, 101 if expired else 1), self.entry(2, 1)])
+                document = curation.parse(self.record.read_bytes())
+                document["logs"][self.log] = 20
+                self.record.write_bytes(base.json_bytes(document, "TBL-009"))
+                connection, process = self.child(append_loop, str(self.root), False)
+                sync, captured = files._sync, []
+                def during_sync(fd):
+                    if len(captured) < 2:
+                        connection.send("append")
+                        self.assertTrue(connection.poll(10))
+                        captured.append(connection.recv())
+                        self.assertIsInstance(captured[-1], dict,
+                                              "maintenance skipped a concurrent prompt")
+                    return sync(fd)
+                try:
+                    with mock.patch.object(files, "_sync", during_sync):
+                        result = self.apply()
+                    self.assertEqual(len(captured), 2)
+                    self.assertEqual(result["removed"], int(expired))
+                    self.assertEqual(self.read()[-len(captured):], captured)
+                    self.assertLess(curation.parse(self.record.read_bytes())["logs"][self.log],
+                                    captured[0]["seq"])
+                finally:
+                    self.finish(connection, process)
+
+    def test_tc337_fresh_log_keeps_raw_and_progress_but_repairs_orphan_markers(self):
+        self.write([self.entry(1, 1)])
+        document = curation.parse(self.record.read_bytes())
+        document["logs"] = {}
+        self.record.write_bytes(base.json_bytes(document, "TBL-009"))
+        before = [(path.read_bytes(), path.stat().st_ino, path.stat().st_mtime_ns)
+                  for path in (self.path, self.record)]
+        orphan = self.project / "unprocessed" / ("20260722T120000Z." + self.log + ".99")
+        orphan.write_bytes(b"")
+        result = self.apply()
+        self.assertEqual((result["kept"], result["removed"], result["markers"]), (1, 0, 1))
+        self.assertFalse(orphan.exists())
+        self.assertEqual(before, [(path.read_bytes(), path.stat().st_ino, path.stat().st_mtime_ns)
+                                  for path in (self.path, self.record)])
+
     def test_tc337_configured_cutoff_future_and_invalid_calendar_are_preserved(self):
         configuration = {"retention": {"days": 7}, "projects": {"sample": {"enabled": False, "since": AT}}}
         (self.root / "configuration.json").write_bytes(base.json_bytes(configuration, "TBL-002"))
@@ -174,15 +219,28 @@ class RetentionTest(StoreCase):
     def test_tc337_continuous_process_appends_survive_100_actual_rewrites(self):
         self.write([self.entry(1, 101), self.entry(2, 0)])
         connection, process = self.child(append_loop, str(self.root), True)
-        successful = attempts = retention_skips = 0
+        successful = attempts = retention_skips = replacements = 0
         limit = time.monotonic() + 120
         try:
             while successful < 100 and attempts < 500 and time.monotonic() < limit:
+                # Fresh candidates now remain byte-identical. Force an actual
+                # retention rewrite each time instead of counting 100 no-ops.
+                expired = raw_log.RawLog(self.worker, "sample", "codex", "retention-fixture").append(
+                    "prompt", raw_log.prepare("expired stress seed"), diagnostic_deadline=clock.now() + 3,
+                    when=NOW - timedelta(days=101))
+                attempts += 1
+                if expired.outcome == "lock-busy":
+                    continue
+                self.assertEqual(expired.outcome, "ok")
+                before = self.path.stat().st_ino
                 result = self.apply()
                 self.assertEqual(result["files"] + result["skipped"], 1)
+                if result["files"]:
+                    self.assertGreater(result["removed"], 0)
+                    self.assertNotEqual(self.path.stat().st_ino, before)
+                    replacements += 1
                 successful += result["files"]
                 retention_skips += result["skipped"]
-                attempts += 1
         finally:
             connection.send("stop")
             ready = connection.poll(20)
@@ -197,12 +255,15 @@ class RetentionTest(StoreCase):
             self.assertEqual(process.exitcode, 0)
         actual = self.read()
         print("RETENTION_STRESS " + json.dumps({"rewrites": successful, "attempts": attempts,
-              "retention_skips": retention_skips, "acknowledged": len(acknowledged), "append_lock_skips": skipped}))
+              "replacements": replacements, "retention_skips": retention_skips,
+              "acknowledged": len(acknowledged), "append_lock_skips": skipped}))
         self.assertEqual(successful, 100)
+        self.assertEqual(replacements, 100)
         self.assertGreater(len(acknowledged), 0)
         self.assertTrue(all(entry in actual for entry in acknowledged))
         self.assertGreaterEqual(skipped, 0)
         self.assertFalse(any(entry.get("text") == "fixture-1" for entry in actual))
+        self.assertFalse(any(entry.get("text") == "expired stress seed" for entry in actual))
 
     def test_tc337_100_process_appends_between_snapshot_and_delete_decision(self):
         connection, process = self.child(append_loop, str(self.root), False)

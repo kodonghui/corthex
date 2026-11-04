@@ -1,0 +1,348 @@
+{
+  "base": "fd115097f5a4034b2641228edc3de0e9f52ce5f2",
+  "source": {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "NOTICE": "9f79d2d0aebcae1a6ae7d6fa86484c8269cb29dbee5ca8535b294034180b9aa1",
+    ".claude-plugin/plugin.json": "888e821fb175661e6b6e6ba1d00d23a11bbb8c59e709cc7e9f270107f71c4f11",
+    ".codex-plugin/plugin.json": "65d5ccb22f589afc029f9935c00d57b434ff7e3ee23dd7fb318f39812a798cca",
+    "assets/icon.png": "f9ddb2cbe90dae575de306f037267f05f8a4be352ef1f827a6d5a9c4fbba0dfa",
+    "context/principles.md": "53b77e862c0df5acc294a47213eaff597e2966b273fabd3d03fdd41dabd63a35",
+    "hooks/hooks.json": "db30dcb263133e8f1a121706c287b12837e09989bc4250b0901c2f5374c82c02",
+    "scripts/hook.py": "2649d6796c81d5a4e9262bbcf87b3e75805f66b387764ba111d98f2e9d53aaa6",
+    "scripts/worker.py": "c1a43e0f4febc4df6d0b0e540c1beacbb3ee4e2c74105a81391a992ad917cefa",
+    "skills/corthex-memory/SKILL.md": "4d4332063472d52230a5ce88b3ff5d3bb4d9354e069fc7ec40e6270b4391f2e1",
+    "skills/corthex-memory/scripts/memory.py": "fbb656e66dcd17b7d32f2a4c60ab6a0934fb87df2a4eb4f7351bc1a6250ef582",
+    "skills/corthex-memory/scripts/memory_lib/base.py": "0ca271ab2dc1d3edfe83345adab1aa35eb586980c6efed697c7a64b5a8c8c00b",
+    "skills/corthex-memory/scripts/memory_lib/cleanup.py": "55da681573e60d3d7dafb25d4bba2417bafa93254d99c2806a0461c56b39f956",
+    "skills/corthex-memory/scripts/memory_lib/clock.py": "86bde4c2744a7c299e28326179f184f343e19dcd68b07ca92f6fa845d271c289",
+    "skills/corthex-memory/scripts/memory_lib/commands.py": "7674ae2524da8b454ab2bd8f8a7c826272466608910dc12da96a4cd3d5b8bd63",
+    "skills/corthex-memory/scripts/memory_lib/command_result.py": "bfaced02ae552fa5a0ff341af175ea816a7ac163d5476bea7dcc532c54644c90",
+    "skills/corthex-memory/scripts/memory_lib/configuration.py": "e143990b2b850468bc9a735d5e1d275c60951d4938c0829f4b8ca3d4c6e8357a",
+    "skills/corthex-memory/scripts/memory_lib/configuration.schema.json": "1603d47699230c2a12f47fa7962b13d488e48e51070768b5e23450f63b617205",
+    "skills/corthex-memory/scripts/memory_lib/context.py": "a1abd6a2be230f79724bf6d1833843afd3319ebcc6bb7bcc1ab9ed580337d7a7",
+    "skills/corthex-memory/scripts/memory_lib/curation.py": "2a264790638e2b485288e58e90f63c0a29d63642d3042b07c76a3ec16bd6cfca",
+    "skills/corthex-memory/scripts/memory_lib/diagnostics.py": "8447dc4e686f7cf3cd2d262360d5b50c386c412dd2b53404db598feb5d409ac7",
+    "skills/corthex-memory/scripts/memory_lib/enablement.py": "2c23940b67c1219c3052e2dd2b20c4f442a12f008ae3c6e5e8341cb5c305b565",
+    "skills/corthex-memory/scripts/memory_lib/files.py": "aa781c1d36fba567edfca2cb44b14e4010e3261e2793d53715709bc52eb26757",
+    "skills/corthex-memory/scripts/memory_lib/hooks.py": "8bf1cd3befba4a44aad06fa0ce05987924f4c8350b19fdf1922bff09b963f321",
+    "skills/corthex-memory/scripts/memory_lib/locks.py": "3cae8e0b34733b60d340e873d88224ad38ac9f9522aa9c29678ce5696e5e6846",
+    "skills/corthex-memory/scripts/memory_lib/projects.py": "0147550a9d41b5bcbea11fde8c2ad9a084ed6051b003c3f08d50af7dafe02131",
+    "skills/corthex-memory/scripts/memory_lib/raw_log.py": "581f54553fcdf3dd31b589d4cd01772e94f2f2fa034e620630c7b98f08c74ec3",
+    "skills/corthex-memory/scripts/memory_lib/raw_rewrite.py": "2b9d42ae89ec100c4e25832a8bf1167b6217ab9f5262bc0e07c249cbb5b92511",
+    "skills/corthex-memory/scripts/memory_lib/reading.py": "ff36da10c973deba06e5a6140abc94a04e24f8a95ef3db3ecf16dcc8c59510e7",
+    "skills/corthex-memory/scripts/memory_lib/recording_exclusions.py": "cd637b9db1f3a88bb9abbfebe89c69c36886f49784fd365201933c2711043369",
+    "skills/corthex-memory/scripts/memory_lib/redaction.py": "1a171e5b62c39028651c613d253ae41df686363e567e679d367ec3ff60641548",
+    "skills/corthex-memory/scripts/memory_lib/result.schema.json": "2ee439ed43003d1aaa952ce3eed6bfb0842949c9fc4569ba7737e59e8e4f0d22",
+    "skills/corthex-memory/scripts/memory_lib/retention.py": "bedc38e91fd450a4d5cf6e62fac612c1e21c8cfb4fe23b1b05f6174e65cf98c9",
+    "skills/corthex-memory/scripts/memory_lib/retention_settings.py": "4567601596dfb5bc6499cfb80ef2cda1b2b5b6331f99b496d970ad9a79957d05",
+    "skills/corthex-memory/scripts/memory_lib/start_hook.py": "49248d34b0648873c1dab4298628ab5d5f404faad3cfa12fbffadca4fb9d9e80",
+    "skills/corthex-memory/scripts/memory_lib/start_memory.py": "d945c54225b4bdc073cdcf6831b77a1b9b067b07d106bd9f69a859f2ca45c607",
+    "skills/corthex-memory/scripts/memory_lib/status.py": "3ac247b61f55019809ed99a2ebd0a841ec84474e3f421ff528592fb00491f0fd",
+    "skills/corthex-memory/scripts/memory_lib/status_access.py": "dff618c412a64e45e11628334699d7e99823c0dd260c2c04e85e207168b87fe6",
+    "skills/corthex-memory/scripts/memory_lib/store.py": "1f3a118940551cec4d75652ec007551c46fbcbd814130a36ce09c0ff30b2efb8",
+    "skills/corthex-memory/scripts/memory_lib/store_deletion.py": "97920087e180e40985e70f464ef096af47d2111b1ba9db1c13fa0b01bfc280ea",
+    "skills/corthex-memory/scripts/memory_lib/store_repair.py": "8b476699f54129808538363d23c227d14b2960bd64f09eda51928cf5339284fd",
+    "skills/corthex-memory/scripts/memory_lib/worker_launch.py": "264ec16506059af2a73e611a8a53032fba9c7b2c6fd807557ee75569ce65c82c",
+    "skills/corthex-memory/scripts/memory_lib/worker_runtime.py": "28832ae0d5a69345b0d90df2c861e442c43dae3fd3155ca80d47bb8e94d47ed9",
+    "skills/corthex-memory/scripts/memory_lib/worker_support.py": "94de9e5c292e3a7a3483905e2a3199c236068591dca722b101513cd15897408e",
+    "skills/corthex-memory/scripts/memory_lib/__init__.py": "6709058b5b9429a9fd82a0dc821d87f6a8130a13565627a5b6c56d04243e58c5"
+  },
+  "prior_source": {
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "NOTICE": "9f79d2d0aebcae1a6ae7d6fa86484c8269cb29dbee5ca8535b294034180b9aa1",
+    ".claude-plugin/plugin.json": "888e821fb175661e6b6e6ba1d00d23a11bbb8c59e709cc7e9f270107f71c4f11",
+    ".codex-plugin/plugin.json": "65d5ccb22f589afc029f9935c00d57b434ff7e3ee23dd7fb318f39812a798cca",
+    "assets/icon.png": "f9ddb2cbe90dae575de306f037267f05f8a4be352ef1f827a6d5a9c4fbba0dfa",
+    "context/principles.md": "53b77e862c0df5acc294a47213eaff597e2966b273fabd3d03fdd41dabd63a35",
+    "hooks/hooks.json": "db30dcb263133e8f1a121706c287b12837e09989bc4250b0901c2f5374c82c02",
+    "scripts/hook.py": "2649d6796c81d5a4e9262bbcf87b3e75805f66b387764ba111d98f2e9d53aaa6",
+    "scripts/worker.py": "c1a43e0f4febc4df6d0b0e540c1beacbb3ee4e2c74105a81391a992ad917cefa",
+    "skills/corthex-memory/SKILL.md": "4d4332063472d52230a5ce88b3ff5d3bb4d9354e069fc7ec40e6270b4391f2e1",
+    "skills/corthex-memory/scripts/memory.py": "fbb656e66dcd17b7d32f2a4c60ab6a0934fb87df2a4eb4f7351bc1a6250ef582",
+    "skills/corthex-memory/scripts/memory_lib/base.py": "0ca271ab2dc1d3edfe83345adab1aa35eb586980c6efed697c7a64b5a8c8c00b",
+    "skills/corthex-memory/scripts/memory_lib/cleanup.py": "55da681573e60d3d7dafb25d4bba2417bafa93254d99c2806a0461c56b39f956",
+    "skills/corthex-memory/scripts/memory_lib/clock.py": "86bde4c2744a7c299e28326179f184f343e19dcd68b07ca92f6fa845d271c289",
+    "skills/corthex-memory/scripts/memory_lib/commands.py": "7674ae2524da8b454ab2bd8f8a7c826272466608910dc12da96a4cd3d5b8bd63",
+    "skills/corthex-memory/scripts/memory_lib/command_result.py": "bfaced02ae552fa5a0ff341af175ea816a7ac163d5476bea7dcc532c54644c90",
+    "skills/corthex-memory/scripts/memory_lib/configuration.py": "e143990b2b850468bc9a735d5e1d275c60951d4938c0829f4b8ca3d4c6e8357a",
+    "skills/corthex-memory/scripts/memory_lib/configuration.schema.json": "1603d47699230c2a12f47fa7962b13d488e48e51070768b5e23450f63b617205",
+    "skills/corthex-memory/scripts/memory_lib/context.py": "a1abd6a2be230f79724bf6d1833843afd3319ebcc6bb7bcc1ab9ed580337d7a7",
+    "skills/corthex-memory/scripts/memory_lib/curation.py": "2a264790638e2b485288e58e90f63c0a29d63642d3042b07c76a3ec16bd6cfca",
+    "skills/corthex-memory/scripts/memory_lib/diagnostics.py": "8447dc4e686f7cf3cd2d262360d5b50c386c412dd2b53404db598feb5d409ac7",
+    "skills/corthex-memory/scripts/memory_lib/enablement.py": "2c23940b67c1219c3052e2dd2b20c4f442a12f008ae3c6e5e8341cb5c305b565",
+    "skills/corthex-memory/scripts/memory_lib/files.py": "aa781c1d36fba567edfca2cb44b14e4010e3261e2793d53715709bc52eb26757",
+    "skills/corthex-memory/scripts/memory_lib/hooks.py": "8bf1cd3befba4a44aad06fa0ce05987924f4c8350b19fdf1922bff09b963f321",
+    "skills/corthex-memory/scripts/memory_lib/locks.py": "3cae8e0b34733b60d340e873d88224ad38ac9f9522aa9c29678ce5696e5e6846",
+    "skills/corthex-memory/scripts/memory_lib/projects.py": "0147550a9d41b5bcbea11fde8c2ad9a084ed6051b003c3f08d50af7dafe02131",
+    "skills/corthex-memory/scripts/memory_lib/raw_log.py": "581f54553fcdf3dd31b589d4cd01772e94f2f2fa034e620630c7b98f08c74ec3",
+    "skills/corthex-memory/scripts/memory_lib/raw_rewrite.py": "6bcedffc71423dcd21f6ac4fb26331b98b215b9b7ca0d7c0aea13dd0b9b1ce66",
+    "skills/corthex-memory/scripts/memory_lib/reading.py": "ff36da10c973deba06e5a6140abc94a04e24f8a95ef3db3ecf16dcc8c59510e7",
+    "skills/corthex-memory/scripts/memory_lib/recording_exclusions.py": "cd637b9db1f3a88bb9abbfebe89c69c36886f49784fd365201933c2711043369",
+    "skills/corthex-memory/scripts/memory_lib/redaction.py": "1a171e5b62c39028651c613d253ae41df686363e567e679d367ec3ff60641548",
+    "skills/corthex-memory/scripts/memory_lib/result.schema.json": "2ee439ed43003d1aaa952ce3eed6bfb0842949c9fc4569ba7737e59e8e4f0d22",
+    "skills/corthex-memory/scripts/memory_lib/retention.py": "bedc38e91fd450a4d5cf6e62fac612c1e21c8cfb4fe23b1b05f6174e65cf98c9",
+    "skills/corthex-memory/scripts/memory_lib/retention_settings.py": "4567601596dfb5bc6499cfb80ef2cda1b2b5b6331f99b496d970ad9a79957d05",
+    "skills/corthex-memory/scripts/memory_lib/start_hook.py": "49248d34b0648873c1dab4298628ab5d5f404faad3cfa12fbffadca4fb9d9e80",
+    "skills/corthex-memory/scripts/memory_lib/start_memory.py": "d945c54225b4bdc073cdcf6831b77a1b9b067b07d106bd9f69a859f2ca45c607",
+    "skills/corthex-memory/scripts/memory_lib/status.py": "3ac247b61f55019809ed99a2ebd0a841ec84474e3f421ff528592fb00491f0fd",
+    "skills/corthex-memory/scripts/memory_lib/status_access.py": "dff618c412a64e45e11628334699d7e99823c0dd260c2c04e85e207168b87fe6",
+    "skills/corthex-memory/scripts/memory_lib/store.py": "1f3a118940551cec4d75652ec007551c46fbcbd814130a36ce09c0ff30b2efb8",
+    "skills/corthex-memory/scripts/memory_lib/store_deletion.py": "97920087e180e40985e70f464ef096af47d2111b1ba9db1c13fa0b01bfc280ea",
+    "skills/corthex-memory/scripts/memory_lib/store_repair.py": "8b476699f54129808538363d23c227d14b2960bd64f09eda51928cf5339284fd",
+    "skills/corthex-memory/scripts/memory_lib/worker_launch.py": "264ec16506059af2a73e611a8a53032fba9c7b2c6fd807557ee75569ce65c82c",
+    "skills/corthex-memory/scripts/memory_lib/worker_runtime.py": "28832ae0d5a69345b0d90df2c861e442c43dae3fd3155ca80d47bb8e94d47ed9",
+    "skills/corthex-memory/scripts/memory_lib/worker_support.py": "94de9e5c292e3a7a3483905e2a3199c236068591dca722b101513cd15897408e",
+    "skills/corthex-memory/scripts/memory_lib/__init__.py": "6709058b5b9429a9fd82a0dc821d87f6a8130a13565627a5b6c56d04243e58c5"
+  },
+  "old": {
+    "results": [
+      {
+        "index": 0,
+        "raw_entries": 1,
+        "overlapping_prompt_present": false,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [
+          {
+            "at": "2026-11-04T07:29:07.908Z",
+            "step": "record",
+            "hook": "prompt",
+            "host": "claude-code",
+            "project": "demo",
+            "error": "lock-busy",
+            "log": "claude-code-ae910bf03dbbb162"
+          }
+        ],
+        "hook_pid": 43488,
+        "worker_pid": 42388
+      },
+      {
+        "index": 1,
+        "raw_entries": 1,
+        "overlapping_prompt_present": false,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [
+          {
+            "at": "2026-11-04T07:29:09.223Z",
+            "step": "record",
+            "hook": "prompt",
+            "host": "claude-code",
+            "project": "demo",
+            "error": "lock-busy",
+            "log": "claude-code-36a64e26ca2c9ae2"
+          }
+        ],
+        "hook_pid": 28252,
+        "worker_pid": 46900
+      },
+      {
+        "index": 2,
+        "raw_entries": 1,
+        "overlapping_prompt_present": false,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [
+          {
+            "at": "2026-11-04T07:29:10.627Z",
+            "step": "record",
+            "hook": "prompt",
+            "host": "claude-code",
+            "project": "demo",
+            "error": "lock-busy",
+            "log": "claude-code-b57c24d3b0b437ad"
+          }
+        ],
+        "hook_pid": 35140,
+        "worker_pid": 46540
+      }
+    ],
+    "raw_leases": [
+      {
+        "role": "hook",
+        "pid": 23712,
+        "key": "7d2671973bf81e9f",
+        "start_ns": 198049853251000,
+        "end_ns": 198049863394200,
+        "held_ms": 10.1432
+      },
+      {
+        "role": "worker",
+        "pid": 42388,
+        "key": "7d2671973bf81e9f",
+        "start_ns": 198050300533400,
+        "end_ns": 198050372008500,
+        "held_ms": 71.4751
+      },
+      {
+        "role": "hook",
+        "pid": 46076,
+        "key": "8767d6df93e8f6bd",
+        "start_ns": 198051200304500,
+        "end_ns": 198051209724600,
+        "held_ms": 9.4201
+      },
+      {
+        "role": "worker",
+        "pid": 46900,
+        "key": "8767d6df93e8f6bd",
+        "start_ns": 198051615462500,
+        "end_ns": 198051689391400,
+        "held_ms": 73.9289
+      },
+      {
+        "role": "hook",
+        "pid": 32740,
+        "key": "95b836762aa82627",
+        "start_ns": 198052579369400,
+        "end_ns": 198052591954500,
+        "held_ms": 12.5851
+      },
+      {
+        "role": "worker",
+        "pid": 46540,
+        "key": "95b836762aa82627",
+        "start_ns": 198053020054100,
+        "end_ns": 198053091585500,
+        "held_ms": 71.5314
+      }
+    ]
+  },
+  "candidate": {
+    "results": [
+      {
+        "index": 0,
+        "raw_entries": 2,
+        "overlapping_prompt_present": true,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [],
+        "hook_pid": 19692,
+        "worker_pid": 44012
+      },
+      {
+        "index": 1,
+        "raw_entries": 2,
+        "overlapping_prompt_present": true,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [],
+        "hook_pid": 39656,
+        "worker_pid": 21320
+      },
+      {
+        "index": 2,
+        "raw_entries": 2,
+        "overlapping_prompt_present": true,
+        "native": {
+          "hook_exit": 0,
+          "worker_exit": 0,
+          "hook_stderr": "",
+          "worker_stderr": ""
+        },
+        "failures": [],
+        "hook_pid": 45480,
+        "worker_pid": 42360
+      }
+    ],
+    "raw_leases": [
+      {
+        "role": "hook",
+        "pid": 27312,
+        "key": "3fe28cf180da209b",
+        "start_ns": 200069767000800,
+        "end_ns": 200069777840100,
+        "held_ms": 10.8393
+      },
+      {
+        "role": "worker",
+        "pid": 44012,
+        "key": "3fe28cf180da209b",
+        "start_ns": 200070169662100,
+        "end_ns": 200070188648700,
+        "held_ms": 18.9866
+      },
+      {
+        "role": "hook",
+        "pid": 19692,
+        "key": "3fe28cf180da209b",
+        "start_ns": 200070190174200,
+        "end_ns": 200070202526900,
+        "held_ms": 12.3527
+      },
+      {
+        "role": "hook",
+        "pid": 23368,
+        "key": "3687a29a216296aa",
+        "start_ns": 200071047466300,
+        "end_ns": 200071060021000,
+        "held_ms": 12.5547
+      },
+      {
+        "role": "worker",
+        "pid": 21320,
+        "key": "3687a29a216296aa",
+        "start_ns": 200071461655000,
+        "end_ns": 200071480646000,
+        "held_ms": 18.991
+      },
+      {
+        "role": "hook",
+        "pid": 39656,
+        "key": "3687a29a216296aa",
+        "start_ns": 200071482053400,
+        "end_ns": 200071492976800,
+        "held_ms": 10.9234
+      },
+      {
+        "role": "hook",
+        "pid": 46528,
+        "key": "5656d08837b91461",
+        "start_ns": 200072372310100,
+        "end_ns": 200072385949500,
+        "held_ms": 13.6394
+      },
+      {
+        "role": "worker",
+        "pid": 42360,
+        "key": "5656d08837b91461",
+        "start_ns": 200072841641000,
+        "end_ns": 200072860172800,
+        "held_ms": 18.5318
+      },
+      {
+        "role": "hook",
+        "pid": 45480,
+        "key": "5656d08837b91461",
+        "start_ns": 200072862732800,
+        "end_ns": 200072872459200,
+        "held_ms": 9.7264
+      }
+    ]
+  },
+  "scope": "A prestarted hook pauses before redaction, then resumes when the real worker acquires raw. Its original post-redaction50ms wait and all original functions are unchanged. Delegating trace wrappers add observation overhead; no pristine timing claim.",
+  "artificial_worker_hold": false,
+  "historical_holder_identified": false,
+  "actual_model": false,
+  "user_store": false
+}

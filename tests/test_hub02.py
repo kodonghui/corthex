@@ -202,6 +202,16 @@ class PictureReadersTest(unittest.TestCase):
         data = hub.companion(name).parse([(path or "fixture." + {"domain": "md", "erd": "sql", "sitemap": "yaml"}[name], text)], checks, helper, "demo")
         return data, checks
 
+    def test_stage_templates_name_their_represented_terms(self):
+        erd, _ = self.parse("erd", output_blocks("corthex-contract", "05-erd")[0])
+        orders = next(table for table in erd["tables"] if table["name"] == "orders")
+        self.assertEqual(orders["terms"], ["TERM-001"])
+        sitemap, _ = self.parse("sitemap", output_blocks("corthex-screen", "07-sitemap")[0])
+        screens = {screen["id"]: screen for screen in sitemap["screens"]}
+        self.assertEqual(screens["SCR-001"]["terms"], [])
+        self.assertEqual(screens["SCR-002"]["terms"], ["TERM-001"])
+        self.assertEqual(screens["SCR-002"]["context"], "CTX-001")
+
     def test_struck_timeline_boundaries_do_not_leave_phantom_events(self):
         for sequence, expected in (("~~Old~~ → Saved", [["Saved"]]),
                 ("Started → ~~Old~~", [["Started"]]), ("~~Old~~ → ~~Gone~~", []),

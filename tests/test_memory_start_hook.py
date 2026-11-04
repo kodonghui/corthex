@@ -103,6 +103,20 @@ class StartHookTest(HookCase):
         self.assertNotIn("text", rows[0])
         self.assertEqual(self.records("hooks")[-1]["outcome"], "ok")
 
+    def test_project_approval_invalid_unicode_keeps_context_and_start_boundaries(self):
+        (self.home / ".corthex/profile.json").write_text(json.dumps({"ask_before": ["payments"]}), encoding="utf-8")
+        for host, changes in [("claude-code", {}), ("codex", {"CLAUDECODE": "", "PLUGIN_ROOT": str(SCRIPTS.parents[2])})]:
+            for number, bad in enumerate(("\ud800", "\udfff")):
+                session = host + "-invalid-approval-" + str(number)
+                (self.repo / ".corthex/project.json").write_text(json.dumps({"name": "sample", "ask_before": ["deploys" + bad]}), encoding="utf-8")
+                text = self.text(payload=dict(self.event("start"), session_id=session), changes=changes)
+                self.assertIn("## Working principles", text)
+                self.assertIn("- Ask before: payments", text)
+                self.assertIn("Project ask_before is invalid", text)
+                self.assertIn("## Memory", text)
+                self.assertEqual([(row["kind"], row["event"]) for row in self.raw(host, session)], [("start", "start")])
+                self.assertEqual(self.records("hooks")[-1]["outcome"], "ok")
+
     def test_tc066_each_start_source_and_both_host_names_are_preserved(self):
         for host, env in [("claude-code", {}), ("codex", {"CLAUDECODE": "", "PLUGIN_ROOT": str(SCRIPTS.parents[2])})]:
             for source in ("startup", "resume", "clear", "compact", "fork"):

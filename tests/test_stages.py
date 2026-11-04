@@ -29,7 +29,7 @@ ID_KINDS = [
     "context", "term", "requirement", "flow", "spec", "table", "api",
     "screen", "task", "test", "bug", "decision", "scene",
 ]
-PROJECT_FIELDS = {"name", "title", "team", "language", "records", "repos", "ids", "stages"}
+PROJECT_FIELDS = {"name", "title", "team", "language", "records", "ask_before", "parts", "repos", "ids", "stages"}
 STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip"}
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
 # Sticky colours a Miro board accepts by name.
@@ -185,6 +185,16 @@ class StageContractTest(unittest.TestCase):
             project = json.load(handle)
         self.assertLessEqual(set(project), PROJECT_FIELDS)
         self.assertRegex(project["name"], KEBAB)
+        self.assertIsInstance(project["ask_before"], list)
+        self.assertTrue(all(isinstance(item, str) and item.strip() for item in project["ask_before"]))
+        parts = project["parts"]
+        self.assertIsInstance(parts, list)
+        self.assertGreaterEqual(len(parts), 1)
+        self.assertLessEqual(len(parts), 50)
+        self.assertEqual(len(parts), len(set(parts)))
+        for part in parts:
+            self.assertRegex(part, KEBAB)
+            self.assertLessEqual(len(part), 100)
         repos = project.get("repos", {})
         for alias, location in repos.items():
             self.assertRegex(alias, KEBAB)

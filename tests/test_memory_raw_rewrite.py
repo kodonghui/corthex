@@ -475,16 +475,23 @@ class RawRewriteTest(StoreCase):
         self.assertEqual((retired / target.name).read_bytes(), b"fixture")
 
     def test_tc336_copy_fallback_rechecks_lease_after_open(self):
-        opened, original = [], Path.open
+        opened, original, backup, copying = [], Path.open, files._backup, []
+        def backing(path, *args, **kwargs):
+            if path == self.path:
+                copying.append(True)
+            try:
+                return backup(path, *args, **kwargs)
+            finally:
+                if path == self.path:
+                    copying.pop()
         def replaced(path, *args, **kwargs):
-            if path == self.path and args and args[0] == "rb":
+            if copying and path == self.path and args and args[0] == "rb":
                 opened.append(True)
-                if len(opened) == 3:
-                    (self.project / "curation.lock").unlink()
+                (self.project / "curation.lock").unlink()
             return original(path, *args, **kwargs)
-        with mock.patch.object(files.os, "link", side_effect=OSError), mock.patch.object(Path, "open", replaced), self.assertRaises(locks.LostLock):
+        with mock.patch.object(files, "_backup", backing), mock.patch.object(files.os, "link", side_effect=OSError), mock.patch.object(Path, "open", replaced), self.assertRaises(locks.LostLock):
             self.rewrite(lambda e: e["seq"] == 1)
-        self.assertEqual(len(opened), 3)
+        self.assertEqual(len(opened), 1)
         self.assertEqual(self.path.read_bytes(), self.original)
         self.assertEqual(self.progress()["logs"][self.log], 1)
 
@@ -585,6 +592,7 @@ class RawRewriteTest(StoreCase):
     def test_tc336_staging_replacement_after_progress_cannot_be_committed(self):
         for content in (b"foreign staging bytes", b""):
             with self.subTest(content=content):
+                self.record.write_bytes(self.original_record)
                 write, changed = curation.write, []
                 def replaced(*args, **kwargs):
                     write(*args, **kwargs)
@@ -599,3 +607,89 @@ class RawRewriteTest(StoreCase):
                 self.assertEqual(self.progress()["logs"][self.log], 1)
                 self.assertEqual(changed[0].read_bytes(), content)
                 changed[0].unlink()
+
+    def test_tc336_suffix_rejects_an_open_descriptor_for_another_file(self):
+        other = self.root / "foreign-stage"
+        other.write_bytes(b"untouched")
+        opened, added = Path.open, []
+        def keep(entry):
+            if not added:
+                with self.worker.lease(self.path.with_suffix(".lock"), "raw", clock.now() + 5):
+                    with self.path.open("ab") as target:
+                        target.write(self.encoded(self.entry(4)))
+                added.append(True)
+            return entry["seq"] == 1
+        def opening(path, *args, **kwargs):
+            if path.suffix == ".tmp" and args and args[0] == "ab":
+                return opened(other, *args, **kwargs)
+            return opened(path, *args, **kwargs)
+        with mock.patch.object(Path, "open", opening), self.assertRaises(RuntimeError):
+            self.rewrite(keep)
+        self.assertEqual(other.read_bytes(), b"untouched")
+        self.assertEqual(self.path.read_bytes(), self.original + self.encoded(self.entry(4)))
+        self.assertEqual(self.progress()["logs"][self.log], 1)
+
+    def test_tc336_staging_truncation_during_backup_cannot_replace_raw(self):
+        backup, changed = files._backup, []
+        def truncate_after_backup(path, *args, **kwargs):
+            result = backup(path, *args, **kwargs)
+            if path == self.path:
+                temporary = next(self.path.parent.glob(self.path.name + ".*.tmp"))
+                before = temporary.stat().st_ino
+                temporary.write_bytes(b"")
+                self.assertEqual(temporary.stat().st_ino, before)
+                changed.append(True)
+            return result
+        with mock.patch.object(files, "_backup", truncate_after_backup), self.assertRaises(RuntimeError):
+            self.rewrite(lambda entry: entry["seq"] == 1)
+        self.assertTrue(changed)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.progress()["logs"][self.log], 1)
+
+    def test_tc336_staging_change_during_delete_cleanup_keeps_primary(self):
+        iterdir, changed = Path.iterdir, []
+        def alter_before_cleanup(path):
+            if path == self.path.parent:
+                candidates = [p for p in iterdir(path) if p.suffix == ".tmp"]
+                self.assertEqual(len(candidates), 1)
+                candidates[0].write_bytes(b"foreign staging content")
+                changed.append(True)
+            return iterdir(path)
+        with mock.patch.object(Path, "iterdir", alter_before_cleanup), self.assertRaises(RuntimeError):
+            self.rewrite(lambda entry: False)
+        self.assertTrue(changed)
+        self.assertEqual(self.path.read_bytes(), self.original)
+        self.assertEqual(self.progress()["logs"][self.log], 0)
+
+    def test_tc336_second_raw_collision_keeps_raw_and_conservative_progress(self):
+        write, blocker, entered = curation.write, self.held_raw(), []
+        def hold_after_progress(*args, **kwargs):
+            write(*args, **kwargs)
+            blocker.__enter__()
+            entered.append(True)
+        try:
+            with mock.patch.object(curation, "write", hold_after_progress), self.assertRaises(locks.LockBusy):
+                self.rewrite(lambda entry: entry["seq"] == 1)
+            self.assertEqual(self.path.read_bytes(), self.original)
+            self.assertEqual(self.progress()["logs"][self.log], 1)
+            self.unchanged_metadata(self.document)
+        finally:
+            if entered:
+                blocker.__exit__(None, None, None)
+
+    def test_tc336_new_append_between_raw_deletion_and_progress_cleanup_survives(self):
+        write, recorded = curation.write, []
+        def append_before_cleanup(memory, root, value, deadline):
+            if self.log not in value["logs"]:
+                result = raw_log.RawLog(self.worker, "sample", "codex", "fixture").append(
+                    "prompt", raw_log.prepare("after deletion"), diagnostic_deadline=clock.now() + 5)
+                self.assertEqual(result.outcome, "ok")
+                recorded.append(result.entry)
+            return write(memory, root, value, deadline)
+        with mock.patch.object(curation, "write", append_before_cleanup):
+            result = self.rewrite(lambda entry: False)
+        self.assertTrue(result.deleted)
+        self.assertEqual(recorded[0]["seq"], 1)
+        self.assertEqual(self.path.read_bytes(), self.encoded(recorded[0]))
+        self.assertNotIn(self.log, self.progress()["logs"])
+        self.assertEqual(len(list((self.project / "unprocessed").iterdir())), 1)

@@ -15,7 +15,7 @@ Claude Code and Codex read the same file. The file never holds secrets.
 | `language` | string | the language the user writes in | Language for replies and new documents, as a BCP 47 tag such as `ko` or `en` |
 | `records.default` | string | unset | Where records go by default, such as `notion`, `git` or `none` |
 | `records.hub` | string | unset | Link or path to the records hub, such as a Notion database or a folder |
-| `ask_before` | array of strings | the list in the example | Kinds of actions to ask about first, in addition to anything that cannot be undone |
+| `ask_before` | array of strings | the list in the example | Kinds of actions to ask about first, in addition to anything that cannot be undone. A project's own valid `ask_before` replaces this list for that project |
 | `nexus` | object | unset | Settings of the optional `corthex-nexus` plugin: `url`, the address of your own NEXUS server, and `push`, the projects that may be sent there |
 
 Unknown fields are kept and ignored, so a newer version can add fields without breaking an older one.

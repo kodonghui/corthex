@@ -4,7 +4,7 @@ description: CORTHEX stages 10 to 12, building and testing. Use when breaking th
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # Building and testing
@@ -32,3 +32,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 - For a requested guide, read [references/howto.md](references/howto.md). For async AI server implementation, the worked product example is in [references/fastapi-example.md](references/fastapi-example.md).
 - The product repository's own rules for branches, reviews and merges come first. CORTHEX only adds the trace IDs and the checks.
 - A test plan comes from the user flows and the acceptance criteria, not from the code, so it can find what the code forgot.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

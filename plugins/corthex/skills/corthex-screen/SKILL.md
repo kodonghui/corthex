@@ -4,7 +4,7 @@ description: CORTHEX stages 07 to 09, screens. Use when building or changing a s
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # Screens
@@ -33,3 +33,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 - More candidates are not better by default. Many generated designs make choosing slow and expensive, so the mockup stage starts with two candidates per screen and fixes one direction early.
 - A passing design check is not a screen review. Say which widths and states you actually looked at.
 - For the craft inside a screen, use the `corthex-uxui` skill: names and numbers for parts, spacing, type and motion, and the checks on a real render (line breaks, including Korean, contrast and target size). The project's tokens and screen definitions win over its numbers.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

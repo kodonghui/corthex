@@ -73,7 +73,7 @@ def _entry(line, log):
 
 
 def _batches(chunks):
-    """Batch pure selected bytes; an empty chunk flushes before taking raw."""
+    """Batch pure selected bytes, without acquiring a recording lease."""
     pending = bytearray()
     try:
         for chunk in chunks:
@@ -141,9 +141,9 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
             basic()
         prefix, turns = hashlib.sha256(), set()
         kept = removed = damaged = highest = 0
+        tail = b""
         def content():
-            nonlocal kept, removed, damaged, highest, expected
-            tail = b""
+            nonlocal kept, removed, damaged, highest, tail
             for line, complete in _lines(_chunks(memory, path, check, size=original.st_size, digest=prefix)):
                 if not complete:
                     tail = line
@@ -164,61 +164,117 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                     yield line
                 else:
                     removed += 1
-            yield b""
-            stack.enter_context(memory.lease(path.with_suffix(".lock"), "raw", deadline,
-                                            acquire_deadline=clock.now() + RAW_LEASE_WAIT_SECONDS))
-            current = memory.fence.check(path)
-            if current is None or current.st_size < original.st_size:
-                raise locks.LostLock()
-            expected = cleanup.stamp(current)
-            verified = hashlib.sha256()
-            for _ in _chunks(memory, path, check, size=original.st_size, digest=verified):
-                pass
-            if verified.digest() != prefix.digest():
-                raise locks.LostLock()
-            if current.st_size > original.st_size:
-                late = iter((tail,))
-                suffix = _chunks(memory, path, check, start=original.st_size)
-                for line, complete in _lines(itertools.chain(late, suffix)):
-                    try:
-                        if not complete:
-                            raise ValueError("incomplete raw line")
-                        entry = _entry(line, log)
-                        kept += 1
-                        if "turn" in entry:
-                            turns.add(entry["turn"])
-                    except (ValueError, UnicodeError):
-                        damaged += 1
-                    yield line
-            elif tail:
-                damaged += 1
             check()
         temporary = None
         ready = []
         stream = _batches(content())
         try:
+            # The snapshot and its durability belong outside raw. A start
+            # worker must not block a prompt's 50ms wait with these writes.
             temporary = files._temporary(path, stream, True, check=check, path_check=memory.fence.check, ready=ready.append)
             check()
-            progress["logs"][log] = min(progress["logs"].get(log, 0), highest)
-            curation.write(memory, root, progress, deadline)
-            ready[0]()
-            deleted = temporary.stat().st_size == 0
-            if deleted:
-                pattern = re.compile(re.escape(path.name) + r"(?:\.bak|(?:\.bak)?\.[a-z0-9_]{8}\.tmp)\Z")
-                for candidate in path.parent.iterdir():
-                    if candidate != temporary and pattern.fullmatch(candidate.name):
-                        files._unlink(candidate, lambda p=candidate: files._access(ready[0], memory.fence.check, p))
-                files._unlink(path, ready[0])
-                expected = None
-            else:
-                backup = path.with_name(path.name + ".bak")
-                files._backup(path, backup, check=check, path_check=memory.fence.check)
-                files._retry(lambda: files._checked(ready[0], lambda: os.replace(str(temporary), str(path))), deadline)
-                expected = None
-                files._unlink(backup, lambda: files._access(basic, memory.fence.check, backup))
-            result = Rewritten(kept, removed, damaged, frozenset(turns), deleted)
-            if after is not None:
-                after(result, basic)
+            staged = cleanup.stamp(temporary.stat())
+            def staged_check():
+                ready[0]()
+                if cleanup.stamp(temporary.stat()) != staged:
+                    raise RuntimeError("temporary changed")
+            lowered = min(progress["logs"].get(log, 0), highest)
+            remaining_wait = RAW_LEASE_WAIT_SECONDS
+            def acquire(raw):
+                nonlocal expected, remaining_wait
+                began = clock.now()
+                wait_until = began + remaining_wait if remaining_wait > 0 else None
+                raw.enter_context(memory.lease(path.with_suffix(".lock"), "raw", deadline,
+                                               acquire_deadline=wait_until))
+                remaining_wait = max(0, remaining_wait - (clock.now() - began))
+                current = memory.fence.check(path)
+                if current is None or current.st_size < original.st_size:
+                    raise locks.LostLock()
+                expected = cleanup.stamp(current)
+                verified = hashlib.sha256()
+                for _ in _chunks(memory, path, check, size=original.st_size, digest=verified):
+                    pass
+                if verified.digest() != prefix.digest():
+                    raise locks.LostLock()
+                return current
+            with contextlib.ExitStack() as raw:
+                current = acquire(raw)
+                if (progress["logs"].get(log, 0) != lowered or
+                        kept == 0 and log not in progress["logs"]):
+                    # Verify first, then release raw for the durable progress
+                    # write. A stop after lowering merely recurates entries.
+                    raw.close()
+                    expected = None
+                    staged_check()
+                    progress["logs"][log] = lowered
+                    curation.write(memory, root, progress, deadline)
+                    staged_check()
+                    current = acquire(raw)
+                # A completed concurrent tail is carried, never age-filtered.
+                # Otherwise the snapshot's incomplete last line is removed.
+                grew = current.st_size > original.st_size
+                changed = bool(removed or damaged or tail and not grew or original.st_size == 0)
+                if grew:
+                    # Only the bytes appended during preparation need a final
+                    # durable carry under raw. Keep the original atomic suffix
+                    # rule: an active writer cannot starve retention forever.
+                    suffix = _chunks(memory, path, check, start=original.st_size,
+                                     size=current.st_size - original.st_size)
+                    def later():
+                        nonlocal kept, damaged
+                        for line, complete in _lines(itertools.chain((tail,), suffix)):
+                            try:
+                                if not complete:
+                                    raise ValueError("incomplete raw line")
+                                entry = _entry(line, log)
+                                kept += 1
+                                if "turn" in entry:
+                                    turns.add(entry["turn"])
+                            except (ValueError, UnicodeError):
+                                damaged += 1
+                            yield line
+                    batches = _batches(later())
+                    try:
+                        if changed:
+                            staged_check()
+                            with files._retry(lambda: files._checked(staged_check, lambda: temporary.open("ab", buffering=0)), deadline) as target:
+                                info = os.fstat(target.fileno())
+                                if not stat.S_ISREG(info.st_mode) or cleanup.stamp(info) != staged:
+                                    raise RuntimeError("temporary descriptor changed")
+                                staged_check()
+                                for chunk in batches:
+                                    if files._checked(staged_check, lambda: target.write(chunk)) != len(chunk):
+                                        raise OSError("short suffix write")
+                                    staged = cleanup.stamp(os.fstat(target.fileno()))
+                                staged_check()
+                                files._sync(target.fileno())
+                            staged_check()
+                        else:
+                            for _ in batches:
+                                pass
+                    finally:
+                        batches.close()
+                elif tail:
+                    damaged += 1
+                check()
+                staged_check()
+                deleted = changed and temporary.stat().st_size == 0
+                if deleted:
+                    pattern = re.compile(re.escape(path.name) + r"(?:\.bak|(?:\.bak)?\.[a-z0-9_]{8}\.tmp)\Z")
+                    for candidate in path.parent.iterdir():
+                        if candidate != temporary and pattern.fullmatch(candidate.name):
+                            files._unlink(candidate, lambda p=candidate: files._access(ready[0], memory.fence.check, p))
+                    files._unlink(path, staged_check)
+                    expected = None
+                elif changed:
+                    backup = path.with_name(path.name + ".bak")
+                    files._backup(path, backup, check=check, path_check=memory.fence.check)
+                    files._retry(lambda: files._checked(staged_check, lambda: os.replace(str(temporary), str(path))), deadline)
+                    expected = None
+                    files._unlink(backup, lambda: files._access(basic, memory.fence.check, backup))
+                result = Rewritten(kept, removed, damaged, frozenset(turns), deleted)
+                if after is not None:
+                    after(result, basic)
             if deleted:
                 progress["logs"].pop(log, None)
                 curation.write(memory, root, progress, deadline)
