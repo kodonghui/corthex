@@ -188,7 +188,7 @@ class WorkBreakdownTest(unittest.TestCase):
 
     def test_every_acceptance_criterion_is_named(self):
         criteria = criteria_counts()
-        self.assertEqual(len(criteria), 39)
+        self.assertEqual(set(criteria), {"SPEC-%03d" % n for n in list(range(1, 40)) + [143, 144, 145]})
         named = {spec: set() for spec in criteria}
         for key, task in self.current.items():
             with self.subTest(task=key):

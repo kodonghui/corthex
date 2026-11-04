@@ -2,7 +2,7 @@
 
 [한국어](FL-005-curate-new-turns.ko.md)
 
-Serves: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-018, REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, REQ-024, REQ-025, REQ-029, REQ-040, REQ-049, REQ-050, REQ-052, REQ-195
+Serves: REQ-013, REQ-014, REQ-015, REQ-016, REQ-017, REQ-018, REQ-019, REQ-020, REQ-021, REQ-022, REQ-023, REQ-024, REQ-025, REQ-029, REQ-040, REQ-049, REQ-050, REQ-052, REQ-195, REQ-219, REQ-220, REQ-221, REQ-224
 
 Context: CTX-002 Curation. Starts when an enabled project has unprocessed raw turns and a curation trigger is met; which events are triggers is left to the functional spec. D4 was confirmed on 2026-10-27: the Anthropic memory key pays for the curator's requests.
 
@@ -28,9 +28,10 @@ flowchart TD
   I2 -->|yes| I3["Stop curating this project and note it<br/>for the status and the start summary<br/>REQ-024, REQ-029"]
   I3 --> Z
   I -->|yes| J[["Apply the proposed changes one at a time,<br/>as the second chart shows<br/>REQ-016 to REQ-020"]]
-  J --> P["Update the current state,<br/>each line with its provenance<br/>REQ-015"]
+  J --> P["Edit only current-state lines affected by the turns;<br/>keep previous text of changed/removed lines locally<br/>REQ-015, REQ-219, REQ-220"]
   P --> Q["Update the item list; once an OpenAI memory key<br/>is there, embed the new items for the search index<br/>and append that call to the usage log<br/>REQ-040, REQ-050, REQ-052"]
-  Q --> R["Mark the turns processed"]
+  Q --> RL["Log the run with its actual changed IDs<br/>REQ-224"]
+  RL --> R["Mark the turns processed"]
   R --> S{"More unprocessed turns?"}
   S -->|yes| F
   S -->|no| Z
@@ -53,11 +54,12 @@ flowchart TD
   N -->|yes| N1["Mark the item withdrawn<br/>REQ-020"]
   N -->|no| N2["Keep the item and save the new<br/>statement as an item of its own<br/>REQ-016"]
   J1 --> Z(["On to the next change"])
-  L1 --> Z
-  L2 --> Z
-  M --> Z
+  L1 --> CF
+  L2 --> CF
+  M --> CF
   N1 --> Z
-  N2 --> Z
+  N2 --> CF
+  CF["Record valid disagreement candidates;<br/>both items stay current<br/>REQ-221"] --> Z
 ```
 
 The curator changes nothing it cannot quote: a proposed change whose quote check fails is dropped, and items are superseded or withdrawn, never deleted. Forgetting is the user's own act (FL-009).
