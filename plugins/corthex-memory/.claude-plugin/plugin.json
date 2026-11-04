@@ -1,7 +1,7 @@
 {
   "name": "corthex-memory",
   "displayName": "CORTHEX Memory",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Records redacted prompts and final answers for enabled CORTHEX projects on this device, adds session context and provides local memory controls. C1 makes no model or network calls.",
   "author": {
     "name": "kodonghui",

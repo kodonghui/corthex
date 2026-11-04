@@ -12,9 +12,9 @@ COMPAT = "session_start.py"
 class MemoryReleaseTest(unittest.TestCase):
     def test_tc099_memory_versions_and_capture_description_agree(self):
         manifests = [load_json(PLUGIN / name / "plugin.json") for name in (".claude-plugin", ".codex-plugin")]
-        self.assertEqual([m["version"] for m in manifests], ["0.2.0", "0.2.0"])
+        self.assertEqual([m["version"] for m in manifests], ["0.2.1", "0.2.1"])
         fields, _ = split_frontmatter(read_text(PLUGIN / "skills/corthex-memory/SKILL.md"))
-        self.assertEqual(fields["metadata"]["version"], "0.2.0")
+        self.assertEqual(fields["metadata"]["version"], "0.2.1")
         for manifest in manifests:
             description = manifest["description"].lower()
             for word in ("record", "prompt", "answer", "enabled", "c1"):
@@ -35,7 +35,7 @@ class MemoryReleaseTest(unittest.TestCase):
         for name, words in (("README.md", ("consent", "100 days", "C2")),
                             ("README.ko.md", ("동의", "100일", "C2"))):
             text = read_text(ROOT / name)
-            for word in ("0.2.0", "~/.corthex/corthex-memory/", "CORTHEX_MEMORY_HOME", "C1") + words:
+            for word in ("0.2.1", "~/.corthex/corthex-memory/", "CORTHEX_MEMORY_HOME", "C1") + words:
                 self.assertIn(word, text, name)
         for name in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
             catalogue = load_json(ROOT / name)

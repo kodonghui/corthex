@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.5.0; the `corthex-memory` 0.2.0 C1 package is in QA and trial preparation, before a release decision/tag; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.6.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -49,7 +49,7 @@ claude plugin install corthex-memory@corthex   # Claude Code; installs corthex t
 codex plugin add corthex-memory@corthex        # Codex, after corthex
 ```
 
-In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recording with the [memory skill](plugins/corthex-memory/skills/corthex-memory/SKILL.md). The package's installed-host C1 QA, maintainer trial and release decision precede a release tag. Details: [Session start context](docs/architecture.md#session-start-context).
+In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recording with the [memory skill](plugins/corthex-memory/skills/corthex-memory/SKILL.md). The C1 0.2.0 release passed installed-host QA and its release decision; the maintainer removed the C1 one-week trial on 2026-11-04. See the [release qualification](docs/12-qa/runs/2026-11-04-memory-020-release.md). Details: [Session start context](docs/architecture.md#session-start-context).
 
 ### Optional: project hub
 

@@ -3,6 +3,7 @@
   "title": "Acme Shop",
   "team": true,
   "language": "en",
+  "ask_before": ["external messages", "payments", "deletions", "publishing"],
   "records": { "kind": "notion", "location": "<link to the project's records database>" },
   "repos": { "design": "https://github.com/example/acme-shop-design" },
   "ids": {
