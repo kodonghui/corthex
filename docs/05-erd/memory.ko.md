@@ -2,9 +2,9 @@
 
 [English](memory.md)
 
-CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-27 확인했습니다. 남겨 둔 Git 동기화 설계는 D3로 대체됐습니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다.
+CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-27 확인했습니다. 남겨 둔 Git 동기화 설계는 D3로 대체됐습니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다. 2026-11-03 C2 결정에 따라 TBL-009·010·012·013과 보관·잠금을 넓히고 TBL-119~121을 더했습니다. 형식 2는 C2의 목표이며 이번 명세 PR은 기기 자료를 이관하지 않습니다.
 
-입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
+입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039, SPEC-143\~SPEC-145), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
 
 > D3 설계 상태: `superseded (D3, 2026-10-27)`. 이곳에 남겨 둔 Git 동기화 제안은 2026-10-27에 확인한 D3 결정으로 대체됐습니다. 구현하거나 실행할 계획이 아닌 과거 자료입니다. HTTPS 창구와 서버 동기화 설계는 C3 전에 따로 작성합니다. 기기의 저장소는 파일과 SQLite 검색 색인을 유지합니다. 이 표시는 여러 단계가 공유하는 행·설정·예시의 동기화 부분에도 적용하며, 그 C1/C2 부분은 확인된 상태입니다.
 
@@ -41,8 +41,11 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
       │  └─ <log>.lock
       ├─ unprocessed/                 TBL-008 정리 전 턴마다 빈 파일 하나
       ├─ curation.json                TBL-009 정리 진행 기록
+      ├─ state-history.jsonl          TBL-119 줄 기록
+      ├─ runs/<run>.json               TBL-121 실행 기록
       ├─ curation.lock
       ├─ notices/<name>.json          TBL-010 알림
+      ├─ notices/conflict-counts.json TBL-010 후보별 영속 횟수 상한
       ├─ injections/<log>.jsonl       TBL-011 넣기 기록, 도구의 세션마다 파일 하나
       ├─ index.db                     TBL-019부터 TBL-022까지 검색 색인
       ├─ layer.lock
@@ -50,6 +53,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
          ├─ items/<item>.json         TBL-012 기억 항목
          ├─ state.json                TBL-013 현재 상태
          ├─ state-removed.json        TBL-013 빠진 현재 상태 줄
+         ├─ conflicts.json            TBL-120 충돌 후보, 동기화는 C3에서 결정
          ├─ pins.json                 TBL-014 고정
          ├─ item-list.txt             TBL-015 항목 목록
          ├─ tombstones/<item>.json    TBL-016 지운 기록
@@ -60,7 +64,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 └─ projects/<project>/                프로젝트마다 정리된 층, 위의 layer/와 같은 배치
 ```
 
-기능 명세의 정리 진행 기록은 두 부분으로 나눠 둡니다. 훅만 더하는 정리 전 턴 표지(TBL-008)와, 정리 프로세스만 쓰는 정리 진행 기록(TBL-009)입니다. 그래서 한 프로젝트의 두 세션이 동시에 덧붙여도 같은 파일을 쓰는 일이 없습니다.
+기능 명세의 정리 진행 기록은 두 부분으로 나눠 둡니다. 훅만 더하는 정리 전 턴 표지(TBL-008)와, 정리 진행은 정리 프로세스가 맡고 C2 층 쓰기도 층 잠금 아래 필수 수정 표지를 갱신하는 정리 진행 기록(TBL-009)입니다. 그래서 한 프로젝트의 두 세션이 동시에 덧붙여도 같은 파일을 쓰는 일이 없습니다.
 
 ## 저장 단위
 
@@ -69,21 +73,24 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | TBL-001 | 기억 폴더 정보 | CTX-005 | `store.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039 | active |
 | TBL-002 | 기억 설정 | CTX-005 | `configuration.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037 | active |
 | TBL-003 | 사용량 기록 | CTX-005 | `logs/usage-<month>.jsonl` | 파일과 그 안의 자리 | 모두 지우기까지 | 안 함 | SPEC-014, SPEC-015, SPEC-016, SPEC-018, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-032, SPEC-033 | active |
-| TBL-004 | 실패 기록 | CTX-005 | `logs/failures-<date>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033 | active |
+| TBL-004 | 실패 기록 | CTX-005 | `logs/failures-<date>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145 | active |
 | TBL-005 | 훅 소요 시간 | CTX-005 | `logs/hooks-<date>.jsonl` | 파일과 그 안의 자리 | 8일 | 안 함 | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033 | active |
 | TBL-006 | 동기화 정보 | CTX-004 | `sync/state.json` | 기억 폴더마다 하나 | 동기화가 켜진 동안 | 안 함 | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | superseded (D3, 2026-10-27) |
 | TBL-007 | 원문 기록 | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, 또는 파일과 `seq` | 줄마다의 시각으로 보관 기간 동안 | 절대 안 함(REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037 | active |
 | TBL-008 | 정리 전 턴 표지 | CTX-002 | `projects/<project>/unprocessed/<time>.<log>.<turn>` | 파일 이름 | 그 턴을 처리하거나 지울 때까지 | 안 함 | SPEC-002, SPEC-003, SPEC-009, SPEC-010, SPEC-016, SPEC-022, SPEC-033, SPEC-037 | active |
-| TBL-009 | 정리 진행 기록 | CTX-002 | `projects/<project>/curation.json` | 프로젝트마다 하나 | 프로젝트의 기억이 있는 동안 | 안 함 | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037 | active |
-| TBL-010 | 알림 | CTX-003 | `projects/<project>/notices/<name>.json` | 파일 이름 | 시작 요약이 보여 줄 때까지 | 안 함 | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037 | active |
+| TBL-009 | 정리 진행 기록 | CTX-002 | `projects/<project>/curation.json` | 프로젝트마다 하나 | 프로젝트의 기억이 있는 동안 | 안 함 | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037, SPEC-034, SPEC-035, SPEC-143, SPEC-144, SPEC-145 | active |
+| TBL-010 | 알림 | CTX-003 | `projects/<project>/notices/<name>.json` | 파일 이름 | 시작 요약이 보여 줄 때까지 | 안 함 | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-011 | 넣기 기록 | CTX-003 | `projects/<project>/injections/<log>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | active |
-| TBL-012 | 기억 항목 | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | 잊거나 프로젝트의 기억과 함께 지울 때까지 | 함 | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-013 | 현재 상태 | CTX-002 | `projects/<project>/layer/state.json`과 `state-removed.json` | 줄마다의 `id` | 줄은 빠질 때까지, 빠진 줄의 기록은 계속 | 함 | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-014 | 고정 | CTX-003 | `projects/<project>/layer/pins.json` | 기록마다의 `item` | 항목을 잊을 때까지 계속 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-015 | 항목 목록 | CTX-003 | `projects/<project>/layer/item-list.txt` | 줄마다의 항목 ID | 바뀔 때마다 다시 만듦 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-016 | 지운 기록 | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037 | active |
-| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | active |
+| TBL-012 | 기억 항목 | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | 잊거나 프로젝트의 기억과 함께 지울 때까지 | 함 | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
+| TBL-013 | 현재 상태 | CTX-002 | `projects/<project>/layer/state.json`과 `state-removed.json` | 줄마다의 `id` | 줄은 빠질 때까지, 빠진 줄의 기록은 계속 | 함 | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-014 | 고정 | CTX-003 | `projects/<project>/layer/pins.json` | 기록마다의 `item` | 항목을 잊을 때까지 계속 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-015 | 항목 목록 | CTX-003 | `projects/<project>/layer/item-list.txt` | 줄마다의 항목 ID | 바뀔 때마다 다시 만듦 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-016 | 지운 기록 | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037, SPEC-021, SPEC-145 | active |
+| TBL-017 | 프로젝트 지운 기록 | CTX-005 | `projects/<project>/layer/deleted.json` | 프로젝트마다 하나 | 계속 | 함 | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037, SPEC-145 | active |
 | TBL-018 | 동기화 저장소 표지 | CTX-004 | 동기화 저장소의 `corthex-memory-sync.json` | 동기화 저장소마다 하나 | 동기화 저장소가 있는 동안 | 동기화 저장소 안에 있음 | SPEC-026, SPEC-027, SPEC-028 | superseded (D3, 2026-10-27) |
+| TBL-119 | 줄 기록 | CTX-002 | `projects/<project>/state-history.jsonl` | epoch, generation, line | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-017, SPEC-019, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-120 | 충돌 후보 | CTX-002 | `projects/<project>/layer/conflicts.json` | id | 닫힌 후보도 유지 | C3 설계가 정함 | SPEC-015, SPEC-016, SPEC-019, SPEC-033, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
+| TBL-121 | 실행 기록 | CTX-002 | `projects/<project>/runs/<run>.json` | id | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-033, SPEC-037, SPEC-144, SPEC-145 | active |
 
 검색 색인은 SQLite 파일 `projects/<project>/index.db`입니다. 절대 동기화하지 않으며(REQ-044), 기억 항목에서 언제든 다시 만들 수 있습니다(TERM-029).
 
@@ -100,7 +107,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 - JSON 파일에는 객체 하나를 담습니다. 두 칸 들여 쓰고, 필드는 그 표의 순서대로 적고, ASCII 밖의 글자는 이스케이프하지 않고 그대로 적고, 끝에 LF를 둡니다. 그래서 같은 내용은 언제나 같은 바이트가 되고, Git은 동기화 저장소에서 실제로 바뀐 곳만 변경으로 봅니다.
 - JSON Lines 파일에는 줄마다 빈칸 없이 줄인 객체 하나를 담고, 필드는 같은 순서로 적습니다.
 - 시각은 `2026-10-24T13:05:12.345Z`처럼 밀리초까지 적은 UTC이고, 날짜는 파일 이름에서도 `2026-10-24`처럼 UTC 날짜입니다. 시각은 기기마다의 시계에서 옵니다. 시작 요약과 기억 스킬은 그것을 지역 시각으로 보여 줍니다(06단계).
-- ID는 접두사와, Crockford base32 소문자로 된 무작위 글자 12개(무작위 60비트)입니다. 기기는 `d_`, 원문 기록 줄은 `e_`, 기억 항목은 `i_`, 현재 상태 줄은 `s_`로 시작하며, 예를 들면 `i_7f3k2m9q4x1v`입니다. 모델이 아니라 코드가 만들고, 다시 쓰지 않습니다. 소문자, 숫자, 밑줄만 담으므로 `REQ-001` 같은 추적 ID처럼 보이지 않고, 프로젝트 허브는 어느 것도 읽지 않습니다.
+- ID는 접두사와, Crockford base32 소문자로 된 무작위 글자 12개(무작위 60비트)입니다. 기기는 `d_`, 원문 기록 줄은 `e_`, 기억 항목은 `i_`, 현재 상태 줄은 `s_`, 충돌 후보는 `c_`, 실행은 `r_`로 시작하며, 예를 들면 `i_7f3k2m9q4x1v`입니다. 모델이 아니라 코드가 만들고, 다시 쓰지 않습니다. 소문자, 숫자, 밑줄만 담으므로 `REQ-001` 같은 추적 ID처럼 보이지 않고, 프로젝트 허브는 어느 것도 읽지 않습니다.
 - 프로젝트 폴더의 이름은 프로젝트 목록에 있는 프로젝트 이름입니다. Windows가 장치 이름으로 예약한 이름(`con`, `prn`, `aux`, `nul`, `com0`\~`com9`, `lpt0`\~`lpt9`)이면 어느 시스템에서나 끝에 `_`를 붙여, 동기화 저장소에서 모든 기기가 폴더를 같게 부르게 합니다. 프로젝트 이름에는 소문자, 숫자, 하이픈만 들어가므로, 다른 프로젝트의 폴더가 `_`로 끝나는 일은 없습니다.
 - 글 안의 위치는 저장된 글의 유니코드 코드 포인트를 0부터 센 것이고, 범위의 끝은 범위에 들지 않습니다.
 - 어떤 파일도 키, 토큰, 비밀번호를 담지 않습니다(SPEC-031).
@@ -115,7 +122,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
-| `format` | 정수, `1` | 기억 폴더의 형식 버전(REQ-063) |
+| `format` | 정수: C1은 `1`, C2는 `2` | 기억 폴더의 형식 버전(REQ-063) |
 | `device` | 기기 ID | 이 기기. 인용, 현재 상태 줄, 고정, 지운 기록이 이 ID로 기기를 가리킴 |
 | `made` | 시각 | 기억 폴더를 만든 때 |
 | `release` | 글, 예: `0.2.0` | 기억 폴더를 만들었거나 마지막으로 변환한 플러그인 판 |
@@ -252,21 +259,25 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 ### 정리 진행 기록 (TBL-009)
 
-기억 스킬이 그 프로젝트를 처음 켜기 전에 빈 기록으로 만듭니다. 그래서 이것이 없으면 새것이 아니라 잃은 것입니다. 그 프로젝트의 정리 잠금을 쥔 쪽만 씁니다: 정리 프로세스, 자기가 지운 원문 기록 파일을 이 기록에서 빼고 마지막 줄들을 지운 파일의 값을 낮추는 보관 기간 처리(TBL-007), 사용자가 정리를 다시 시작할 때의 기억 스킬(SPEC-033). 정리 프로세스는 정리된 층 잠금도 잡고, 이 기록이 세는 변경을 쓴 뒤에 이것을 씁니다. 그래서 둘 사이에서 멈추면 그 턴을 잃지 않고 다시 정리하며, 두 번 정리된 것은 통합이 합칩니다.
+기억 스킬이 그 프로젝트를 처음 켜기 전에 빈 기록으로 만듭니다. 그래서 이것이 없으면 새것이 아니라 잃은 것입니다. C1에서는 그 프로젝트의 정리 잠금을 쥔 쪽만 씁니다: 정리 프로세스, 자기가 지운 원문 기록 파일을 이 기록에서 빼고 마지막 줄들을 지운 파일의 값을 낮추는 보관 기간 처리(TBL-007), 사용자가 정리를 다시 시작할 때의 기억 스킬(SPEC-033). 정리 프로세스는 정리된 층 잠금도 잡고, 이 기록이 세는 변경을 쓴 뒤에 이것을 씁니다. 그래서 둘 사이에서 멈추면 그 턴을 잃지 않고 다시 정리하며, 두 번 정리된 것은 통합이 합칩니다.
 
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
 | `logs` | 객체: 원문 기록 파일 이름 → 정수 | 원문 기록 파일마다 어디까지 처리했는지: 그 `seq`까지의 줄 |
 | `applies` | 정수 | 결과를 적용한 요청마다 하나씩 늘어남. 적용하기 전마다 확인함([잠금](#잠금)) |
-| `recent` | 객체 10개까지의 목록: `at`, `kind`(`curate`나 `consolidate`), `result`(`ok`, `failed`, `stale` 가운데 하나), `error`, `applied`, `dropped`, `state`(`new`, `kept`, `cut` 가운데 하나) | 최근 시도, 새것부터. `stale`: 요청을 만든 뒤에 잊기나 지운 기록이 와서 결과를 버림(SPEC-012). `applied`와 `dropped`는 변경 수(SPEC-016); `state`는 현재 상태를 바꿨는지, 그대로 뒀는지, 줄였는지(SPEC-017) |
+| `recent` | list of up to 10 attempts; kind `curate`, `consolidate` or `undo`; optional `run` | 최근 시도와 선택 실행 ID. C2 형식에서만 undo/run을 씀. |
 | `failures` | (선택) 객체: `count`, `log`, `turn` | 같은 첫 정리 전 턴에서 잇따라 실패한 시도(SPEC-018) |
 | `consolidation` | 객체: `last`(시각, 선택), `due`(시각, 선택), `failures`(정수) | 마지막으로 끝난 통합, SPEC-015가 다음 통합을 해야 할 때로 정한 시각, 잇따라 실패한 통합 수(SPEC-019) |
 | `stopped` | (선택) 객체: `at`, `by`(`curate`나 `consolidate`), `errors`(오류의 종류들) | 사용자가 다시 시작할 때까지의 고장 멈춤(SPEC-018) |
 | `rebuilt` | (선택) 시각 | 원문 기록으로 이 기록을 마지막으로 다시 만든 때 |
+| `fence` | C2 required object: `epoch`, `generation`, `revisions` | 코드가 만든 32hex epoch·단조 증가 정수·대상별 마지막 세대. 대상 키는 item:<id>, line:<id>, pin:<id>, candidate:<id>, run:<id>이며 글은 없음. |
+| `conflict_after` | optional candidate ID | 예산 안에 싣는 후보 쌍을 다음 묶음에서 순환 선택할 마지막 ID. 후보 삭제·정리 뒤에도 현재 목록 순서에서 다음 것을 고름. |
 
-필수 필드는 `logs`, `applies`, `recent`, `consolidation`입니다. 빈 기록은 `{}`인 logs, 0인 applies, 최근 시도 없음, 0인 통합 실패 수를 가집니다. 개수는 불리언을 제외한 0 이상의 정수이며 실패한 턴의 `turn`은 양수입니다. `logs`의 키와 `failures.log`는 턴 표지처럼 `.jsonl`을 뺀 원문 이름 `<host>-<16진수 16글자>`입니다. 최근 시도마다 `at`, `kind`, `result`가 필수이고 `error`, `applied`, `dropped`, `state`는 해당할 때 둡니다. 오류 필드는 06단계의 모델 오류 코드나 내장 예외 클래스 이름을 씁니다. 모르는 필드나 잘못된 필드는 조용히 지우지 않습니다. 기록의 쓰기 임대 아래에서 유효한 백업으로 잘못된 원본을 복원할 수 있으며 읽을 수 있는 사본이 없으면 쓰는 쪽을 멈춥니다. 보호된 C1 다시 쓰기는 나머지 유효한 필드를 모두 보존하며 복원할 수 없는 기록을 거절합니다. 잃은 진행 수를 다시 만드는 것은 C2 정리 프로세스만 합니다.
+C1의 필수 필드는 `logs`, `applies`, `recent`, `consolidation`입니다. 빈 기록은 `{}`인 logs, 0인 applies, 최근 시도 없음, 0인 통합 실패 수를 가집니다. 개수는 불리언을 제외한 0 이상의 정수이며 실패한 턴의 `turn`은 양수입니다. `logs`의 키와 `failures.log`는 턴 표지처럼 `.jsonl`을 뺀 원문 이름 `<host>-<16진수 16글자>`입니다. 최근 시도마다 `at`, `kind`, `result`가 필수이고 `error`, `applied`, `dropped`, `state`는 해당할 때 둡니다. 오류 필드는 06단계의 모델 오류 코드나 내장 예외 클래스 이름을 씁니다. 모르는 필드나 잘못된 필드는 조용히 지우지 않습니다. 기록의 쓰기 임대 아래에서 유효한 백업으로 잘못된 원본을 복원할 수 있으며 읽을 수 있는 사본이 없으면 쓰는 쪽을 멈춥니다. 보호된 C1 다시 쓰기는 나머지 유효한 필드를 모두 보존하며 복원할 수 없는 기록을 거절합니다. 잃은 진행 수를 다시 만드는 것은 C2 정리 프로세스만 합니다.
 
 정리 프로세스는 줄을 처리했다고 세거나 그 줄의 인용을 적용하기 전에, 그 원문 기록 파일을 디스크에 내려씁니다. 그래서 정리 진행 기록이 센 줄은 전원이 끊겨도 잃지 않습니다. 이 기록을 잃으면 정리 프로세스가 다시 만듭니다: 원문 기록 파일마다, 항목이 인용하거나 현재 상태 줄이 출처로 가리키는 가장 새 줄을 그 앞의 줄과 함께 처리한 것으로 세고, 그 뒤의 줄은 같은 턴의 줄이라도 정리 전으로 셉니다. 마지막 정리가 도는 동안 덧붙은 최종 답변은 보내지 않았을 수 있기 때문입니다. 두 번 정리된 턴은 중복 항목을 만들고, 통합이 합칩니다. 알림이 한 번 그렇다고 알리며, 고장 멈춤의 멈춤은 이 기록과 함께 잃습니다.
+C2에서는 이 기록을 쓰는 모든 경로가 레이어 잠금을 잡고 새로 읽어 고칩니다. 진행·시도 필드는 정리 잠금도 필요합니다. API 답을 기다리는 정리 잠금 중에도 잊기 같은 명령은 레이어 잠금 아래 표지 필드만 갱신할 수 있어 SPEC-012의 동시 잊기를 막지 않습니다. 다른 필드는 보존하며 이전 순서의 잠금을 뒤에서 잡지 않습니다. 실제 변경 전에 generation과 영향받는 모든 대상·run 키의 판 번호를 디스크에 남기고, 실패하면 변경을 막습니다. 효과 실패는 판 번호를 보수적으로 예약할 수 있으나 되돌리지 않습니다. 실행 기록은 대상의 전후 판 번호와 같은 epoch를 남기며, 값이 같아진 ABA나 기록되지 않은 뒤 변경도 번호가 달라 지켜집니다. 존재하는 대상의 판 번호가 없으면 0으로 추정하지 않고 미확인으로 둡니다. 기록을 잃거나 백업에서 복원하면 epoch를 새로 만들어 앞 실행의 근거를 무효로 합니다. 지운·잊은 대상의 ID 판 번호는 남은 앞 실행이 가리킬 수 있는 동안 유지합니다. 요청은 applies와 표지 스냅샷을 함께 검사합니다. 이 필드는 형식 2의 계약이며 C1 형식 1 읽기·쓰기는 바꾸지 않습니다.
+
 
 ### 알림 (TBL-010)
 
@@ -275,10 +286,13 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
 | `at` | 시각 | |
-| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved`, `pin-dropped` 가운데 하나 | |
+| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved`, `pin-dropped`, `conflict` |
 | `error` | (선택) 글 | 실패면 오류의 종류 |
 | `item` | (선택) 항목 ID | 고정이 옮겨지거나 풀린 항목(SPEC-034) |
 | `to` | (선택) 항목 ID | 고정이 옮겨 간 항목 |
+| `candidate`, `shown` | optional candidate ID and count 0 to 3 | 충돌 알림의 대상과 보인 횟수. 영속 상한은 conflict-counts.json이 소유. |
+C2의 conflict-counts.json은 후보 ID별 0~3 상한을 기기에만 남깁니다. 후보를 처음 발행하기 전에 0을 내구성 있게 쓰고, 세 번째 뒤 개별 알림을 지워도 상한은 그 ID의 수명 동안 남깁니다. 다시 열기·정리·백업 복구가 0으로 초기화하지 못합니다. 횟수가 없거나 복구의 완전성을 못 믿으면 기존 후보를 보수적으로 소진한 것으로 두고 실패·상태에 알리며, 후보 목록은 계속 볼 수 있습니다. Start는 줄이 실제 예산에 들어간다고 정한 뒤 독립 conflict-counts 잠금 아래 새로 읽고 한 번을 원자적·내구성 있게 예약한 경우만 보입니다. 잠금·기한·쓰기 실패면 보이지 않고 횟수도 올리지 않습니다. 예약 뒤 출력 전에 중단되면 한 번을 소비할 수 있습니다. 동시 시작도 합쳐 세 번을 넘지 않습니다. 보통 알림과 달리 이 상한은 건너뛴 fsync나 오래된 백업 복원으로 줄일 수 없습니다. 시작 훅은 정리된 층을 쓰지 않습니다.
+
 
 ### 넣기 기록 (TBL-011)
 
@@ -304,8 +318,9 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | `title` | 글 | 항목 목록에 쓰는 한 줄, 200바이트까지 |
 | `text` | 글 | 4,000바이트까지 |
 | `quotes` | 인용 1\~20개의 목록 | 첫 인용이 결정 인용 |
-| `status` | `current`, `superseded`, `withdrawn` 가운데 하나 | 항목 상태 |
+| `status` | `current`, `superseded`, `withdrawn`, `undone` | 항목 상태 |
 | `superseded_by` | (선택) 항목 ID | 대체된 항목이면, 그것을 대체한 항목 |
+| `undone_by` | optional run ID | 되돌린 실행 ID. 상태 역연산은 superseded_by·undone_by의 값과 존재 여부도 복원. |
 | `merges` | (선택) 항목 ID 목록 | 통합이 만든 항목이면, 그것이 합친 항목 |
 | `saved` | 시각 | 어느 기기에서든 항목을 처음 저장한 때 |
 | `device` | 기기 ID | 항목을 저장한 기기 |
@@ -325,9 +340,15 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 저장하지 않고 알아내는 것: 항목이 사용자 결정인지(결정 인용이 사용자의 말인 결정이면 사용자 결정)와, 효력이 시작된 때(결정 인용의 `said`). 한 항목의 두 사본 합치기(SPEC-028): `withdrawn`이 `superseded`를 이기고, `superseded`가 `current`를 이깁니다. 대체된 사본 둘이면 `changed`가 나중인 쪽이 이기고, 시각이 같으면 `superseded_by`가 작은 쪽이 이깁니다. 종류, 제목, 글, 인용 가운데 하나라도 다른 두 사본은 충돌입니다. 이 기기의 사본을 그대로 두고, 동기화 정보에 적어 둡니다.
 
+C2의 `undone`은 이 기기의 되돌리기 상태입니다. C3 설계가 새 상태의 기기 간 병합 순서를 정하며, 위의 과거 Git 규칙은 이를 정하지 않습니다.
+
 ### 현재 상태 (TBL-013)
 
-`state.json`에는 현재 상태의 줄이 있고, `state-removed.json`에는 빠진 줄마다 글 없는 기록을 남겨, 동기화가 그 줄을 되살리지 않게 합니다(SPEC-028). 정리 프로세스(SPEC-017, SPEC-019), 잊기(SPEC-035), 지운 기록(SPEC-029), 동기화가 씁니다. 정리 프로세스가 줄을 그대로 두거나 말만 바꾸는 동안 그 줄은 ID를 지킵니다: 정리 프로세스의 답은 줄마다 그 줄이 그대로 두거나 바꾸는 요청의 줄을 적고, 새 줄에는 코드가 새 ID를 붙입니다. 시작 훅은 `state.json`만 읽습니다. 동기화합니다.
+삽입·삭제 때 기존 줄의 상대순서를 지키며 정수 pos를 다시 매길 수 있습니다. 위치만 바뀌는 줄도 이전 part/pos를 TBL-119에 changed, why=position으로 먼저 내구성 있게 기록하고, 필수 줄 수정 번호와 실행의 실제 효과에 포함합니다. 그 줄의 글·근거·at는 보존합니다. 기록 실패 시 전체 state 쓰기를 보류합니다. 실행은 변경 전후 part와 앞뒤 이웃 줄 ID도 보존하며, 추가·복원·위치 변경은 그 이웃과 순서 의존 묶음을 이룹니다. 뒤 실행의 삽입·이동·재번호를 되돌리기가 덮지 않도록 해당 묶음은 보수적으로 지킵니다.
+
+`state.json`은 현재 상태의 줄, `state-removed.json`은 빠진 줄의 ID를 글 없이 남겨 동기화가 임의로 되살리지 않게 합니다(SPEC-028). 정리(SPEC-017·019), 잊기(SPEC-035), 지운 기록(SPEC-029), 검증된 되돌리기(SPEC-145)가 쓰며 동기화 상세는 C3 설계가 정합니다. 시작 훅은 state.json만 읽습니다. 줄 ID의 유지·복원 규칙은 아래와 같습니다.
+
+줄은 그대로 있거나 고쳐지는 동안 ID를 지킵니다. curate-2는 고침·더함·지움만 이름을 적고(SPEC-017), 마지막 state-1은 유지·고침을 이름으로 적습니다(SPEC-019). 새 ID는 코드가 주고 고치거나 지운 직전 글은 TBL-119에 둡니다. 이름 없는 줄은 글·근거·시각이 그대로입니다.
 
 `state.json`은 `lines`를 담은 객체이며, `lines`는 다음의 목록입니다:
 
@@ -344,6 +365,8 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 `state-removed.json`은 `removed`를 담은 객체이며, `removed`는 `id`, `at`(줄을 뺀 때), `device`를 담은 기록의 목록입니다.
 
 정리가 끝나면 줄의 글은 모두 합쳐 3,000바이트 아래입니다(SPEC-017). 동기화의 합치기는 더 많이 남길 수 있으며, 다음 정리가 상한 아래로 되돌리고, 그동안은 시작 요약이 줄여서 보여 줍니다(SPEC-021).
+C2의 제거 표지는 사생활 지우기인지(kind privacy), 보통 편집인지(kind edit)를 구분합니다. 보통 제거 ID도 계속 남기되, 검증된 기기 안 되돌리기만 restored_by·restored_at으로 의도적 같은 ID 복원을 표시할 수 있습니다. 잊기·지운 기록의 privacy 표지는 이런 복원을 금지하며 직전 글도 남기지 않습니다. 모든 상태 읽기(시작·요청·통합·되돌리기)는 같은 유효성 보기를 씁니다. 유효한 현재 결정 근거가 없는 줄은 원본 파일의 정리가 실패했어도 보기에 없고, 다음 쓰기는 대기 중 stale 정리도 다시 시도합니다. 동기화의 복원·충돌 순서는 C3 설계가 정합니다.
+
 
 ### 고정 (TBL-014)
 
@@ -402,6 +425,68 @@ Git 저장소가 기억 플러그인의 동기화 저장소임을 표시하는 �
 | `made` | 시각 | 동기화 저장소에 처음 push한 때 |
 | `device` | 기기 ID | 처음 push한 기기 |
 
+### 줄 기록 (TBL-119)
+
+레이어 밖 `projects/<project>/state-history.jsonl`에 한 줄씩 남깁니다. 기기 밖으로 보내지 않고 각 기록의 시각으로 보관 기간 뒤 지우며, 잊기가 가리키는 모든 기록을 함께 지웁니다.
+
+| 필드 | 값 | 뜻 |
+| --- | --- | --- |
+| `at` | time | 줄을 고치거나 지운 시각 |
+| `run` | run ID | 이 기록을 준비한 실행 |
+| `epoch`, `generation` | 32 hex characters; integer | 필수 표지의 epoch와 적용 세대. 성공한 실행 연결이 있어야 되돌리기에 쓸 수 있음 |
+| `line` | state line ID | 바꾸기 전 줄 |
+| `part`, `pos` | as in TBL-013 | 직전 부분과 위치 |
+| `op` | `changed`, `removed`, `cut`, `stale`, `recited`, `undone` | 줄에 한 일 |
+| `text` | text | 이 적용 전 글 |
+| `cites` | list of item and entry IDs | 직전 근거 |
+| `why` | text, at most 200 UTF-8 bytes | 답의 이유 또는 자르기·stale·근거 이동·되돌리기·통합 때 코드가 정한 이유 |
+| `device` | device ID | 변경을 기록한 기기 |
+
+레이어 잠금 아래 상태를 다시 쓰기 전에 필요한 직전 기록을 전부 덧붙이고 디스크에 남깁니다. 부분 쓰기는 알려진 직전 크기로 되돌리며, 완전한 줄·LF·내구성을 확인할 수 없으면 그 요청의 상태 전체를 그대로 두고 실패를 기록합니다. 뒤 쓰기·복구·되돌리기도 엄격한 완전성 검사를 통과해야 합니다. 실행의 epoch·적용 세대·줄·정확한 기록 해시가 완전한 실행 기록의 실제 변경과 연결될 때만 되돌리기가 씁니다. 적용되지 않은 준비 기록은 복원 근거가 아닙니다. 한 실행의 여러 적용은 세대로 가르고, 실행 전에 있던 줄은 첫 실제 변경 전 글을 복원하며 실행이 처음 더한 줄은 지웁니다. 잊기는 이 내역을 새로 보관하지 않으며 사생활 지우기 표지를 되돌리기가 넘지 못합니다.
+
+잊기는 해당 항목·원문을 인용하는 기록을 지우고, 남는 모든 줄 기록의 why를 빈 글로 만듭니다. 변경 전 cites만으로는 이유가 참고한 새 내용의 출처를 알 수 없기 때문입니다. 현재 파일·미사용 준비 기록·플러그인이 복구할 수 있는 백업과 임시 사본을 층 잠금 아래에서 처리하고 내구성과 제거를 검증한 뒤에만 성공합니다. 자동 줄 기록 복구는 이유를 항상 비운 채로만 복원하여 옛 사본에서 이유가 되살아나지 않게 합니다. A의 직전 글·근거는 남을 수 있으나 B를 담은 이유는 남지 않습니다. 이 변경은 옛 실행의 정확한 기록 해시 연결을 무효로 할 수 있으므로 되돌리기는 이를 history-unavailable로 지키고 설명합니다. history_records는 삭제되거나 비어 있지 않은 이유가 지워지는 각 기록을 한 번씩 세며, 이미 빈 이유의 다른 기록은 세지 않습니다.
+
+### 충돌 후보 (TBL-120)
+
+`conflicts.json`은 `{"candidates": [...]}`입니다. 항목 ID만 두고 글은 담지 않으며 닫힌 후보도 보존합니다. 두 현재 항목의 쌍은 순서와 관계없이 열린 후보가 하나만 있습니다. 동기화와 합치기 순서는 C3 설계가 정합니다.
+
+| 필드 | 값 | 뜻 |
+| --- | --- | --- |
+| `id` | conflict candidate ID | 코드가 만든 c_와 12글자 |
+| `items` | two distinct item IDs | 새 항목부터, 같은 시각이면 ID순 |
+| `at` | time | 기록한 시각 |
+| `run` | run ID | 기록한 실행 |
+| `by` | `curate` or `consolidate` | 기록한 종류 |
+| `status` | `open`, `settled`, `dismissed` | 열린 동안 두 항목은 현재로 유지 |
+| `closed` | optional time | 정리되거나 닫힌 시각 |
+
+보인 횟수는 레이어 밖 TBL-010에 있습니다. 후보를 처음 발행하기 전에 0을 내구성 있게 준비하고, 후보 ID 수명 동안 0~3 상한을 지킵니다. 세 번째 뒤 개별 알림을 지워도 상한은 남으며, 되돌리기로 다시 열려도 초기화하지 않습니다.
+
+### 실행 기록 (TBL-121)
+
+`runs/<run>.json`은 실행마다 파일 하나입니다. 기기 안에서만 쓰고 자체 시각으로 보관 기간 뒤 지웁니다. 모든 역연산에 필요한 이 실행의 직전·직후 ID 메타를 남겨, 더 오래된 원 실행이 만료돼도 이 되돌리기 자체의 역연산이 남은 기록과 허용된 줄 기록만으로 가능해야 합니다.
+
+| 필드 | 값 | 뜻 |
+| --- | --- | --- |
+| `id` | run ID | 코드가 만든 r_와 12글자 |
+| `kind` | `curate`, `consolidate`, `undo` | 실행 종류 |
+| `at`, `ended` | times | 시작 및 마지막 적용 완료 |
+| `device` | device ID | 이 기기 |
+| `undoes` | run ID or empty | 되돌리기가 반대로 적용한 앞 실행 |
+| `epoch`, `last` | 32 hex characters; integer | 표지의 epoch·마지막 적용 세대. 목록·되돌리기 전에 TBL-009 run:<id>와 last가 같아야 함 |
+| `turns` | object: raw filename to [first seq, last seq] | 정리가 처리한 범위. 되돌리기는 처리 표시를 지우지 않음 |
+| `saved` | list of item IDs | 실행이 저장한 항목 |
+| `statuses` | list of item and before/after metadata | 상태와 superseded_by/undone_by ID 및 존재 여부. 더 오래된 실행 기록 없이 이 실행을 반대로 적용할 만큼 남김 |
+| `merges` | list of item and merged IDs | 합친 항목과 합쳐진 항목 |
+| `lines` | 줄·동작·세대·기록 참조·변경 전후 part/앞뒤 이웃 ID의 목록 | 실제 효과와 순서 의존성. 기록 참조는 epoch·세대·줄 및 직전 기록의 SHA-256을 묶음 |
+| `pins` | list of item, from, to and prior placement | ID·위치·시각·기기만 두며 이동을 반대로 적용할 만큼 남김 |
+| `conflicts` | list of candidate, from, to | 없음·open·settled·dismissed 전후. 다시 열기는 현재 항목이 유효하고 뒤 판 번호가 같을 때만 |
+| `kept` | list of id, by, why | 알면 뒤 실행 ID, 모르면 빈 값. 이유는 정해진 종류로 두며 원문은 없음 |
+| `revisions` | list of id, before, after | 되돌리기 근거로 쓸 대상별 판 번호 ID·수 |
+| `applies` | list of generation and actual change IDs | 실제 변경 ID와 세대의 적용별 연결. 모은 필드는 이를 요약하며 의도·쓰지 않은 직전 기록은 담지 않음 |
+
+각 적용 전에 필수 TBL-009 run:<id> 판 번호를 올립니다. 목록·되돌리기는 실행 기록의 마지막 적용 세대가 이 표지와 정확히 같고 모든 실제 변경 연결이 완전할 때만 허용합니다. 두 번째 기록 쓰기에서 실패해 첫 적용까지만 담은 정상 파일이 남아도 표지가 달라 대상이 되지 않습니다. 선택적인 실행 기록 실패는 실제 적용을 막지 않지만 반드시 실패 로그에 남고 그 실행은 목록·되돌리기에서 빠집니다. 글·인용은 여기에 복제하지 않습니다. `runs`의 세 항목 제목과 되돌리기 이유는 남아 있는 항목·줄 기록에서 그때 읽어 보여 줍니다.
+
 ## 쓰기와 잠금
 
 ### 덧붙이기
@@ -411,7 +496,7 @@ JSON Lines 파일(원문 기록, `logs/`의 기록, 넣기 기록)은 이렇게 
 1. 파일의 잠금을 잡습니다.
 2. 줄이 잘린 뒤처럼 파일의 마지막 바이트가 LF가 아니면, LF부터 씁니다.
 3. 줄과 그 LF를 쓰기 호출 한 번으로 쓰고, 잠금을 풀기 전에 시스템에 넘깁니다. fsync는 하지 않습니다. 전원이 끊기면 마지막 줄 몇 개를 잃을 수 있지만, 파일을 읽을 수 없게 되지는 않습니다(SPEC-007).
-4. 잠금을 풉니다.
+4. 잠금을 풉니다. 2026-11-03부터 정리 답은 줄 단위 편집을 하고, 고치거나 지운 줄의 직전 글은 기기에 보관 기간 동안 둡니다(TBL-119).
 
 쓰기가 짧으면 호출자는 기록 잠금을 계속 쥔 채 쓰기 전 `fstat`으로 잰 크기로 파일을 줄여 되돌리고 실패를 올립니다.
 
@@ -448,16 +533,17 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 | 잠금 | 파일 | 잡는 동안 | 새로 적기 | 넘겨받는 때 |
 | --- | --- | --- | --- | --- |
 | 기억 폴더 잠금 | `store.lock` | 기억 폴더 정보나 기억 설정의 변경 하나, 또는 변환 | 30초마다 | 2분 뒤 |
-| 정리 잠금 | `projects/<project>/curation.lock` | 정리 프로세스 한 번 전체, 그 프로젝트의 보관 기간 처리, 또는 다시 시작하기(SPEC-012) | 적어도 1분마다 | 10분 뒤 |
+| 정리 잠금 | `projects/<project>/curation.lock` | 정리 프로세스 한 번 전체, 그 프로젝트의 보관 기간 처리, 다시 시작하기 또는 되돌리기(SPEC-012, SPEC-145) | 적어도 1분마다 | 10분 뒤 |
 | 동기화 잠금 | `sync/sync.lock` | 동기화 한 번 | 1분마다 | 10분 뒤 |
-| 정리된 층 잠금 | `projects/<project>/layer.lock` | 그 프로젝트의 적용, 잊기, 지운 기록, 고정, 풀기, 합치기 하나, 보관 기간 처리의 원문 기록이나 넣기 기록 파일 하나 다시 쓰기나 지우기, 또는 그 기억 지우기 | 30초마다 | 2분 뒤 |
+| 정리된 층 잠금 | `projects/<project>/layer.lock` | 그 프로젝트의 적용, 잊기, 지운 기록, 고정, 풀기, 합치기, 후보 닫기, 되돌리기 하나, 보관 기간 처리의 원문 기록이나 넣기 기록 파일 하나 다시 쓰기나 지우기, 또는 그 기억 지우기 | 30초마다 | 2분 뒤 |
+| 알림 횟수 잠금 | `projects/<project>/notices/conflict-counts.lock` | 충돌 횟수 한 번 예약·갱신. 레이어 쓰기는 레이어 뒤에 잡음 | 갱신 안 함 | 10초 |
 | 원문 기록 잠금 | `projects/<project>/raw/<log>.lock` | 표지를 함께 만드는 덧붙이기 하나, 다시 쓰기의 마지막 읽기와 옮기기, 또는 보관 기간 처리의 마지막 읽기와 파일 지우기. 그 세션의 넣기 기록도 이 잠금을 씀 | 새로 적지 않음 | 10초 뒤(SPEC-007) |
 | `logs/` 잠금 | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | 덧붙이기 하나 | 새로 적지 않음 | 10초 뒤 |
 
 - 잠금은 배타적 만들기로 만드는 파일이며, 파일이 있는 동안 만들기는 실패합니다. 잠금에는 쥔 프로세스의 ID, 기기 ID, 시각, 무작위 토큰을 적습니다. 쥔 쪽은 수정 시각을 고쳐 잠금을 새로 적고, 그 시각이 표가 허용하는 것보다 오래되면 잠금은 오래된 것입니다. 오래됨은 이 기기의 시계와 잠금의 수정 시각을 견주므로 기억 폴더는 로컬 디스크에 둡니다. 시계가 앞으로 뛰거나 서버 시계가 다른 네트워크 폴더에서는 살아 있는 잠금이 오래돼 보일 수 있으며, 그 쥔 쪽은 다음 확인에서 토큰이 없어진 것을 압니다.
 - 오래된 잠금을 넘겨받으려면, 프로세스는 그것을 자기만의 이름(`<lock>.<random>.stale`)으로 바꾸고, 이름을 바꾼 파일이 자기가 오래됐다고 본 토큰을 담고 있는지 확인한 뒤, 그것을 지우고 잠금을 새로 만듭니다. 다른 토큰을 담고 있으면 새 잠금이었던 것이므로, 그사이 잠금이 다시 생기지 않았으면 제자리에 돌려놓고 물러납니다.
 - 쥔 쪽은 변경하기 전마다 잠금이 아직 자기 토큰을 담고 있는지 확인합니다. 잠금을 잃은 프로세스는 더는 아무것도 바꾸지 않습니다.
-- 순서: 기억 폴더, 정리, 동기화, 정리된 층, 원문 기록, `logs/`. 프로세스는 이 순서에서 뒤의 잠금을 쥔 채로 앞의 잠금을 기다리지 않으므로, 두 프로세스가 서로를 기다리는 일이 없습니다. 같은 종류의 잠금은 기억 폴더에 대한 상대 경로 문자열 순서로 잡으며, Windows에서는 대소문자를 가리지 않습니다. 한 프로세스가 여러 기억 폴더를 다룰 때에는 부모를 해석한 전체 잠금 경로를 `/` 구분자로 정규화하여 폴더 사이에도 같은 순서를 적용하며, Windows에서는 대소문자를 가리지 않습니다. 각 폴더 안에서는 공통 루트 접두어로 인해 기존 상대 경로 순서가 유지됩니다. 명시적 경로의 순서는 프로세스 기본 기억 폴더를 조회하지 않습니다.
+- 순서: 기억 폴더, 정리, 동기화, 정리된 층, 알림 횟수, 원문 기록, `logs/`. 프로세스는 이 순서에서 뒤의 잠금을 쥔 채로 앞의 잠금을 기다리지 않으므로, 두 프로세스가 서로를 기다리는 일이 없습니다. 같은 종류의 잠금은 기억 폴더에 대한 상대 경로 문자열 순서로 잡으며, Windows에서는 대소문자를 가리지 않습니다. 한 프로세스가 여러 기억 폴더를 다룰 때에는 부모를 해석한 전체 잠금 경로를 `/` 구분자로 정규화하여 폴더 사이에도 같은 순서를 적용하며, Windows에서는 대소문자를 가리지 않습니다. 각 폴더 안에서는 공통 루트 접두어로 인해 기존 상대 경로 순서가 유지됩니다. 명시적 경로의 순서는 프로세스 기본 기억 폴더를 조회하지 않습니다.
 - 훅은 원문 기록 잠금과 logs/ 잠금을 잡고 보통 훅의 기한까지만 기다립니다(SPEC-008). 기록 길은 지우기 처리 뒤 50ms 동안 원문·저장소 기록 복원 잠금을 기다리고, 기한 뒤에도 잠금마다 한 번은 시도합니다. 다른 복원 읽기는 다른 잠금 없이 호출자 기한 안에서 그 기록 잠금을 잠시 잡습니다. 기록 길에서 잡은 원문 기록과 저장소 기록 복원은 끝까지 합니다(TASK-060).
 - 읽기에는 잠금이 필요 없습니다. 모든 다시 쓰기가 옮기기로 끝나므로, 읽는 쪽은 옛 파일이나 새 파일을 온전히 봅니다.
 - 프로젝트의 보관 기간 처리는 그 정리 잠금을 잡고 돌므로, 원문 기록 파일을 통째로 지우면 정리 진행 기록에서도 뺍니다. 정리 프로세스가 잠금을 쥐고 있으면, 보관 기간 처리는 그 프로젝트를 다음 세션 시작으로 미룹니다. 파일이 지워진 뒤에 이어 연 세션은 `seq` 1부터 새 파일을 시작합니다.
@@ -472,11 +558,20 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 - 검색 색인은 변환하지 않습니다. 다른 판의 색인, 또는 다른 임베딩 모델이나 벡터 길이로 만든 색인은 지우고 다시 만듭니다. 낱말은 바로, 벡터는 항목을 다시 임베딩해서 만들며, 요청마다 사용량 기록 한 줄을 씁니다.
 - 확인이 끝난 뒤 저장 단위를 호환되지 않게 바꾸려면, 단계 계약이 말하는 대로 관리자의 결정이 필요합니다.
 
+C2는 기억 폴더 형식 2를 목표로 합니다. C1은 항목·현재 상태를 아직 쓰지 않지만 정리 진행 기록은 엄격하게 읽습니다. 형식 1에 recent.run이나 undo 종류를 더하면 C1이 거부하므로 단순 선택 필드 추가가 하위 호환이라는 판단을 쓰지 않습니다. 확인한 C1 헤더의 형식 2 응답은 store-newer입니다. C2 검색 색인도 undone 제약을 갖는 판 2로 새로 만들며, C3 서버·동기화 형식은 여기서 정하지 않습니다. 이 PR은 계약만 쓰고 실행 코드·실제 이관은 TASK-031 이후에 만듭니다.
+
+실제 이관 전에 이전 패키지의 훅·백그라운드 쓰기가 끝나고 다시 시작하지 않는 유지보수 구간을 확인합니다. 이전 호스트를 닫고 대상 저장소의 이전 쓰기를 배수하며, 저장소·모든 프로젝트의 정리·레이어·원문 잠금을 기존 종류/경로 순서로 잡습니다. 증명할 수 없거나 잠금 중이면 이관을 거부하고 강제 탈취하지 않습니다. store.lock 하나만으로 잠금 밖에서 준비 중인 C1 쓰기가 배제된다고 주장하지 않습니다.
+
+C2 자료를 하나라도 쓰기 전에 C1이 자동 복원할 수 있는 store.json 및 헤더 백업을 형식 2/migrating 표지로 디스크에 남겨 검증합니다. 백업을 먼저 표지하고 primary를 다음에 표지할 수 있으며 그 사이 중단이면 아직 C2 자료가 없어야 합니다. primary만 올리고 형식 1 .bak를 남기지 않습니다. 자동 복원 경로의 헤더 tmp·백업도 점검하고 원본 보존본은 그 경로 밖에 둡니다. 재개 가능한 기록은 각 단계 뒤의 상태를 구분하며, 표지가 완전한 뒤 파일을 하나씩 다시 쓰고 마지막에 migrating을 제거합니다. 어떤 중간 상태나 primary 손상/누락도 구 C1이 형식 1 백업을 되살려 C2 자료에 쓰는 길을 만들지 않아야 합니다. 실제 이관 시험은 모든 경계의 중단·재개와 오래된 클라이언트 복원을 포함합니다.
+
+
 ## 기기 밖으로 나가는 것
 
 - 동기화가 켜진 동안 동기화 저장소로: 정리된 층(TBL-012\~TBL-017)과 동기화 저장소 표지(TBL-018). 그 밖에는 없습니다(SPEC-027).
 - Anthropic과 OpenAI로: 기능 명세의 AI 호출이 보내는 것. 모두 지우기 처리를 거친 턴, 현재 상태, 항목 목록, 항목, 프롬프트, 찾기 요청입니다.
 - 절대 나가지 않는 것: 원문 기록 파일(지우기 처리한 턴은 정리 요청 안에서만 나감), 검색 색인, 사용량 기록, 실패 기록, 훅 소요 시간, 넣기 기록, 알림, 정리 전 턴 표지, 정리 진행 기록, 기억 설정, 동기화 정보, 기억 폴더 정보.
+
+줄 기록·실행 기록·판 번호 표지·충돌 횟수 상한은 기기 밖으로 절대 보내지 않습니다. conflicts.json을 보내거나 합치는 일은 C3 설계가 정합니다.
 
 ## 상한
 
@@ -495,6 +590,7 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 | 실패 기록과 넣기 기록 | 보관 기간 | 이 파일 |
 | 사용량 기록 | 모두 지우기까지 | SPEC-037 |
 | 지운 기록, 프로젝트 지운 기록, 빠진 현재 상태 줄, 고정 기록 | 계속 | SPEC-028, SPEC-029 |
+| 줄 기록과 실행 기록 | 각 기록·실행 시각부터 보관 기간 | SPEC-009, SPEC-144 |
 
 정리 프로세스의 변경이 항목의 상한을 넘으면, 확인에 실패한 변경처럼 버리고 정리 진행 기록에서 셉니다(SPEC-016). 상한을 넘은 현재 상태는 SPEC-017이 말하는 대로 줄입니다.
 
@@ -512,19 +608,19 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 | SPEC-006 | 폴더나 줄 종류 빼기 | TBL-002 | TBL-002 |
 | SPEC-007 | 멈춘 뒤에도 원문 기록을 읽을 수 있게 하기 | TBL-007 | TBL-007, TBL-004 |
 | SPEC-008 | 세션을 막지 않기 | 없음 | TBL-004, TBL-005 |
-| SPEC-009 | 보관 기간이 지난 원문 기록 줄 지우기 | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
+| SPEC-009 | 보관 기간이 지난 원문 기록 줄 지우기 | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017, TBL-119, TBL-121 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005, TBL-119, TBL-121 |
 | SPEC-010 | 정리 시작 조건을 만족하면 정리 시작하기 | TBL-002, TBL-008, TBL-009 | 다시 만들 때 TBL-009와 TBL-008 |
 | SPEC-011 | 임시 기기에서 자주 정리하고 동기화하기 | TBL-002 | 사용자의 환경 설정을 거쳐 TBL-002 |
 | SPEC-012 | 프로젝트마다 정리를 하나만 돌리기 | TBL-009, TBL-016, TBL-017 | TBL-009 |
 | SPEC-013 | 정리 프로세스를 뒤에서 돌리기 | TBL-002 | TBL-004 |
 | SPEC-014 | 정리 모델에 묻기 | TBL-002 | TBL-003 |
-| SPEC-015 | 요청마다 입력 100,000토큰 아래로 지키기 | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022 | TBL-009, TBL-003 |
-| SPEC-016 | 제안된 변경 적용하기 | TBL-007, TBL-012 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
-| SPEC-017 | 출처와 함께 현재 상태 고치기 | TBL-013, TBL-012 | TBL-013, TBL-009 |
+| SPEC-015 | 요청마다 입력 100,000토큰 아래로 지키기 | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022, TBL-120 | TBL-009, TBL-003 |
+| SPEC-016 | 제안된 변경 적용하기 | TBL-007, TBL-012, TBL-120 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003, TBL-120 |
+| SPEC-017 | 출처와 함께 현재 상태 고치기 | TBL-013, TBL-012, TBL-119 | TBL-013, TBL-009, TBL-119, TBL-004 |
 | SPEC-018 | 실패한 정리 다루기 | TBL-009 | TBL-009, TBL-010, TBL-003, TBL-004 |
-| SPEC-019 | 프로젝트를 주마다 통합하기 | TBL-002, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-009, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
+| SPEC-019 | 프로젝트를 주마다 통합하기 | TBL-002, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-009, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003, TBL-119, TBL-120 |
 | SPEC-020 | 인용은 한 번만 확인하기 | TBL-007, TBL-012 | TBL-012 |
-| SPEC-021 | 시작 요약에 기억 더하기 | TBL-001, TBL-002, TBL-010, TBL-013, TBL-014, TBL-012 | TBL-011, TBL-010, TBL-005 |
+| SPEC-021 | 시작 요약에 기억 더하기 | TBL-001, TBL-002, TBL-010, TBL-013, TBL-014, TBL-012, TBL-016 | TBL-011, TBL-010, TBL-005 |
 | SPEC-022 | 시작 요약에 알림 보여 주기 | TBL-010, TBL-009, TBL-008, TBL-002, TBL-006 | TBL-010 |
 | SPEC-023 | 프롬프트에 맞게 기억 불러오기 | TBL-002, TBL-011, TBL-012, TBL-019, TBL-020, TBL-021, TBL-022 | TBL-011, TBL-003, TBL-004, TBL-005 |
 | SPEC-024 | 넣는 기억을 참고 자료로 표시하기 | TBL-012 | 없음 |
@@ -536,13 +632,16 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 | SPEC-030 | 프로젝트의 기억 켜기 | TBL-002 | TBL-001, TBL-002, TBL-009 |
 | SPEC-031 | 기억 전용 키는 정해진 곳에서만 읽기 | 없음: 키는 절대 저장하지 않음 | 없음 |
 | SPEC-032 | 모델 호출마다 사용량 기록하기 | TBL-002 | TBL-003 |
-| SPEC-033 | 기억 상태 보여 주기와 정리 다시 시작하기 | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006, TBL-008, TBL-009, TBL-012, TBL-014 | TBL-009 |
-| SPEC-034 | 항목 고정하기와 풀기 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010 | TBL-014, TBL-010 |
-| SPEC-035 | 항목 잊기 | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020 |
+| SPEC-033 | 기억 상태 보여 주기와 정리 다시 시작하기 | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006, TBL-008, TBL-009, TBL-012, TBL-014, TBL-120, TBL-121 | TBL-009 |
+| SPEC-034 | 항목 고정하기와 풀기 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010, TBL-009 | TBL-014, TBL-010, TBL-009 |
+| SPEC-035 | 항목 잊기 | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016, TBL-009, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020, TBL-009, TBL-119, TBL-120 |
 | SPEC-036 | 프로젝트의 기억 끄기 | TBL-002 | TBL-002 |
-| SPEC-037 | 한 프로젝트의 기억 지우기 | TBL-002, TBL-007, TBL-012, TBL-014 | TBL-007\~TBL-015와 검색 색인을 지우고, 동기화가 없으면 TBL-016도 지움; TBL-002를 쓰고, 동기화가 켜져 있으면 TBL-017도 씀 |
+| SPEC-037 | 한 프로젝트의 기억 지우기 | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | TBL-007~TBL-015, 검색 색인, TBL-119~TBL-121을 삭제. 동기화가 꺼졌으면 TBL-016도 삭제. TBL-002를 쓰며 동기화가 켜졌으면 TBL-017을 씀 |
 | SPEC-038 | 기기의 기억 모두 지우기 | 기억 폴더 | 기억 폴더를 지움 |
 | SPEC-039 | 두 도구가 기억 폴더 하나를 함께 쓰기 | TBL-001 | 없음 |
+| SPEC-143 | 충돌 후보를 보이고 정리하기 | TBL-009, TBL-010, TBL-012, TBL-120 | TBL-009, TBL-010, TBL-120 |
+| SPEC-144 | 실행마다 기록 남기기 | TBL-009, TBL-121 | TBL-009, TBL-121, TBL-004 |
+| SPEC-145 | 실행 되돌리기 | TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-016, TBL-017, TBL-119, TBL-120, TBL-121 | TBL-009, TBL-010, TBL-012, TBL-013, TBL-014, TBL-015, TBL-019, TBL-020, TBL-021, TBL-022, TBL-119, TBL-120, TBL-121, TBL-004 |
 
 `index_items`(TBL-020)의 줄을 지우면 `index_vectors`와 `index_terms`(TBL-021, TBL-022)의 그 항목 줄도 지워집니다.
 
@@ -564,6 +663,12 @@ erDiagram
   TOMBSTONE |o--o{ RAW_LOG_ENTRY : "인용 위치를 적음"
   INJECTION_LINE }o--o{ MEMORY_ITEM : "넣은 항목을 적음"
   NOTICE }o--o| MEMORY_ITEM : "옮긴 고정을 적음"
+  LINE_HISTORY }o--o| STATE_LINE : "보관 중인 직전 글"
+  LINE_HISTORY }o--o| RUN_LOG : "완전한 연결로만 되돌릴 수 있음"
+  CONFLICT_CANDIDATE }o--o{ MEMORY_ITEM : "남아 있는 양쪽 항목"
+  CONFLICT_SHOWING_COUNTER ||--o| CONFLICT_CANDIDATE : "후보 수명 동안 영구 보존하는 최고 표시 수"
+  RUN_LOG }o--o{ MEMORY_ITEM : "ID와 수정 번호만"
+  RUN_LOG }o--o{ STATE_LINE : "ID와 수정 번호만"
   MEMORY_ITEM ||--o| INDEX_ITEMS : "색인됨"
   INDEX_ITEMS ||--o| INDEX_VECTORS : "임베딩됨"
   INDEX_ITEMS ||--o{ INDEX_TERMS : "낱말로 나뉨"
@@ -577,7 +682,7 @@ erDiagram
   MEMORY_ITEM {
     string id PK "i_..."
     string kind
-    string status "current, superseded, withdrawn"
+    string status "current, superseded, withdrawn, undone"
     string superseded_by FK
   }
   QUOTE {
@@ -592,6 +697,25 @@ erDiagram
   }
   TOMBSTONE {
     string item PK "잊은 항목"
+  }
+  LINE_HISTORY {
+    string epoch
+    int generation
+    string line FK
+    string run FK
+    string text
+  }
+  CONFLICT_CANDIDATE {
+    string id PK "c_..."
+    string status "open, settled, dismissed"
+  }
+  CONFLICT_SHOWING_COUNTER {
+    string candidate PK
+    int high_water "0~3, 알림을 지워도 보존"
+  }
+  RUN_LOG {
+    string id PK "r_..."
+    string kind "curate, consolidate, undo"
   }
   INDEX_ITEMS {
     string item PK
@@ -608,7 +732,7 @@ erDiagram
 3. 위치는 코드 포인트로 셉니다. 잊기는 인용 범위를 길이 그대로 U+FFFD로 채우므로, 그 줄의 다른 인용 위치가 그대로입니다. 채운 자리는 잊은 글이 얼마나 길었는지를 보여 줍니다.
 4. 정리 프로세스가 그대로 두거나 말만 바꾸는 동안 ID를 지키는 현재 상태 줄, 그리고 시작 훅이 읽지 않는 파일에 글 없이 계속 두는 빠진 줄의 기록.
 5. 항목 상한: 제목 200바이트, 글 4,000바이트, 2,000바이트까지의 인용 1\~20개. 넘는 변경은 자르지 않고 버립니다.
-6. 보관: 실패 기록과 넣기 기록은 보관 기간 동안, 훅 소요 시간은 8일, 사용량 기록은 모두 지우기까지. 지운 기록, 빠진 줄, 고정 기록은 계속.
+6. 보관: 실패 기록과 넣기 기록은 보관 기간 동안, 훅 소요 시간은 8일, 사용량 기록은 모두 지우기까지. 지운 기록, 빠진 줄, 고정 기록은 계속. 줄 기록과 실행 기록도 보관 기간이 지나면 지웁니다.
 7. 프로젝트마다 보통 SQLite 표로 된 검색 색인. FTS5 대신 플러그인 자체의 낱말 나누기를 쓰고, 변환하지 않고 다시 만듭니다.
 8. 항목 목록은 결정 인용의 UTC 날짜로 새것부터.
 9. 잃은 정리 진행 기록은 인용과 출처로 다시 만듭니다. 턴을 두 번 정리할 수 있으며, 중복은 통합이 합칩니다.

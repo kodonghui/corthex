@@ -2,7 +2,7 @@
 
 [한국어](memory.ko.md)
 
-Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: the maintainer checked the scope on 2026-10-24, without changes (the stage's first checkpoint). On 2026-10-27 the maintainer confirmed D1, D2 and D4 as recommended and chose the new server sync option for D3 below. The default raw retention period is 100 days. When this file and its Korean translation differ, this file is the source.
+Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: the maintainer checked the scope on 2026-10-24, without changes (the stage's first checkpoint). On 2026-10-27 the maintainer confirmed D1, D2 and D4 as recommended and chose the new server sync option for D3 below. The default raw retention period is 100 days. When this file and its Korean translation differ, this file is the source. On 2026-11-03 the maintainer approved three C2 additions, extending REQ-037 and REQ-054 and adding REQ-219 to REQ-225.
 
 Inputs: the contexts and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md) (CTX-001 to CTX-005, TERM-001 to TERM-046). Words in this file have the meanings given there.
 
@@ -41,6 +41,7 @@ This release, the M1 plan of the design draft in three steps: C1 capture and the
 | 2026-10-27 | **D3.** Each device keeps files and a SQLite search index. A user-operated Postgres server with pgvector syncs the curated layer. Devices use only an HTTPS sync gateway, accessible with the Python standard library, and never connect to the database directly. Each device has its own separately revocable token. Raw logs and search indexes stay on their devices; sync remains off by default. The private Git repository option was not chosen. | REQ-008, REQ-042, REQ-043, REQ-044, REQ-046, REQ-061 |
 | 2026-10-27 | **D4.** As recommended, use two memory-only keys. The Anthropic key is created in the Console organization linked to the maintainer's subscription, whose monthly API credit pays for curation; the separate OpenAI key is for embeddings. | REQ-050, REQ-051, REQ-052 |
 | 2026-10-27 | Set default raw retention to 100 days, keeping its configurable range of 1 to 3,650 days. | REQ-009 |
+| 2026-11-03 | Three additions to C2, from the maintainer's review of recent memory research: the curator changes the current state line by line, and the device keeps each changed or removed line's previous text for the retention period; possible disagreements between current items become conflict candidates that the user settles, never replacements that the curator makes on its own reading; and each curation, consolidation and undo is logged as a run that the user can undo. | REQ-015, REQ-037, REQ-054, REQ-219 to REQ-225 |
 
 The maintainer's own words and where they were said are in the maintainer's records, not in this repository.
 
@@ -99,7 +100,7 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in 0.1.0 already), w
 | REQ-034 | The per-prompt hook shall finish within 1 second at the 95th percentile. | non-functional | Must | CTX-003 | Design draft 2026-10-23 | active |
 | REQ-035 | If recall does not finish in time or an API fails, then the memory plugin shall let the prompt go on without injecting anything. | functional | Must | CTX-003 | Design draft 2026-10-23 | active |
 | REQ-036 | The memory plugin shall inject only items of the session's project. | functional | Must | CTX-003 | Problem 3 | active |
-| REQ-037 | The memory plugin shall never inject a superseded or withdrawn item. | functional | Must | CTX-003 | Problem 5 | active |
+| REQ-037 | The memory plugin shall never inject a superseded, withdrawn or undone item. | functional | Must | CTX-003 | Problem 5 | active |
 | REQ-038 | The memory plugin shall mark injected memory as reference material, not instructions, with a note to read the original when it matters. | functional | Must | CTX-003 | Design draft 2026-10-23 | active |
 | REQ-039 | The memory plugin shall show text from repository files only in fixed formats. | functional | Must | CTX-003 | Review of 0.1.0, 2026-10-24 | built |
 | REQ-040 | The memory plugin shall compute embeddings with the OpenAI embeddings API. | functional | Must | CTX-003 | Decision 2026-10-23 | active |
@@ -116,7 +117,7 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in 0.1.0 already), w
 | REQ-051 | The memory plugin shall never write an API key to a file, a log or the memory store. | functional | Must | CTX-005 | Repository rules | active |
 | REQ-052 | When the memory plugin calls a model API, the memory plugin shall append the model, the token counts and the estimated cost to the usage log. | functional | Must | CTX-005 | Decision 2026-10-24 | active |
 | REQ-053 | When the user asks for the memory status, the memory skill shall show the enabled projects, the last curation, the unprocessed turns, this month's usage and the recent failures of recording and curation. It shall also show the median and the 95th percentile of hook timings. | functional | Should | CTX-005 | Design draft 2026-10-23; 2026-10-27 | active |
-| REQ-054 | When the user forgets an item, the memory plugin shall remove the item, its search index entries and the raw log text that it quotes. Raw log text that an item which stays also quotes shall be kept. | functional | Must | CTX-005 | Design draft 2026-10-23; 2026-10-27 | active |
+| REQ-054 | When the user forgets an item, the memory plugin shall remove the item, its search index entries, the raw log text that it quotes and the kept previous texts of current state lines that cite either. Raw log text that an item which stays also quotes shall be kept. | functional | Must | CTX-005 | Design draft 2026-10-23; 2026-10-27 | active |
 | REQ-055 | When the user asks to purge memory and confirms it, the memory plugin shall delete the memory store. | functional | Should | CTX-005 | Design draft 2026-10-23 | active |
 | REQ-056 | The memory plugin shall keep the memory store outside the hosts' plugin data folders. | non-functional | Must | CTX-005 | Hook tests 2026-10-23 (Claude Code deletes a plugin's data folder with the plugin) | active |
 | REQ-057 | Where the memory configuration excludes folders of a project or kinds of raw log entries, the memory plugin shall not record them. | functional | Should | CTX-005 | Design draft 2026-10-23 (projects with protected data) | active |
@@ -131,6 +132,13 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in 0.1.0 already), w
 | REQ-194 | When the user asks to delete one project's memory and confirms it, the memory plugin shall delete that project's memory on the device and, where sync is turned on, leave a project tombstone. | functional | Should | CTX-005 | Spec confirmed 2026-10-27; SPEC-037 | active |
 | REQ-195 | While the device is a temporary device, the memory plugin shall curate after every turn and, where sync is turned on, sync after every curation. | functional | Should | CTX-002 | Spec confirmed 2026-10-27; SPEC-011 | active |
 | REQ-196 | When the memory plugin injects items into a prompt or a start summary, it shall log where and which items, without their text. | functional | Should | CTX-003 | Spec confirmed 2026-10-27; SPEC-021, SPEC-023 | active |
+| REQ-219 | When the curator updates the current state, the curator shall change only the lines that the new turns affect, and every line that its answer does not name shall stay as it is. | functional | Should | CTX-002 | Decision 2026-11-03 (I-03; problems 1 and 5) | active |
+| REQ-220 | When a current state line is changed or removed, the memory plugin shall keep the line's previous text and provenance on the device for the retention period. | functional | Should | CTX-002 | Decision 2026-11-03 (I-03; problem 5) | active |
+| REQ-221 | When the curator finds that an item may disagree with a current item that it does not replace, the memory plugin shall record a conflict candidate and keep both items current. | functional | Should | CTX-002 | Decision 2026-11-03 (I-04; problem 5) | active |
+| REQ-222 | While a project has open conflict candidates, the memory plugin shall tell the user in the start summary, a limited number of times for each candidate. | functional | Should | CTX-003 | Decision 2026-11-03 (I-04; problem 5) | active |
+| REQ-223 | When the user asks to dismiss a conflict candidate, the memory skill shall close it and leave both items as they are. | functional | Could | CTX-005 | Decision 2026-11-03 (I-04) | active |
+| REQ-224 | When a curation, consolidation or undo changes a project's memory, the memory plugin shall log the run on the device, with the IDs of what it changed, for the retention period. | functional | Should | CTX-002 | Decision 2026-11-03 (I-05; problem 5) | active |
+| REQ-225 | When the user asks to undo a run and confirms, the memory plugin shall reverse that run's changes as a new run, keep what later runs changed, and say what it kept. | functional | Should | CTX-005 | Decision 2026-11-03 (I-05; problem 5) | active |
 
 For REQ-195, consent reaches a temporary device only through the user's own environment setup. REQ-061 extends the constraint already built for 0.1.0 hooks to the sync gateway client; it does not claim the new client is built.
 

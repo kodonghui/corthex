@@ -5,63 +5,158 @@
     "valid": {
       "defaults": {},
       "with-sync": {
-        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
+        "consent": {
+          "at": "2026-10-25T09:12:03.004Z",
+          "version": 1
+        },
         "projects": {
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["private-notes"], "kinds": []}
+            "left_out": {
+              "folders": [
+                "private-notes"
+              ],
+              "kinds": []
+            }
           }
         },
-        "retention": {"days": 100},
-        "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
+        "retention": {
+          "days": 100
+        },
+        "sync": {
+          "address": "https://github.com/<owner>/<memory-repository>.git",
+          "branch": "main"
+        }
       },
       "temporary": {
-        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
-        "projects": {"corthex": {"enabled": true, "since": "2026-10-25T09:12:03.004Z"}},
+        "consent": {
+          "at": "2026-10-25T09:12:03.004Z",
+          "version": 1
+        },
+        "projects": {
+          "corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z"
+          }
+        },
         "temporary": true,
-        "sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "main"}
+        "sync": {
+          "address": "https://github.com/<owner>/<memory-repository>.git",
+          "branch": "main"
+        }
       },
       "tuned": {
-        "consent": {"at": "2026-10-25T09:12:03.004Z", "version": 1},
+        "consent": {
+          "at": "2026-10-25T09:12:03.004Z",
+          "version": 1
+        },
         "projects": {
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["vendor", "docs/private"], "kinds": ["boundary"]}
+            "left_out": {
+              "folders": [
+                "vendor",
+                "docs/private"
+              ],
+              "kinds": [
+                "boundary"
+              ]
+            }
           },
-          "corthex-docs": {"enabled": false, "since": "2026-10-20T08:00:00.000Z"}
+          "corthex-docs": {
+            "enabled": false,
+            "since": "2026-10-20T08:00:00.000Z"
+          }
         },
-        "retention": {"days": 90},
-        "triggers": {"turns": 5, "minutes": 60},
-        "models": {"effort": "high", "dims": 1536},
-        "recall": {"threshold": 0.35, "skip": 12}
+        "retention": {
+          "days": 90
+        },
+        "triggers": {
+          "turns": 5,
+          "minutes": 60
+        },
+        "models": {
+          "effort": "high",
+          "dims": 1536
+        },
+        "recall": {
+          "threshold": 0.35,
+          "skip": 12
+        }
       },
       "own-prices": {
         "prices": {
           "taken": "2026-11-02",
-          "from": ["https://platform.claude.com/docs/en/about-claude/pricing"],
+          "from": [
+            "https://platform.claude.com/docs/en/about-claude/pricing"
+          ],
           "models": {
-            "claude-haiku-5-5": {"input": 0.1, "output": 0.5},
-            "text-embedding-3-small": {"input": 0.02, "output": 0}
+            "claude-haiku-5-5": {
+              "input": 0.1,
+              "output": 0.5
+            },
+            "text-embedding-3-small": {
+              "input": 0.02,
+              "output": 0
+            }
           }
         }
       }
     },
     "invalid": {
-      "unknown-field": {"retention": {"days": 100, "weeks": 2}},
-      "retention-too-long": {"retention": {"days": 4000}},
-      "dims-too-small": {"models": {"dims": 32}},
-      "effort": {"models": {"effort": "extreme"}},
-      "consent-without-version": {"consent": {"at": "2026-10-25T09:12:03.004Z"}},
-      "time-without-milliseconds": {"consent": {"at": "2026-10-25T09:12:03Z", "version": 1}},
-      "project-name": {"projects": {"Corthex": {"enabled": true, "since": "2026-10-25T09:12:03.004Z"}}},
+      "unknown-field": {
+        "retention": {
+          "days": 100,
+          "weeks": 2
+        }
+      },
+      "retention-too-long": {
+        "retention": {
+          "days": 4000
+        }
+      },
+      "dims-too-small": {
+        "models": {
+          "dims": 32
+        }
+      },
+      "effort": {
+        "models": {
+          "effort": "extreme"
+        }
+      },
+      "consent-without-version": {
+        "consent": {
+          "at": "2026-10-25T09:12:03.004Z"
+        }
+      },
+      "time-without-milliseconds": {
+        "consent": {
+          "at": "2026-10-25T09:12:03Z",
+          "version": 1
+        }
+      },
+      "project-name": {
+        "projects": {
+          "Corthex": {
+            "enabled": true,
+            "since": "2026-10-25T09:12:03.004Z"
+          }
+        }
+      },
       "folder-up": {
         "projects": {
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["../notes"], "kinds": []}
+            "left_out": {
+              "folders": [
+                "../notes"
+              ],
+              "kinds": []
+            }
           }
         }
       },
@@ -70,7 +165,12 @@
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["/etc"], "kinds": []}
+            "left_out": {
+              "folders": [
+                "/etc"
+              ],
+              "kinds": []
+            }
           }
         }
       },
@@ -79,7 +179,12 @@
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["docs\\private"], "kinds": []}
+            "left_out": {
+              "folders": [
+                "docs\\private"
+              ],
+              "kinds": []
+            }
           }
         }
       },
@@ -88,7 +193,12 @@
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": ["docs\n"], "kinds": []}
+            "left_out": {
+              "folders": [
+                "docs\n"
+              ],
+              "kinds": []
+            }
           }
         }
       },
@@ -97,28 +207,61 @@
           "corthex": {
             "enabled": true,
             "since": "2026-10-25T09:12:03.004Z",
-            "left_out": {"folders": [], "kinds": ["tool"]}
+            "left_out": {
+              "folders": [],
+              "kinds": [
+                "tool"
+              ]
+            }
           }
         }
       },
-      "branch-dash": {"sync": {"address": "https://github.com/<owner>/<memory-repository>.git", "branch": "-main"}},
-      "sync-without-address": {"sync": {"branch": "main"}},
+      "branch-dash": {
+        "sync": {
+          "address": "https://github.com/<owner>/<memory-repository>.git",
+          "branch": "-main"
+        }
+      },
+      "sync-without-address": {
+        "sync": {
+          "branch": "main"
+        }
+      },
       "price-without-output": {
         "prices": {
           "taken": "2026-11-02",
-          "from": ["https://platform.claude.com/docs/en/about-claude/pricing"],
-          "models": {"claude-haiku-5-5": {"input": 0.1}}
+          "from": [
+            "https://platform.claude.com/docs/en/about-claude/pricing"
+          ],
+          "models": {
+            "claude-haiku-5-5": {
+              "input": 0.1
+            }
+          }
         }
       },
       "price-page-http": {
         "prices": {
           "taken": "2026-11-02",
-          "from": ["http://platform.claude.com/docs/en/about-claude/pricing"],
-          "models": {"claude-haiku-5-5": {"input": 0.1, "output": 0.5}}
+          "from": [
+            "http://platform.claude.com/docs/en/about-claude/pricing"
+          ],
+          "models": {
+            "claude-haiku-5-5": {
+              "input": 0.1,
+              "output": 0.5
+            }
+          }
         }
       },
-      "threshold-text": {"recall": {"threshold": "0.3"}},
-      "temporary-text": {"temporary": "yes"}
+      "threshold-text": {
+        "recall": {
+          "threshold": "0.3"
+        }
+      },
+      "temporary-text": {
+        "temporary": "yes"
+      }
     }
   },
   "curate": {
@@ -131,43 +274,80 @@
             "targets": [],
             "kind": "decision",
             "quotes": [
-              {"entry": "e_5h2j8n3p0r6t", "words": "Let's keep the four hooks in one script."},
-              {"entry": "e_8m1k4r7t2w5y", "words": "one script now serves the four hooks"}
+              {
+                "entry": "e_5h2j8n3p0r6t",
+                "words": "Let's keep the four hooks in one script."
+              },
+              {
+                "entry": "e_8m1k4r7t2w5y",
+                "words": "one script now serves the four hooks"
+              }
             ],
             "title": "One script serves the four hooks",
-            "text": "The memory plugin's four hooks run one script, with the hook's name as its argument."
+            "text": "The memory plugin's four hooks run one script, with the hook's name as its argument.",
+            "conflicts": []
           }
         ],
         "state": {
-          "goal": [],
-          "decisions": [
+          "change": [],
+          "add": [
             {
-              "keeps": "s_4n8q2v6x0z3b",
-              "text": "Raw logs stay on the device.",
-              "cites": ["i_7f3k2m9q4x1v"],
-              "changes": []
+              "part": "decisions",
+              "after": "",
+              "text": "One script serves the four hooks.",
+              "cites": [],
+              "changes": [
+                1
+              ]
             },
-            {"keeps": "", "text": "One script serves the four hooks.", "cites": [], "changes": [1]}
+            {
+              "part": "progress",
+              "after": "",
+              "text": "The hook script is written.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": [
+                1
+              ]
+            },
+            {
+              "part": "next",
+              "after": "",
+              "text": "Test the four hooks on Windows.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": []
+            }
           ],
-          "progress": [
-            {"keeps": "", "text": "The hook script is written.", "cites": ["e_8m1k4r7t2w5y"], "changes": [1]}
-          ],
-          "blockers": [],
-          "next": [{"keeps": "", "text": "Test the four hooks on Windows.", "cites": ["e_8m1k4r7t2w5y"], "changes": []}]
+          "remove": []
         }
       },
       "replace-a-preference": {
         "changes": [
           {
             "action": "replace",
-            "targets": ["i_5c8e1h4j7m0p"],
+            "targets": [
+              "i_5c8e1h4j7m0p"
+            ],
             "kind": "preference",
-            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "Answer me in Korean from now on."}],
+            "quotes": [
+              {
+                "entry": "e_6b9e2h5k8n1r",
+                "words": "Answer me in Korean from now on."
+              }
+            ],
             "title": "Answers in Korean",
-            "text": "The user wants the agent's answers in Korean."
+            "text": "The user wants the agent's answers in Korean.",
+            "conflicts": []
           }
         ],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
       "in-korean": {
         "changes": [
@@ -175,32 +355,165 @@
             "action": "add",
             "targets": [],
             "kind": "lesson",
-            "quotes": [{"entry": "e_3d6g9k2n5q8t", "words": "노션 표는 모두 데이터베이스로 만들어 주세요."}],
+            "quotes": [
+              {
+                "entry": "e_3d6g9k2n5q8t",
+                "words": "노션 표는 모두 데이터베이스로 만들어 주세요."
+              }
+            ],
             "title": "노션의 표는 데이터베이스로 만든다",
-            "text": "노션 사본의 표는 모두 인라인 데이터베이스로 만든다."
+            "text": "노션 사본의 표는 모두 인라인 데이터베이스로 만든다.",
+            "conflicts": []
           }
         ],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
-      "nothing": {"changes": [], "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}}
+      "nothing": {
+        "changes": [],
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
+      },
+      "remove-a-line": {
+        "changes": [],
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": [
+            {
+              "line": "s_4n8q2v6x0z3b",
+              "why": "The user finished this work."
+            }
+          ]
+        }
+      },
+      "possible-disagreement": {
+        "changes": [
+          {
+            "action": "add",
+            "targets": [],
+            "kind": "decision",
+            "quotes": [
+              {
+                "entry": "e_5h2j8n3p0r6t",
+                "words": "Let's keep the four hooks in one script."
+              },
+              {
+                "entry": "e_8m1k4r7t2w5y",
+                "words": "one script now serves the four hooks"
+              }
+            ],
+            "title": "One script serves the four hooks",
+            "text": "The memory plugin's four hooks run one script, with the hook's name as its argument.",
+            "conflicts": [
+              "i_7f3k2m9q4x1v"
+            ]
+          }
+        ],
+        "state": {
+          "change": [],
+          "add": [
+            {
+              "part": "decisions",
+              "after": "",
+              "text": "One script serves the four hooks.",
+              "cites": [],
+              "changes": [
+                1
+              ]
+            },
+            {
+              "part": "progress",
+              "after": "",
+              "text": "The hook script is written.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": [
+                1
+              ]
+            },
+            {
+              "part": "next",
+              "after": "",
+              "text": "Test the four hooks on Windows.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": []
+            }
+          ],
+          "remove": []
+        }
+      },
+      "change-one-line": {
+        "changes": [],
+        "state": {
+          "change": [
+            {
+              "line": "s_4n8q2v6x0z3b",
+              "text": "The hook checks now pass.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": [],
+              "why": "The new turn completes this work."
+            }
+          ],
+          "add": [],
+          "remove": []
+        }
+      }
     },
     "invalid": {
       "unknown-action": {
         "changes": [
           {
             "action": "delete",
-            "targets": ["i_5c8e1h4j7m0p"],
+            "targets": [
+              "i_5c8e1h4j7m0p"
+            ],
             "kind": "fact",
-            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "quotes": [
+              {
+                "entry": "e_6b9e2h5k8n1r",
+                "words": "x"
+              }
+            ],
             "title": "x",
-            "text": "x"
+            "text": "x",
+            "conflicts": []
           }
         ],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
       "no-quote": {
-        "changes": [{"action": "add", "targets": [], "kind": "fact", "quotes": [], "title": "x", "text": "x"}],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "changes": [
+          {
+            "action": "add",
+            "targets": [],
+            "kind": "fact",
+            "quotes": [],
+            "title": "x",
+            "text": "x",
+            "conflicts": []
+          }
+        ],
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
       "reasoning-field": {
         "changes": [
@@ -208,38 +521,92 @@
             "action": "add",
             "targets": [],
             "kind": "fact",
-            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "quotes": [
+              {
+                "entry": "e_6b9e2h5k8n1r",
+                "words": "x"
+              }
+            ],
             "title": "x",
             "text": "x",
-            "reason": "x"
+            "reason": "x",
+            "conflicts": []
           }
         ],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
       "id-in-capitals": {
         "changes": [
           {
             "action": "withdraw",
-            "targets": ["I_5C8E1H4J7M0P"],
+            "targets": [
+              "I_5C8E1H4J7M0P"
+            ],
             "kind": "fact",
-            "quotes": [{"entry": "e_6b9e2h5k8n1r", "words": "x"}],
+            "quotes": [
+              {
+                "entry": "e_6b9e2h5k8n1r",
+                "words": "x"
+              }
+            ],
             "title": "x",
-            "text": "x"
+            "text": "x",
+            "conflicts": []
           }
         ],
-        "state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": []
+        }
       },
       "line-citing-a-line": {
         "changes": [],
         "state": {
-          "goal": [{"keeps": "", "text": "x", "cites": ["s_4n8q2v6x0z3b"], "changes": []}],
+          "change": [],
+          "add": [
+            {
+              "part": "goal",
+              "after": "",
+              "text": "x",
+              "cites": [
+                "s_4n8q2v6x0z3b"
+              ],
+              "changes": []
+            }
+          ],
+          "remove": []
+        }
+      },
+      "missing-state": {
+        "changes": []
+      },
+      "missing-line-reason": {
+        "changes": [],
+        "state": {
+          "change": [],
+          "add": [],
+          "remove": [
+            {
+              "line": "s_4n8q2v6x0z3b"
+            }
+          ]
+        }
+      },
+      "old-whole-state": {
+        "changes": [],
+        "state": {
+          "goal": [],
           "decisions": [],
           "progress": [],
           "blockers": [],
           "next": []
         }
-      },
-      "missing-state": {"changes": []}
+      }
     }
   },
   "merge": {
@@ -248,23 +615,76 @@
       "two-into-one": {
         "merges": [
           {
-            "items": ["i_3r6t9w2y5a8d", "i_5c8e1h4j7m0p"],
-            "quotes": [{"item": "i_5c8e1h4j7m0p", "number": 1}, {"item": "i_3r6t9w2y5a8d", "number": 1}],
+            "items": [
+              "i_3r6t9w2y5a8d",
+              "i_5c8e1h4j7m0p"
+            ],
+            "quotes": [
+              {
+                "item": "i_5c8e1h4j7m0p",
+                "number": 1
+              },
+              {
+                "item": "i_3r6t9w2y5a8d",
+                "number": 1
+              }
+            ],
             "title": "Answers in Korean",
             "text": "The user wants the agent's answers in Korean."
           }
-        ]
+        ],
+        "conflicts": []
       },
-      "none": {"merges": []}
+      "none": {
+        "merges": [],
+        "conflicts": []
+      },
+      "possible-disagreement": {
+        "merges": [],
+        "conflicts": [
+          {
+            "items": [
+              "i_7f3k2m9q4x1v",
+              "i_9k1m4t7v2q8x"
+            ]
+          }
+        ]
+      }
     },
     "invalid": {
       "no-items": {
-        "merges": [{"items": [], "quotes": [{"item": "i_5c8e1h4j7m0p", "number": 1}], "title": "x", "text": "x"}]
+        "merges": [
+          {
+            "items": [],
+            "quotes": [
+              {
+                "item": "i_5c8e1h4j7m0p",
+                "number": 1
+              }
+            ],
+            "title": "x",
+            "text": "x"
+          }
+        ],
+        "conflicts": []
       },
       "quote-by-words": {
         "merges": [
-          {"items": ["i_5c8e1h4j7m0p"], "quotes": [{"item": "i_5c8e1h4j7m0p", "words": "x"}], "title": "x", "text": "x"}
-        ]
+          {
+            "items": [
+              "i_5c8e1h4j7m0p"
+            ],
+            "quotes": [
+              {
+                "item": "i_5c8e1h4j7m0p",
+                "words": "x"
+              }
+            ],
+            "title": "x",
+            "text": "x"
+          }
+        ],
+        "conflicts": []
       }
     }
   },
@@ -277,7 +697,9 @@
             {
               "keeps": "s_6p9s2v5y8b1e",
               "text": "Ship corthex-memory 0.2.0.",
-              "cites": ["i_2b8d0w5n6c3r"],
+              "cites": [
+                "i_2b8d0w5n6c3r"
+              ],
               "changes": []
             }
           ],
@@ -285,21 +707,47 @@
             {
               "keeps": "s_4n8q2v6x0z3b",
               "text": "Raw logs stay on the device.",
-              "cites": ["i_7f3k2m9q4x1v"],
+              "cites": [
+                "i_7f3k2m9q4x1v"
+              ],
               "changes": []
             }
           ],
           "progress": [],
           "blockers": [],
-          "next": [{"keeps": "", "text": "Write the hook script.", "cites": ["e_8m1k4r7t2w5y"], "changes": []}]
+          "next": [
+            {
+              "keeps": "",
+              "text": "Write the hook script.",
+              "cites": [
+                "e_8m1k4r7t2w5y"
+              ],
+              "changes": []
+            }
+          ]
         }
       }
     },
     "invalid": {
-      "missing-part": {"state": {"goal": [], "decisions": [], "progress": [], "blockers": []}},
+      "missing-part": {
+        "state": {
+          "goal": [],
+          "decisions": [],
+          "progress": [],
+          "blockers": []
+        }
+      },
       "line-without-changes": {
         "state": {
-          "goal": [{"keeps": "", "text": "x", "cites": ["i_2b8d0w5n6c3r"]}],
+          "goal": [
+            {
+              "keeps": "",
+              "text": "x",
+              "cites": [
+                "i_2b8d0w5n6c3r"
+              ]
+            }
+          ],
           "decisions": [],
           "progress": [],
           "blockers": [],
@@ -332,9 +780,15 @@
         "say": "Memory is on for corthex. Curation waits for CORTHEX_MEMORY_ANTHROPIC_API_KEY, which the environment does not have.",
         "data": {
           "project": "corthex",
-          "keys": {"anthropic": "missing", "openai": "present"},
+          "keys": {
+            "anthropic": "missing",
+            "openai": "present"
+          },
           "retention_days": 100,
-          "left_out": {"folders": [], "kinds": []}
+          "left_out": {
+            "folders": [],
+            "kinds": []
+          }
         }
       },
       "on-clash": {
@@ -342,14 +796,21 @@
         "outcome": "refused",
         "code": "not-in-project",
         "say": "This folder belongs to two projects, corthex and corthex-docs, so memory cannot tell which one. The corthex skill can fix the project list.",
-        "data": {"clash": ["corthex", "corthex-docs"]}
+        "data": {
+          "clash": [
+            "corthex",
+            "corthex-docs"
+          ]
+        }
       },
       "off-already": {
         "command": "off",
         "outcome": "nothing",
         "code": "not-enabled",
         "say": "Memory is already off for corthex.",
-        "data": {"project": "corthex"}
+        "data": {
+          "project": "corthex"
+        }
       },
       "status": {
         "command": "status",
@@ -364,9 +825,18 @@
             "folder": "~/.corthex/corthex-memory",
             "writable": true
           },
-          "configuration": {"valid": true},
-          "consent": {"needed": 1, "given": 1, "at": "2026-10-25T09:12:03.004Z"},
-          "keys": {"anthropic": "rejected", "openai": "present"},
+          "configuration": {
+            "valid": true
+          },
+          "consent": {
+            "needed": 1,
+            "given": 1,
+            "at": "2026-10-25T09:12:03.004Z"
+          },
+          "keys": {
+            "anthropic": "rejected",
+            "openai": "present"
+          },
           "temporary": false,
           "test_servers": [],
           "projects": [
@@ -382,22 +852,54 @@
               },
               "unprocessed": 14,
               "oldest": "2026-10-25T10:02:44.130Z",
-              "stopped": {"at": "2026-10-25T11:40:12.590Z", "by": "curate", "errors": ["authentication_error"]},
-              "consolidation": {"due": "2026-11-01T09:12:03.004Z", "failures": 0},
-              "items": {"current": 12, "superseded": 2, "withdrawn": 0},
-              "pins": ["i_7f3k2m9q4x1v"]
+              "stopped": {
+                "at": "2026-10-25T11:40:12.590Z",
+                "by": "curate",
+                "errors": [
+                  "authentication_error"
+                ]
+              },
+              "consolidation": {
+                "due": "2026-11-01T09:12:03.004Z",
+                "failures": 0
+              },
+              "items": {
+                "current": 12,
+                "superseded": 2,
+                "withdrawn": 0
+              },
+              "pins": [
+                "i_7f3k2m9q4x1v"
+              ]
             }
           ],
           "usage": {
             "month": "2026-10",
             "models": [
-              {"model": "claude-haiku-5-5", "calls": 9, "input": 61230, "output": 18044, "cost": 0.015145},
-              {"model": "text-embedding-3-small", "calls": 31, "input": 2410, "output": 0, "cost": 4.8e-05}
+              {
+                "model": "claude-haiku-5-5",
+                "calls": 9,
+                "input": 61230,
+                "output": 18044,
+                "cost": 0.015145
+              },
+              {
+                "model": "text-embedding-3-small",
+                "calls": 31,
+                "input": 2410,
+                "output": 0,
+                "cost": 4.8e-05
+              }
             ],
             "cost": 0.015193
           },
           "failures": [
-            {"at": "2026-10-25T11:40:12.511Z", "step": "curate", "project": "corthex", "error": "authentication_error"}
+            {
+              "at": "2026-10-25T11:40:12.511Z",
+              "step": "curate",
+              "project": "corthex",
+              "error": "authentication_error"
+            }
           ],
           "hooks": [
             {
@@ -407,7 +909,9 @@
               "median_ms": 48,
               "p95_ms": 95,
               "last": "2026-10-25T11:31:00.250Z",
-              "outcomes": {"ok": 6}
+              "outcomes": {
+                "ok": 6
+              }
             },
             {
               "hook": "prompt",
@@ -416,7 +920,10 @@
               "median_ms": 212,
               "p95_ms": 431,
               "last": "2026-10-25T11:52:30.007Z",
-              "outcomes": {"ok": 39, "left-out": 1}
+              "outcomes": {
+                "ok": 39,
+                "left-out": 1
+              }
             },
             {
               "hook": "end-of-turn",
@@ -425,10 +932,15 @@
               "median_ms": 9,
               "p95_ms": 31,
               "last": "2026-10-25T11:53:02.441Z",
-              "outcomes": {"ok": 37, "no-answer": 1}
+              "outcomes": {
+                "ok": 37,
+                "no-answer": 1
+              }
             }
           ],
-          "sync": {"state": "off"},
+          "sync": {
+            "state": "off"
+          },
           "waits": []
         }
       },
@@ -447,9 +959,21 @@
         "data": {
           "project": "corthex",
           "failures": [
-            {"at": "2026-10-25T11:40:12.511Z", "kind": "curate", "error": "authentication_error"},
-            {"at": "2026-10-25T11:10:40.032Z", "kind": "curate", "error": "authentication_error"},
-            {"at": "2026-10-25T10:41:05.977Z", "kind": "curate", "error": "authentication_error"}
+            {
+              "at": "2026-10-25T11:40:12.511Z",
+              "kind": "curate",
+              "error": "authentication_error"
+            },
+            {
+              "at": "2026-10-25T11:10:40.032Z",
+              "kind": "curate",
+              "error": "authentication_error"
+            },
+            {
+              "at": "2026-10-25T10:41:05.977Z",
+              "kind": "curate",
+              "error": "authentication_error"
+            }
           ],
           "unprocessed": 14
         },
@@ -554,7 +1078,14 @@
         "outcome": "refused",
         "code": "pin-no-room",
         "say": "The start summary has no room for another pinned item. Unpin one of these first.",
-        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x", "pins": ["i_7f3k2m9q4x1v", "i_2b8d0w5n6c3r"]}
+        "data": {
+          "project": "corthex",
+          "item": "i_9k1m4t7v2q8x",
+          "pins": [
+            "i_7f3k2m9q4x1v",
+            "i_2b8d0w5n6c3r"
+          ]
+        }
       },
       "pin-not-found": {
         "command": "pin",
@@ -580,7 +1111,11 @@
         "outcome": "refused",
         "code": "item-not-current",
         "say": "i_3r6t9w2y5a8d was superseded by i_7f3k2m9q4x1v, which can be pinned instead.",
-        "data": {"project": "corthex", "item": "i_3r6t9w2y5a8d", "current": "i_7f3k2m9q4x1v"}
+        "data": {
+          "project": "corthex",
+          "item": "i_3r6t9w2y5a8d",
+          "current": "i_7f3k2m9q4x1v"
+        }
       },
       "forget-asks": {
         "command": "forget",
@@ -591,13 +1126,37 @@
           "project": "corthex",
           "item": "i_7f3k2m9q4x1v",
           "with": [],
-          "also": ["i_5c8e1h4j7m0p"],
-          "state_lines": [{"line": "s_4n8q2v6x0z3b", "part": "decisions", "text": "Raw logs stay on the device."}],
-          "pinned": ["i_7f3k2m9q4x1v"],
-          "raw": [
-            {"entry": "e_1a4d7g0j3m6q", "log": "claude-code-3f9a0c41d2e87b65", "forgotten": [], "kept": [[6, 39]]}
+          "also": [
+            "i_5c8e1h4j7m0p"
           ],
-          "outside": ["host-transcript", "providers", "devices-without-sync"]
+          "state_lines": [
+            {
+              "line": "s_4n8q2v6x0z3b",
+              "part": "decisions",
+              "text": "Raw logs stay on the device."
+            }
+          ],
+          "pinned": [
+            "i_7f3k2m9q4x1v"
+          ],
+          "raw": [
+            {
+              "entry": "e_1a4d7g0j3m6q",
+              "log": "claude-code-3f9a0c41d2e87b65",
+              "forgotten": [],
+              "kept": [
+                [
+                  6,
+                  39
+                ]
+              ]
+            }
+          ],
+          "outside": [
+            "host-transcript",
+            "providers",
+            "devices-without-sync"
+          ]
         },
         "confirm": "7m2q9v3k"
       },
@@ -606,7 +1165,15 @@
         "outcome": "confirm",
         "code": "ok",
         "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin. Sync is off, so other devices keep theirs.",
-        "data": {"project": "corthex", "deleted": {"items": 14, "entries": 212, "pins": 1}, "sync": "off"},
+        "data": {
+          "project": "corthex",
+          "deleted": {
+            "items": 14,
+            "entries": 212,
+            "pins": 1
+          },
+          "sync": "off"
+        },
         "confirm": "a8d3k0m5"
       },
       "purge-files-left": {
@@ -616,10 +1183,18 @@
         "say": "The memory store is deleted except one file that another program holds. Close that program and delete the folder by hand.",
         "data": {
           "folder": "~/.corthex/corthex-memory",
-          "projects": ["corthex"],
-          "deleted": {"items": 14, "entries": 212, "usage": 40},
+          "projects": [
+            "corthex"
+          ],
+          "deleted": {
+            "items": 14,
+            "entries": 212,
+            "usage": 40
+          },
           "sync": "off",
-          "left": ["projects/corthex/index.db"]
+          "left": [
+            "projects/corthex/index.db"
+          ]
         }
       },
       "leave-out-done": {
@@ -627,21 +1202,41 @@
         "outcome": "done",
         "code": "ok",
         "say": "vendor is now left out of recording for corthex.",
-        "data": {"project": "corthex", "folders": ["private-notes", "vendor"], "kinds": []}
+        "data": {
+          "project": "corthex",
+          "folders": [
+            "private-notes",
+            "vendor"
+          ],
+          "kinds": []
+        }
       },
       "leave-out-outside": {
         "command": "leave-out",
         "outcome": "refused",
         "code": "folder-outside",
         "say": "../notes is outside the project corthex.",
-        "data": {"project": "corthex", "folders": ["private-notes"], "kinds": [], "outside": ["../notes"]}
+        "data": {
+          "project": "corthex",
+          "folders": [
+            "private-notes"
+          ],
+          "kinds": [],
+          "outside": [
+            "../notes"
+          ]
+        }
       },
       "retention-asks": {
         "command": "retention",
         "outcome": "confirm",
         "code": "ok",
         "say": "A retention period of 7 days deletes 180 raw log entries at the next session start.",
-        "data": {"days": 7, "was": 30, "entries": 180},
+        "data": {
+          "days": 7,
+          "was": 30,
+          "entries": 180
+        },
         "confirm": "q4w8z1c6"
       },
       "sync-public": {
@@ -661,7 +1256,11 @@
         "outcome": "confirm",
         "code": "not-checked",
         "say": "Memory cannot check whether this repository is private. Turn sync on only if it is.",
-        "data": {"state": "off", "address": "/srv/git/memory.git", "branch": "main"},
+        "data": {
+          "state": "off",
+          "address": "/srv/git/memory.git",
+          "branch": "main"
+        },
         "confirm": "m6p1t9x4"
       },
       "sync-now": {
@@ -702,7 +1301,9 @@
         "outcome": "refused",
         "code": "configuration-invalid",
         "say": "The memory configuration is not valid at retention.days, so memory is off on this device. The retention command can set it again.",
-        "data": {"field": "retention.days"}
+        "data": {
+          "field": "retention.days"
+        }
       },
       "unknown-command": {
         "command": "none",
@@ -716,7 +1317,200 @@
         "outcome": "failed",
         "code": "internal",
         "say": "Memory hit an unexpected error; the failure log names it.",
-        "data": {"error": "KeyError"}
+        "data": {
+          "error": "KeyError"
+        }
+      },
+      "conflicts-none": {
+        "command": "conflicts",
+        "outcome": "nothing",
+        "code": "ok",
+        "say": "No open conflict candidates.",
+        "data": {
+          "project": "corthex",
+          "open": []
+        }
+      },
+      "conflict-not-found": {
+        "command": "conflicts",
+        "outcome": "refused",
+        "code": "conflict-not-found",
+        "say": "No conflict candidate matches that ID.",
+        "data": {
+          "project": "corthex",
+          "open": [],
+          "candidate": "c_3k8m2q7v9x1b"
+        }
+      },
+      "conflicts-dismissed": {
+        "command": "conflicts",
+        "outcome": "done",
+        "code": "ok",
+        "say": "The conflict candidate was dismissed. Both items remain current.",
+        "data": {
+          "project": "corthex",
+          "open": [],
+          "dismissed": "c_3k8m2q7v9x1b"
+        }
+      },
+      "runs-none": {
+        "command": "runs",
+        "outcome": "nothing",
+        "code": "ok",
+        "say": "No complete retained runs.",
+        "data": {
+          "project": "corthex",
+          "runs": [],
+          "limit": 10
+        }
+      },
+      "undo-not-found": {
+        "command": "undo",
+        "outcome": "refused",
+        "code": "run-not-found",
+        "say": "No retained run matches that ID.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "runs": []
+        }
+      },
+      "undo-keeps-later": {
+        "command": "undo",
+        "outcome": "nothing",
+        "code": "ok",
+        "say": "Later changes are kept. There is nothing safe to undo.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "kept": [
+            {
+              "by": "",
+              "why": "later-unlogged-change",
+              "target": "i_7f3k2m9q4x1v"
+            }
+          ]
+        }
+      },
+      "undo-asks": {
+        "command": "undo",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Review the changes before undoing this run.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "changes": {
+            "saved": 1,
+            "statuses": 0,
+            "merges": 0,
+            "lines": 0,
+            "pins": 0,
+            "conflicts": 0
+          },
+          "kept": [],
+          "binding": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "confirm": "7m2q9v3k"
+      },
+      "undo-done": {
+        "command": "undo",
+        "outcome": "done",
+        "code": "ok",
+        "say": "The run was undone as a new run.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "undo": "r_6b9e2h5k8n1r"
+        }
+      },
+      "undo-confirm-stale": {
+        "command": "undo",
+        "outcome": "confirm",
+        "code": "confirm-stale",
+        "say": "The undo preview changed. Review it again.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "changes": {
+            "saved": 1,
+            "statuses": 0,
+            "merges": 0,
+            "lines": 0,
+            "pins": 0,
+            "conflicts": 0
+          },
+          "kept": [],
+          "binding": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "confirm": "3k8m2q7v"
+      },
+      "conflicts-open": {
+        "command": "conflicts",
+        "outcome": "done",
+        "code": "ok",
+        "say": "One open conflict candidate; both items remain current.",
+        "data": {
+          "project": "corthex",
+          "open": [
+            {
+              "candidate": "c_3k8m2q7v9x1b",
+              "items": [
+                {
+                  "item": "i_9k1m4t7v2q8x",
+                  "kind": "decision",
+                  "speaker": "user",
+                  "date": "2026-10-25",
+                  "title": "Curation runs in one detached background process"
+                },
+                {
+                  "item": "i_3k8m2q7v9x1b",
+                  "kind": "decision",
+                  "speaker": "user",
+                  "date": "2026-10-25",
+                  "title": "A different current statement"
+                }
+              ],
+              "at": "2026-11-03T00:00:00.000Z"
+            }
+          ]
+        }
+      },
+      "runs-with-one": {
+        "command": "runs",
+        "outcome": "done",
+        "code": "ok",
+        "say": "One complete retained run, newest first.",
+        "data": {
+          "project": "corthex",
+          "runs": [
+            {
+              "run": "r_3k8m2q7v9x1b",
+              "kind": "curate",
+              "at": "2026-11-03T00:00:00.000Z",
+              "ended": "2026-11-03T00:00:01.000Z",
+              "counts": {
+                "saved": 1,
+                "statuses": 0,
+                "merges": 0,
+                "lines": 0,
+                "pins": 0,
+                "conflicts": 0
+              },
+              "saved": [
+                {
+                  "item": "i_9k1m4t7v2q8x",
+                  "kind": "decision",
+                  "speaker": "user",
+                  "date": "2026-10-25",
+                  "title": "Curation runs in one detached background process"
+                }
+              ],
+              "undoable": true
+            }
+          ],
+          "limit": 10
+        }
       }
     },
     "invalid": {
@@ -728,7 +1522,11 @@
         "data": {
           "folder": "~/.corthex/corthex-memory",
           "projects": [],
-          "deleted": {"items": 0, "entries": 0, "usage": 0},
+          "deleted": {
+            "items": 0,
+            "entries": 0,
+            "usage": 0
+          },
           "sync": "off"
         }
       },
@@ -737,7 +1535,9 @@
         "outcome": "done",
         "code": "ok",
         "say": "x",
-        "data": {"project": "corthex"},
+        "data": {
+          "project": "corthex"
+        },
         "confirm": "k3v9q2m7"
       },
       "wrong-outcome": {
@@ -745,30 +1545,161 @@
         "outcome": "failed",
         "code": "pin-no-room",
         "say": "x",
-        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x", "pins": []}
+        "data": {
+          "project": "corthex",
+          "item": "i_9k1m4t7v2q8x",
+          "pins": []
+        }
       },
       "data-of-another-command": {
         "command": "list",
         "outcome": "done",
         "code": "ok",
         "say": "x",
-        "data": {"project": "corthex", "item": "i_9k1m4t7v2q8x"}
+        "data": {
+          "project": "corthex",
+          "item": "i_9k1m4t7v2q8x"
+        }
       },
       "code-of-another-command": {
         "command": "list",
         "outcome": "refused",
         "code": "pin-no-room",
         "say": "x",
-        "data": {"project": "corthex", "items": [], "more": 0}
+        "data": {
+          "project": "corthex",
+          "items": [],
+          "more": 0
+        }
       },
-      "unknown-code": {"command": "status", "outcome": "failed", "code": "oops", "say": "x", "data": {}},
-      "empty-say": {"command": "off", "outcome": "done", "code": "ok", "say": "", "data": {"project": "corthex"}},
+      "unknown-code": {
+        "command": "status",
+        "outcome": "failed",
+        "code": "oops",
+        "say": "x",
+        "data": {}
+      },
+      "empty-say": {
+        "command": "off",
+        "outcome": "done",
+        "code": "ok",
+        "say": "",
+        "data": {
+          "project": "corthex"
+        }
+      },
       "key-in-data": {
         "command": "on",
         "outcome": "done",
         "code": "ok",
         "say": "x",
-        "data": {"project": "corthex", "key": "x"}
+        "data": {
+          "project": "corthex",
+          "key": "x"
+        }
+      },
+      "run-code-on-conflicts": {
+        "command": "conflicts",
+        "outcome": "refused",
+        "code": "run-not-found",
+        "say": "3 current items, newest first.",
+        "data": {
+          "project": "corthex",
+          "open": []
+        }
+      },
+      "undo-preview-missing-binding": {
+        "command": "undo",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Review the changes before undoing this run.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "changes": {
+            "saved": 1,
+            "statuses": 0,
+            "merges": 0,
+            "lines": 0,
+            "pins": 0,
+            "conflicts": 0
+          },
+          "kept": []
+        },
+        "confirm": "7m2q9v3k"
+      },
+      "undo-preview-invalid-binding": {
+        "command": "undo",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Review the changes before undoing this run.",
+        "data": {
+          "project": "corthex",
+          "run": "r_3k8m2q7v9x1b",
+          "changes": {
+            "saved": 1,
+            "statuses": 0,
+            "merges": 0,
+            "lines": 0,
+            "pins": 0,
+            "conflicts": 0
+          },
+          "kept": [],
+          "binding": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        },
+        "confirm": "7m2q9v3k"
+      },
+      "conflict-needs-two-items": {
+        "command": "conflicts",
+        "outcome": "done",
+        "code": "ok",
+        "say": "One open conflict candidate; both items remain current.",
+        "data": {
+          "project": "corthex",
+          "open": [
+            {
+              "candidate": "c_3k8m2q7v9x1b",
+              "items": [
+                {
+                  "item": "i_9k1m4t7v2q8x",
+                  "kind": "decision",
+                  "speaker": "user",
+                  "date": "2026-10-25",
+                  "title": "Curation runs in one detached background process"
+                }
+              ],
+              "at": "2026-11-03T00:00:00.000Z"
+            }
+          ]
+        }
+      },
+      "run-missing-counts": {
+        "command": "runs",
+        "outcome": "done",
+        "code": "ok",
+        "say": "One complete retained run, newest first.",
+        "data": {
+          "project": "corthex",
+          "runs": [
+            {
+              "run": "r_3k8m2q7v9x1b",
+              "kind": "curate",
+              "at": "2026-11-03T00:00:00.000Z",
+              "ended": "2026-11-03T00:00:01.000Z",
+              "saved": [
+                {
+                  "item": "i_9k1m4t7v2q8x",
+                  "kind": "decision",
+                  "speaker": "user",
+                  "date": "2026-10-25",
+                  "title": "Curation runs in one detached background process"
+                }
+              ],
+              "undoable": true
+            }
+          ],
+          "limit": 10
+        }
       }
     }
   }

@@ -2,9 +2,9 @@
 
 [한국어](README.ko.md)
 
-Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27, with the Git sync proposal superseded by D3. As chosen on 2026-10-24 for the depth of the design, the maintainer reviews these flows together with the functional spec (stage 04). When a file here and its Korean translation differ, the English file is the source.
+Stage 03 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27, with the Git sync proposal superseded by D3. As chosen on 2026-10-24 for the depth of the design, the maintainer reviews these flows together with the functional spec (stage 04). When a file here and its Korean translation differ, the English file is the source. On 2026-11-03 the C2 additions changed line history, conflict candidates and run logging, and added FL-117 for undo.
 
-Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065 and REQ-194 to REQ-196), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. D1, D2, D4 and the flows were confirmed on 2026-10-27. The Git proposal in FL-012 is superseded by the new D3 answer; the server sync flow needs separate confirmation before C3.
+Inputs: the requirements in [docs/02-prd/memory.md](../../02-prd/memory.md) (REQ-001 to REQ-065 and REQ-194 to REQ-196 and REQ-219 to REQ-225), and the contexts and glossary in [docs/01-domain/memory.md](../../01-domain/memory.md), whose meanings the words here keep. D1, D2, D4 and the flows were confirmed on 2026-10-27. The Git proposal in FL-012 is superseded by the new D3 answer; the server sync flow needs separate confirmation before C3.
 
 Each flow has its own file with a Mermaid flowchart, and each step names the requirements it serves. To keep its first chart readable, FL-005 draws how one proposed change is applied as a second chart. Each flow that calls a model API, the curator model or the OpenAI embeddings API, appends the call to the usage log at that step (REQ-052): FL-004 to FL-007 and FL-012.
 
@@ -22,6 +22,7 @@ Each flow has its own file with a Mermaid flowchart, and each step names the req
 | FL-010 | [Check the memory status](FL-010-check-the-status.md) | CTX-005 | The user asks for the memory status |
 | FL-011 | [Turn memory off](FL-011-turn-memory-off.md) | CTX-005 | The user asks to turn memory off |
 | FL-012 | [Sync memory between devices](FL-012-sync-memory.md) | CTX-004 | A sync point is reached |
+| FL-117 | [Undo a run](FL-117-undo-a-run.md) | CTX-005 | The user asks to undo a curation or consolidation |
 
 ## Where the flows run
 
@@ -31,7 +32,7 @@ Each flow has its own file with a Mermaid flowchart, and each step names the req
 | The user submits a prompt | FL-002, then FL-004 |
 | A turn ends | the end of FL-002 |
 | A session ends | a session boundary in the raw log, the same step as at the start in FL-003 (REQ-003) |
-| The user asks the agent, which follows the memory skill | FL-001 and FL-007 to FL-011 |
+| The user asks the agent, which follows the memory skill | FL-001, FL-007 to FL-011 and FL-117 |
 | In the background, started from one of the moments above | FL-005, FL-006 and FL-012 |
 
 Stage 06 fixes which hook of each host runs which step. The hook tests of 2026-10-23 saw the session start and prompt hooks run in both hosts; the end-of-turn hook has not been seen running yet, so the end of FL-002 rests on the hosts' documentation until stage 12 tests it.
