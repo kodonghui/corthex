@@ -1,0 +1,27 @@
+# Current native message branches
+
+[한국어](2026-11-04-memory-native-messages.ko.md)
+
+This follows [the native compatibility report](2026-11-04-memory-native-compat.md). PR #100 merged as `982fb4f10e8712aff89e0d472f9a10943283aa68` after all 12 jobs in run `41753711241` and exact-head normal Code/Security reviews passed. Its three artifacts matched the API digests and contain visible synthetic store evidence. The four native tool/lifecycle/retrust and input cases below retain that evidence; this follow-up adds repeatable current-default-profile own-parent and cross-session branches. All 45 original product hashes are unchanged from that main commit.
+
+Actual installed Claude Code 2.1.310 ran all three modes on each system with fixed loopback replies, fake keys and disposable profiles/projects/stores:
+
+| System | Python | Completed task | Own-parent agent message and completion | Two owned sessions |
+| --- | --- | --- | --- | --- |
+| Windows | 3.13.14 | verified | verified | verified |
+| Linux | 3.12.3 | verified | verified | verified |
+| macOS | 3.14.3 | verified | verified | verified |
+
+The nine final receipt hashes, seven executed controller hashes and package bindings are in aggregate `native-messages-qualified-v1.json`, SHA256 `d08fd59659a4aea766960f18cf82fcb9784383508926bb681f3a5e41269e8516`. Every receipt's controller hashes match the publication candidate. The actual installed package binds 46 files: 44 untouched product files, the declared QA hook configuration and the unchanged measurement helper. Each receipt separately retains all 45 original candidate hashes. The observer configuration and helper are instrumentation; this is not a claim that the installed whole-hook configuration is unmodified. Windows and Unix configuration digests differ by declared line endings.
+
+`native_prefix.py --kind agent` requires a successful real background-agent launch, the matching completed task ID, an actual successful native `SendMessage` to `main`, and one `<agent-message from="…">` from that exact agent in the parent session. Both the agent message and task completion reach UserPromptSubmit and produce `left-out`; the parent keeps four matching Korean records. The task-only mode remains separate and observes one task notification. Neither marker nor reserved message text appears in the memory store. Observed/unobserved prefix reporting is derived from actual captured hook inputs rather than model-request history.
+
+`cross_session.py` creates two uniquely named fixtures in one fresh, isolated host configuration. Both explicitly use `crossSessionInbound: accept` and `isolatePeerMachines: true`. The real sender's successful tool request must name the owned live receiver. Its positive acknowledgement, the actual `<cross-session-message` input's sender name and the receiving session ID must agree. The sender keeps four records; the receiver keeps its normal turn, a separate final answer and text-free boundaries, five records in total. The excluded incoming prompt has `left-out`, the extra answer has a distinct turn, and the marker/prefix occurs in zero memory files. No other user's session is contacted; default inbound policy is not tested.
+
+Controlled guards reject a different parent/agent, unrelated sender/receiver, duplicate delivery, missing or negative native acknowledgement and a modified installed worker. These are guard fixtures, not host observations. The package-copy guard preserves the original hook and worker bytes and declares the observer hashes. Visible exports include only synthetic raw and safe diagnostic JSONL, including failures. Models and owned processes are closed, and runner globals are restored.
+
+The initial Linux agent receipt had inconsistent unobserved-prefix metadata despite successful native qualification; it is retained. Input-derived reporting corrects that metadata. Earlier exploratory and pre-LF receipts remain observations; only the final nine receipts above bind the publication controller bytes. Product runtime, lock limits and the original retention stress test are unchanged.
+
+The retained PR #100 evidence supplies actual tools and transcript exclusion (TC-043), all five session sources in both hosts (TC-066), input fields/version/non-ASCII checks and the new message branches (TC-106), and historical Codex 0.1.0-to-0.2.0 trust/update/retrust (TC-107). Windows Codex clear/compact/fork and retrust retain separately hashed operator evidence matching the same 45 product files; Unix uses actual terminal CI. Claude's native transcript contains the tool marker, while pinned Codex reports a null transcript path; guarded API fixtures establish no transcript read. Legacy `<teammate-message` remains an API compatibility fixture, not an observed current default-profile message.
+
+Paired QA/WBS rows carry the formal verdicts. TC-040 is already counted and is not added again. TC-105's 100-ms p95 goal remains unmet, and [#95](https://github.com/kodonghui/corthex/issues/95), [#98](https://github.com/kodonghui/corthex/issues/98) and [#101](https://github.com/kodonghui/corthex/issues/101) remain open. TASK-028 asks for measured whole-hook times, not a passing p95 goal. Native fixed-reply checks are separate from actual-model agent walks in TASK-057, the consented real-user week, release decision and explicit tag approval. No original account profile, real-user activation, global installation or paid model call was used here.
