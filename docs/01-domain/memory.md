@@ -131,4 +131,4 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-137 | Run | One curation, consolidation or undo, logged on the device with the IDs of what it changed | CTX-002 | job, batch |
 | TERM-138 | Undo | A run that reverses an earlier run's changes and keeps what later runs changed | CTX-005 | rollback, revert |
 
-The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](nexus.md), which uses TERM-047 to TERM-097.
+The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/docs/01-domain/nexus.md), which uses TERM-047 to TERM-097.

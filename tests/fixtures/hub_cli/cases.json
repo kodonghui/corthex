@@ -1,0 +1,415 @@
+[
+  {
+    "id": "TC-1140",
+    "title": "API-133 snapshot · command-line-invalid",
+    "command": "snapshot",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1141",
+    "title": "API-133 snapshot · failed",
+    "command": "snapshot",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1143",
+    "title": "API-134 status · command-line-invalid",
+    "command": "status",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1148",
+    "title": "API-136 push · done",
+    "command": "push",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1149",
+    "title": "API-136 push · command-line-invalid",
+    "command": "push",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1150",
+    "title": "API-136 push · refused",
+    "command": "push",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1151",
+    "title": "API-136 push · failed",
+    "command": "push",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1152",
+    "title": "API-137 remove · done",
+    "command": "remove",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1153",
+    "title": "API-137 remove · command-line-invalid",
+    "command": "remove",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1154",
+    "title": "API-137 remove · refused",
+    "command": "remove",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1155",
+    "title": "API-137 remove · failed",
+    "command": "remove",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1157",
+    "title": "API-138 todo · command-line-invalid",
+    "command": "todo",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1158",
+    "title": "API-138 todo · refused",
+    "command": "todo",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1159",
+    "title": "API-138 todo · failed",
+    "command": "todo",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1160",
+    "title": "API-139 comment · done",
+    "command": "comment",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1162",
+    "title": "API-139 comment · refused",
+    "command": "comment",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1164",
+    "title": "API-139 comment · kept",
+    "command": "comment",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1166",
+    "title": "API-140 reply · command-line-invalid",
+    "command": "reply",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1170",
+    "title": "API-141 answered · done",
+    "command": "answered",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1171",
+    "title": "API-141 answered · command-line-invalid",
+    "command": "answered",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1172",
+    "title": "API-141 answered · refused",
+    "command": "answered",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1174",
+    "title": "API-141 answered · kept",
+    "command": "answered",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1175",
+    "title": "API-142 decide · done",
+    "command": "decide",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1176",
+    "title": "API-142 decide · command-line-invalid",
+    "command": "decide",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1177",
+    "title": "API-142 decide · refused",
+    "command": "decide",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1179",
+    "title": "API-142 decide · kept",
+    "command": "decide",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1180",
+    "title": "API-143 propose · done",
+    "command": "propose",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1181",
+    "title": "API-143 propose · command-line-invalid",
+    "command": "propose",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1182",
+    "title": "API-143 propose · refused",
+    "command": "propose",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1184",
+    "title": "API-143 propose · kept",
+    "command": "propose",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1185",
+    "title": "API-144 withdraw · done",
+    "command": "withdraw",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1186",
+    "title": "API-144 withdraw · command-line-invalid",
+    "command": "withdraw",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1187",
+    "title": "API-144 withdraw · refused",
+    "command": "withdraw",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1189",
+    "title": "API-144 withdraw · kept",
+    "command": "withdraw",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1190",
+    "title": "API-145 reflect · done",
+    "command": "reflect",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1191",
+    "title": "API-145 reflect · command-line-invalid",
+    "command": "reflect",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1192",
+    "title": "API-145 reflect · refused",
+    "command": "reflect",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1194",
+    "title": "API-145 reflect · kept",
+    "command": "reflect",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1195",
+    "title": "API-146 record · done",
+    "command": "record",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1196",
+    "title": "API-146 record · command-line-invalid",
+    "command": "record",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1197",
+    "title": "API-146 record · refused",
+    "command": "record",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1199",
+    "title": "API-146 record · kept",
+    "command": "record",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  },
+  {
+    "id": "TC-1200",
+    "title": "API-147 show · done",
+    "command": "show",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1201",
+    "title": "API-147 show · command-line-invalid",
+    "command": "show",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1202",
+    "title": "API-147 show · refused",
+    "command": "show",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1203",
+    "title": "API-147 show · failed",
+    "command": "show",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1204",
+    "title": "API-148 claim · done",
+    "command": "claim",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1205",
+    "title": "API-148 claim · command-line-invalid",
+    "command": "claim",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1206",
+    "title": "API-148 claim · refused",
+    "command": "claim",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1207",
+    "title": "API-148 claim · failed",
+    "command": "claim",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1208",
+    "title": "API-149 release · done",
+    "command": "release",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1209",
+    "title": "API-149 release · command-line-invalid",
+    "command": "release",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1210",
+    "title": "API-149 release · refused",
+    "command": "release",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1211",
+    "title": "API-149 release · failed",
+    "command": "release",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1212",
+    "title": "API-150 outbox · done",
+    "command": "outbox",
+    "outcome": "done",
+    "expected": "Exit 0 and documented answer/effect; no duplicate write."
+  },
+  {
+    "id": "TC-1213",
+    "title": "API-150 outbox · command-line-invalid",
+    "command": "outbox",
+    "outcome": "command-line-invalid",
+    "expected": "Exit 2; no HTTP request, queued write or secret in output."
+  },
+  {
+    "id": "TC-1214",
+    "title": "API-150 outbox · refused",
+    "command": "outbox",
+    "outcome": "refused",
+    "expected": "Exit 1; documented problem/refusal and no queued write."
+  },
+  {
+    "id": "TC-1215",
+    "title": "API-150 outbox · failed",
+    "command": "outbox",
+    "outcome": "failed",
+    "expected": "Exit 1; documented network/local failure and no queued write."
+  },
+  {
+    "id": "TC-1216",
+    "title": "API-150 outbox · kept",
+    "command": "outbox",
+    "outcome": "kept",
+    "expected": "Exit 3 for a kept write; outbox retry keeps order and contains neither credentials nor unredacted text."
+  }
+]

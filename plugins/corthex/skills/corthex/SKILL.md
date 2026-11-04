@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # CORTHEX
@@ -62,3 +62,7 @@ Every stage follows one six-slot contract: inputs, outputs, human view, sync, hu
 Read the project's `stages` settings and the artifacts they point to. For each stage, report one of done, in progress, not started or skipped, the last human checkpoint with its date, and the next action. A file that exists is not a finished stage: a stage is done when its checkpoint was passed and recorded.
 
 If the `corthex-hub` skill is installed, it keeps these states for every project and shows them on one page with the trace links between stages; read and record the states there.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

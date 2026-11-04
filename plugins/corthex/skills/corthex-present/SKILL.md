@@ -4,7 +4,7 @@ description: "CORTHEX stage 13, the presentation. Use when preparing a project d
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # Presentation
@@ -30,3 +30,7 @@ This skill covers one stage. Its contract, steps, checks and output template are
 - Every claim on a slide comes from a record, a test result or a demo the audience can see. Mark plans as plans.
 - Pick one way to make the demo video and keep to it; switching tools late costs more than it saves.
 - For a video built as HTML and rendered to MP4, and for what each slide should draw, use the `corthex-uxui` skill. It adds motion, transitions and sound to this stage's scene table, keeps the SCENE IDs, and measures flashes and loudness before anyone is shown the video.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.
