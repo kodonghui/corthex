@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -45,6 +47,139 @@ class NativeCompatibilityGateTest(unittest.TestCase):
 
     def test_pre_retrust_detects_failure_without_raw_change(self):
         self.diagnostic_change("failures")
+
+    def test_native_review_panel_requires_its_advertised_trust_action(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            for count in (1, 4):
+                path.write_text("", encoding="utf-8")
+                class ReviewPanel:
+                    data = bytearray(("Hooks need review\n%d hooks are new or changed\nTrust all and continue\n" % count).encode())
+                    panel = False
+                    def wait(self, predicate):
+                        if not predicate():
+                            raise AssertionError("Native terminal did not reach its expected state")
+                    def key(self, key, **options):
+                        if key == b"\r":
+                            self.panel = True
+                            self.data.extend(b"Hooks\nLifecycle hooks from config \x1b[0mand enabled plugins.\nt \x1b[0mtrust all\n")
+                        elif key == b"t" and self.panel:
+                            path.write_text("\n".join('trusted_hash = "fixture%d"' % i for i in range(count)), encoding="utf-8")
+                with self.subTest(hooks=count):
+                    self.trust.trust_hooks(ReviewPanel(), path, count)
+                    self.assertEqual(path.read_text(encoding="utf-8").count("trusted_hash"), count)
+
+    def test_lifecycle_quiet_precondition_waits_for_a_maintenance_lease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            lock = home / ".corthex/corthex-memory/projects/demo/curation.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"fixture lease\n")
+            def release():
+                time.sleep(.15)
+                lock.unlink()
+            child = threading.Thread(target=release); child.start()
+            started = time.monotonic()
+            try:
+                result = self.lifecycle.wait_quiet_store(home, quiet=.05)
+            finally:
+                child.join(timeout=2)
+            self.assertGreaterEqual(time.monotonic() - started, .2)
+            self.assertEqual(result["observed_leases"], [["projects/demo/curation.lock"]])
+            self.assertFalse(result["worker_completion_claimed"])
+
+    def test_busy_lifecycle_precondition_fails_without_changing_the_store(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            lock = home / ".corthex/corthex-memory/projects/demo/raw/native.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"fixture lease\n")
+            with self.assertRaises(AssertionError):
+                self.lifecycle.wait_quiet_store(home, timeout=.05, quiet=.02)
+            self.assertEqual(lock.read_bytes(), b"fixture lease\n")
+
+    def test_failed_native_runs_retain_raw_and_diagnostics_without_account_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            home, output = base / "home", base / "output"
+            for name in (".corthex/corthex-memory/projects/demo/raw/native.jsonl",
+                         ".corthex/corthex-memory/logs/failures-fixture.jsonl", ".codex/auth.json"):
+                path = home / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"synthetic fixture\n")
+            self.lifecycle.retain_store_evidence(home, output)
+            self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()),
+                             ["store-evidence/logs/failures-fixture.jsonl", "store-evidence/projects/demo/raw/native.jsonl"])
+
+    def test_lifecycle_copy_preserves_original_children_and_declares_its_two_observers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()
+            copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
+            report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
+            self.assertTrue(report["original_children_unchanged"])
+            self.assertEqual(len(report["candidate_sha256s"]), 45)
+            for name in ("scripts/hook.py", "scripts/worker.py"):
+                self.assertEqual((copy/name).read_bytes(), (ROOT/"plugins/corthex-memory"/name).read_bytes())
+            hooks = json.loads((copy/"hooks/hooks.json").read_bytes())["hooks"]
+            for event in ("SessionStart", "UserPromptSubmit"):
+                self.assertIn("lifecycle_prompt.py", hooks[event][0]["hooks"][0]["command"])
+            for event in ("Stop", "SessionEnd"):
+                self.assertNotIn("lifecycle_prompt.py", hooks[event][0]["hooks"][0]["command"])
+
+    def test_native_prompt_waits_for_observed_start_and_forwards_child_bytes_environment_and_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            (home/".corthex/corthex-memory").mkdir(parents=True)
+            script = home/"lifecycle_prompt.py"
+            shutil.copyfile(ROOT/".github/hook-check/lifecycle_prompt.py", script)
+            (home/"hook.py").write_text("import os,sys,time\nassert os.environ['PACE_SENTINEL']=='preserved'\n"
+                "data=sys.stdin.buffer.read()\nif sys.argv[1]=='start': time.sleep(.15)\n"
+                "sys.stdout.buffer.write(data)\nsys.stderr.buffer.write(b'original-child-stderr')\n"
+                "raise SystemExit(0 if sys.argv[1]=='start' else 7)\n", encoding="utf-8")
+            output = home/"prompt-gates"
+            env = dict(self.lifecycle.runner.base_env(home), HOOKCHECK_LIFECYCLE_GATES=str(output), PACE_SENTINEL="preserved")
+            self.lifecycle.arm_start(env, "startup")
+            incoming = json.dumps({"session_id":"native-fixture","source":"startup","prompt":"한국어"}, ensure_ascii=False).encode("utf-8")
+            start = subprocess.Popen([sys.executable,"-B","-X","utf8",str(script),"start"], env=env,
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            start.stdin.write(incoming); start.stdin.close(); start.stdin=None
+            try:
+                prompt = subprocess.run([sys.executable,"-B","-X","utf8",str(script),"prompt"],
+                                        env=env, input=incoming, capture_output=True, timeout=10)
+                stdout, stderr = start.communicate(timeout=10)
+                self.assertEqual((stdout,stderr,start.returncode),(incoming,b"original-child-stderr",0))
+                self.assertEqual((prompt.stdout,prompt.stderr,prompt.returncode),(incoming,b"original-child-stderr",7))
+                receipts = [json.loads(p.read_bytes()) for p in output.glob("*.json") if p.name!="generation.json"]
+                passed = next(v for v in receipts if v["hook"]=="prompt")
+                self.assertGreaterEqual(passed["child_started_ns"], passed["start_completion"]["child_ended_ns"])
+                self.assertTrue(passed["start_completion"]["completed"])
+                with self.assertRaises(AssertionError):
+                    self.lifecycle.pacing_evidence(home)  # The original prompt child exited 7.
+                receipt_path = next(p for p in output.glob("*.json")
+                                    if json.loads(p.read_bytes()).get("hook")=="prompt")
+                passed["exit"] = 0
+                passed["child_started_ns"] = passed["start_completion"]["child_ended_ns"] - 1
+                receipt_path.write_text(json.dumps(passed),encoding="utf-8")
+                with self.assertRaises(AssertionError):
+                    self.lifecycle.pacing_evidence(home)
+            finally:
+                if start.poll() is None: start.kill(); start.communicate()
+
+    def test_resume_rejects_a_previous_completed_start_for_the_same_native_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()/"prompt-gates"
+            output.mkdir()
+            event = {"session_id":"same-native-session"}
+            old = {"id":"previous","source":"startup","armed_ns":1}
+            new = {"id":"current","source":"resume","armed_ns":2}
+            helper = sys.modules["lifecycle_prompt"]
+            helper.write_start(helper.start_path(output,event),
+                               {"completed":True,"exit":0,"generation":old,"event_source":"startup"})
+            with self.assertRaises(AssertionError):
+                helper.wait_start_completed(output,event,new,timeout=.05)
+            helper.write_start(helper.start_path(output,event),
+                               {"completed":True,"exit":0,"generation":new,"event_source":"resume"})
+            self.assertEqual(helper.wait_start_completed(output,event,new)["generation"],new)
 
     def test_waits_for_actual_delayed_end_record(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,19 +1,23 @@
 """Five actual native session sources; synthetic consent and loopback models."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
 import queue
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+import uuid
 
 import run as runner
 from native_terminal import Terminal
 from network_proxy import NetworkProxy
+from lifecycle_prompt import wait_quiet_store, write_start
 
 
 def raw(home):
@@ -52,6 +56,73 @@ def wait_capture(home, before, source, timeout=6):
             time.sleep(.025)
 
 
+def paced_package(repository, output):
+    """Declare the lifecycle-only wrapper; keep every product child unchanged."""
+    target = output / "source"
+    target.mkdir()
+    for name in (".claude-plugin", ".agents/plugins", "plugins"):
+        shutil.copytree(repository / name, target / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    original, copied = repository / "plugins/corthex-memory", target / "plugins/corthex-memory"
+    hashes = {p.relative_to(original).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in original.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+    assert all(hashlib.sha256((copied / name).read_bytes()).hexdigest() == value for name,value in hashes.items())
+    hooks = copied / "hooks/hooks.json"
+    value = json.loads(hooks.read_bytes())
+    for event in ("SessionStart", "UserPromptSubmit"):
+        for group in value["hooks"][event]:
+            for hook in group["hooks"]:
+                for key in ("command", "commandWindows"):
+                    hook[key] = hook[key].replace("/scripts/hook.py", "/scripts/lifecycle_prompt.py")
+    hooks.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    helper = copied / "scripts/lifecycle_prompt.py"
+    shutil.copyfile(Path(__file__).with_name("lifecycle_prompt.py"), helper)
+    report = {"candidate_sha256s":hashes, "instrumented_hooks_sha256":hashlib.sha256(hooks.read_bytes()).hexdigest(),
+              "prompt_wrapper_sha256":hashlib.sha256(helper.read_bytes()).hexdigest(),
+              "original_children_unchanged":all(hashlib.sha256((copied / name).read_bytes()).hexdigest() == digest
+                                               for name,digest in hashes.items() if name != "hooks/hooks.json")}
+    (output / "lifecycle-instrumentation.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    assert report["original_children_unchanged"]
+    return target
+
+
+def retain_store_evidence(home, output):
+    """Expose only the disposable memory store, including on failed runs.
+
+    upload-artifact omits hidden folders. Preserve these redacted raw entries and
+    safe diagnostic logs under a visible folder, never the host's account files.
+    """
+    root = home / ".corthex/corthex-memory"
+    for pattern in ("projects/*/raw/*.jsonl", "logs/*.jsonl"):
+        for path in root.glob(pattern):
+            target = output / "store-evidence" / path.relative_to(root)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(path.read_bytes())
+
+
+def pacing_evidence(base):
+    rows = [json.loads(p.read_bytes()) for p in (base / "prompt-gates").glob("*.json")
+            if not p.name.startswith("start-") and p.name != "generation.json"]
+    prompts = [v for v in rows if v["hook"] == "prompt"]
+    assert prompts and all(v.get("exit") == 0 and v.get("original_child_started") is True
+                           and v["start_completion"].get("completed") is True
+                           and v["start_completion"].get("exit") == 0
+                           and v["generation"] == v["start_completion"].get("generation")
+                           and v["generation"]["source"] == v["start_completion"].get("event_source")
+                           and v["start_completion"]["child_ended_ns"] <= v["child_started_ns"]
+                           for v in prompts), "Every native prompt must follow an observed completed start"
+    return {"verified":True, "prompt_children":len(prompts), "worker_completion_claimed":False,
+            "whole_hook_timings_claimed":False}
+
+
+def arm_start(env, source):
+    output = Path(env["HOOKCHECK_LIFECYCLE_GATES"])
+    output.mkdir(parents=True, exist_ok=True)
+    value = {"id":uuid.uuid4().hex, "source":source, "armed_ns":time.monotonic_ns()}
+    write_start(output / "generation.json", value)
+    archive = output / "generations"; archive.mkdir(exist_ok=True)
+    write_start(archive / (value["id"] + ".json"), value)
+
+
 def recording(command, env, project):
     args = [sys.executable, "-B", str(runner.MEMORY / "skills/corthex-memory/scripts/memory.py"), command, "--folder", str(project)]
     done = runner.run(args, env, project); assert done["exit"] == 0
@@ -64,6 +135,8 @@ def recording(command, env, project):
 
 class Stream:
     def __init__(self, command, env, project):
+        if "HOOKCHECK_LIFECYCLE_GATES" in env:
+            arm_start(env, "startup")
         self.process = subprocess.Popen(command, env=env, cwd=project, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, start_new_session=os.name != "nt")
         self.rows, self.pending, self.errors = [], queue.Queue(), []
@@ -104,6 +177,7 @@ def claude_command(source, exe, env, project, home, output):
         stream.send(runner.PROMPT)  # Seed actual host history while recording is off.
         before = raw(home)
         recording("on", env, project)
+        arm_start(env, source)
         result = stream.send("/" + source)
         assert result.get("local_command") == source
         stream.send(runner.PROMPT)
@@ -120,6 +194,7 @@ def codex_terminal(source, exe, env, project, home, output, seed):
     command = [exe, "--no-daemon", "--no-alt-screen", "--dangerously-bypass-hook-trust", "--dangerously-bypass-approvals-and-sandbox"]
     if source == "fork":
         command += ["fork", seed]
+    arm_start(env, "fork" if source == "fork" else "startup")
     terminal = Terminal(command, env, project, output / ("codex-" + source + "-terminal.bin"))
     def turn():
         offset = len(terminal.data); terminal.line(runner.PROMPT)
@@ -132,6 +207,7 @@ def codex_terminal(source, exe, env, project, home, output, seed):
         before = raw(home)
         if source in ("clear", "compact"):
             offset = len(terminal.data)
+            arm_start(env, source)
             terminal.line("/" + source)
             if source == "compact":
                 # Codex runs this start hook at the next turn, after the UI compacted.
@@ -151,17 +227,24 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument("output"); args = parser.parse_args()
     output = Path(args.output).resolve(); output.mkdir(parents=True, exist_ok=False)
     original_run, original_env = runner.run, runner.base_env
+    original_repo, original_memory = runner.REPO, runner.MEMORY
+    runner.REPO = paced_package(original_repo, output)
+    runner.MEMORY = runner.REPO / "plugins/corthex-memory"
     proxy = NetworkProxy(); retained = {}
-    runner.base_env = lambda home:dict(original_env(home), **proxy.environment())
+    runner.base_env = lambda home:dict(original_env(home), HOOKCHECK_LIFECYCLE_GATES=str(home.parent / "prompt-gates"), **proxy.environment())
     def execute(command, env, cwd=None, **kw):
         # Persistent history is necessary for the host's real resume/fork operations.
         command = [part for part in command if part != "--ephemeral"]
+        if "-p" in command or "exec" in command:
+            source = "fork" if "--fork-session" in command else (
+                "resume" if "--resume" in command or "resume" in command else "startup")
+            arm_start(env, source)
         done = original_run(command, env, cwd, **kw)
         if "-p" in command or "exec" in command:
             retained.update(exe=command[0],env=env,project=cwd,done=done)
         return done
     runner.run = execute
-    report = {"os":platform.system(),"real_model":False,"user_store":False,"hosts":{},"versions":{}}
+    report = {"os":platform.system(),"real_model":False,"user_store":False,"hosts":{},"versions":{},"pacing":{}}
     try:
         runner.market(output / "hk")
         for host in ("claude", "codex"):
@@ -182,11 +265,16 @@ def main():
                 for source in ("clear", "compact") if host == "claude" else (() if os.name == "nt" else ("clear", "compact", "fork")):
                     results[source] = (claude_command(source,exe,env,project,home,output) if host == "claude" else
                                        codex_terminal(source,exe,env,project,home,output,seed))
+                report["pacing"][host] = pacing_evidence(output / host)
             finally:
                 model.server.shutdown(); model.server.server_close()
+                home = output / host / "home"
+                if home.exists():
+                    retain_store_evidence(home, output / host)
         report.update(verified=True, windows_codex_operator_sources=["clear","compact","fork"] if os.name == "nt" else [])
     finally:
         runner.run, runner.base_env = original_run, original_env
+        runner.REPO, runner.MEMORY = original_repo, original_memory
         report["host_proxy"] = proxy.finish()
         (output / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("CORTHEX_LIFECYCLE=" + json.dumps({"verified":report.get("verified"),"os":report["os"],

@@ -27,6 +27,24 @@ def before_retrust_files(home):
     return files
 
 
+def trust_hooks(terminal, path, expected):
+    def screen(offset=0):
+        return re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", bytes(terminal.data[offset:]))
+    terminal.wait(lambda: b"Hooks need review" in screen() and b"Trust" in screen())
+    before = screen()
+    assert re.search(rb"\b" + str(expected).encode() + rb" hooks? (?:is|are) new or changed", before)
+    # The popup can be drawn while startup terminal probes still consume input.
+    terminal.key(b"", pause=.5)
+    offset = len(terminal.data)
+    # Enter opens the default review choice. Use the panel's advertised action;
+    # a cursor key at the startup popup can be consumed before it is interactive.
+    terminal.key(b"\r")
+    terminal.wait(lambda: b"Lifecycle hooks from config and enabled plugins." in screen(offset)
+                  and b"t trust all" in screen(offset))
+    terminal.key(b"t")
+    terminal.wait(lambda: len(re.findall(r"(?m)^trusted_hash\s*=", path.read_text(encoding="utf-8"))) == expected)
+
+
 def archive():
     packed = subprocess.check_output(["git", "-C", str(runner.REPO), "archive", "--format=zip", OLD,
                                       ".agents/plugins", ".claude-plugin", "plugins"])
@@ -69,12 +87,7 @@ def main():
         assert not any("hook-trust" in part for part in command)
         terminal = Terminal(command, env, project, output / (label + "-terminal.bin"))
         try:
-            terminal.wait(lambda: b"Hooks need review" in terminal.data and b"Trust" in terminal.data)
-            before = re.sub(rb"\x1b\[[0-?]*[ -/]*[@-~]", b"", bytes(terminal.data))
-            assert re.search(rb"\b" + str(expected).encode() + rb" hooks? (?:is|are) new or changed", before)
-            terminal.key(b"\x1b[B")  # Second visible choice: trust all and continue.
-            terminal.key(b"\r")
-            terminal.wait(lambda: len(re.findall(r"(?m)^trusted_hash\s*=", path.read_text(encoding="utf-8"))) == expected)
+            trust_hooks(terminal, path, expected)
         finally:
             status = terminal.close()
         assert status == 0
