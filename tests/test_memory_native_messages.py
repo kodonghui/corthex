@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from _common import ROOT
 
@@ -149,6 +150,32 @@ class NativeMessageProvenanceTest(unittest.TestCase):
             self.assertLess(capture["capture_wait_ms"],1000)
             self.assertEqual((raw.read_bytes(),timing.read_bytes()),original)
             self.assertEqual((output / "export/store-evidence/projects/demo/raw/session.jsonl").read_bytes(),original[0])
+
+    def test_capture_read_denial_waits_without_rerunning_a_hook(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()
+            home, _, _, _, _ = self.end_fixture(output)
+            snapshot = self.cross.runner.capture(home, host="claude-code", session="fixture")
+            snapshot["hook_outcomes"]["end"] = ["ok"]
+            with patch.object(self.cross.runner, "capture", side_effect=[PermissionError("fixture"), snapshot]) as read, \
+                    patch.object(self.cross.runner, "run", side_effect=AssertionError("a hook must not run again")):
+                result = self.cross.runner.wait_for_capture(home, timeout=.2, host="claude-code", session="fixture")
+            self.assertEqual(read.call_count, 2)
+            self.assertGreaterEqual(result["capture_wait_ms"], 40)
+
+    def test_permanent_capture_read_denial_expires_and_invalid_json_is_not_ignored(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            with patch.object(self.cross.runner, "capture", side_effect=PermissionError("fixture")):
+                started = time.monotonic()
+                with self.assertRaises(PermissionError):
+                    self.cross.runner.wait_for_capture(home, timeout=.05)
+                self.assertGreaterEqual(time.monotonic() - started, .04)
+                self.assertLess(time.monotonic() - started, 1)
+            with patch.object(self.cross.runner, "capture", side_effect=json.JSONDecodeError("fixture", "", 0)) as read:
+                with self.assertRaises(json.JSONDecodeError):
+                    self.cross.runner.wait_for_capture(home, timeout=.2)
+                self.assertEqual(read.call_count, 1)
 
 
 if __name__ == "__main__":

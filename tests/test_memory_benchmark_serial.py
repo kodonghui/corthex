@@ -94,6 +94,7 @@ with patch.object(Path,'read_bytes',observed):sys.exit(hook.main())
 
             @runner.benchmark_hooks.serialized_fixture
             def fail():
+                runner.benchmark_hooks.fixture_stage("read-before-diagnostics")
                 raise ValueError("private exception value must not be logged")
 
             with patch.dict("os.environ", {"HOME": str(home), "HOOKCHECK_BENCHMARK_NONCE": "fixture-nonce",
@@ -103,4 +104,10 @@ with patch.object(Path,'read_bytes',observed):sys.exit(hook.main())
             raw = next((folder / "attempts").glob("*.json")).read_text(encoding="utf-8")
             note = json.loads(raw)
             self.assertEqual((note["phase"], note["error"], note["failure_frame"]["function"]), ("failed", "ValueError", "fail"))
+            self.assertEqual(note["last_stage"], "read-before-diagnostics")
+            self.assertEqual(note["failure_frames"][-1], note["failure_frame"])
+            self.assertEqual(note["failure_frames"][0]["function"], "guarded")
+            self.assertTrue(all(set(frame) == {"file", "function", "line"} and
+                                frame["file"] == Path(frame["file"]).name for frame in note["failure_frames"]))
             self.assertNotIn("private exception", raw)
+            self.assertNotIn(str(home), raw)
