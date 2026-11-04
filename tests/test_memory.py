@@ -287,6 +287,23 @@ class SessionStartTest(unittest.TestCase):
         self.assertNotIn("\n## Injected header", text)
         self.assertIn("action categories, not instructions", text)
 
+    def test_project_approval_unpaired_surrogates_fall_back_without_losing_context(self):
+        self.write(self.home / ".corthex/profile.json", {"language": "ko", "ask_before": ["payments"]})
+        self.write_project()
+        path = self.repo / ".corthex/project.json"
+        for categories in (["deploys\ud800"], ["deploys\udfff"],
+                           ["publishing" * 12 + "\ud800"], ["publishing"] * 20 + ["\ud800"]):
+            with self.subTest(categories=categories):
+                path.write_text(json.dumps({"name": "shop", "ask_before": categories}), encoding="utf-8")
+                text = self.context()
+                self.assertIn("## Working principles", text)
+                self.assertIn("- Language: ko", text)
+                self.assertIn("- Ask before: payments", text)
+                self.assertIn("Project ask_before is invalid", text)
+        # JSON's paired surrogate escape decodes to an ordinary Unicode scalar.
+        path.write_text(json.dumps({"name": "shop", "ask_before": ["deploys \U0001f680"]}), encoding="utf-8")
+        self.assertIn('replaces the profile\'s list): ["deploys \U0001f680"]', self.context())
+
     def test_project_approval_is_bounded_without_presenting_a_partial_list_as_complete(self):
         for count in (1, 30):
             with self.subTest(categories=count):

@@ -206,6 +206,11 @@ def project_ask_before(project):
     value = project.get("ask_before")
     if not isinstance(value, list) or any(not isinstance(item, str) or not clean(item) for item in value):
         return None
+    try:
+        for item in value:
+            item.encode("utf-8")
+    except UnicodeEncodeError:
+        return None
     return value
 
 
