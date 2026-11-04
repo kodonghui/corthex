@@ -1,0 +1,153 @@
+"""Internal C2 item writer; no provisioning, silent restoration or activation.
+
+Each file is atomic, but a batch may publish only a prefix. WriteFailed retains
+ID-only attempted/known-published effects; unconfirmed attempts are uncertain.
+"""
+import os
+from pathlib import Path
+
+from . import fence_plan, files, item_plan, item_types, revision_io
+
+
+class WriteFailed(RuntimeError):
+    def __init__(self, attempted, published, progress):
+        super().__init__('item batch publication incomplete')
+        self.attempted, self.published = tuple(attempted), tuple(published)
+        self.uncertain = tuple(key for key in attempted if key not in published)
+        self.progress = progress
+
+
+def _present(memory, path):
+    return memory.fence.check(path) is not None
+
+
+def _private(memory, root, item=None):
+    paths = [root / 'layer/deleted.json']
+    if item is not None:
+        paths.append(root / 'layer/tombstones' / (item + '.json'))
+    return any(_present(memory, path) or _present(memory, path.with_name(path.name + '.bak')) for path in paths)
+
+
+def _record(memory, path, parse, deadline, check):
+    check()
+    memory.fence.check(path.with_name(path.name + '.bak'))
+    try:
+        value = parse(files._retry(lambda: memory.fence.read(path, deadline), deadline))
+    except files._RESTORABLE:
+        raise files.RestoreNeeded() from None
+    check()
+    return value
+
+
+def _items(memory, root, deadline, check):
+    folder = root / 'layer/items'
+    check()
+    memory.fence.check(folder)
+    paths = files._retry(lambda: list(folder.iterdir()), deadline)
+    values = []
+    for path in sorted(paths):
+        check()
+        if path.name.endswith('.json.bak') and item_types.ITEM.fullmatch(path.name[:-9]):
+            item = path.name[:-9]
+            if not _private(memory, root, item) and not _present(memory, folder / (item + '.json')):
+                raise files.RestoreNeeded()
+        if not path.name.endswith('.json'):
+            continue
+        item = path.name[:-5]
+        if not item_types.ITEM.fullmatch(item):
+            raise files.RestoreNeeded()
+        if _private(memory, root, item):
+            continue
+        value = _record(memory, path, item_types.parse_item, deadline, check)
+        if value['id'] != item:
+            raise files.RestoreNeeded()
+        values.append(value)
+    check()
+    return values
+
+
+def _checked(memory, root, expected, deadline, curator=False):
+    guard = revision_io.guard(memory, root, deadline, curator=curator)
+
+    def check():
+        guard()
+        if _private(memory, root) or not fence_plan.matches(revision_io.read(memory, root, deadline), expected):
+            raise fence_plan.Stale()
+        guard()
+
+    check()
+    return check, guard
+
+
+def _publish(path, data, durable, check, path_check, published):
+    ready = []
+    temporary = files._temporary(path, data, durable, check=check, path_check=path_check, ready=ready.append)
+    backup = path.with_name(path.name + '.bak')
+
+    def move():
+        files._access(check, path_check, path, backup)
+        ready[0]()
+        os.replace(str(temporary), str(path))
+        published()
+
+    try:
+        files._access(check, path_check, path, backup)
+        if durable and path.exists():
+            files._backup(path, backup, check=check, path_check=path_check)
+        files._retry(move)
+        if durable:
+            files._unlink(backup, lambda: files._access(check, path_check, backup))
+    finally:
+        files._unlink(temporary, ready[0])
+
+
+def apply(memory, root, expected, additions, transitions, at, deadline, run_id=None):
+    root = Path(root)
+    check, ownership = _checked(memory, root, expected, deadline, curator=run_id is not None)
+    items = _items(memory, root, deadline, check)
+    pins = _record(memory, root / 'layer/pins.json', item_types.parse_pins, deadline, check)
+    plan = item_plan.plan(items, pins, additions, transitions, at, memory.device)
+    item_ids = [item for item, data in plan['records']]
+    for key in plan['targets']:
+        if key.startswith('pin:'):
+            item_ids.append(key[4:])
+
+    def privacy():
+        if any(_private(memory, root, item) for item in item_ids):
+            raise fence_plan.Stale()
+
+    check()
+    privacy()
+    reservation = revision_io.reserve(memory, root, expected, plan['targets'], deadline, run_id)
+
+    def guard():
+        ownership()
+        reservation.check()
+        privacy()
+        ownership()
+        reservation.check()
+
+    writes = [(root / 'layer/items' / (item + '.json'), data, True, 'item:' + item) for item, data in plan['records']]
+    if plan['pins'] is not None:
+        writes.append((root / 'layer/pins.json', plan['pins'], True, 'pins'))
+    writes.append((root / 'layer/item-list.txt', plan['list'], False, 'item-list'))
+    writes.extend((root / 'notices' / ('pin-' + item + '.json'), data, False, 'notice:pin-' + item)
+                  for item, data in plan['notices'])
+    attempted, published = [], []
+    try:
+        for path, data, durable, key in writes:
+            guard()
+            attempted.append(key)
+            _publish(path, data, durable, guard, memory.fence.check, lambda: published.append(key))
+        guard()
+    except Exception as error:
+        raise WriteFailed(attempted, published, reservation.progress) from error
+    return {'published': tuple(published), 'progress': reservation.progress}
+
+
+def rebuild_list(memory, root, expected, deadline):
+    root = Path(root)
+    check, _ = _checked(memory, root, expected, deadline)
+    data = item_types.item_list_bytes(_items(memory, root, deadline, check))
+    _publish(root / 'layer/item-list.txt', data, False, check, memory.fence.check, lambda: None)
+    check()
