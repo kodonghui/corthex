@@ -4,7 +4,7 @@ description: CORTHEX stage 01, domain discovery. Use when the user runs or summa
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # Domain discovery
@@ -33,3 +33,7 @@ This skill covers one stage. Its contract, ways of working, steps, checks and ou
 - Label the AI's confidence and keep checkpoint notes to the three bundles in the reference: guesses, two or three questions and, at checkpoints 2 and 3, core aggregate rules. Record the human participation.
 - Set the detail by context type; core contexts keep rule sources and Given–When–Then examples. For an addition to an existing product, use the changed-context procedure in the reference.
 - Use the glossary's words in every later stage. When a later stage needs a new term, add it here first.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

@@ -110,7 +110,8 @@ def main():
         for name, content in replacement.items():
             target = market / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(content)
         new = execute("install-new", ["plugin", "add", "corthex-memory@corthex", "--json"])
-        assert json.loads(new["stdout"])["version"] == "0.2.0"
+        version = json.loads((runner.MEMORY / ".claude-plugin/plugin.json").read_bytes())["version"]
+        assert json.loads(new["stdout"])["version"] == version
         execute("untrusted-session", ["exec", "--json", "--skip-git-repo-check", "--ephemeral", runner.PROMPT])
         assert before == before_retrust_files(home), "No raw, timing or failure writes before retrust"
         report["new_review"] = review("new", 4)
@@ -123,7 +124,7 @@ def main():
         (output / "status.json").write_text(json.dumps(status, ensure_ascii=False) + "\n", encoding="utf-8")
         hooks = {row["hook"]:row for row in json.loads(status["stdout"])["data"]["hooks"] if row["host"] == "codex"}
         assert status["exit"] == 0 and all(hooks[name]["last"] for name in ("start", "prompt", "end-of-turn", "end"))
-        caches = list((config / "plugins/cache/corthex/corthex-memory").glob("0.2.0")); assert len(caches) == 1
+        caches = list((config / "plugins/cache/corthex/corthex-memory").glob(version)); assert len(caches) == 1
         report["cache_sha256s"] = {p.relative_to(runner.MEMORY).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
                                    for p in runner.MEMORY.rglob("*") if p.is_file()}
         assert all(hashlib.sha256((caches[0] / name).read_bytes()).hexdigest() == value for name, value in report["cache_sha256s"].items())

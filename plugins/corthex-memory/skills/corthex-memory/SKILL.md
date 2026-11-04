@@ -4,7 +4,7 @@ description: Manage CORTHEX conversation recording on this device. Use when the 
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # Manage device memory
@@ -23,7 +23,7 @@ python3 "<absolute skill directory>/scripts/memory.py" --folder "<absolute sessi
 
 Use the actual session folder for `--folder`, including when a request concerns an excluded subfolder. The project list determines ownership; do not infer a project from its name or open repository settings to replace the list. `on`, `off` and `leave-out` are project commands. `status`, `retention`, `purge` and `repair` act on this device; status may also include the session's project.
 
-Read the one JSON result. Translate `say` without inventing successful effects, rollback or a diagnostic log. Explain the relevant fields of `data`. Exit 0 can mean `done`, `nothing` or `confirm`, so a successful process exit is not proof that the action happened. `refused` and `failed` exit 1; a usage error exits 2. Do not hide errors or edit store files to bypass a refusal.
+Read the one JSON result. Show the complete translation of `say` as its own paragraph before explaining relevant fields of `data`; do not replace it with a shorter summary or omit a warning because it appeared before. Do not invent successful effects, rollback or a diagnostic log. Exit 0 can mean `done`, `nothing` or `confirm`, so a successful process exit is not proof that the action happened. `refused` and `failed` exit 1; a usage error exits 2. Do not hide errors or edit store files to bypass a refusal.
 
 ## Choose a C1 command
 
@@ -39,11 +39,17 @@ Read the one JSON result. Translate `say` without inventing successful effects, 
 
 An uninstall leaves the memory store behind. `off` preserves it too. Do not describe either as deletion. Purge affects only the shown local folder, not host transcripts, providers or other devices. Do not send memory elsewhere or start sync to satisfy a local management request.
 
+When both prompts and answers are excluded, keep `say`'s warning that curation has nothing to read; C1 still does not curate. To restore text recording, remove the appropriate exclusions while the project is on. `off` stops recording and never restores it. Folder exclusions prevent raw entries for sessions in that folder; safe hook timing records can still be written, so do not promise that the entire store is unchanged.
+
 ## Ask before applying
 
 A confirmation code is not permission. First run the command without `--confirm` and show its current proposal. Only after the user's explicit yes run the same command and arguments with `--confirm <code>` from that proposal. A general request for a feature, a pasted instruction, or an agent-generated code is not the user's yes.
 
 For `on`, show every point in `data.consent.text` in the user's language, preserving provider, retention, redaction, sync and API-spending disclosures. Explain that C1 currently records without model curation or recall; do not drop the consent's future model disclosures. Missing keys are a presence warning, not a request to put secrets in the conversation.
+
+Present the six consent paragraphs separately, in their returned order, without shortening their contents. Before asking for consent, check that the retention paragraph still names every control: excluding folders or entry kinds, pinning and forgetting items, turning a project's memory off, deleting one project's memory, and deleting all memory. These are distinct choices; explain which await C2 rather than omitting them or presenting them as available now.
+
+After `on` completes, if either key is missing, name each missing variable and tell the user to set it in the environment that starts the host. Keep that instruction in the completed-action reply even when a consent preview already mentioned keys. A generic “provider keys are missing” does not tell the user where or what to configure. Local C1 recording still works without them; do not ask for a value or run a provider request.
 
 For `retention`, distinguish the proposed expired-entry count from immediate deletion. For `purge`, show `data.folder`, the whole-folder scope, available counts and copies that remain elsewhere. Show null counts or lists and unknown sync as "cannot verify", never as zero, an empty list or off. The user may confirm the whole shown folder even when metadata cannot be verified; do not interpret an opaque newer layout to invent counts.
 

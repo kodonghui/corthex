@@ -4,7 +4,7 @@ description: CORTHEX stages 05 and 06, the data and API contracts. Use when desi
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # Data and API contracts
@@ -30,3 +30,7 @@ This skill covers two stages. Each stage's contract, steps, checks and output te
 
 - Contracts come before code. Change the schema or the API contract first, then the code that follows it.
 - A change that breaks data a screen already shows, or a client already sends, needs the user's decision before it is made.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

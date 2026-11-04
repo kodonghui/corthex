@@ -16,6 +16,7 @@
 3. Write keys, foreign keys with their on-delete behaviour, unique rules and indexes for the reads the spec needs. Translate aggregate rules the database can enforce into unique, foreign-key or check constraints, and name each rule in a comment.
 4. Write a migration for every change; never edit a migration that has been applied somewhere.
 5. When the product calls an AI model (see the AI call entries in stage 04), add a table that records each call: when it was sent, the model and the prompt version, the token counts, the time to the first token and to the end, the result (success, failure or a reached limit) and the request's trace ID. Keep personal data and secrets out of it, and keep the prompt and the answer only when the product needs them. Record also why the model stopped (the provider's stop reason), the cached tokens read and written, the reasoning settings, such as effort or thinking, each tool call with its name, result, conversation ID and target ID and its arguments with personal data masked, and why a fallback answer was used. The same personal-data and secret exclusions apply to all these fields.
+6. In each table's SQL comment, name its context and the glossary TERM IDs of the aggregates or read models it represents, or write `terms: none` when it represents none. List the part's terms without a table in a `-- without a table: TERM-002` comment. Keep these annotations in the source-of-truth direction; do not invent a table to clear a missing-term warning.
 
 ## Checks
 
@@ -41,7 +42,7 @@
 ## Output template
 
 ```sql
--- TBL-001 orders (CTX-001) ← SPEC-001, SPEC-002
+-- TBL-001 orders (CTX-001) ← SPEC-001, SPEC-002 | terms: TERM-001
 CREATE TABLE orders (
   id          BIGINT PRIMARY KEY,
   customer_id BIGINT NOT NULL REFERENCES customers (id) ON DELETE RESTRICT,

@@ -15,6 +15,8 @@
 2. Merge candidates that are the same screen in different states. States belong to stage 08, not to the sitemap.
 3. Arrange the screens in a tree with paths and access rules.
 4. Add the SCR IDs back to the user flows.
+5. For each screen, name the context and glossary terms of the aggregates/read models it represents in `terms: [CTX-001, TERM-001]`, or `terms: none`. List the part's terms without a screen in `# without a screen: TERM-002`. Keep an intentionally absent screen explicit rather than adding one to clear a check.
+6. Preserve each screen's source lifecycle status, such as `active` or `removed`. A removed screen keeps its ID/history; it is not an active route. This status is separate from the loading/error states of stage08 and from a stage checkpoint.
 
 ## Checks
 
@@ -47,11 +49,15 @@ flowchart TD
   name: Home
   path: /
   access: everyone
+  status: active
   flows: [FL-001, FL-002]
+  terms: none
   children:
     - id: SCR-002
       name: Order detail
       path: /orders/:id
       access: signed-in customer
+      status: active
       flows: [FL-002]
+      terms: [CTX-001, TERM-001]
 ```

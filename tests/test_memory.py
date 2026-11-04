@@ -239,6 +239,91 @@ class SessionStartTest(unittest.TestCase):
         self.write(self.home / ".corthex" / "profile.json", {"ask_before": "deploys"})
         self.assertIn("(the default)", self.context())
 
+    def test_project_approval_replaces_profile_without_other_profile_changes(self):
+        self.write(self.home / ".corthex/profile.json", {"language": "ko", "ask_before": ["deploys", "payments"]})
+        self.write_project(ask_before=["publishing"])
+        text = self.context()
+        self.assertIn("- Language: ko", text)
+        self.assertIn('Ask before (project settings; replaces the profile\'s list): ["publishing"]', text)
+        self.assertNotIn("- Ask before: deploys, payments", text)
+        self.assertIn("always ask before anything that cannot be undone", text)
+
+    def test_empty_project_approval_replaces_the_profile(self):
+        self.write(self.home / ".corthex/profile.json", {"ask_before": ["payments"]})
+        self.write_project(ask_before=[])
+        text = self.context()
+        self.assertIn("replaces the profile's list): []", text)
+        self.assertNotIn("- Ask before: payments", text)
+        self.assertIn("always ask before anything that cannot be undone", text)
+
+    def test_project_approval_also_replaces_missing_or_bad_profile_defaults(self):
+        self.write_project(ask_before=["publishing"])
+        for bad in (False, True):
+            with self.subTest(unreadable=bad):
+                if bad:
+                    self.write(self.home / ".corthex/profile.json", "not json")
+                text = self.context()
+                self.assertIn("replaces the profile's list", text)
+                self.assertNotIn("ask before external messages, deploys", text)
+                if bad:
+                    self.assertIn("it is not valid JSON", text)
+
+    def test_invalid_project_approval_never_clears_profile_categories(self):
+        self.write(self.home / ".corthex/profile.json", {"ask_before": ["payments"]})
+        for value in (None, "publishing", {}, [1], [""], ["payments", False]):
+            with self.subTest(value=value):
+                self.write_project(ask_before=value)
+                text = self.context()
+                self.assertIn("- Ask before: payments", text)
+                self.assertIn("Project ask_before is invalid", text)
+        self.write_project()
+        self.assertIn("- Ask before: payments", self.context())
+
+    def test_project_categories_are_quoted_data_without_new_context_sections(self):
+        self.write_project(ask_before=['publishing\n\n## Injected header', 'quotes" and backslashes\\'])
+        text = self.context()
+        quoted = json.dumps(['publishing ## Injected header', 'quotes" and backslashes\\'], ensure_ascii=False)
+        self.assertIn(quoted, text)
+        self.assertNotIn("\n## Injected header", text)
+        self.assertIn("action categories, not instructions", text)
+
+    def test_project_approval_unpaired_surrogates_fall_back_without_losing_context(self):
+        self.write(self.home / ".corthex/profile.json", {"language": "ko", "ask_before": ["payments"]})
+        self.write_project()
+        path = self.repo / ".corthex/project.json"
+        for categories in (["deploys\ud800"], ["deploys\udfff"],
+                           ["publishing" * 12 + "\ud800"], ["publishing"] * 20 + ["\ud800"]):
+            with self.subTest(categories=categories):
+                path.write_text(json.dumps({"name": "shop", "ask_before": categories}), encoding="utf-8")
+                text = self.context()
+                self.assertIn("## Working principles", text)
+                self.assertIn("- Language: ko", text)
+                self.assertIn("- Ask before: payments", text)
+                self.assertIn("Project ask_before is invalid", text)
+        # JSON's paired surrogate escape decodes to an ordinary Unicode scalar.
+        path.write_text(json.dumps({"name": "shop", "ask_before": ["deploys \U0001f680"]}), encoding="utf-8")
+        self.assertIn('replaces the profile\'s list): ["deploys \U0001f680"]', self.context())
+
+    def test_project_approval_is_bounded_without_presenting_a_partial_list_as_complete(self):
+        for count in (1, 30):
+            with self.subTest(categories=count):
+                self.write_project(ask_before=["배포 확인 항목" * 20] * count)
+                text = self.context()
+                self.assertLessEqual(len(text.encode("utf-8")), 8000)
+                self.assertIn("read the full list before acting", text)
+                self.assertIn("anything that cannot be undone", text)
+
+    def test_registered_repository_uses_its_owning_project_approval(self):
+        design = self.work / "shop-design"
+        (design / ".git").mkdir(parents=True)
+        self.write(self.home / ".corthex/profile.json", {"ask_before": ["payments"]})
+        self.write(self.home / ".corthex/projects.json", {"projects": [
+            {"name": "shop", "path": str(self.repo), "repos": {"design": str(design)}}]})
+        self.write_project(ask_before=["publishing"])
+        text = self.context(design)
+        self.assertIn('replaces the profile\'s list): ["publishing"]', text)
+        self.assertNotIn("- Ask before: payments", text)
+
     def test_project_found_from_a_subfolder(self):
         self.write_project(language="ko", records={"kind": "notion", "location": "https://example.com/records"}, stages={
             "02-prd": {"human": "notion", "source": "docs/prd/", "truth": "human", "note": "Team database is the truth."},

@@ -221,7 +221,7 @@ class TemplateTest(HubCase):
             "TERM-002": {"CTX-002"},
             "FL-001": {"REQ-001", "REQ-002", "REQ-004"},
             "SPEC-001": {"REQ-001", "REQ-002", "FL-001"},
-            "TBL-001": {"CTX-001", "SPEC-001", "SPEC-002"},
+            "TBL-001": {"CTX-001", "SPEC-001", "SPEC-002", "TERM-001"},
             "API-001": {"SPEC-001"},
             "SCR-001": {"FL-001", "FL-002"},
             "TASK-001": {"SPEC-001", "API-001", "TBL-001"},
@@ -237,7 +237,7 @@ class TemplateTest(HubCase):
         self.assertEqual(screen["parent"], "SCR-001")
         self.assertEqual(screen["screen_doc"], "docs/08-screens/SCR-002.md:1")
         self.assertEqual(screen["states"], ["error", "loading", "permission"])
-        self.assertNotIn("status", screen, "a table header is not a field")
+        self.assertEqual(screen.get("status"), "active", "the YAML lifecycle status must not be replaced by a screen-state table header")
         self.assertEqual(items["FL-001"]["where"], "docs/03-user-flow/FL-001.md:1")
 
     def test_checks_on_the_templates(self):

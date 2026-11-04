@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # CORTHEX
@@ -37,7 +37,7 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 2. Keep facts, observations, past records, hypotheses and recommendations apart. Hold your own proposals to the same standard as the user's.
 3. Check volatile or high-impact claims against current primary sources, and say what those sources do not cover.
 4. Finish what was asked within the authority you were given. Make routine, reversible choices yourself. For a change of direction, give real alternatives, a recommendation and the main counterargument.
-5. Approval is the user's own words, with where and when they said them. Ask before anything listed in `ask_before` and before anything that cannot be undone.
+5. Approval is the user's own words, with where and when they said them. Ask before anything listed in `ask_before` (the project's valid list when set, otherwise the profile's) and before anything that cannot be undone.
 6. Done means checked. Say what you verified and what you did not. Copy numbers in records and reports from their named command output or source.
 7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
@@ -62,3 +62,7 @@ Every stage follows one six-slot contract: inputs, outputs, human view, sync, hu
 Read the project's `stages` settings and the artifacts they point to. For each stage, report one of done, in progress, not started or skipped, the last human checkpoint with its date, and the next action. A file that exists is not a finished stage: a stage is done when its checkpoint was passed and recorded.
 
 If the `corthex-hub` skill is installed, it keeps these states for every project and shows them on one page with the trace links between stages; read and record the states there.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

@@ -4,7 +4,7 @@ description: CORTHEX stages 02 to 04, defining the product. Use when writing or 
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.5.0"
+  version: "0.7.0"
 ---
 
 # Defining the product
@@ -31,3 +31,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 
 - The three stages feed each other: each flow step names the requirements it serves, and each spec row names its requirements and flows. A requirement no flow or spec row uses is a gap to report.
 - By default people review these stages in Notion databases. In a team project the database is often the truth: then `truth` is `human` and the repository holds a refreshed, read-only copy that later stages read.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

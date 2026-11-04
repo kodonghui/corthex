@@ -136,7 +136,7 @@ For REQ-195, consent reaches a temporary device only through the user's own envi
 
 ## Success measures
 
-For the one-week trial on this repository, before deciding whether to go on:
+These are the success measures originally approved for the repository's one-week trial. On 2026-11-04 the maintainer removed the C1 trial (TASK-029/TC-114) and chose to proceed with development. After TASK-028, TASK-057 and the checks/reviews, TASK-030 records go/no and known issues, then tags 0.2.0 without another question unless the walks found new recording loss. Curation/recall quality measures remain; ask once at the C2 split about measurement data for TASK-047/048 and trials TASK-050/055:
 
 | Measure | Target | How it is measured |
 | --- | --- | --- |
@@ -151,3 +151,5 @@ For the one-week trial on this repository, before deciding whether to go on:
 ## For the checkpoint
 
 Passed on 2026-10-27: D1, D2 and D4 as recommended, and D3 as the new option above; 100-day default raw retention (REQ-009); recording only prompts and final answers (REQ-004); the one-week trial on this repository and its success measures; and the seven requirement changes of the functional spec. Consent version 1 still covers C2's external sending, and curation keeps Haiku 5.5 xhigh, compared with medium in the trial. The Git sync details are superseded; the server sync design needs its own confirmation before C3.
+
+2026-11-04 amendment: the 2026-10-27 approval above remains a historical record. C1's one-week trial is removed; the maintainer's 12:26 decision to proceed and 12:44 approval to tag immediately after passing checks now govern C1. This does not remove the C2/C3 trial plans.

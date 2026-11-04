@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 핵심 `corthex`는 0.5.0, `corthex-memory` 0.2.0 C1 패키지는 출시 판단·태그 전의 QA·시범 운영 준비 중이며, `corthex-nexus`는 0.1.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
+> 상태: 핵심 `corthex`는 0.7.0, `corthex-memory` 0.2.1은 프로젝트별 확인 목록을 반영한 C1 패키지이며 출시 결정과 알려진 한계는 MEMORY 작업·시험 계획에서 추적하고, `corthex-nexus`는 0.2.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
 
 설치부터 요구사항 하나를 검토하고 진행 기록을 남기기까지는 [첫 프로젝트](docs/first-project.ko.md)를 따라 해 보세요.
 
@@ -49,7 +49,7 @@ claude plugin install corthex-memory@corthex   # Claude Code, corthex도 함께 
 codex plugin add corthex-memory@corthex        # Codex, corthex를 추가한 뒤
 ```
 
-Codex에서는 `/hooks`에서 플러그인의 훅을 검토하고 신뢰해 주세요. 기록은 [기억 스킬](plugins/corthex-memory/skills/corthex-memory/SKILL.md)로 관리합니다. 패키지의 실제 호스트 C1 QA·관리자 시범 운영·출시 판단을 마친 뒤 릴리스 태그를 정합니다. 자세한 내용은 [세션 시작 문맥](docs/architecture.ko.md#세션-시작-문맥)에 있습니다.
+Codex에서는 `/hooks`에서 플러그인의 훅을 검토하고 신뢰해 주세요. 기록은 [기억 스킬](plugins/corthex-memory/skills/corthex-memory/SKILL.md)로 관리합니다. C1 0.2.0은 실제 호스트 QA와 출시 판단을 마쳤으며, 2026-11-04 결정으로 C1 한 주 시험은 생략했습니다. [출시 검증](docs/12-qa/runs/2026-11-04-memory-020-release.ko.md)을 참고하세요. 자세한 내용은 [세션 시작 문맥](docs/architecture.ko.md#세션-시작-문맥)에 있습니다.
 
 ### 선택: 프로젝트 허브
 
@@ -61,6 +61,8 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 ```
 
 설치한 뒤 허브를 보여 달라고 하거나 `/corthex-nexus:corthex-hub`를 실행하세요. Python 3.8 이상이 필요합니다. 내 도메인의 NEXUS 서버로 프로젝트 스냅샷을 보낼 수도 있지만, 목록에 적어 둔 프로젝트만 보냅니다. 서버와 브라우저 화면은 별도 제품 저장소에 있습니다. Access·Tunnel 뒤의 Node/SQLite 실행부를 만들며 Worker 호환성도 유지합니다: [nexus/](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.ko.md). 자세한 내용은 [프로젝트 허브](docs/architecture.ko.md#프로젝트-허브)에 있습니다.
+
+허용된 서버가 있으면 코어 진입·단계 스킬이 세션·프로젝트마다 할 일을 한 번 읽고, 사용자가 직접 요청한 일을 먼저 합니다. 허브로 맡음, 승인된 변경의 반영 PR, 확인 지점의 기록을 조율합니다. 인증 정보가 없어도 로컬 작업은 이어 갑니다. 첫 실제 스냅샷 보내기는 여전히 사용자 확인이 필요합니다. [NEXUS 작업 흐름](plugins/corthex/skills/corthex/references/nexus-work.md)을 따릅니다.
 
 ## 스킬
 
@@ -94,6 +96,12 @@ Notion에 기록할 때는 프로젝트의 `records.location`이나 프로필의
 - Codex와 다른 [Agent Plugins](https://agent-plugins.org) 클라이언트는 `.agents/plugins/marketplace.json`과 핵심 플러그인 루트의 `plugin.json`을 읽습니다. `corthex-memory`는 훅이 있어 그 대신 `.codex-plugin/plugin.json`을 두고, Claude Code와 Codex에서만 씁니다. `corthex-nexus`는 훅이 없어 루트 `plugin.json`을 둡니다.
 - 스킬은 [Agent Skills](https://agentskills.io) 형식이라 두 도구가 함께 쓰고, 스킬 하나만 따로 쓸 수도 있습니다.
 - `corthex-uxui`에는 필요할 때 쓰는 점검 스크립트 둘이 있고, 둘 다 읽기만 합니다. `page-check.js`는 점검할 페이지 안에서 돌며, 브라우저 콘솔에 붙여 넣거나 Playwright 같은 브라우저 자동화 도구에 넘겨 씁니다. `media-check.py`는 Python 3.8 이상과 FFmpeg가 필요합니다.
+
+## NEXUS 0.2와 함께 일하기
+
+NEXUS를 쓰도록 설정한 프로젝트에서는 핵심·단계 스킬이 설치된 허브를 통해 세션/프로젝트마다 한 번 할 일을 읽습니다. 사용자가 지금 요청한 일을 먼저 하고, 이후 의견·불일치·반영·확인 지점을 처리합니다. 토큰이나 서버가 없어도 로컬 작업은 계속합니다. 점유와 열린 PR을 존중하고, 결정·반영·단계 기록은 기존 저장소의 PR 규칙을 따릅니다. 첫 실제 보내기는 별도 확인을 거칩니다. [선택적 작업 절차](plugins/corthex/skills/corthex/references/nexus-work.md).
+
+현재 NEXUS 허브는0.2.0이며 서버·화면·이주·되돌리기 안내는 [독립 제품 저장소](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.ko.md)에 있습니다. 먼저 서버를0.2 호환판으로 올린 뒤 허브를 갱신합니다. Node/SQLite 실행부는 Access·Tunnel 뒤에 두고 Worker/D1 호환 경로를 유지합니다. 이 README의 패키지 번호는 태그 발행이나 운영 전환을 뜻하지 않습니다.
 
 ## 개발
 
