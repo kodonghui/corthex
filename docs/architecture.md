@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.3.0; the MEMORY 0.2.0 C1 package is in QA/trial preparation; NEXUS is 0.1.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.5.0; the MEMORY 0.2.0 C1 package is in QA/trial preparation; NEXUS is 0.1.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -31,7 +31,7 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   ├── references/          principles, profile, project, stage contract
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
-│   │       ├── corthex-record/          minutes, decisions, progress
+│   │       ├── corthex-record/          minutes, decisions, progress, retrospectives
 │   │       └── corthex-uxui/            craft for screens, motion and video
 │   │           ├── references/          names, values, video, checks and their sources
 │   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
@@ -100,7 +100,7 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-screen` | 07 sitemap, 08 screen states, 09 mockup |
 | `corthex-build` | 10 WBS, 11 development, 12 QA |
 | `corthex-present` | 13 presentation |
-| `corthex-record` | minutes, decisions and progress, at any stage |
+| `corthex-record` | minutes, decisions, progress and retrospectives, at any stage |
 | `corthex-uxui` | the craft of screens, motion and video, with its checks: in 08, 09 and 13, or on its own |
 
 `corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).

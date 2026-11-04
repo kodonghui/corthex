@@ -1,7 +1,7 @@
 {
   "name": "corthex",
   "displayName": "CORTHEX",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Working principles, a 13-stage project workflow with one shared six-slot contract, and a profile and project registry for one person running several projects.",
   "author": {
     "name": "kodonghui",

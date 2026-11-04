@@ -34,13 +34,15 @@ Every operation accounts for each response in this table: it lists the response,
 | 409 | The request can clash with the current state, such as a duplicate or an outdated version |
 | `default` | Always, for any other error, with the error shape |
 
-Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow, the server has no key for it or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says.
+Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow, the server has no key for it or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says. When the server's check before a write tool fails, such as on identity, ownership or evidence, the operation lists that response too, such as 403 or 409 with an error code of its own, and nothing is written.
 
 ## Errors
 
-Every error response has one shape. By default it is Problem Details (RFC 9457), sent as `application/problem+json`, with the members `type`, `title`, `status`, `detail` and `instance` and two more: `code`, the error code, and `traceId`, the ID the server writes to its log for the request. `status` is always the HTTP status of the response. Many web frameworks produce this shape directly.
+Every error response has one shape. By default it is Problem Details (RFC 9457), sent as `application/problem+json`, with the members `type`, `title`, `status`, `detail` and `instance` and two more: `code`, the error code, and `traceId`, the ID the server writes to its log for the request. `status` is always the HTTP status of the response. Framework defaults do not necessarily use this shape. Adapt validation errors, routing errors such as 404 and 405, application errors and unexpected 500s at their appropriate boundaries; preserve required headers such as `Allow`. Test the actual response status, media type, schema, code and trace ID. A stream needs its own error/end protocol once headers have been sent.
 
 The error codes are listed once, under `components.x-corthex.errors`: for each code, its HTTP status, what it means, the message the user sees and what the client does. The `code` member allows only these codes, so the contract tests fail when the server sends another one. The back end returns these codes, the screens show their messages (stage 08), and test cases expect them (stage 12).
+
+Validation diagnostics expose only approved field locations and safe codes: omit submitted values, arbitrary field names, exception context, secrets and internal messages. Map provider SDK exceptions to application errors inside the provider adapter, with specific subclasses before their base class; the HTTP renderer consumes application errors. Do not turn an upstream provider rate limit into the product's user quota error without the contract saying so. Log safe codes and trace IDs, not raw SDK exceptions or request/response dumps.
 
 ## Mock server and contract tests
 
@@ -67,7 +69,7 @@ Stages 04, 08 and 12 use the same kinds. For each kind that applies to an operat
 | Data exposure | Response schemas that hold only what the screens and clients need |
 | Empty and streamed answers | 204 and empty lists, and for a stream its events and how it ends |
 | Screen states | Nothing more; stage 08 leads each response to a state |
-| AI answers | The responses of the AI call entry, such as `ai_unavailable` or `ai_limit_reached` |
+| AI answers | The responses of the AI call entry, such as `ai_unavailable` or `ai_limit_reached`, and the response to a failed check before a write tool |
 
 ## Checks
 

@@ -4,12 +4,12 @@ description: CORTHEX stage 01, domain discovery. Use when the user runs or summa
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.3.0"
+  version: "0.5.0"
 ---
 
 # Domain discovery
 
-This skill covers one stage. Its contract, ways of working, steps, checks and output template are in the reference file. The board's legend, layout and tools are in [references/event-storming-board.md](references/event-storming-board.md).
+This skill covers one stage. Its contract, ways of working, steps, checks and output template are in the reference file. The board's legend, layout and tools are in [references/event-storming-board.md](references/event-storming-board.md), and interviews with people are in [references/interviews.md](references/interviews.md).
 
 | Key | Stage | Contract |
 | --- | --- | --- |

@@ -1,10 +1,10 @@
 ---
 name: corthex-build
-description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, or writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs) from the user flows and acceptance criteria, including runs in which browser agents, such as Aside, walk every user flow and report what works, what does not and their impressions.
+description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, or writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs), or preparing a requested learning guide or task HOWTO from the user flows and acceptance criteria, including runs in which browser agents, such as Aside, walk every user flow and report what works, what does not and their impressions.
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.3.0"
+  version: "0.5.0"
 ---
 
 # Building and testing
@@ -29,5 +29,6 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 
 ## Notes for these stages
 
+- For a requested guide, read [references/howto.md](references/howto.md). For async AI server implementation, the worked product example is in [references/fastapi-example.md](references/fastapi-example.md).
 - The product repository's own rules for branches, reviews and merges come first. CORTHEX only adds the trace IDs and the checks.
 - A test plan comes from the user flows and the acceptance criteria, not from the code, so it can find what the code forgot.

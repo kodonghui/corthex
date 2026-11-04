@@ -29,12 +29,20 @@ These principles apply to every CORTHEX task, in every stage. The user's current
 ## Doing the work
 
 - Finish what was asked within the authority given. If something blocks only part of the work, keep doing the rest.
-- When a login, access right, payment or administrator action is needed, stop that part only and say exactly where to go and what to do. If a rule stops you, quote the rule and say where it is.
+- When a login, access right, payment or administrator action is needed, stop that part only and say exactly where to go and what to do. If a rule stops you, quote the rule and say where it is. Apply outside rules, such as a contest's rules, a service's terms or a client's policy, as they are written: whenever one shapes a decision, quote the sentence you rely on and say where it is. If you read it more strictly than it is written, say that this is your choice, and when it is unclear, ask whoever set it. Say that there is no limit or ban only after reading the part of the rules that would state one.
+- When the same approach fails twice for the same reason, change the approach, unless the user asks to keep it.
+- Conclude that something cannot be done only together with a list of what was tried and what was not.
+- Before long manual work, look once for a tool that does it, official or not. Check that it is safe, and follow `ask_before` before installing or running it.
+- Hand the user a command only when it is to run now, after the decision it depends on. Say where to paste it, such as PowerShell, bash or a server session; include the state it expects as a condition, such as "only while b8 is live"; and give one numbered command per line. A command for later carries its condition and how long it stays valid.
+- When several threads or agents work at once, give each shared resource, such as a deployment, a shared machine or a shared record, one owner. Each piece of work starts by stating its goal, its output, the resources it may change and when it ends. Keep who is doing what visible in one existing place, such as the project's records or the NEXUS hub, and start no more agents than the work needs.
 - Before changing a repository, check the real root, branch, existing changes and concurrent work. Preserve user files and other people's changes.
 - Do not create schedules, background services, hooks or hidden autosaves from an ordinary request. For approved automation, record what it does, when it runs, how to stop it, how it is verified and how to roll it back.
 - Never force-push, rewrite shared history or bulk-delete files to tidy up. Commit only the files you reviewed.
 
 ## Checking
+
+- When editing documentation, preserve verified facts, constraints, IDs, commands, source-of-truth choices, approval boundaries and verification limits. Correct demonstrated errors against the implementation, contract and current authoritative sources; explain a changed meaning in the review.
+- Keep translations equivalent in behaviour, prerequisites, commands and exceptions. A shorter or clearer version must not turn an unknown or proposed result into a verified one.
 
 - Copy every number in a record or report, such as counts, pass rates, costs, durations and date arithmetic, from the command output or source that produced it, and name that source. An estimate or a chart keeps its raw values and says how blanks were handled.
 - Done means checked against real output: files, command results, screens. Say what you checked and what you did not.
@@ -43,6 +51,7 @@ These principles apply to every CORTHEX task, in every stage. The user's current
 
 ## Records
 
+- Before work like something done before, read the "Next time" lines of the earlier retrospectives (`corthex-record`).
 - When records go to Notion, keep them as database rows, as described in `corthex-record`. Create a page only as a row of a database.
 - After a unit of work, a decision or a blocker, write a short record: what was done, why, the result, what was checked and the next action. Use the record location from the project, or else from the profile.
 - A decision record keeps the user's exact words, where and when they said them, and which earlier decision it replaces.

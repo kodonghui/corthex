@@ -1,10 +1,10 @@
 ---
 name: corthex-record
-description: CORTHEX records at any stage. Use when turning meeting notes, a recording transcript or a chat thread into minutes and a decision log (DEC IDs), when recording a decision with the user's exact words and where they said them, when writing a progress record after a unit of work, or when finding what was decided earlier and what replaced it.
+description: CORTHEX records at any stage. Use when turning meeting notes, a recording transcript or a chat thread into minutes and a decision log (DEC IDs), when recording a decision with the user's exact words and where they said them, when writing a progress record after a unit of work, when writing a retrospective after a contest, a demo, a release or an incident, or when finding what was decided earlier and what replaced it.
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.3.0"
+  version: "0.5.0"
 ---
 
 # Records
@@ -16,6 +16,7 @@ Records let a later session, or another person, pick up the work without asking 
 | Minutes | After a meeting or a call | [references/minutes.md](references/minutes.md) |
 | Decision | When the user decides something | [references/decisions.md](references/decisions.md) |
 | Progress | After a unit of work, or when blocked | [references/progress.md](references/progress.md) |
+| Retrospective | After a contest, a demo, a release or an incident, when the user wants one | [references/retrospective.md](references/retrospective.md) |
 
 ## Rules
 
@@ -28,7 +29,7 @@ Records let a later session, or another person, pick up the work without asking 
 
 ## Records in Notion
 
-Use one records database per project, one row per record: minutes, decisions, progress, research and reading copies. Its properties are title, kind, stage, status (draft, under discussion, confirmed or replaced), related IDs, source (the repository path), last changed and what changed.
+Use one records database per project, one row per record: minutes, decisions, progress, retrospectives, research and reading copies. Its properties are title, kind, stage, status (draft, under discussion, confirmed or replaced), related IDs, source (the repository path), last changed and what changed.
 
 Items followed across several records, such as decisions (DEC) and action items, have their own databases: one row per item, related to the records they came from. Stage items keep their stage databases, including stages 02 to 04 in `corthex-define`.
 

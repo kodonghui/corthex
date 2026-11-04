@@ -540,10 +540,18 @@ def wait_for_capture(home,timeout=6,host=None,session=None):
     timings exist, retain their verdict even on failure; never rerun a hook.
     """
     started = time.perf_counter()
-    value = capture(home, host=host, session=session)
-    while not all(value["hook_outcomes"].values()) and time.perf_counter()-started < timeout:
+    while True:
+        try:
+            value = capture(home, host=host, session=session)
+        except PermissionError:
+            # A Windows writer can briefly deny an observer's open. Retry only
+            # the read, within the original deadline; permanent denial fails.
+            if time.perf_counter()-started >= timeout:
+                raise
+        else:
+            if all(value["hook_outcomes"].values()) or time.perf_counter()-started >= timeout:
+                break
         time.sleep(0.05)
-        value = capture(home, host=host, session=session)
     value["capture_wait_ms"] = round((time.perf_counter()-started)*1000,3)
     return value
 
