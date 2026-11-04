@@ -344,7 +344,7 @@ C2 `undone` is a local undo status. The C3 design decides its cross-device merge
 
 ### Current state (TBL-013)
 
-`state.json` holds the current state's lines; `state-removed.json` keeps a record of each line removed, without its text, so that a sync never brings the line back (SPEC-028). The curator (SPEC-017, SPEC-019), a forget (SPEC-035), a tombstone (SPEC-029) and a verified local undo (SPEC-145) write them. The C3 design decides sync details. A line keeps its ID through the edits and verified local undo rules below. The start hook reads only `state.json`. Synced.
+`state.json` holds the current state's lines; `state-removed.json` keeps a record of each line removed, without its text, so that a sync never brings the line back (SPEC-028). The curator (SPEC-017, SPEC-019), a forget (SPEC-035), a tombstone (SPEC-029) and a verified local undo (SPEC-145) write them. The C3 design decides sync details. A line keeps its ID through the edits and verified local undo rules below. C2 Start receives one consistent read-only validity snapshot of state.json, removed markers, current item metadata and privacy facts; TASK-034/091 connect its actual reads, leases and deadline. Start never writes curated-layer data. Synced.
 
 A line keeps its ID while it stays or is changed: curate-2 names only changed/added/removed lines (SPEC-017), while the last state-1 names kept/reworded lines (SPEC-019). Code assigns new IDs and keeps prior changed/removed text in TBL-119. Unnamed lines keep their text, citations and time.
 
@@ -362,10 +362,21 @@ An insertion or deletion may renumber integer pos values while preserving existi
 | `at` | time | When the line was written or last changed |
 | `device` | device ID | The device that wrote it |
 
-`state-removed.json` is an object with `removed`, a list of records with `id`, `at` (when the line was removed) and `device`.
+`state-removed.json` is an object with `removed`, a list of the following records, written in this field order. New C2 writers set kind and keep one marker per ID. New removals clear earlier restoration fields; a verified restoration writes both restored_by and restored_at for that removal.
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `id` | state line ID | The removed line |
+| `at` | time | When this removal occurred |
+| `device` | device ID | The device recording the removal |
+| `kind` | optional `privacy` or `edit` | An omitted legacy kind is unknown, never assumed ordinary |
+| `restored_by` | optional run ID | The verified local restoration of this removal |
+| `restored_at` | optional time | That restoration's time |
 
 The text of the lines stays under 3,000 bytes in all after a curation (SPEC-017). A merge can leave more; the next curation brings the state back under the limit, and the start summary shortens it meanwhile (SPEC-021).
 C2 removal markers distinguish privacy removals (kind privacy) from ordinary edits (kind edit). Retain ordinary removed IDs too, but a verified local undo may mark an intentional same-ID restoration with restored_by/restored_at. Forget/tombstone privacy markers prohibit that restoration and do not archive the removed content. Every state reader (start, request, consolidation and undo) uses the same validity view: a line without required current decision provenance is absent from that view even if physical cleanup failed; later writes retry pending stale cleanup. The C3 design decides sync restoration/conflict precedence.
+
+Readers preserve legacy omitted kinds and individually present restoration fields. Privacy always blocks restoration. A single edit marker with both typed restoration fields represents an already verified restoration, independent of later run-log expiry; timestamps alone never grant that authority. Missing kinds or duplicate markers are non-authoritative unknown removals: hide/report the line, never downgrade it to ordinary stale or archive/restore its source text. New writes do not choose an arbitrary duplicate. The pure view receives current items and explicit privacy-citation facts from its complete read-only owner snapshot; an expired raw entry alone does not invalidate an ordinary line.
 
 
 ### Pins (TBL-014)
@@ -445,6 +456,8 @@ One record per line of `projects/<project>/state-history.jsonl`, outside the lay
 Under the layer lock, append and durably flush every required prior version before rewriting state. Roll back a short append to its known prior size; if complete lines, final LF or durability cannot be verified, keep this request's whole state unchanged and log the failure. Later writes, recovery and undo require strict completeness checks too. Undo uses a record only when epoch, apply generation, line and its exact-record hash link to an actual mutation in a complete run log. Unused staged history is not a restoration source. Generations separate multiple applies of one run: restore an existing line's version before its first actual change, and remove a line first added by the run. Forget does not archive the content it removes, and undo cannot cross a privacy-removal marker.
 
 A forget removes records citing the item or its quoted entries and clears why in every remaining project history record: prior cites cannot establish the provenance of a reason drawn from newer input. Under the layer lock, scrub the primary, unused staged history and every backup/temporary copy the plugin can restore; verify durability and cleanup before reporting success. Automatic history recovery always restores reasons as empty strings, preventing an older copy from reviving them. The prior text/citations of A may remain, but a reason containing B does not. Scrubbing can invalidate an older run's exact-record hash link; undo keeps that line as history-unavailable and explains the limitation. history_records counts each removed record or record with a nonempty reason cleared once, excluding otherwise unchanged already-empty records.
+
+Exact-record links use SHA-256 of the original complete UTF-8 JSONL record bytes including the final LF, never a reserialized value or the whole history file. Strict history validation rejects the entire incomplete/damaged/blank-record stream before exposing records. Retention preserves the original bytes of retained records. History cites has no separate minimum; empty cites and empty or multiline why remain valid within its UTF-8 limit. Parsed staged history alone grants no undo authority. Integer-valued pos has no declared minimum; history generation follows the exact nonnegative format-2 counter type. Publish no state or removal-marker changes until all required histories are complete and durable; marker-first then state publication may leave an explicitly reported prefix, never a multi-file atomicity promise.
 
 ### Conflict candidates (TBL-120)
 
