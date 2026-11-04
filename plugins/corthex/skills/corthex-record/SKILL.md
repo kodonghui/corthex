@@ -4,7 +4,7 @@ description: CORTHEX records at any stage. Use when turning meeting notes, a rec
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.4.0"
+  version: "0.5.0"
 ---
 
 # Records
