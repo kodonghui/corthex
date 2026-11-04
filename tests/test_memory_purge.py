@@ -325,7 +325,9 @@ while not go.exists() and time.monotonic()<deadline:time.sleep(.005)
 try:
  lease.check();lease.refresh();p.with_name('forbidden-write').write_bytes(b'bad');out='changed'
 except locks.LostLock:out='lost-lock'
-lease.release();done.write_text(out)
+lease.release()
+pending=done.with_name(done.name+'.pending')
+pending.write_text(out,encoding='utf-8');pending.replace(done)
 """
         process = subprocess.Popen([sys.executable, "-B", "-c", program, str(fixture.SCRIPTS), str(held), str(go), str(done)],
                                    env=self.environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -337,8 +339,11 @@ lease.release();done.write_text(out)
             patch = ("from memory_lib import locks\nimport time\nold=locks.Lock.acquire\n"
                      "def acquire(self,*a,**kw):\n value=old(self,*a,**kw)\n if kw.get('force') and self.policy.rank==1:\n"
                      "  before=self.path.read_bytes();root=self.path.parents[3];(root/'go').touch();end=time.monotonic()+10\n"
-                     "  while not (root/'done').exists() and time.monotonic()<end:time.sleep(.005)\n"
-                     "  assert (root/'done').read_text()=='lost-lock' and self.path.read_bytes()==before;self.check()\n return value\nlocks.Lock.acquire=acquire")
+                     "  receipt=''\n  while time.monotonic()<end:\n"
+                     "   try:receipt=(root/'done').read_text(encoding='utf-8')\n"
+                     "   except (FileNotFoundError,PermissionError):receipt=''\n"
+                     "   if receipt:break\n   time.sleep(.005)\n"
+                     "  assert receipt=='lost-lock' and self.path.read_bytes()==before;self.check()\n return value\nlocks.Lock.acquire=acquire")
             value, status = self.yes(preview, patch=patch)
             self.assertEqual((value["outcome"], status), ("done", 0))
             self.assertEqual(done.read_text(), "lost-lock")
