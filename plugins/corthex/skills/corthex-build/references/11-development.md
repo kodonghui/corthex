@@ -15,7 +15,7 @@
 2. Check the real repository root, the branch, existing changes and work in progress by others.
 3. Implement against the contracts. If the code needs a contract change, change the contract first (stage 05 or 06) and say so.
 4. Back end: return exactly the responses the API contract lists, with their schemas, and every error in the contract's error shape with one of its error codes; log the `traceId` of each error response. If the framework also generates an OpenAPI document from the code, the contract file stays the source. Run the contract tests against a development or staging server, never production, with a test account: for example `schemathesis run api/openapi.yaml --url <server> -H "Authorization: Bearer <test token>"`.
-5. When the product calls an AI model's API itself, such as OpenAI's or Anthropic's, keep the key and build the client as Keys for AI model APIs below says.
+5. When the product calls an AI model's API itself, such as OpenAI's or Anthropic's, keep the key and build the client as Keys for AI model APIs below says. Read each response by the type of its blocks, not by taking the first block, and handle each stop reason the provider documents: an answer that hit the output limit is a failure, and that limit leaves room for reasoning tokens; a refusal gets the fallback of the AI call entry; an empty end of turn right after a tool result is checked on its own. Take the names and values from the provider's current documentation.
 6. Front end: build each screen against the mock server first (stage 06), show each response the way the screen definition says, then switch to the real server.
 7. Write tests for each acceptance criterion the change touches.
 8. Open a pull request that names the TASK and SPEC IDs and says what was tested and what was not.
@@ -30,7 +30,7 @@
 - **Tests use the fake client.** The test setup removes the key from the environment and overrides the function, so a key set on a developer's machine never makes the test suite call the paid API. Tests that call the real model carry a marker: the setup leaves them the key and the real client, the default run leaves them out, and they run only when asked, with a key set (stage 12).
 - **A deployed server never uses the fake client.** Without a key, its AI operations return the contract's error for an unavailable model, such as 503 `ai_unavailable`, the rest keeps working, and its log at start names the missing variable, never a value. So the setting that names the environment defaults to production, and only a developer's `.env` sets development.
 - **Never in logs or commits.** Never write the key, a request header that carries it or settings with it revealed into logs, error messages, responses, records or commits. If a key was ever committed, pasted or logged, revoke it at the provider and make a new one first; deleting the commit or the log does not undo the leak.
-- **One key per product and environment**, such as development and production, so that one can be revoked without stopping the others.
+- **One key per product and environment**, such as development and production, so that one can be revoked without stopping the others. Evaluations and comparison runs against the real model get a key or project of their own, with an enforced spending limit and an alert, so that a run that uses up its credit leaves the product running.
 
 For example, in a FastAPI back end:
 
@@ -106,6 +106,16 @@ markers = ["real_model: calls the real AI model and costs money"]
 addopts = "-m 'not real_model'"  # run them with OPENAI_API_KEY set: pytest -m real_model
 ```
 
+## Changing a live AI service
+
+When an AI feature is already serving people:
+
+- Keep the prompts, knowledge and tool definitions apart from the code, each with a version, a hash per file and a copy to roll back to.
+- The deployment command checks that the live version is the one it expects, and stops when it is not.
+- Change one thing at a time: the change, a quick regression run, a record, then the next change. Turn new behaviour on and off with a setting.
+- Before a deadline, agree on a freeze time and on what may still go in, for example from 30 minutes before only changes that passed the quick regression run, and from 10 minutes before only rollbacks. During the freeze, only read except for the changes or rollbacks that agreement allows.
+- The day before, run the access, deployment and approval paths once from start to end.
+
 ## Checks
 
 - The tests for the touched acceptance criteria pass.
@@ -115,6 +125,7 @@ addopts = "-m 'not real_model'"  # run them with OPENAI_API_KEY set: pytest -m r
 - The diff holds only the intended files and no secrets.
 - When the product calls an AI model's API, Git ignores `.env` (`git check-ignore -q .env`), neither `.env` nor `.env.example` sets a key and no front-end variable holds one (look at the names only and never print the values), and the tests pass with no key in the environment.
 - Screen changes match their screen definitions, including the state each response leads to.
+- A change to a live AI service checked the live version first, and has its regression run and its record.
 
 ## Output template
 

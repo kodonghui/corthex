@@ -71,7 +71,7 @@ Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 o
 | `corthex-screen` | 07–09 | sitemap, screen states, mockups and design tokens |
 | `corthex-build` | 10–12 | work breakdown, development and QA |
 | `corthex-present` | 13 | script, scene table and slides for the presentation |
-| `corthex-record` | any | minutes, decision log and progress records |
+| `corthex-record` | any | minutes, decision log, progress records and retrospectives |
 | `corthex-uxui` | 08, 09, 13, or on its own | turn design words into named parts and numbers for screens, motion and video, and measure line breaks, contrast, target size, flashes and loudness before showing the result |
 | `corthex-hub` | all, in `corthex-nexus` | see every project's stages, checks and trace links on one page, and record each stage's progress |
 

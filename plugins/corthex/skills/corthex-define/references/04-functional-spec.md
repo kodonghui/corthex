@@ -34,7 +34,7 @@ Stages 06, 08 and 12 use the same kinds, so that every case written here gets a 
 | Data exposure | What the result must never carry, such as personal data or internal details |
 | Empty and streamed answers | What an empty result is, and what an interrupted stream leaves behind |
 | Screen states | What the user must be told in each outcome; stage 08 decides how it looks |
-| AI answers | The AI call entry, with the requests in scope, out of scope and forbidden |
+| AI answers | The AI call entry, with the requests in scope, out of scope and forbidden. In a conversation, also what happens when more messages from the same person arrive while it answers, such as waiting and combining them, starting again before any write, or adding to the answer, with each write run once; and the other ways in, such as a photo with text, voice, or a button that sends the message to a human inbox instead of the AI |
 
 ## Checks
 
@@ -53,6 +53,8 @@ A behaviour that calls an AI model gets an AI call entry, below the table or in 
 | Not sent | Data that must never reach the model, such as personal data, secrets or answer keys |
 | Output | The format the model must return, such as a JSON schema |
 | Checked by the server | What the server checks before it uses the output, such as that every source the answer cites exists |
+| Tools | The tools the model may call, as reads and writes. Before each write, such as a refund, a change or a message sent, what the server checks in code: who the user is, that the target is theirs, that the evidence matches the records, the amount and count limits, and the user's confirmation of what, on which item and how much |
+| Untrusted input | Attachments, photos, voice, tool results and retrieved text, which reach the model as data with their source, never as instructions. A turn that carries them runs a write only after those checks. Each model call holds at most two of these: untrusted input, sensitive data, and a change of state or an outside message |
 | Failure | What happens when the model fails, is too slow, the server has no key for it or a usage limit is reached, and what the user sees |
 | Human decision | Where a person accepts or rejects the result before it counts |
 

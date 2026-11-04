@@ -34,7 +34,7 @@ Every operation accounts for each response in this table: it lists the response,
 | 409 | The request can clash with the current state, such as a duplicate or an outdated version |
 | `default` | Always, for any other error, with the error shape |
 
-Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow, the server has no key for it or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says.
+Add 429 where the project limits request rates, and any other code a SPEC row needs. An operation that calls an AI model also lists what the caller gets when the model fails, is too slow, the server has no key for it or a usage limit is reached, each with an error code of its own, such as 503 `ai_unavailable` or 429 `ai_limit_reached`, as the AI call entry in the functional spec (stage 04) says. When the server's check before a write tool fails, such as on identity, ownership or evidence, the operation lists that response too, such as 403 or 409 with an error code of its own, and nothing is written.
 
 ## Errors
 
@@ -67,7 +67,7 @@ Stages 04, 08 and 12 use the same kinds. For each kind that applies to an operat
 | Data exposure | Response schemas that hold only what the screens and clients need |
 | Empty and streamed answers | 204 and empty lists, and for a stream its events and how it ends |
 | Screen states | Nothing more; stage 08 leads each response to a state |
-| AI answers | The responses of the AI call entry, such as `ai_unavailable` or `ai_limit_reached` |
+| AI answers | The responses of the AI call entry, such as `ai_unavailable` or `ai_limit_reached`, and the response to a failed check before a write tool |
 
 ## Checks
 
