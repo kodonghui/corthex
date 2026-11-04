@@ -4,6 +4,12 @@
   "team": false,
   "language": "en",
   "records": { "kind": "notion" },
+  "ask_before": [
+    "public repository visibility changes",
+    "release tags",
+    "deletions (repositories, data, Notion content, unmerged work)",
+    "payments and plan changes"
+  ],
   "stages": {
     "01-domain": {
       "human": "miro",

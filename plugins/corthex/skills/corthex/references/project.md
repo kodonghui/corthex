@@ -13,6 +13,7 @@ This file lives in the product repository and is committed with it, so everyone 
 | `team` | boolean | `true` when several people work on the project |
 | `language` | string | Language for project documents, when it differs from the profile |
 | `records` | object | Where this project's records go: `kind` (`notion`, `git` or `none`) and `location` (a link to the records database, or a path) |
+| `ask_before` | array of strings | Optional. Kinds of actions to ask about first in this project. A valid list replaces the profile's `ask_before` for this project, including an empty list. Anything that cannot be undone is still asked. Non-list values, non-string entries, blank categories and strings that cannot be encoded as UTF-8 are invalid and keep the profile's list. Review reductions of this list separately, because this file is committed in the repository. |
 | `repos` | object | Optional. Other repositories that hold some of this project's sources, by a short alias in lowercase letters, digits and hyphens, such as `{ "design": "https://github.com/acme/acme-design" }` |
 | `ids` | object | Optional trace ID formats by kind, described below |
 | `stages` | object | One entry per stage key, described below |
