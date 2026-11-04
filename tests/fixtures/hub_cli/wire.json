@@ -1,0 +1,333 @@
+{
+  "schema": 1,
+  "runtimePin": "3570fb0c755b50c314ca26f0361c72a71fe22d0d",
+  "project": "qa-cli-fixture",
+  "ids": {
+    "c": "nc_3a6d9g2j5m8r",
+    "p": "np_2b5e8g1j4m7p",
+    "e": "ne_9c3f6h2k5n8q",
+    "k": "nk_7f3k2m9q4x1v"
+  },
+  "session": "qa-cli-session",
+  "success": {
+    "push": {
+      "method": "POST",
+      "pathTemplate": "/api/snapshots",
+      "status": 200,
+      "body": {
+        "name": "qa-cli-fixture",
+        "revision": 1,
+        "default_commit": null,
+        "replaced": null,
+        "pictures": {
+          "drawn": [],
+          "current_again": [],
+          "not_current": [],
+          "unchanged": 0
+        },
+        "discrepancies": {
+          "opened": 0,
+          "resolved": 0,
+          "open": 0,
+          "not_opened": 0
+        },
+        "checkpoints": {
+          "recorded": 0,
+          "withdrawn_recorded": []
+        },
+        "todo": {
+          "comments": 0,
+          "discrepancies": 0,
+          "reflections": 0,
+          "checkpoints": 0
+        }
+      },
+      "operationId": "pushSnapshot",
+      "sourceExample": "stored-0-2",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "remove": {
+      "method": "DELETE",
+      "pathTemplate": "/api/snapshots/{project}",
+      "status": 200,
+      "body": {
+        "name": "qa-cli-fixture",
+        "removed": true
+      },
+      "operationId": "removeProject",
+      "sourceExample": "removed",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "comment": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/comments",
+      "status": 201,
+      "body": {
+        "id": "nc_3a6d9g2j5m8r",
+        "part": "sample",
+        "stage": "01-domain",
+        "item": "CTX-014",
+        "quote": null,
+        "discrepancy": null,
+        "commit": "3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a",
+        "author": "user",
+        "text": "Should a reply be able to settle a comment on its own?",
+        "state": "open",
+        "closed_as": null,
+        "waits": "agent",
+        "settled": false,
+        "dismissed": false,
+        "made_at": "2026-11-03T01:00:10.000Z",
+        "last_at": "2026-11-03T01:00:10.000Z"
+      },
+      "operationId": "leaveComment",
+      "sourceExample": "left",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "show": {
+      "method": "GET",
+      "pathTemplate": "/api/spaces/{project}/comments/{comment}",
+      "status": 200,
+      "body": {
+        "id": "nc_3a6d9g2j5m8r",
+        "part": "sample",
+        "stage": "01-domain",
+        "item": "CTX-014",
+        "quote": null,
+        "discrepancy": null,
+        "commit": "3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a",
+        "author": "user",
+        "text": "Should a reply be able to settle a comment on its own?",
+        "state": "open",
+        "closed_as": null,
+        "waits": "agent",
+        "settled": true,
+        "dismissed": false,
+        "made_at": "2026-11-03T01:00:10.000Z",
+        "last_at": "2026-11-03T02:14:09.120Z",
+        "replies": [
+          {
+            "seq": 1,
+            "author": "agent",
+            "text": "The recommendation is yes: SPEC-127 lets the user's reply settle it, and the agent records the decision.",
+            "settles": false,
+            "made_at": "2026-11-03T01:30:00.000Z"
+          },
+          {
+            "seq": 2,
+            "author": "user",
+            "text": "Yes, as recommended: a reply settles it.",
+            "settles": true,
+            "made_at": "2026-11-03T02:14:09.120Z"
+          }
+        ],
+        "decisions": [],
+        "proposals": []
+      },
+      "operationId": "getComment",
+      "sourceExample": "settled",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "reply": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/comments/{comment}/replies",
+      "status": 201,
+      "body": {
+        "comment": {
+          "id": "nc_3a6d9g2j5m8r",
+          "state": "open",
+          "closed_as": null,
+          "waits": "agent",
+          "settled": false,
+          "dismissed": false,
+          "last_at": "2026-11-03T02:14:09.120Z"
+        },
+        "reply": {
+          "seq": 3,
+          "author": "user",
+          "text": "Not yet: the reply should not close it.",
+          "settles": false,
+          "made_at": "2026-11-03T02:14:09.120Z"
+        }
+      },
+      "operationId": "replyToComment",
+      "sourceExample": "opened-again",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "answered": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/comments/{comment}/answered",
+      "status": 200,
+      "body": {
+        "comment": {
+          "id": "nc_3a6d9g2j5m8r",
+          "state": "closed",
+          "closed_as": "answered",
+          "waits": null,
+          "settled": false,
+          "dismissed": false,
+          "last_at": "2026-11-03T02:20:00.004Z"
+        },
+        "changed": true
+      },
+      "operationId": "markAnswered",
+      "sourceExample": "closed",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "decide": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/comments/{comment}/decisions",
+      "status": 201,
+      "body": {
+        "comment": {
+          "id": "nc_3a6d9g2j5m8r",
+          "state": "closed",
+          "closed_as": "decided",
+          "waits": null,
+          "settled": false,
+          "dismissed": false,
+          "last_at": "2026-11-03T05:02:11.310Z"
+        },
+        "decision": {
+          "seq": 1,
+          "link": "https://example.invalid/pr/1",
+          "text": "A user's reply settles a comment; SPEC-127 says so now.",
+          "made_at": "2026-11-03T05:02:11.310Z"
+        }
+      },
+      "operationId": "recordDecision",
+      "sourceExample": "decided",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "propose": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/proposals",
+      "status": 201,
+      "body": {
+        "id": "np_2b5e8g1j4m7p",
+        "part": "sample",
+        "stage": "05-erd",
+        "commit": "3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a",
+        "items": [
+          "TBL-111"
+        ],
+        "reason": "The comment asks for the glossary's word.",
+        "change": "Rename the table claims to entry_claims.",
+        "source_text": "CREATE TABLE entry_claims (",
+        "comment": "nc_3a6d9g2j5m8r",
+        "discrepancy": null,
+        "state": "open",
+        "made_at": "2026-11-03T06:40:00.000Z",
+        "closed_at": null,
+        "edit": null
+      },
+      "operationId": "makeProposal",
+      "sourceExample": "made",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "withdraw": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/proposals/{proposal}/withdraw",
+      "status": 200,
+      "body": {
+        "proposal": {
+          "id": "np_2b5e8g1j4m7p",
+          "state": "withdrawn",
+          "closed_at": "2026-11-03T06:00:00.000Z"
+        },
+        "changed": true
+      },
+      "operationId": "withdrawProposal",
+      "sourceExample": "withdrawn",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "reflect": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/edits/{edit}/report",
+      "status": 200,
+      "body": {
+        "edit": {
+          "id": "ne_9c3f6h2k5n8q",
+          "part": "sample",
+          "stage": "05-erd",
+          "commit": "3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a",
+          "proposal": "np_2b5e8g1j4m7p",
+          "state": "in-review",
+          "pull_request": "https://example.invalid/pr/1",
+          "closed_commit": null,
+          "made_at": "2026-11-03T07:30:41.882Z",
+          "changed_at": "2026-11-03T08:12:00.250Z"
+        },
+        "changed": true
+      },
+      "operationId": "reportEdit",
+      "sourceExample": "in-review",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "record": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/checkpoints/{checkpoint}/report",
+      "status": 200,
+      "body": {
+        "checkpoint": {
+          "id": "nk_7f3k2m9q4x1v",
+          "part": "sample",
+          "stage": "04-functional-spec",
+          "commit": "3f1c9a7e5b2d4c6a8e0f1b3d5c7a9e1f2b4d6c8a",
+          "words": "The rows as drafted, with the four points as recommended.",
+          "state": "passed",
+          "passed_at": "2026-11-03T09:00:00.000Z",
+          "withdrawn_at": null,
+          "pull_request": "https://example.invalid/pr/1",
+          "pr_state": "open",
+          "recorded_commit": null
+        },
+        "changed": true
+      },
+      "operationId": "reportCheckpoint",
+      "sourceExample": "opened",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "claim": {
+      "method": "POST",
+      "pathTemplate": "/api/spaces/{project}/claims/{entry}",
+      "status": 200,
+      "body": {
+        "entry": "nc_3a6d9g2j5m8r",
+        "session": "qa-cli-session",
+        "claimed_at": "2026-11-03T01:05:00.000Z",
+        "ends_at": "2026-11-03T02:05:00.000Z"
+      },
+      "operationId": "claimEntry",
+      "sourceExample": "claimed",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    },
+    "release": {
+      "method": "DELETE",
+      "pathTemplate": "/api/spaces/{project}/claims/{entry}",
+      "status": 200,
+      "body": {
+        "entry": "nc_3a6d9g2j5m8r",
+        "released": true
+      },
+      "operationId": "releaseEntry",
+      "sourceExample": "released",
+      "fixtureKind": "synthetic_adapted_contract_example"
+    }
+  },
+  "refused": {
+    "status": 400,
+    "body": {
+      "type": "about:blank",
+      "title": "Bad Request",
+      "status": 400,
+      "code": "invalid_request",
+      "detail": "Synthetic CLI refusal fixture.",
+      "field": "body"
+    }
+  },
+  "limits": [
+    "HTTP fixtures exercise CLI handling, not reachability of handler response conditions.",
+    "No real service token, Access policy, deployment or server persistence is exercised."
+  ]
+}
