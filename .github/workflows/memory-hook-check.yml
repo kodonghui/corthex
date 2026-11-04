@@ -35,6 +35,9 @@ jobs:
       - name: Actual native tool inputs, outputs and transcript exclusion
         if: ${{ !cancelled() }}
         run: python .github/hook-check/tool_turn.py "${{ runner.temp }}/memory-hook-check/tool-turn"
+      - name: C1 agent-flow state replays in installed hosts (loopback replies)
+        if: ${{ !cancelled() }}
+        run: python .github/hook-check/walk_replay.py "${{ runner.temp }}/memory-hook-check/walk-replay"
       - name: Actual startup, resume, clear, compact and fork
         if: ${{ !cancelled() }}
         run: python .github/hook-check/lifecycle.py "${{ runner.temp }}/memory-hook-check/lifecycle"

@@ -61,6 +61,10 @@ jobs:
         if: ${{ !cancelled() }}
         shell: cmd
         run: python .github\hook-check\tool_turn.py "%RUNNER_TEMP%\hook-check\tool-turn"
+      - name: C1 agent-flow state replays in installed hosts (loopback replies)
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\walk_replay.py "%RUNNER_TEMP%\hook-check\walk-replay"
       - name: Actual headless lifecycle sources; terminal sources have operator evidence
         if: ${{ !cancelled() }}
         shell: cmd
