@@ -1862,6 +1862,7 @@ def page_data(home, snapshots, missing, now=None):
         "lang": "ko" if language.lower().startswith("ko") else "en",
         "origin": "local",
         "projects": snapshots,
+        "spaces": {},
         "missing": missing,
     }
 
@@ -1875,6 +1876,7 @@ def render_page(data, template=TEMPLATE):
     payload = dump(data, compact=True)
     # Inside <script>, "<" could end the block; JSON allows these escapes.
     payload = payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    page = page.replace('<html lang="en">', '<html lang="%s">' % ("ko" if data.get("lang") == "ko" else "en"), 1)
     return page.replace(PLACEHOLDER, payload)
 
 
