@@ -50,7 +50,10 @@ def wait_capture(home, before, source, timeout=6):
             result = qualify(delta(home, before), source)
             result["capture_wait_ms"] = round((time.monotonic() - started) * 1000, 3)
             return result
-        except AssertionError:
+        except (AssertionError, PermissionError, FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
+            # A replacement/shared handle or a partial append is not a complete
+            # snapshot. Retry the whole read within the original capture budget;
+            # persistent read errors and invalid captures still fail at expiry.
             if time.monotonic() - started >= timeout:
                 raise
             time.sleep(.025)

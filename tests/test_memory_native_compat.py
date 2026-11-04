@@ -181,6 +181,87 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                                {"completed":True,"exit":0,"generation":new,"event_source":"resume"})
             self.assertEqual(helper.wait_start_completed(output,event,new)["generation"],new)
 
+    def complete_capture_file(self, home):
+        path = home / ".corthex/corthex-memory/projects/demo/raw/native.jsonl"
+        path.parent.mkdir(parents=True)
+        rows = [{"session":"native-fixture", "kind":"start", "event":"start"},
+                {"session":"native-fixture", "kind":"prompt", "turn":1, "text":self.lifecycle.runner.PROMPT},
+                {"session":"native-fixture", "kind":"answer", "turn":1, "text":self.lifecycle.runner.REPLY},
+                {"session":"native-fixture", "kind":"end"}]
+        path.write_bytes(b"".join((json.dumps(v) + "\n").encode("utf-8") for v in rows))
+        return path, rows
+
+    def test_capture_recovers_from_transient_read_and_partial_json_failures(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            path, rows = self.complete_capture_file(home)
+            original = Path.read_bytes
+            pending = [PermissionError(13, "fixture sharing"), FileNotFoundError("fixture replacement"),
+                       b'{"session":', b'{"text":"\xea']
+            def read(candidate):
+                if candidate == path and pending:
+                    value = pending.pop(0)
+                    if isinstance(value, bytes):
+                        return value
+                    raise value
+                return original(candidate)
+            with patch.object(Path, "read_bytes", read):
+                result = self.lifecycle.wait_capture(home, {}, "startup", timeout=1)
+            self.assertTrue(result["verified"])
+            self.assertEqual(result["entries"], rows)
+
+    def test_unreadable_capture_keeps_its_original_deadline_and_never_verifies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            self.complete_capture_file(home)
+            with patch.object(Path, "read_bytes", side_effect=PermissionError(13, "fixture sharing")), \
+                 patch.object(self.lifecycle.time, "monotonic", side_effect=[0, .02, .04, .06]), \
+                 patch.object(self.lifecycle.time, "sleep"):
+                with self.assertRaises(PermissionError):
+                    self.lifecycle.wait_capture(home, {}, "startup", timeout=.05)
+
+    @unittest.skipUnless(os.name == "nt", "Windows read-sharing fixture")
+    def test_capture_waits_for_an_actual_windows_read_sharing_handle(self):
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                      ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            path, rows = self.complete_capture_file(home)
+            handle = kernel.CreateFileW(str(path), 0x80000000, 0, None, 3, 0x80, None)
+            if handle in (None, ctypes.c_void_p(-1).value):
+                raise ctypes.WinError(ctypes.get_last_error())
+            owned = {"handle":handle, "timer":None, "closed":False}
+            def release():
+                current, owned["handle"] = owned["handle"], None
+                if current is not None:
+                    owned["closed"] = bool(kernel.CloseHandle(current))
+            original = Path.read_bytes
+            def read(candidate):
+                try:
+                    return original(candidate)
+                except PermissionError:
+                    if candidate == path and owned["timer"] is None:
+                        owned["timer"] = threading.Timer(.05, release)
+                        owned["timer"].start()
+                    raise
+            try:
+                with patch.object(Path, "read_bytes", read):
+                    result = self.lifecycle.wait_capture(home, {}, "startup", timeout=2)
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["entries"], rows)
+            finally:
+                if owned["timer"] is not None:
+                    owned["timer"].join(timeout=2)
+                    self.assertFalse(owned["timer"].is_alive())
+                release()
+                self.assertTrue(owned["closed"])
+
     def test_waits_for_actual_delayed_end_record(self):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary).resolve()
