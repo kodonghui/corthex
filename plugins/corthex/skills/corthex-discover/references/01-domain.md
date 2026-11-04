@@ -94,6 +94,10 @@ The user answers on the board or in the conversation. Read the board again befor
 - Every hotspot is answered, with where the answer came from, or kept open with what would answer it.
 - Screens, fields and other requirement-level details are not fixed here. Note them for stage 02.
 
+## Preserve an explicit timeline
+
+When the board has an event timeline, keep it in the domain source as a Markdown table with `Lane` and `Events` columns, in the board's lane order. Separate successive places with ` → ` and alternatives in one place with ` or `, for example `Order placed → Payment taken or Payment failed`. Read it back against the board at the checkpoint. Keep the user's sequence and simultaneous alternatives; a context's command table alone does not define a timeline. Leave it absent when no timeline was given. The optional NEXUS workflow in [nexus-work.md](nexus-work.md) also explains recording and reflecting approved stage work.
+
 ## Output template
 
 `domain.md`, or one file per part of the product, named after the part:

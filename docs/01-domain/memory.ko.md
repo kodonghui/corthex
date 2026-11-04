@@ -131,4 +131,4 @@ CORTHEX-MEMORY의 맥락과 용어집을 한 파일에 둡니다. 프로젝트�
 | TERM-137 | 실행 | 기기에 바꾼 대상의 ID를 남기는 정리·통합·되돌리기 한 번 | CTX-002 | 작업, 묶음 |
 | TERM-138 | 되돌리기 | 이전 실행의 변경을 반대로 적용하되 뒤 실행의 변경은 지키는 새 실행 | CTX-005 | 롤백, 복귀 |
 
-기능 명세([docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md))가 2026-10-24에 TERM-098부터 TERM-108까지를 더하고, 정리된 층(TERM-032)에 고정을 넣었습니다. 이 ID는 TERM-047부터 TERM-097까지를 쓰는 NEXUS의 [nexus.ko.md](nexus.ko.md) 다음에 이어집니다.
+기능 명세([docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md))가 2026-10-24에 TERM-098부터 TERM-108까지를 더하고, 정리된 층(TERM-032)에 고정을 넣었습니다. 이 ID는 TERM-047부터 TERM-097까지를 쓰는 NEXUS의 [nexus.ko.md](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/docs/01-domain/nexus.ko.md) 다음에 이어집니다.

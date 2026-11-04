@@ -4,7 +4,7 @@ description: CORTHEX records at any stage. Use when turning meeting notes, a rec
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # Records
@@ -40,3 +40,7 @@ Read the schema before writing. Reuse existing databases and the row for the sam
 ## Finding past decisions
 
 Search the decision log by DEC ID, by the IDs a decision touches (such as `REQ-012`), and by date. Report the latest decision that is still in force, and say which earlier ones it replaced.
+
+## Optional NEXUS work
+
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.

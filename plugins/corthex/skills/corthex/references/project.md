@@ -14,6 +14,7 @@ This file lives in the product repository and is committed with it, so everyone 
 | `language` | string | Language for project documents, when it differs from the profile |
 | `records` | object | Where this project's records go: `kind` (`notion`, `git` or `none`) and `location` (a link to the records database, or a path) |
 | `ask_before` | array of strings | Optional. Kinds of actions to ask about first in this project. A valid list replaces the profile's `ask_before` for this project, including an empty list. Anything that cannot be undone is still asked. Non-list values, non-string entries, blank categories and strings that cannot be encoded as UTF-8 are invalid and keep the profile's list. Review reductions of this list separately, because this file is committed in the repository. |
+| `parts` | array of strings | Optional. One to50 different lowercase part IDs, each at most100 characters, using letters, digits and hyphens. Each part has its own source files and repository stage record. Omit for a project without parts. |
 | `repos` | object | Optional. Other repositories that hold some of this project's sources, by a short alias in lowercase letters, digits and hyphens, such as `{ "design": "https://github.com/acme/acme-design" }` |
 | `ids` | object | Optional trace ID formats by kind, described below |
 | `stages` | object | One entry per stage key, described below |
@@ -62,3 +63,14 @@ This file lives on the machine, never in a repository, because paths differ betw
 - Add an entry when a project is registered on this machine. Update its `path` when the repository moves.
 - `repos` gives the local checkout of each alias in the project's `repos`. When a stage's source is in a repository with no local checkout, say so and ask for its path, or offer to clone it.
 - Remove an entry only when the user asks. The project's own files stay where they are.
+
+
+## Repository stage records for parts
+
+When the installed hub supports NEXUS0.2, use its `status PROJECT STAGE --repository --part PART` for a declared part. The first write creates `.corthex/stages/PART.json`; later writes preserve that part's other stages and checkpoints. Without parts, the record is `.corthex/stages.json`. The records contain a format version, project/part IDs, stage state, checkpoints, next action and checked review findings. The hub command help defines the actual flags; the command writes files, never commits or approves them.
+
+Stage settings remain shared. Sources in one stage folder can have one file or subfolder per part. Keep glossary terms on stage05 tables and stage07 screens, or explicitly write `terms: none`; each part separately lists terms without a table/screen. A stage07 screen's status is its declared source status, not a stage's human checkpoint.
+
+When splitting a repository or adding parts, first inspect existing repository and device records. Copy only verified states/checkpoints for the matching part, preserving approval links, dates, next actions and review findings. Do not infer `done` from a file, a release or another part's checkpoint. Preserve unavailable records and report their scope; never reset all parts to make one change. Source/control repositories do not need to duplicate another product's source records.
+
+For a new part, a missing record means unknown/not recorded, not an approved checkpoint. The optional hub cannot block ordinary local work. Before sending a repository for the first time, follow the explicit first-send confirmation in [nexus-work.md](nexus-work.md).
