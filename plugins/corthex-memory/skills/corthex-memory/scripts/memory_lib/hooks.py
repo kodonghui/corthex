@@ -12,8 +12,8 @@ from . import clock
 PLUGIN = Path(__file__).resolve().parents[4]
 EVENTS = {"start": "SessionStart", "prompt": "UserPromptSubmit", "end-of-turn": "Stop", "end": "SessionEnd"}
 SECONDS = {"start": 1.0, "prompt": 0.9, "end-of-turn": 0.3, "end": 0.5}
-HOST_PROMPTS = ("<task-notification>", "<cross-session-message", "<teammate-message")
-HOST_PROMPTS_VERSION = "host-prompts-1"
+HOST_PROMPTS = ("<task-notification>", "<cross-session-message", "<teammate-message", "<agent-message")
+HOST_PROMPTS_VERSION = "host-prompts-2"
 
 
 def read_input(stream, hook):
