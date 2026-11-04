@@ -55,6 +55,8 @@ A behaviour that calls an AI model gets an AI call entry, below the table or in 
 | Checked by the server | What the server checks before it uses the output, such as that every source the answer cites exists |
 | Tools | The tools the model may call, as reads and writes. Before each write, such as a refund, a change or a message sent, what the server checks in code: who the user is, that the target is theirs, that the evidence matches the records, the amount and count limits, and the user's confirmation of what, on which item and how much |
 | Untrusted input | Attachments, photos, voice, tool results and retrieved text, which reach the model as data with their source, never as instructions. A turn that carries them runs a write only after those checks. Each model call holds at most two of these: untrusted input, sensitive data, and a change of state or an outside message |
+| Time budget and retries | The whole operation deadline, including attempts and backoff; the transport phase timeouts; which layer owns retries, their limits and which operations are safe to repeat. Define cancellation, disconnects and the point after which a write may already have happened |
+| Data handling | What each provider endpoint, model and feature may receive, its storage option and retention terms, who approved sending the data and when the current official policy was checked. Separate application logs, provider storage and account-specific retention controls |
 | Failure | What happens when the model fails, is too slow, the server has no key for it or a usage limit is reached, and what the user sees |
 | Human decision | Where a person accepts or rejects the result before it counts |
 

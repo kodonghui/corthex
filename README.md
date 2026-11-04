@@ -12,7 +12,9 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.3.0; the `corthex-memory` 0.2.0 C1 package is in QA and trial preparation, before a release decision/tag; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.5.0; the `corthex-memory` 0.2.0 C1 package is in QA and trial preparation, before a release decision/tag; `corthex-nexus` is 0.1.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+
+For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
 ## Install
 

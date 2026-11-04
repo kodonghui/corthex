@@ -41,6 +41,9 @@ These principles apply to every CORTHEX task, in every stage. The user's current
 
 ## Checking
 
+- When editing documentation, preserve verified facts, constraints, IDs, commands, source-of-truth choices, approval boundaries and verification limits. Correct demonstrated errors against the implementation, contract and current authoritative sources; explain a changed meaning in the review.
+- Keep translations equivalent in behaviour, prerequisites, commands and exceptions. A shorter or clearer version must not turn an unknown or proposed result into a verified one.
+
 - Copy every number in a record or report, such as counts, pass rates, costs, durations and date arithmetic, from the command output or source that produced it, and name that source. An estimate or a chart keeps its raw values and says how blanks were handled.
 - Done means checked against real output: files, command results, screens. Say what you checked and what you did not.
 - Checks of different kinds are not interchangeable: a passing static check is not a screen review, and a screen review is not a deployment.

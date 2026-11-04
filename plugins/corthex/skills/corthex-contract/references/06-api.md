@@ -38,9 +38,11 @@ Add 429 where the project limits request rates, and any other code a SPEC row ne
 
 ## Errors
 
-Every error response has one shape. By default it is Problem Details (RFC 9457), sent as `application/problem+json`, with the members `type`, `title`, `status`, `detail` and `instance` and two more: `code`, the error code, and `traceId`, the ID the server writes to its log for the request. `status` is always the HTTP status of the response. Many web frameworks produce this shape directly.
+Every error response has one shape. By default it is Problem Details (RFC 9457), sent as `application/problem+json`, with the members `type`, `title`, `status`, `detail` and `instance` and two more: `code`, the error code, and `traceId`, the ID the server writes to its log for the request. `status` is always the HTTP status of the response. Framework defaults do not necessarily use this shape. Adapt validation errors, routing errors such as 404 and 405, application errors and unexpected 500s at their appropriate boundaries; preserve required headers such as `Allow`. Test the actual response status, media type, schema, code and trace ID. A stream needs its own error/end protocol once headers have been sent.
 
 The error codes are listed once, under `components.x-corthex.errors`: for each code, its HTTP status, what it means, the message the user sees and what the client does. The `code` member allows only these codes, so the contract tests fail when the server sends another one. The back end returns these codes, the screens show their messages (stage 08), and test cases expect them (stage 12).
+
+Validation diagnostics expose only approved field locations and safe codes: omit submitted values, arbitrary field names, exception context, secrets and internal messages. Map provider SDK exceptions to application errors inside the provider adapter, with specific subclasses before their base class; the HTTP renderer consumes application errors. Do not turn an upstream provider rate limit into the product's user quota error without the contract saying so. Log safe codes and trace IDs, not raw SDK exceptions or request/response dumps.
 
 ## Mock server and contract tests
 
