@@ -1,4 +1,5 @@
 """Native QA must detect diagnostic-only writes and await delayed end records."""
+import hashlib
 import importlib
 import json
 import os
@@ -117,7 +118,10 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
             report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
             self.assertTrue(report["original_children_unchanged"])
-            self.assertEqual(len(report["candidate_sha256s"]), 45)
+            self.assertEqual(len(report["candidate_sha256s"]), 46)
+            module = "skills/corthex-memory/scripts/memory_lib/format2.py"
+            self.assertEqual(report["candidate_sha256s"][module],
+                             hashlib.sha256((ROOT/"plugins/corthex-memory"/module).read_bytes()).hexdigest())
             for name in ("scripts/hook.py", "scripts/worker.py"):
                 self.assertEqual((copy/name).read_bytes(), (ROOT/"plugins/corthex-memory"/name).read_bytes())
             hooks = json.loads((copy/"hooks/hooks.json").read_bytes())["hooks"]
