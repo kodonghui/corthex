@@ -2,9 +2,9 @@
 
 [한국어](memory.ko.md)
 
-Stage 05 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec before C1 is built; after that check the records are frozen for the release, and a later breaking change needs the maintainer's decision and a new format version. When this file and its Korean translation differ, this file is the source.
+Stage 05 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec before C1 is built; after that check the records are frozen for the release, and a later breaking change needs the maintainer's decision and a new format version. When this file and its Korean translation differ, this file is the source. The 2026-11-03 C2 additions extend TBL-009, TBL-010, TBL-012, TBL-013, retention and locks, and add TBL-119 to TBL-121. Format 2 is the C2 target; this specification change migrates no device data.
 
-Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039), above all its [notes for stage 05](../04-functional-spec/memory.md#stage-05-the-memory-store); the requirements in [docs/02-prd/memory.md](../02-prd/memory.md), of which REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063 and REQ-064 shape the memory store most; and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
+Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039 and SPEC-143 to SPEC-145), above all its [notes for stage 05](../04-functional-spec/memory.md#stage-05-the-memory-store); the requirements in [docs/02-prd/memory.md](../02-prd/memory.md), of which REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063 and REQ-064 shape the memory store most; and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
 > D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
@@ -41,8 +41,11 @@ The memory store is `~/.corthex/corthex-memory/`, or the folder that `CORTHEX_ME
       │  └─ <log>.lock
       ├─ unprocessed/                 TBL-008 one empty file per unprocessed turn
       ├─ curation.json                TBL-009 curation record
+      ├─ state-history.jsonl          TBL-119 line history
+      ├─ runs/<run>.json               TBL-121 run logs
       ├─ curation.lock
       ├─ notices/<name>.json          TBL-010 notices
+      ├─ notices/conflict-counts.json TBL-010 durable conflict showing high-water
       ├─ injections/<log>.jsonl       TBL-011 injection log, one file per host session
       ├─ index.db                     TBL-019 to TBL-022 search index
       ├─ layer.lock
@@ -50,6 +53,7 @@ The memory store is `~/.corthex/corthex-memory/`, or the folder that `CORTHEX_ME
          ├─ items/<item>.json         TBL-012 memory items
          ├─ state.json                TBL-013 current state
          ├─ state-removed.json        TBL-013 removed current state lines
+         ├─ conflicts.json            TBL-120 candidates; C3 decides sync
          ├─ pins.json                 TBL-014 pins
          ├─ item-list.txt             TBL-015 item list
          ├─ tombstones/<item>.json    TBL-016 tombstones
@@ -60,7 +64,7 @@ the sync remote, a Git repository of the user's
 └─ projects/<project>/                each project's curated layer, as in layer/ above
 ```
 
-The functional spec's curation record is kept in two parts, so that two sessions of one project can append at once without ever writing the same file: the unprocessed turn markers (TBL-008), which only hooks add, and the curation record (TBL-009), which only the curator writes.
+The functional spec's curation record is kept in two parts, so that two sessions of one project can append at once without ever writing the same file: the unprocessed turn markers (TBL-008), which only hooks add, and the curation record (TBL-009), whose progress the curator owns; C2 layer writers also update its mandatory revision fences under the layer lock.
 
 ## Records
 
@@ -69,21 +73,24 @@ The functional spec's curation record is kept in two parts, so that two sessions
 | TBL-001 | Store record | CTX-005 | `store.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039 | active |
 | TBL-002 | Memory configuration | CTX-005 | `configuration.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037 | active |
 | TBL-003 | Usage log | CTX-005 | `logs/usage-<month>.jsonl` | its file and place | until a purge | no | SPEC-014, SPEC-015, SPEC-016, SPEC-018, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-032, SPEC-033 | active |
-| TBL-004 | Failure log | CTX-005 | `logs/failures-<date>.jsonl` | its file and place | the retention period | no | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033 | active |
+| TBL-004 | Failure log | CTX-005 | `logs/failures-<date>.jsonl` | its file and place | the retention period | no | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145 | active |
 | TBL-005 | Hook timings | CTX-005 | `logs/hooks-<date>.jsonl` | its file and place | 8 days | no | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033 | active |
 | TBL-006 | Sync record | CTX-004 | `sync/state.json` | one per memory store | while sync is on | no | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | superseded (D3, 2026-10-27) |
 | TBL-007 | Raw log | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, and also its file and `seq` | the retention period, by each entry's time | never (REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037 | active |
 | TBL-008 | Unprocessed turn markers | CTX-002 | `projects/<project>/unprocessed/<time>.<log>.<turn>` | its name | until its turn is processed or deleted | no | SPEC-002, SPEC-003, SPEC-009, SPEC-010, SPEC-016, SPEC-022, SPEC-033, SPEC-037 | active |
-| TBL-009 | Curation record | CTX-002 | `projects/<project>/curation.json` | one per project | as long as the project's memory | no | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037 | active |
-| TBL-010 | Notices | CTX-003 | `projects/<project>/notices/<name>.json` | its name | until a start summary shows it | no | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037 | active |
+| TBL-009 | Curation record | CTX-002 | `projects/<project>/curation.json` | one per project | as long as the project's memory | no | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037, SPEC-034, SPEC-035, SPEC-143, SPEC-144, SPEC-145 | active |
+| TBL-010 | Notices | CTX-003 | `projects/<project>/notices/<name>.json` | its name | until a start summary shows it | no | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-011 | Injection log | CTX-003 | `projects/<project>/injections/<log>.jsonl` | its file and place | the retention period | no | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | active |
-| TBL-012 | Memory items | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | until forgotten, or deleted with the project's memory | yes | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-013 | Current state | CTX-002 | `projects/<project>/layer/state.json` and `state-removed.json` | each line's `id` | a line until it is removed; a removed line's record for good | yes | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-014 | Pins | CTX-003 | `projects/<project>/layer/pins.json` | each record's `item` | for good, until the item is forgotten | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-015 | Item list | CTX-003 | `projects/<project>/layer/item-list.txt` | each line's item ID | made again after every change | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037 | active |
-| TBL-016 | Tombstones | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | for good | yes | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037 | active |
-| TBL-017 | Project tombstone | CTX-005 | `projects/<project>/layer/deleted.json` | one per project | for good | yes | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037 | active |
+| TBL-012 | Memory items | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | until forgotten, or deleted with the project's memory | yes | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
+| TBL-013 | Current state | CTX-002 | `projects/<project>/layer/state.json` and `state-removed.json` | each line's `id` | a line until it is removed; a removed line's record for good | yes | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-014 | Pins | CTX-003 | `projects/<project>/layer/pins.json` | each record's `item` | for good, until the item is forgotten | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-015 | Item list | CTX-003 | `projects/<project>/layer/item-list.txt` | each line's item ID | made again after every change | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-016 | Tombstones | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | for good | yes | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037, SPEC-021, SPEC-145 | active |
+| TBL-017 | Project tombstone | CTX-005 | `projects/<project>/layer/deleted.json` | one per project | for good | yes | SPEC-009, SPEC-012, SPEC-015, SPEC-027, SPEC-028, SPEC-037, SPEC-145 | active |
 | TBL-018 | Sync remote marker | CTX-004 | `corthex-memory-sync.json` in the sync remote | one per sync remote | as long as the sync remote | it is in the sync remote | SPEC-026, SPEC-027, SPEC-028 | superseded (D3, 2026-10-27) |
+| TBL-119 | Line history | CTX-002 | `projects/<project>/state-history.jsonl` | epoch, generation, line | the retention period | no | SPEC-009, SPEC-017, SPEC-019, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-120 | Conflict candidates | CTX-002 | `projects/<project>/layer/conflicts.json` | id | closed candidates also retained | the C3 design decides | SPEC-015, SPEC-016, SPEC-019, SPEC-033, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
+| TBL-121 | Run log | CTX-002 | `projects/<project>/runs/<run>.json` | id | the retention period | no | SPEC-009, SPEC-033, SPEC-037, SPEC-144, SPEC-145 | active |
 
 The search index is the SQLite file `projects/<project>/index.db`. It is never synced (REQ-044) and can always be made again from the memory items (TERM-029).
 
@@ -100,7 +107,7 @@ The search index is the SQLite file `projects/<project>/index.db`. It is never s
 - A JSON file holds one object, indented by two spaces, with its fields in the order of their table, characters outside ASCII written as they are rather than escaped, and a final LF. The same content therefore always gives the same bytes, and Git sees a change in the sync remote only where there is one.
 - A JSON Lines file holds one compact object per line, with its fields in the same order.
 - Times are in UTC with milliseconds, as `2026-10-24T13:05:12.345Z`, and dates are UTC dates, as `2026-10-24`, also in file names. Times come from each device's clock. The start summary and the memory skill show them in local time (stage 06).
-- IDs are a prefix and 12 random characters of Crockford's base32 in lowercase, 60 random bits: `d_` for a device, `e_` for a raw log entry, `i_` for a memory item and `s_` for a current state line, as `i_7f3k2m9q4x1v`. The code makes them, never the model, and never reuses one. They hold lowercase letters, digits and an underscore, so they never look like trace IDs such as `REQ-001`, and the project hub reads none of them.
+- IDs are a prefix and 12 random characters of Crockford's base32 in lowercase, 60 random bits: `d_` for a device, `e_` for a raw log entry, `i_` for a memory item, `s_` for a current state line, `c_` for a conflict candidate and `r_` for a run, as `i_7f3k2m9q4x1v`. The code makes them, never the model, and never reuses one. They hold lowercase letters, digits and an underscore, so they never look like trace IDs such as `REQ-001`, and the project hub reads none of them.
 - A project's folder has the project's name from the project list. A name that Windows keeps for devices (`con`, `prn`, `aux`, `nul`, `com0` to `com9`, `lpt0` to `lpt9`) gets `_` at its end on every system, so that all devices name the folder alike in the sync remote; project names hold only lowercase letters, digits and hyphens, so no other project's folder ends in `_`.
 - Positions in a text count its Unicode code points as stored, from 0, and a range's end is not part of it.
 - No file holds a key, a token or a password (SPEC-031).
@@ -115,7 +122,7 @@ Every process reads it first. A format that the code does not know, or a migrati
 
 | Field | Value | Meaning |
 | --- | --- | --- |
-| `format` | integer, `1` | The format version of the memory store (REQ-063) |
+| `format` | integer, `1` for C1; `2` for C2 | The format version of the memory store (REQ-063) |
 | `device` | device ID | This device, as quotes, current state lines, pins and tombstones name it |
 | `made` | time | When the memory store was made |
 | `release` | text, such as `0.2.0` | The plugin release that made the memory store or last migrated it |
@@ -252,21 +259,25 @@ After applying, the curator, under each raw log file's lock, replaces that file'
 
 ### Curation record (TBL-009)
 
-The memory skill makes it, empty, before it first enables the project, so a missing one is lost, not new. Written only by the holder of the project's curation lock: the curator; retention, which removes the raw log files it deletes and lowers the count of a file whose last entries it deletes (TBL-007); and the memory skill when the user resumes curation (SPEC-033). The curator writes it under the curated layer lock as well, after the changes that it counts, so that a stop between the two curates those turns again instead of losing them; consolidation then merges what was curated twice.
+The memory skill makes it, empty, before it first enables the project, so a missing one is lost, not new. In C1, written only by the holder of the project's curation lock: the curator; retention, which removes the raw log files it deletes and lowers the count of a file whose last entries it deletes (TBL-007); and the memory skill when the user resumes curation (SPEC-033). The curator writes it under the curated layer lock as well, after the changes that it counts, so that a stop between the two curates those turns again instead of losing them; consolidation then merges what was curated twice.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `logs` | object: raw log file name → integer | How far each raw log file is processed: its entries up to that `seq` |
 | `applies` | integer | One more for each request whose results were applied; checked before each apply ([Locks](#locks)) |
-| `recent` | list of up to 10 objects: `at`, `kind` (`curate` or `consolidate`), `result` (`ok`, `failed` or `stale`), `error`, `applied`, `dropped`, `state` (`new`, `kept` or `cut`) | The last attempts, newest first. `stale`: its results were dropped because a forget or a tombstone came after its request was built (SPEC-012). `applied` and `dropped` count changes (SPEC-016); `state` says whether the current state was replaced, kept or shortened (SPEC-017). |
+| `recent` | list of up to 10 attempts; kind `curate`, `consolidate` or `undo`; optional `run` | Recent attempts with an optional run ID; undo/run are C2-format fields. |
 | `failures` | optional object: `count`, `log`, `turn` | Failed attempts in a row from the same first unprocessed turn (SPEC-018) |
 | `consolidation` | object: `last` (optional time), `due` (optional time), `failures` (integer) | The last consolidation that ended, the time SPEC-015 made the next one due, and failed consolidations in a row (SPEC-019) |
 | `stopped` | optional object: `at`, `by` (`curate` or `consolidate`), `errors` (the kinds of error) | The fault guard's stop, until the user resumes (SPEC-018) |
 | `rebuilt` | optional time | When the record was last made again from the raw log |
+| `fence` | C2 required object: `epoch`, `generation`, `revisions` | Code-owned 32-hex epoch, monotonic integer and last generation per namespaced object: item:<id>, line:<id>, pin:<id>, candidate:<id>, run:<id>; no text. |
+| `conflict_after` | optional candidate ID | Last candidate ID for rotating complete candidate bundles across batches; resume after its ordered place when it is no longer open. |
 
-The required fields are `logs`, `applies`, `recent` and `consolidation`; the empty record has `{}` logs, zero applies, no recent attempts and zero consolidation failures. Counts are nonnegative integers, excluding booleans; a failed turn's `turn` is positive. The keys of `logs` and `failures.log` use the raw log stem, `<host>-<16 hex characters>`, as the turn markers do, without `.jsonl`. Each recent attempt requires `at`, `kind` and `result`; `error`, `applied`, `dropped` and `state` are present when applicable. Error fields use stage 06's model error codes or built-in exception class names. Unknown or invalid fields are not silently removed: a valid backup may restore an invalid primary under the record's write leases, and without a readable copy the writer stops. A guarded C1 rewrite preserves all other valid fields and refuses an unrecoverable record; only the C2 curator reconstructs lost progress.
+In C1 the required fields are `logs`, `applies`, `recent` and `consolidation`; the empty record has `{}` logs, zero applies, no recent attempts and zero consolidation failures. Counts are nonnegative integers, excluding booleans; a failed turn's `turn` is positive. The keys of `logs` and `failures.log` use the raw log stem, `<host>-<16 hex characters>`, as the turn markers do, without `.jsonl`. Each recent attempt requires `at`, `kind` and `result`; `error`, `applied`, `dropped` and `state` are present when applicable. Error fields use stage 06's model error codes or built-in exception class names. Unknown or invalid fields are not silently removed: a valid backup may restore an invalid primary under the record's write leases, and without a readable copy the writer stops. A guarded C1 rewrite preserves all other valid fields and refuses an unrecoverable record; only the C2 curator reconstructs lost progress.
 
 Before the curator counts entries as processed, or applies a quote of them, it flushes their raw log file to disk, so that no entry that the curation record counts can be lost to a power cut. If the record is lost, the curator makes it again: for each raw log file, the newest entry that an item quotes or a current state line cites counts as processed, with the entries before it, and every entry after it as unprocessed, even in its own turn, since a final answer appended while the last curation ran may never have been sent. Turns curated twice make duplicate items, which consolidation merges. A notice says so once, and a stop of the fault guard is lost with the record.
+In C2 every writer of this record holds the layer lock and merges a fresh read. Progress/attempt fields additionally require the curation lock. A command such as forget may update only fence fields under the layer lock while a curator waits for an API answer holding the curation lock, preserving SPEC-012's concurrent-forget case. Preserve other fields and never acquire an earlier lock from a later one. Before actual changes, durably advance generation and revisions for all affected object and run keys; failure blocks the mutation. A failed effect may reserve revisions conservatively, never roll them back. Logs bind each object's before/after revisions and epoch: equal-content ABA and unlogged later mutations still differ and are kept. Missing revisions of existing objects are unknown, never assumed zero. Losing/restoring this record rotates epoch and invalidates prior undo proofs. Retain removed/forgotten object revision IDs while retained earlier runs can refer to them. Requests check both applies and the fence snapshot. These are format-2 contracts, not changes to C1 format-1 readers/writers.
+
 
 ### Notices (TBL-010)
 
@@ -275,10 +286,13 @@ One file per notice that the start summary shows once (SPEC-022): `curation-fail
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `at` | time | |
-| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved` or `pin-dropped` | |
+| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved`, `pin-dropped`, `conflict` |
 | `error` | optional text | The kind of error, for a failure |
 | `item` | optional item ID | The item whose pin moved or was dropped (SPEC-034) |
 | `to` | optional item ID | The item that the pin moved to |
+| `candidate`, `shown` | optional candidate ID and count 0 to 3 | Conflict notice target and count; conflict-counts.json owns the durable high-water. |
+C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID. Durably initialize zero before first publishing a candidate; after the third showing remove its individual notice but retain the high-water for the ID's lifetime. Reopening, cleanup or backup recovery never resets zero. Missing/unverifiable counters conservatively exhaust existing candidates, reporting the failure/status while conflicts still lists them. After deciding a line fits, Start takes the independent conflict-counts lease, rereads, and shows it only after an atomic durable reservation. Lease/deadline/write failure omits the line without incrementing. A stop after reservation but before output may consume one showing. Concurrent starts together cannot exceed three. Unlike ordinary notices, this high-water cannot lose fsync or be reduced by restoring an old backup. The start hook never writes the curated layer.
+
 
 ### Injection log (TBL-011)
 
@@ -304,8 +318,9 @@ One file per item, named by its ID. The curator saves it when it applies a chang
 | `title` | text | One line, at most 200 bytes, for the item list |
 | `text` | text | At most 4,000 bytes |
 | `quotes` | list of 1 to 20 quotes | The first is the deciding quote |
-| `status` | `current`, `superseded` or `withdrawn` | The item status |
+| `status` | `current`, `superseded`, `withdrawn`, `undone` | The item status |
 | `superseded_by` | optional item ID | For a superseded item, the item that superseded it |
+| `undone_by` | optional run ID | The undo run; inverses restore superseded_by/undone_by values and presence as well as the status. |
 | `merges` | optional list of item IDs | For an item made by a consolidation, the items it merged |
 | `saved` | time | When the item was first saved, on any device |
 | `device` | device ID | The device that saved it |
@@ -325,9 +340,15 @@ Each quote is an object:
 
 Worked out, not stored: whether the item is a user decision, which it is when it is a decision whose deciding quote is the user's, and the time it took effect, its deciding quote's `said`. Merging two copies of an item (SPEC-028): `withdrawn` beats `superseded`, which beats `current`; of two superseded copies, the later `changed` wins, and on the same time the smaller `superseded_by`. Two copies whose kind, title, text or quotes differ are a clash: the local copy stays, and the sync record lists it.
 
+C2 `undone` is a local undo status. The C3 design decides its cross-device merge order; the retained Git rules above do not define it.
+
 ### Current state (TBL-013)
 
-`state.json` holds the current state's lines; `state-removed.json` keeps a record of each line removed, without its text, so that a sync never brings the line back (SPEC-028). The curator (SPEC-017, SPEC-019), a forget (SPEC-035), a tombstone (SPEC-029) and a sync write them. A line keeps its ID while the curator keeps or rewords it: the curator's answer names, for each line, the line of the request it keeps or changes, and the code gives new lines new IDs. The start hook reads only `state.json`. Synced.
+`state.json` holds the current state's lines; `state-removed.json` keeps a record of each line removed, without its text, so that a sync never brings the line back (SPEC-028). The curator (SPEC-017, SPEC-019), a forget (SPEC-035), a tombstone (SPEC-029) and a verified local undo (SPEC-145) write them. The C3 design decides sync details. A line keeps its ID through the edits and verified local undo rules below. The start hook reads only `state.json`. Synced.
+
+A line keeps its ID while it stays or is changed: curate-2 names only changed/added/removed lines (SPEC-017), while the last state-1 names kept/reworded lines (SPEC-019). Code assigns new IDs and keeps prior changed/removed text in TBL-119. Unnamed lines keep their text, citations and time.
+
+An insertion or deletion may renumber integer pos values while preserving existing relative order. Before changing a position, durably record the earlier part/pos in TBL-119 as changed with why=position, advance the mandatory line revision and include that actual effect in the run. A position-only change preserves text, citations and at. Required history failure defers the whole state write. Each run also keeps before/after part and predecessor/successor line IDs: additions, restorations and placement changes form order-dependency groups with these anchors. Undo conservatively keeps such a group when later insertion, movement or renumbering depends on it, so it cannot overwrite later order.
 
 `state.json` is an object with `lines`, a list of:
 
@@ -344,6 +365,8 @@ Worked out, not stored: whether the item is a user decision, which it is when it
 `state-removed.json` is an object with `removed`, a list of records with `id`, `at` (when the line was removed) and `device`.
 
 The text of the lines stays under 3,000 bytes in all after a curation (SPEC-017). A merge can leave more; the next curation brings the state back under the limit, and the start summary shortens it meanwhile (SPEC-021).
+C2 removal markers distinguish privacy removals (kind privacy) from ordinary edits (kind edit). Retain ordinary removed IDs too, but a verified local undo may mark an intentional same-ID restoration with restored_by/restored_at. Forget/tombstone privacy markers prohibit that restoration and do not archive the removed content. Every state reader (start, request, consolidation and undo) uses the same validity view: a line without required current decision provenance is absent from that view even if physical cleanup failed; later writes retry pending stale cleanup. The C3 design decides sync restoration/conflict precedence.
+
 
 ### Pins (TBL-014)
 
@@ -402,6 +425,68 @@ The file that marks a Git repository as a sync remote of the memory plugin (SPEC
 | `made` | time | When the sync remote was first pushed |
 | `device` | device ID | The device that first pushed it |
 
+### Line history (TBL-119)
+
+One record per line of `projects/<project>/state-history.jsonl`, outside the layer. It never leaves the device, expires by each record's own time, and is removed wherever a forget applies.
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `at` | time | When the line was changed or removed |
+| `run` | run ID | The run that planned this record |
+| `epoch`, `generation` | 32 hex characters; integer | The mandatory fence epoch and apply generation; successful run linkage decides whether undo may use it |
+| `line` | state line ID | The line before the change |
+| `part`, `pos` | as in TBL-013 | Its earlier part and position |
+| `op` | `changed`, `removed`, `cut`, `stale`, `recited`, `undone` | What happened to the line |
+| `text` | text | The text before this apply |
+| `cites` | list of item and entry IDs | Its previous provenance |
+| `why` | text, at most 200 UTF-8 bytes | The answer's reason or code-owned cut/stale/recited/undone/consolidation reason |
+| `device` | device ID | The device recording the change |
+
+Under the layer lock, append and durably flush every required prior version before rewriting state. Roll back a short append to its known prior size; if complete lines, final LF or durability cannot be verified, keep this request's whole state unchanged and log the failure. Later writes, recovery and undo require strict completeness checks too. Undo uses a record only when epoch, apply generation, line and its exact-record hash link to an actual mutation in a complete run log. Unused staged history is not a restoration source. Generations separate multiple applies of one run: restore an existing line's version before its first actual change, and remove a line first added by the run. Forget does not archive the content it removes, and undo cannot cross a privacy-removal marker.
+
+A forget removes records citing the item or its quoted entries and clears why in every remaining project history record: prior cites cannot establish the provenance of a reason drawn from newer input. Under the layer lock, scrub the primary, unused staged history and every backup/temporary copy the plugin can restore; verify durability and cleanup before reporting success. Automatic history recovery always restores reasons as empty strings, preventing an older copy from reviving them. The prior text/citations of A may remain, but a reason containing B does not. Scrubbing can invalidate an older run's exact-record hash link; undo keeps that line as history-unavailable and explains the limitation. history_records counts each removed record or record with a nonempty reason cleared once, excluding otherwise unchanged already-empty records.
+
+### Conflict candidates (TBL-120)
+
+`conflicts.json` is `{"candidates": [...]}`. It holds item IDs, never text, and retains closed candidates. An unordered pair of current items has at most one open candidate. The C3 design decides sync and merge rules.
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `id` | conflict candidate ID | c_ and 12 characters from the code |
+| `items` | two distinct item IDs | The newer item first; ties by ID |
+| `at` | time | When it was recorded |
+| `run` | run ID | The run that recorded it |
+| `by` | `curate` or `consolidate` | The source kind |
+| `status` | `open`, `settled`, `dismissed` | Both items stay current while open |
+| `closed` | optional time | When it settled or was dismissed |
+
+Showing counts live outside the layer in TBL-010. Durably initialize zero before first publishing a candidate and preserve its 0-to-3 high-water for the candidate ID's lifetime. After the third showing the individual notice is removed but its high-water remains; reopening through undo never resets it.
+
+### Run log (TBL-121)
+
+One file per run, `runs/<run>.json`, local only and deleted by its own time after retention. Store the before/after ID metadata needed to invert this run itself: undoing an undo must not depend on an older original run log that may have expired, only its own retained log and permitted line history.
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `id` | run ID | r_ and 12 code-generated characters |
+| `kind` | `curate`, `consolidate`, `undo` | The kind of run |
+| `at`, `ended` | times | Start and last completed apply |
+| `device` | device ID | The local device |
+| `undoes` | run ID or empty | The earlier run reversed by an undo |
+| `epoch`, `last` | 32 hex characters; integer | The fence epoch and last apply generation; last must equal TBL-009 run:<id> before listing or undo |
+| `turns` | object: raw filename to [first seq, last seq] | Processed curation ranges; undo never clears them |
+| `saved` | list of item IDs | Items saved by the run |
+| `statuses` | list of item and before/after metadata | Status enums plus superseded_by/undone_by IDs and their presence; enough to invert this run without an older run log |
+| `merges` | list of item and merged IDs | Merged item and the items merged |
+| `lines` | list of line, op, generation, history reference, before/after part and predecessor/successor IDs | Actual effects and order dependencies; history references bind epoch/generation/line and SHA-256 of the exact prior record |
+| `pins` | list of item, from, to and prior placement | IDs, position, times and device only, enough to reverse a move |
+| `conflicts` | list of candidate, from, to | Absence/open/settled/dismissed transitions; an inverse may reopen only with current valid items and unchanged later revisions |
+| `kept` | list of id, by, why | Later run ID if known, else empty; reason enum, never source text |
+| `revisions` | list of id, before, after | Namespaced object revision IDs/numbers for undo proof |
+| `applies` | list of generation and actual change IDs | Complete per-apply links; aggregate fields summarize them, never intentions or unused staged histories |
+
+Advance the mandatory TBL-009 run:<id> revision before every apply. Listing and undo require the log's last apply generation to equal that fence exactly, with complete actual-change links. A second log write that fails can leave a well-formed file for only the first apply; the changed fence makes even that file ineligible. Optional log failure does not block the apply, but is logged and leaves the run unlisted/unundoable. Never copy text or quotes here. The up-to-three item titles of runs and reasons in an undo preview are resolved from surviving items/history when shown.
+
 ## Writing and locks
 
 ### Appending
@@ -448,16 +533,17 @@ On Windows a move or a deletion fails while another process holds the file open.
 | Lock | File | Held for | Refreshed | Taken over after |
 | --- | --- | --- | --- | --- |
 | Store lock | `store.lock` | One change of the store record or the memory configuration, or a migration | every 30 seconds | 2 minutes |
-| Curation lock | `projects/<project>/curation.lock` | A whole curator run, retention of the project, or a resume (SPEC-012) | at least every minute | 10 minutes |
+| Curation lock | `projects/<project>/curation.lock` | A whole curator run, retention of the project, a resume or an undo (SPEC-012, SPEC-145) | at least every minute | 10 minutes |
 | Sync lock | `sync/sync.lock` | One sync | every minute | 10 minutes |
-| Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin or merge in the project, retention's rewrite or deletion of one raw log or injection log file, or the deletion of its memory | every 30 seconds | 2 minutes |
+| Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin, merge, dismiss or undo in the project, retention's rewrite or deletion of one raw log or injection log file, or the deletion of its memory | every 30 seconds | 2 minutes |
+| Notice counter lock | `projects/<project>/notices/conflict-counts.lock` | One durable conflict-counter reservation/update; layer writers acquire it after layer | not refreshed | 10 seconds |
 | Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, the last read and the move of a rewrite, or retention's last read and deletion of a file; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
 | Log locks | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | One append | not refreshed | 10 seconds |
 
 - A lock is a file made with an exclusive create, which fails while the file is there. It holds the holder's process ID, the device ID, the time and a random token. The holder refreshes it by touching its modified time; the lock is stale once that time is older than the table allows. Staleness compares this device clock with the lock mtime, so keep the memory folder on a local disk: a forward clock jump or a network folder with a different server clock can make a live lease look stale; that holder discovers the missing token on its next check.
 - To take a stale lock over, a process renames it to a name of its own (`<lock>.<random>.stale`), checks that the renamed file holds the token it judged stale, deletes it and makes the lock anew. If the renamed file holds another token, it was a fresh lock: the process puts it back unless a lock is there again, and gives up.
 - Before each change, the holder checks that the lock still holds its token. A process that lost its lock changes nothing more.
-- Order: store, curation, sync, curated layer, raw log, log. A process never waits for a lock earlier in this order while it holds a later one, so no two processes wait for each other. Within one kind, acquire locks in the string order of their paths relative to the memory folder, ignoring case on Windows. Across memory folders in one process, use the full lock path with its parent resolved and '/' separators, ignoring case on Windows. The common root prefix preserves the relative-path order within each folder. Explicit paths do not consult the process-default memory folder for ordering.
+- Order: store, curation, sync, curated layer, notice counter, raw log, log. A process never waits for a lock earlier in this order while it holds a later one, so no two processes wait for each other. Within one kind, acquire locks in the string order of their paths relative to the memory folder, ignoring case on Windows. Across memory folders in one process, use the full lock path with its parent resolved and '/' separators, ignoring case on Windows. The common root prefix preserves the relative-path order within each folder. Explicit paths do not consult the process-default memory folder for ordering.
 - Hooks take raw and log locks, normally waiting at most until their hook deadline (SPEC-008). Recording waits for raw/store-record recovery locks for 50 ms after redaction and attempts each at least once even after expiry. Other recovery reads borrow the matching lock within their caller deadline, with no other lease held. Acquired raw recording and store-record recovery finish (TASK-060).
 - Reading needs no lock: every rewrite ends in a move, so a reader sees the old file or the new one, whole.
 - Retention of a project runs under its curation lock, so that deleting a whole raw log file also removes it from the curation record; when a curator holds the lock, retention leaves the project for the next session start. A session resumed after its file was deleted then starts a new file from `seq` 1.
@@ -472,11 +558,20 @@ Before applying the results of a request, the curator takes the curated layer lo
 - The search index is never migrated: an index of another version, or built with another embedding model or vector length, is deleted and built again, the words at once and the vectors by embedding the items again, each request with its usage line.
 - After the checkpoint, a breaking change to a record needs the maintainer's decision, as the stage contract says.
 
+C2 targets memory-store format 2. C1 does not yet write items/state, but its curation reader is strict: recent.run and kind undo are rejected in format 1, so optional additions are not assumed backward compatible. The checked C1 gate returns store-newer for a format-2 header. The C2 search index is rebuilt at version 2 with undone support; C3 server/sync formats are not decided here. This PR specifies that contract; TASK-031 and later C2 work implement it and migrate no real data now.
+
+Before a real migration, establish a maintenance interval with old-package hooks/background writers quiescent and unable to restart. Close old hosts, drain old writers for this store, and acquire store plus all project curation/layer/raw leases in the existing kind/path order. If quiescence cannot be verified or a lease is busy, refuse migration without forced takeover. store.lock alone does not exclude a C1 writer preparing outside its lease.
+
+Before any C2 record is written, durably fence and verify store.json and every header backup C1 may automatically restore as format 2/migrating. A safe sequence can fence the backup before the primary; a stop between them must still precede all C2 data. Never raise only the primary while leaving a format-1 .bak fallback. Inspect recognized header tmp/backup recovery paths too, keeping preserved originals outside automatic recovery. Resumable migration records distinguish every step; only after the complete header fence rewrite files one by one, then remove migrating last. No intermediate state or missing/damaged primary may let old C1 restore format 1 and write C2 records. Migration tests interrupt/resume every boundary and exercise old-client restoration.
+
+
 ## What leaves the device
 
 - To the sync remote, while sync is on: the curated layer (TBL-012 to TBL-017) and the sync remote marker (TBL-018), nothing else (SPEC-027).
 - To Anthropic and OpenAI: what the AI calls of the functional spec send, all of it redacted: turns, the current state, the item list, items, prompts and search requests.
 - Never: raw log files (their redacted turns go only inside curator requests), the search index, the usage log, the failure log, the hook timings, the injection log, notices, the unprocessed turn markers, the curation record, the memory configuration, the sync record and the store record.
+
+Line history, run logs, revision fences and conflict showing high-water never leave the device. The C3 design decides whether/how conflicts.json is shared and merged.
 
 ## Limits
 
@@ -495,6 +590,7 @@ Before applying the results of a request, the curator takes the curated layer lo
 | Failure log and injection log | the retention period | this file |
 | Usage log | until a purge | SPEC-037 |
 | Tombstones, project tombstones, removed current state lines and pin records | for good | SPEC-028, SPEC-029 |
+| Line history and run logs | the retention period, by each record/run time | SPEC-009, SPEC-144 |
 
 A change from the curator that passes a limit of an item is dropped, like a change that fails a check, and counted in the curation record (SPEC-016). A current state over its limit is shortened as SPEC-017 says.
 
@@ -512,19 +608,19 @@ Besides these records, the hooks and the memory skill read the project list (SPE
 | SPEC-006 | Leave folders or kinds of entries out | TBL-002 | TBL-002 |
 | SPEC-007 | Keep the raw log readable after a crash | TBL-007 | TBL-007, TBL-004 |
 | SPEC-008 | Never block the session | none | TBL-004, TBL-005 |
-| SPEC-009 | Delete raw log entries past the retention period | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005 |
+| SPEC-009 | Delete raw log entries past the retention period | TBL-002, TBL-007, TBL-009, TBL-011, TBL-017, TBL-119, TBL-121 | TBL-007, TBL-008, TBL-009, TBL-011, TBL-004, TBL-005, TBL-119, TBL-121 |
 | SPEC-010 | Start curation when a trigger is met | TBL-002, TBL-008, TBL-009 | TBL-009 and TBL-008 when they are made again |
 | SPEC-011 | Curate and sync often on a temporary device | TBL-002 | TBL-002, through the user's environment setup |
 | SPEC-012 | Run one curation per project at a time | TBL-009, TBL-016, TBL-017 | TBL-009 |
 | SPEC-013 | Run the curator in the background | TBL-002 | TBL-004 |
 | SPEC-014 | Ask the curator model | TBL-002 | TBL-003 |
-| SPEC-015 | Keep each request under 100,000 input tokens | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022 | TBL-009, TBL-003 |
-| SPEC-016 | Apply the proposed changes | TBL-007, TBL-012 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
-| SPEC-017 | Update the current state with provenance | TBL-013, TBL-012 | TBL-013, TBL-009 |
+| SPEC-015 | Keep each request under 100,000 input tokens | TBL-007, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-017, TBL-020, TBL-022, TBL-120 | TBL-009, TBL-003 |
+| SPEC-016 | Apply the proposed changes | TBL-007, TBL-012, TBL-120 | TBL-012, TBL-014, TBL-015, TBL-009, TBL-008, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003, TBL-120 |
+| SPEC-017 | Update the current state with provenance | TBL-013, TBL-012, TBL-119 | TBL-013, TBL-009, TBL-119, TBL-004 |
 | SPEC-018 | Handle a failed curation | TBL-009 | TBL-009, TBL-010, TBL-003, TBL-004 |
-| SPEC-019 | Consolidate a project every week | TBL-002, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-009, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003 |
+| SPEC-019 | Consolidate a project every week | TBL-002, TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-009, TBL-010, TBL-019, TBL-020, TBL-021, TBL-022, TBL-003, TBL-119, TBL-120 |
 | SPEC-020 | Check each quote once | TBL-007, TBL-012 | TBL-012 |
-| SPEC-021 | Add memory to the start summary | TBL-001, TBL-002, TBL-010, TBL-013, TBL-014, TBL-012 | TBL-011, TBL-010, TBL-005 |
+| SPEC-021 | Add memory to the start summary | TBL-001, TBL-002, TBL-010, TBL-013, TBL-014, TBL-012, TBL-016 | TBL-011, TBL-010, TBL-005 |
 | SPEC-022 | Show notices in the start summary | TBL-010, TBL-009, TBL-008, TBL-002, TBL-006 | TBL-010 |
 | SPEC-023 | Recall memory for a prompt | TBL-002, TBL-011, TBL-012, TBL-019, TBL-020, TBL-021, TBL-022 | TBL-011, TBL-003, TBL-004, TBL-005 |
 | SPEC-024 | Mark injected memory as reference material | TBL-012 | none |
@@ -536,13 +632,16 @@ Besides these records, the hooks and the memory skill read the project list (SPE
 | SPEC-030 | Turn memory on for a project | TBL-002 | TBL-001, TBL-002, TBL-009 |
 | SPEC-031 | Read memory keys only from their own places | none: keys are never stored | none |
 | SPEC-032 | Log each model call's usage | TBL-002 | TBL-003 |
-| SPEC-033 | Show the memory status, and resume curation | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006, TBL-008, TBL-009, TBL-012, TBL-014 | TBL-009 |
-| SPEC-034 | Pin or unpin an item | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010 | TBL-014, TBL-010 |
-| SPEC-035 | Forget an item | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020 |
+| SPEC-033 | Show the memory status, and resume curation | TBL-001, TBL-002, TBL-003, TBL-004, TBL-005, TBL-006, TBL-008, TBL-009, TBL-012, TBL-014, TBL-120, TBL-121 | TBL-009 |
+| SPEC-034 | Pin or unpin an item | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010, TBL-009 | TBL-014, TBL-010, TBL-009 |
+| SPEC-035 | Forget an item | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016, TBL-009, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020, TBL-009, TBL-119, TBL-120 |
 | SPEC-036 | Turn memory off for a project | TBL-002 | TBL-002 |
-| SPEC-037 | Delete one project's memory | TBL-002, TBL-007, TBL-012, TBL-014 | deletes TBL-007 to TBL-015 and the search index, and without sync TBL-016; writes TBL-002, and with sync on TBL-017 |
+| SPEC-037 | Delete one project's memory | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | deletes TBL-007 to TBL-015, the search index and TBL-119 to TBL-121; without sync also deletes TBL-016; writes TBL-002, and with sync on TBL-017 |
 | SPEC-038 | Delete all memory on the device | the memory store | deletes the memory store |
 | SPEC-039 | Share one memory store between both hosts | TBL-001 | none |
+| SPEC-143 | Show and settle conflict candidates | TBL-009, TBL-010, TBL-012, TBL-120 | TBL-009, TBL-010, TBL-120 |
+| SPEC-144 | Log each run | TBL-009, TBL-121 | TBL-009, TBL-121, TBL-004 |
+| SPEC-145 | Undo a run | TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-016, TBL-017, TBL-119, TBL-120, TBL-121 | TBL-009, TBL-010, TBL-012, TBL-013, TBL-014, TBL-015, TBL-019, TBL-020, TBL-021, TBL-022, TBL-119, TBL-120, TBL-121, TBL-004 |
 
 Deleting a row of `index_items` (TBL-020) also deletes its rows in `index_vectors` and `index_terms` (TBL-021, TBL-022).
 
@@ -564,6 +663,12 @@ erDiagram
   TOMBSTONE |o--o{ RAW_LOG_ENTRY : "names the quotes in"
   INJECTION_LINE }o--o{ MEMORY_ITEM : "names what it injected"
   NOTICE }o--o| MEMORY_ITEM : "names a moved pin"
+  LINE_HISTORY }o--o| STATE_LINE : "previous text, while retained"
+  LINE_HISTORY }o--o| RUN_LOG : "eligible only with complete linkage"
+  CONFLICT_CANDIDATE }o--o{ MEMORY_ITEM : "two endpoints, while retained"
+  CONFLICT_SHOWING_COUNTER ||--o| CONFLICT_CANDIDATE : "durable lifetime high-water"
+  RUN_LOG }o--o{ MEMORY_ITEM : "IDs and revisions only"
+  RUN_LOG }o--o{ STATE_LINE : "IDs and revisions only"
   MEMORY_ITEM ||--o| INDEX_ITEMS : "indexed as"
   INDEX_ITEMS ||--o| INDEX_VECTORS : "embedded as"
   INDEX_ITEMS ||--o{ INDEX_TERMS : "split into"
@@ -577,7 +682,7 @@ erDiagram
   MEMORY_ITEM {
     string id PK "i_..."
     string kind
-    string status "current, superseded, withdrawn"
+    string status "current, superseded, withdrawn, undone"
     string superseded_by FK
   }
   QUOTE {
@@ -593,6 +698,25 @@ erDiagram
   TOMBSTONE {
     string item PK "the forgotten item"
   }
+  LINE_HISTORY {
+    string epoch
+    int generation
+    string line FK
+    string run FK
+    string text
+  }
+  CONFLICT_CANDIDATE {
+    string id PK "c_..."
+    string status "open, settled, dismissed"
+  }
+  CONFLICT_SHOWING_COUNTER {
+    string candidate PK
+    int high_water "0 to 3; retained after notice deletion"
+  }
+  RUN_LOG {
+    string id PK "r_..."
+    string kind "curate, consolidate, undo"
+  }
   INDEX_ITEMS {
     string item PK
     string status
@@ -606,9 +730,9 @@ The functional spec left these to stage 05. Each can change at the checkpoint.
 1. Plain files for every record but the search index, one folder per project, and the curated layer in a folder of its own, which the sync remote copies as it is.
 2. One raw log file per host session, and one empty marker per unprocessed turn, so that two sessions of a project never write the same file and the curation triggers only list a folder.
 3. Positions in code points. A forget fills the quoted range with U+FFFD, keeping its length, so the other quotes of the entry keep their positions; the fill shows how long the forgotten text was.
-4. Current state lines that keep their IDs while the curator keeps or rewords them, and records of removed lines, without text, kept for good in a file the start hook does not read.
+4. Current state lines that keep their IDs while the curator keeps or rewords them, and records of removed lines, without text, kept for good in a file the start hook does not read. From 2026-11-03 a curate answer edits lines instead of writing the whole state, and each changed or removed line's previous text is kept on the device for the retention period (TBL-119).
 5. Item limits: a title of 200 bytes, a text of 4,000 bytes and 1 to 20 quotes of at most 2,000 bytes. A change past them is dropped rather than cut.
-6. Keeping: the failure log and the injection log for the retention period, the hook timings for 8 days, the usage log until a purge; tombstones, removed lines and pin records for good.
+6. Keeping: the failure log and the injection log for the retention period, the hook timings for 8 days, the usage log until a purge; tombstones, removed lines and pin records for good; line history and run logs for the retention period.
 7. A search index per project in plain SQLite tables, with the plugin's own word splitting instead of FTS5, built again rather than migrated.
 8. The item list newest first by the deciding quote's date, in UTC.
 9. A lost curation record made again from the quotes and citations, which can curate turns twice; consolidation merges the duplicates.

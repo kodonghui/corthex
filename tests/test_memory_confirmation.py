@@ -21,12 +21,16 @@ class ConfirmationTest(unittest.TestCase):
     def test_requirement_ids_priorities_and_confirmed_decisions(self):
         text = read_text(DOCS / "02-prd/memory.md")
         requirements = definitions(text, "REQ")
-        self.assertEqual(list(requirements), ["REQ-%03d" % n for n in list(range(1, 66)) + [194, 195, 196]])
-        for key in ("REQ-194", "REQ-195", "REQ-196"):
+        self.assertEqual(list(requirements), ["REQ-%03d" % n for n in list(range(1, 66)) + [194, 195, 196] + list(range(219, 226))])
+        for key in ("REQ-194", "REQ-195", "REQ-196", "REQ-219", "REQ-220", "REQ-221", "REQ-222", "REQ-224", "REQ-225"):
             self.assertEqual(requirements[key][3], "Should")
             self.assertEqual(requirements[key][-1], "active")
+        self.assertEqual(requirements["REQ-223"][3], "Could")
+        self.assertEqual(requirements["REQ-223"][-1], "active")
         for key in ("REQ-031", "REQ-033", "REQ-034", "REQ-042", "REQ-046", "REQ-061"):
             self.assertEqual(requirements[key][-1], "active")
+        for number in range(219, 226):
+            self.assertIn("Decision 2026-11-03", requirements["REQ-%03d" % number][5])
         decisions = section(text, "## Decisions in force")
         for number in range(1, 5):
             self.assertRegex(decisions, r"\| 2026-10-27 \| \*\*D%d\.\*\*" % number)

@@ -263,8 +263,10 @@ class ModelSchemaTest(unittest.TestCase):
         curate = load_json(API / "memory-curate.schema.json")["$defs"]
         state = load_json(API / "memory-state.schema.json")["$defs"]
         self.assertEqual(set(state), {"state", "line"})
-        for key in state:
-            self.assertEqual(state[key], curate[key], key)
+        for key in ("text", "cites", "changes"):
+            self.assertEqual(state["line"]["properties"][key], curate["line-add"]["properties"][key], key)
+        self.assertEqual(set(state["state"]["properties"]), {"goal", "decisions", "progress", "blockers", "next"})
+        self.assertIn("keeps", state["line"]["required"])
 
 
 class ResultContractTest(unittest.TestCase):
@@ -346,16 +348,17 @@ class InterfacesTest(unittest.TestCase):
 
     def test_every_behaviour_is_served(self):
         rows = table(section(self.doc, "## Interfaces"))
-        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in range(1, len(rows) + 1)])
+        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in list(range(1, 33)) + [151, 152, 153]])
+        expected_specs = {"SPEC-%03d" % n for n in list(range(1, 40)) + [143, 144, 145]}
         served = set()
         for row in rows:
             with self.subTest(interface=row[0]):
                 listed = [item.strip() for item in row[3].split(",")]
-                self.assertTrue(all(re.fullmatch(r"SPEC-0[0-3][0-9]", item) for item in listed), row[3])
+                self.assertTrue(all(item in expected_specs for item in listed), row[3])
                 served |= set(listed)
                 expected = D3_SUPERSEDED if row[0] in {"API-013", "API-014", "API-015", "API-030"} else "active"
                 self.assertEqual(row[4], expected)
-        self.assertEqual(served, {"SPEC-%03d" % n for n in range(1, 40)})
+        self.assertEqual(served, expected_specs)
 
     def test_configuration_matches_the_document(self):
         schema = load_json(API / "memory-configuration.schema.json")
