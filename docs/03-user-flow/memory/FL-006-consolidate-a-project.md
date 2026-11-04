@@ -2,7 +2,7 @@
 
 [한국어](FL-006-consolidate-a-project.ko.md)
 
-Serves: REQ-014, REQ-015, REQ-017, REQ-019, REQ-021, REQ-022, REQ-023, REQ-024, REQ-026, REQ-040, REQ-049, REQ-050, REQ-052
+Serves: REQ-014, REQ-015, REQ-017, REQ-019, REQ-021, REQ-022, REQ-023, REQ-024, REQ-026, REQ-040, REQ-049, REQ-050, REQ-052, REQ-220, REQ-221, REQ-224
 
 Context: CTX-002 Curation. Starts from FL-003 when a session starts and a week has passed since the project's last consolidation. A consolidation is a curation, so the rules of FL-005 on running, failing and paying hold here too.
 
@@ -24,9 +24,11 @@ flowchart TD
   G1 --> M
   G -->|yes| G2["Save the merged item, and mark the items<br/>it merges superseded, never deleted<br/>REQ-019"]
   G2 --> M
-  M -->|no| H["Shorten the current state,<br/>keeping each line's provenance<br/>REQ-015"]
+  M -->|no| CF["Record disagreement pairs not merged by this answer<br/>as conflict candidates<br/>REQ-221"]
+  CF --> H["Use the last state-1 request to shorten state;<br/>first keep previous text of changed/omitted lines<br/>REQ-015, REQ-220"]
   H --> I["Update the item list; once an OpenAI memory key<br/>is there, embed the merged items for the search index<br/>and append that call to the usage log<br/>REQ-040, REQ-050, REQ-052"]
-  I --> K["Record the consolidation date<br/>REQ-026"]
+  I --> RL["Log the actual changed IDs of the run<br/>REQ-224"]
+  RL --> K["Record the consolidation date<br/>REQ-026"]
   K --> Z
 ```
 

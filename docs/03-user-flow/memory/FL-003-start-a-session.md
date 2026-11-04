@@ -2,7 +2,7 @@
 
 [한국어](FL-003-start-a-session.ko.md)
 
-Serves: REQ-003, REQ-005, REQ-006, REQ-009, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-036, REQ-037, REQ-038, REQ-039, REQ-057, REQ-196
+Serves: REQ-003, REQ-005, REQ-006, REQ-009, REQ-026, REQ-027, REQ-028, REQ-029, REQ-030, REQ-036, REQ-037, REQ-038, REQ-039, REQ-057, REQ-196, REQ-222
 
 Context: CTX-003 Recall. Starts when a session starts, resumes, forks, is cleared or is compacted. The base of the start summary is built in 0.1.0; the memory part is new.
 
@@ -19,12 +19,13 @@ flowchart TD
   E -->|no| E1["Leave memory out<br/>and say it could not be read"]
   E1 --> S
   E -->|yes| F["Add the current state and the pinned items,<br/>current items of this project only,<br/>marked as reference material<br/>REQ-028, REQ-036, REQ-037, REQ-038"]
-  F --> G{"Since the last session, did curation<br/>fail, stop or wait for a key?"}
+  F --> CF["Notice the oldest eligible open conflict candidate,<br/>at most three showings; both items stay current<br/>REQ-222"]
+  CF --> G{"Since the last session, did curation<br/>fail, stop or wait for a key?"}
   G -->|yes| G1["Say so, and how to resume<br/>REQ-029"]
   G -->|no| H{"A week since the<br/>last consolidation?"}
   G1 --> H
   H -->|yes| H1["Start consolidation<br/>in the background, FL-006<br/>REQ-026"]
-  H -->|no| I["In the background, delete raw log<br/>entries past the retention period<br/>REQ-009"]
+  H -->|no| I["In the background, delete expired raw entries,<br/>line history and run logs<br/>REQ-009"]
   H1 --> I
   I --> J["Fit the summary under 8,000 bytes,<br/>shortening memory before the base<br/>REQ-030"]
   J --> S

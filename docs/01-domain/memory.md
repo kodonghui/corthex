@@ -2,7 +2,7 @@
 
 [한국어](memory.ko.md)
 
-Stage 01 of CORTHEX's own project, for the `corthex-memory` plugin. Status: written on 2026-10-24. The maintainer checked the requirements built on it the same day (stage 02); later stages add their changes here with the date. When this file and its Korean translation differ, this file is the source.
+Stage 01 of CORTHEX's own project, for the `corthex-memory` plugin. Status: written on 2026-10-24. The maintainer checked the requirements built on it the same day (stage 02); later stages add their changes here with the date. When this file and its Korean translation differ, this file is the source. On 2026-11-03 the maintainer approved C2 line edits and line history, conflict candidates, and logged runs with undo; TERM-014 and TERM-017 changed and TERM-135 to TERM-138 were added.
 
 This file holds both the contexts and the glossary of CORTHEX-MEMORY. Other parts of the project get their own files in this folder, and the translations beside them are not read as sources.
 
@@ -82,10 +82,10 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-011 | Private span | Text between `<private>` and `</private>`, which is never recorded | CTX-001 | |
 | TERM-012 | Curation | The background step that reads new raw turns and updates the current state and the memory items | CTX-002 | summarizing |
 | TERM-013 | Curator | The background process that runs one curation | CTX-002 | worker, daemon |
-| TERM-014 | Current state | The project's goal, decisions in force, work in progress, blockers and next actions, each line with its provenance | CTX-002, CTX-003 | summary, status |
+| TERM-014 | Current state | The project's goal, decisions in force, work in progress, blockers and next actions, each line with its provenance; the curator changes it line by line, and each changed or removed line's previous text is kept on the device | CTX-002, CTX-003 | summary, status |
 | TERM-015 | Memory item | One lasting decision, preference, lesson, reference or fact, with its provenance and status | CTX-002, CTX-003 | note, memory |
 | TERM-016 | Item kind | What an item is: decision, preference, lesson, reference or fact | CTX-002 | type, category |
-| TERM-017 | Item status | `current`, `superseded` (replaced by a newer item) or `withdrawn` (taken back by its speaker) | CTX-002, CTX-003 | deleted, archived |
+| TERM-017 | Item status | `current`, `superseded` (replaced by a newer item), `withdrawn` (taken back by its speaker) or `undone` (reversed by an undo) | CTX-002, CTX-003 | deleted, archived |
 | TERM-018 | Provenance | Where an item or a line comes from: its quote, the quote's place in the raw log, the speaker and the time it took effect | CTX-002 | source (a stage's text source in CORTHEX) |
 | TERM-019 | Speaker | Who said a quote: the user, the agent or a tool | CTX-002 | author |
 | TERM-020 | User decision | A decision item whose quote is the user's own words | CTX-002 | approval |
@@ -126,5 +126,9 @@ Purpose: let the user decide what is remembered, where it is sent and how it is 
 | TERM-106 | Hook timings | How long each hook of the memory plugin ran, kept for the memory status | CTX-005 | |
 | TERM-107 | Project tombstone | A record that a project's memory was deleted, so that sync does not bring it back; REQ-194, SPEC-037 | CTX-004, CTX-005 | |
 | TERM-108 | Price list | The prices per token that the usage log's estimates use, with when and where they were taken | CTX-005 | bill, rate card |
+| TERM-135 | Line history | The device's record of the previous text and provenance of each current state line that was changed or removed, kept for the retention period | CTX-002 | state log, diff |
+| TERM-136 | Conflict candidate | Two current items that may not both hold, recorded for the user to settle; neither replaces the other until the user says which holds | CTX-002, CTX-003 | contradiction, conflict |
+| TERM-137 | Run | One curation, consolidation or undo, logged on the device with the IDs of what it changed | CTX-002 | job, batch |
+| TERM-138 | Undo | A run that reverses an earlier run's changes and keeps what later runs changed | CTX-005 | rollback, revert |
 
 The functional spec ([docs/04-functional-spec/memory.md](../04-functional-spec/memory.md)) added TERM-098 to TERM-108 on 2026-10-24, and the pins to the curated layer (TERM-032). Their IDs continue after those of NEXUS in [nexus.md](nexus.md), which uses TERM-047 to TERM-097.
