@@ -2,10 +2,13 @@
 import copy
 import importlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 from _common import ROOT
@@ -81,6 +84,71 @@ class NativeMessageProvenanceTest(unittest.TestCase):
             (cache / "scripts/worker.py").write_bytes(b"changed child\n")
             with self.assertRaisesRegex(AssertionError, "installed package"):
                 self.prefix.installed_copy(config, package, originals)
+
+    def end_fixture(self, output):
+        home = output / "home"
+        raw = home / ".corthex/corthex-memory/projects/demo/raw/session.jsonl"
+        timing = home / ".corthex/corthex-memory/logs/hooks-fixture.jsonl"
+        raw.parent.mkdir(parents=True); timing.parent.mkdir(parents=True)
+        host = "claude-code"
+        rows = [{"host":host,"session":"fixture","kind":"start","event":"start"},
+                {"host":host,"session":"fixture","kind":"prompt","turn":1,"text":self.cross.runner.PROMPT},
+                {"host":host,"session":"fixture","kind":"answer","turn":1,"text":self.cross.runner.REPLY}]
+        logs = [{"host":host,"hook":hook,"outcome":"ok"} for hook in ("start","prompt","end-of-turn")]
+        self.write_rows(raw, rows); self.write_rows(timing, logs)
+        return home, raw, timing, rows, logs
+
+    def write_rows(self, path, rows):
+        pending = path.with_suffix(".pending")
+        pending.write_bytes(b"".join((json.dumps(row,ensure_ascii=False)+"\n").encode("utf-8") for row in rows))
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                pending.replace(path); return
+            except PermissionError as error:
+                if os.name != "nt" or getattr(error,"winerror",None) not in (5,32,33) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(.01)
+
+    def test_delayed_end_and_its_timing_finish_before_export(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()
+            home, raw, timing, rows, logs = self.end_fixture(output)
+            errors = []
+            def finish():
+                try:
+                    time.sleep(.15)
+                    self.write_rows(raw, rows + [{"host":"claude-code","session":"fixture","kind":"end"}])
+                    time.sleep(.1)
+                    self.write_rows(timing, logs + [{"host":"claude-code","hook":"end","outcome":"ok"}])
+                except Exception as error:
+                    errors.append(error)
+            child = threading.Thread(target=finish); child.start()
+            try:
+                capture = self.cross.finish_store(home, output / "export", "fixture", timeout=3)
+                self.assertTrue(capture["end_ok"])
+                self.assertTrue(capture["timings_ok"])
+                self.assertGreaterEqual(capture["capture_wait_ms"], 150)
+                root = output / "export/store-evidence"
+                self.assertEqual(len((root / "projects/demo/raw/session.jsonl").read_bytes().splitlines()),4)
+                self.assertEqual(len((root / "logs/hooks-fixture.jsonl").read_bytes().splitlines()),4)
+            finally:
+                child.join(timeout=3)
+                self.assertFalse(child.is_alive())
+                self.assertEqual(errors,[])
+
+    def test_missing_end_times_out_and_exports_unchanged_partial_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()
+            home, raw, timing, _, _ = self.end_fixture(output)
+            original = (raw.read_bytes(),timing.read_bytes())
+            capture = self.cross.finish_store(home, output / "export", "fixture", timeout=.05)
+            self.assertFalse(capture["end_ok"])
+            self.assertFalse(capture["timings_ok"])
+            self.assertGreaterEqual(capture["capture_wait_ms"],40)
+            self.assertLess(capture["capture_wait_ms"],1000)
+            self.assertEqual((raw.read_bytes(),timing.read_bytes()),original)
+            self.assertEqual((output / "export/store-evidence/projects/demo/raw/session.jsonl").read_bytes(),original[0])
 
 
 if __name__ == "__main__":

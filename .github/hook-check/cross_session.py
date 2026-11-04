@@ -27,6 +27,14 @@ def qualify_delivery(prompts, requests, receiver_session, names, marker):
     return successful_send(requests, "toolu_cross_2", names["receiver"], marker)
 
 
+def finish_store(home, output, session=None, timeout=6):
+    """Observe the launched end hook, then export even an incomplete store."""
+    try:
+        return runner.wait_for_capture(home, timeout=timeout, host="claude-code", session=session)
+    finally:
+        retain_store_evidence(home, output)
+
+
 def main():
     parser = argparse.ArgumentParser(); parser.add_argument("output"); args = parser.parse_args()
     output = Path(args.output).resolve(); output.mkdir(parents=True, exist_ok=False)
@@ -71,6 +79,8 @@ def main():
                             profiles["sender"][2],profiles["sender"][1],timeout=90)
         report["sender"] = runner.scrub_mock_key(sender, profiles["sender"][2]["ANTHROPIC_API_KEY"])
         assert sender["exit"] == 0
+        report["sender_session"] = runner.native_session("claude", sender)
+        assert report["sender_session"], "The actual sender session must be identified"
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             row = receiver.pending.get(timeout=max(.1, deadline-time.monotonic()))
@@ -85,10 +95,16 @@ def main():
         for model in models.values():
             model.server.shutdown(); model.server.server_close()
         report["host_proxy"] = proxy.finish()
-        for name, (home, _, _) in profiles.items():
-            retain_store_evidence(home, output / name)
-        runner.REPO, runner.MEMORY = old_repository, old_memory
-        (output / "result.json").write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        report["hook_completion"] = {}
+        try:
+            for name, (home, _, _) in profiles.items():
+                if (name == "receiver" and receiver is not None) or (name == "sender" and "sender" in report):
+                    report["hook_completion"][name] = finish_store(home, output / name, report.get(name + "_session"))
+                else:
+                    retain_store_evidence(home, output / name)
+        finally:
+            runner.REPO, runner.MEMORY = old_repository, old_memory
+            (output / "result.json").write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     try:
         assert report["receiver"]["exit"] == 0
         prompts = [json.loads(p.read_bytes()) for p in (output / "receiver/inputs").glob("*.json")]
@@ -99,13 +115,14 @@ def main():
             rows = [json.loads(line) for p in root.glob("projects/*/raw/*.jsonl") for line in p.read_bytes().splitlines()]
             assert [v["kind"] for v in rows] == (["start","prompt","answer","end"] if name == "sender" else ["start","prompt","answer","answer","end"])
             session = rows[0]["session"]
+            assert session == report[name + "_session"]
             assert rows[0]["event"] == "start" and "text" not in rows[0] and "text" not in rows[-1]
             assert all(v["session"] == session for v in rows)
             assert rows[1]["text"] == runner.PROMPT and rows[2]["text"] == runner.REPLY and rows[1]["turn"] == rows[2]["turn"]
             if name == "receiver":
                 assert session == report["receiver_session"] and rows[3]["text"] == runner.REPLY and rows[3]["turn"] != rows[2]["turn"]
             assert not any(any(mark in p.read_bytes() for mark in (MARKER.encode(), b"<cross-session-message")) for p in root.rglob("*") if p.is_file())
-            capture = runner.capture(home)
+            capture = report["hook_completion"][name]
             assert capture["failures_ok"] and capture["timings_ok"]
             assert sorted(capture["hook_outcomes"]["prompt"]) == (["ok"] if name == "sender" else ["left-out","ok"])
             report[name + "_capture"] = {"entries":rows,"hook_outcomes":capture["hook_outcomes"],"memory_marker_occurrences":0}
