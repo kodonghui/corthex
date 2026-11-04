@@ -118,10 +118,11 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
             report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
             self.assertTrue(report["original_children_unchanged"])
-            self.assertEqual(len(report["candidate_sha256s"]), 46)
-            module = "skills/corthex-memory/scripts/memory_lib/format2.py"
-            self.assertEqual(report["candidate_sha256s"][module],
-                             hashlib.sha256((ROOT/"plugins/corthex-memory"/module).read_bytes()).hexdigest())
+            self.assertEqual(len(report["candidate_sha256s"]), 49)
+            for name in ("format2", "fence_plan", "c2_store", "revision_io"):
+                module = "skills/corthex-memory/scripts/memory_lib/" + name + ".py"
+                self.assertEqual(report["candidate_sha256s"][module],
+                                 hashlib.sha256((ROOT/"plugins/corthex-memory"/module).read_bytes()).hexdigest())
             for name in ("scripts/hook.py", "scripts/worker.py"):
                 self.assertEqual((copy/name).read_bytes(), (ROOT/"plugins/corthex-memory"/name).read_bytes())
             hooks = json.loads((copy/"hooks/hooks.json").read_bytes())["hooks"]
