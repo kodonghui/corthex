@@ -57,6 +57,18 @@ jobs:
           if exist "C:\Program Files\Git.hidden" ren "C:\Program Files\Git.hidden" Git
           if exist "C:\Program Files\PowerShell\7.hidden" ren "C:\Program Files\PowerShell\7.hidden" 7
           exit /b 0
+      - name: Actual native tool inputs, outputs and transcript exclusion
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\tool_turn.py "%RUNNER_TEMP%\hook-check\tool-turn"
+      - name: Actual headless lifecycle sources; terminal sources have operator evidence
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\lifecycle.py "%RUNNER_TEMP%\hook-check\lifecycle"
+      - name: Actual native background-agent notification
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\native_prefix.py "%RUNNER_TEMP%\hook-check\native-prefix"
       - name: Outer clocks, worker lifetime, preservation and 100-sample timings
         if: ${{ !cancelled() }}
         shell: cmd
@@ -69,5 +81,7 @@ jobs:
         if: always()
         with:
           name: hook-check
-          path: ${{ runner.temp }}/hook-check
+          path: |
+            ${{ runner.temp }}/hook-check
+            !${{ runner.temp }}/hook-check/**/codex-home/tmp/arg0-*/**
           retention-days: 7

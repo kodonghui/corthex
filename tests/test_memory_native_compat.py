@@ -1,0 +1,261 @@
+"""Native QA must detect diagnostic-only writes and await delayed end records."""
+import importlib
+import json
+import os
+from pathlib import Path
+import signal
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+from _common import ROOT
+
+
+class NativeCompatibilityGateTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        previous = list(sys.path)
+        try:
+            sys.path.insert(0, str(ROOT / ".github/hook-check"))
+            cls.trust = importlib.import_module("trust_update")
+            cls.lifecycle = importlib.import_module("lifecycle")
+        finally:
+            sys.path[:] = previous
+
+    def diagnostic_change(self, name):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            self.assertEqual(home.parent, Path(tempfile.gettempdir()).resolve())
+            root = home / ".corthex/corthex-memory"; root.mkdir(parents=True)
+            (root / "store.json").write_bytes(b"{}\n")
+            (root / "configuration.json").write_bytes(b"{}\n")
+            before = self.trust.before_retrust_files(home)
+            raw_before = self.trust.runner.native_evidence.persistent_files(home)
+            (root / "logs").mkdir()
+            (root / "logs" / (name + "-2026-11-04.jsonl")).write_bytes(b"{}\n")
+            self.assertEqual(raw_before, self.trust.runner.native_evidence.persistent_files(home))
+            self.assertNotEqual(before, self.trust.before_retrust_files(home),
+                                "An untrusted hook's diagnostic write must fail even without raw recording")
+
+    def test_pre_retrust_detects_hook_timing_without_raw_change(self):
+        self.diagnostic_change("hooks")
+
+    def test_pre_retrust_detects_failure_without_raw_change(self):
+        self.diagnostic_change("failures")
+
+    def test_native_review_panel_requires_its_advertised_trust_action(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            for count in (1, 4):
+                path.write_text("", encoding="utf-8")
+                class ReviewPanel:
+                    data = bytearray(("Hooks need review\n%d hooks are new or changed\nTrust all and continue\n" % count).encode())
+                    panel = False
+                    def wait(self, predicate):
+                        if not predicate():
+                            raise AssertionError("Native terminal did not reach its expected state")
+                    def key(self, key, **options):
+                        if key == b"\r":
+                            self.panel = True
+                            self.data.extend(b"Hooks\nLifecycle hooks from config \x1b[0mand enabled plugins.\nt \x1b[0mtrust all\n")
+                        elif key == b"t" and self.panel:
+                            path.write_text("\n".join('trusted_hash = "fixture%d"' % i for i in range(count)), encoding="utf-8")
+                with self.subTest(hooks=count):
+                    self.trust.trust_hooks(ReviewPanel(), path, count)
+                    self.assertEqual(path.read_text(encoding="utf-8").count("trusted_hash"), count)
+
+    def test_lifecycle_quiet_precondition_waits_for_a_maintenance_lease(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            lock = home / ".corthex/corthex-memory/projects/demo/curation.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"fixture lease\n")
+            def release():
+                time.sleep(.15)
+                lock.unlink()
+            child = threading.Thread(target=release); child.start()
+            started = time.monotonic()
+            try:
+                result = self.lifecycle.wait_quiet_store(home, quiet=.05)
+            finally:
+                child.join(timeout=2)
+            self.assertGreaterEqual(time.monotonic() - started, .2)
+            self.assertEqual(result["observed_leases"], [["projects/demo/curation.lock"]])
+            self.assertFalse(result["worker_completion_claimed"])
+
+    def test_busy_lifecycle_precondition_fails_without_changing_the_store(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            lock = home / ".corthex/corthex-memory/projects/demo/raw/native.lock"
+            lock.parent.mkdir(parents=True)
+            lock.write_bytes(b"fixture lease\n")
+            with self.assertRaises(AssertionError):
+                self.lifecycle.wait_quiet_store(home, timeout=.05, quiet=.02)
+            self.assertEqual(lock.read_bytes(), b"fixture lease\n")
+
+    def test_failed_native_runs_retain_raw_and_diagnostics_without_account_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary).resolve()
+            home, output = base / "home", base / "output"
+            for name in (".corthex/corthex-memory/projects/demo/raw/native.jsonl",
+                         ".corthex/corthex-memory/logs/failures-fixture.jsonl", ".codex/auth.json"):
+                path = home / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"synthetic fixture\n")
+            self.lifecycle.retain_store_evidence(home, output)
+            self.assertEqual(sorted(p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()),
+                             ["store-evidence/logs/failures-fixture.jsonl", "store-evidence/projects/demo/raw/native.jsonl"])
+
+    def test_lifecycle_copy_preserves_original_children_and_declares_its_two_observers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()
+            copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
+            report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
+            self.assertTrue(report["original_children_unchanged"])
+            self.assertEqual(len(report["candidate_sha256s"]), 45)
+            for name in ("scripts/hook.py", "scripts/worker.py"):
+                self.assertEqual((copy/name).read_bytes(), (ROOT/"plugins/corthex-memory"/name).read_bytes())
+            hooks = json.loads((copy/"hooks/hooks.json").read_bytes())["hooks"]
+            for event in ("SessionStart", "UserPromptSubmit"):
+                self.assertIn("lifecycle_prompt.py", hooks[event][0]["hooks"][0]["command"])
+            for event in ("Stop", "SessionEnd"):
+                self.assertNotIn("lifecycle_prompt.py", hooks[event][0]["hooks"][0]["command"])
+
+    def test_native_prompt_waits_for_observed_start_and_forwards_child_bytes_environment_and_exit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            (home/".corthex/corthex-memory").mkdir(parents=True)
+            script = home/"lifecycle_prompt.py"
+            shutil.copyfile(ROOT/".github/hook-check/lifecycle_prompt.py", script)
+            (home/"hook.py").write_text("import os,sys,time\nassert os.environ['PACE_SENTINEL']=='preserved'\n"
+                "data=sys.stdin.buffer.read()\nif sys.argv[1]=='start': time.sleep(.15)\n"
+                "sys.stdout.buffer.write(data)\nsys.stderr.buffer.write(b'original-child-stderr')\n"
+                "raise SystemExit(0 if sys.argv[1]=='start' else 7)\n", encoding="utf-8")
+            output = home/"prompt-gates"
+            env = dict(self.lifecycle.runner.base_env(home), HOOKCHECK_LIFECYCLE_GATES=str(output), PACE_SENTINEL="preserved")
+            self.lifecycle.arm_start(env, "startup")
+            incoming = json.dumps({"session_id":"native-fixture","source":"startup","prompt":"한국어"}, ensure_ascii=False).encode("utf-8")
+            start = subprocess.Popen([sys.executable,"-B","-X","utf8",str(script),"start"], env=env,
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            start.stdin.write(incoming); start.stdin.close(); start.stdin=None
+            try:
+                prompt = subprocess.run([sys.executable,"-B","-X","utf8",str(script),"prompt"],
+                                        env=env, input=incoming, capture_output=True, timeout=10)
+                stdout, stderr = start.communicate(timeout=10)
+                self.assertEqual((stdout,stderr,start.returncode),(incoming,b"original-child-stderr",0))
+                self.assertEqual((prompt.stdout,prompt.stderr,prompt.returncode),(incoming,b"original-child-stderr",7))
+                receipts = [json.loads(p.read_bytes()) for p in output.glob("*.json") if p.name!="generation.json"]
+                passed = next(v for v in receipts if v["hook"]=="prompt")
+                self.assertGreaterEqual(passed["child_started_ns"], passed["start_completion"]["child_ended_ns"])
+                self.assertTrue(passed["start_completion"]["completed"])
+                with self.assertRaises(AssertionError):
+                    self.lifecycle.pacing_evidence(home)  # The original prompt child exited 7.
+                receipt_path = next(p for p in output.glob("*.json")
+                                    if json.loads(p.read_bytes()).get("hook")=="prompt")
+                passed["exit"] = 0
+                passed["child_started_ns"] = passed["start_completion"]["child_ended_ns"] - 1
+                receipt_path.write_text(json.dumps(passed),encoding="utf-8")
+                with self.assertRaises(AssertionError):
+                    self.lifecycle.pacing_evidence(home)
+            finally:
+                if start.poll() is None: start.kill(); start.communicate()
+
+    def test_resume_rejects_a_previous_completed_start_for_the_same_native_session(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary).resolve()/"prompt-gates"
+            output.mkdir()
+            event = {"session_id":"same-native-session"}
+            old = {"id":"previous","source":"startup","armed_ns":1}
+            new = {"id":"current","source":"resume","armed_ns":2}
+            helper = sys.modules["lifecycle_prompt"]
+            helper.write_start(helper.start_path(output,event),
+                               {"completed":True,"exit":0,"generation":old,"event_source":"startup"})
+            with self.assertRaises(AssertionError):
+                helper.wait_start_completed(output,event,new,timeout=.05)
+            helper.write_start(helper.start_path(output,event),
+                               {"completed":True,"exit":0,"generation":new,"event_source":"resume"})
+            self.assertEqual(helper.wait_start_completed(output,event,new)["generation"],new)
+
+    def test_waits_for_actual_delayed_end_record(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            self.assertEqual(home.parent, Path(tempfile.gettempdir()).resolve())
+            path = home / ".corthex/corthex-memory/projects/demo/raw/native.jsonl"
+            path.parent.mkdir(parents=True)
+            rows = [{"session":"native-fixture", "kind":"start", "event":"start"},
+                    {"session":"native-fixture", "kind":"prompt", "turn":1, "text":self.lifecycle.runner.PROMPT},
+                    {"session":"native-fixture", "kind":"answer", "turn":1, "text":self.lifecycle.runner.REPLY}]
+            def encode(values):
+                return b"".join((json.dumps(v, ensure_ascii=False) + "\n").encode("utf-8") for v in values)
+            path.write_bytes(encode(rows))
+            def end():
+                time.sleep(.15)
+                pending = path.with_suffix(".pending")
+                pending.write_bytes(encode(rows + [{"session":"native-fixture", "kind":"end"}]))
+                deadline = time.monotonic() + 2
+                while True:
+                    try:
+                        pending.replace(path)
+                        break
+                    except PermissionError as error:
+                        if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32, 33) or time.monotonic() >= deadline:
+                            raise
+                        time.sleep(.01)
+            child = threading.Thread(target=end); child.start()
+            try:
+                result = self.lifecycle.wait_capture(home, {}, "startup")
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["entries"][-1]["kind"], "end")
+            finally:
+                child.join(timeout=2)
+                self.assertFalse(child.is_alive())
+
+    def test_missing_end_or_a_boundary_with_text_never_qualifies(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            self.assertEqual(home.parent, Path(tempfile.gettempdir()).resolve())
+            path = home / ".corthex/corthex-memory/projects/demo/raw/native.jsonl"
+            path.parent.mkdir(parents=True)
+            rows = [{"session":"native-fixture","kind":"start","event":"start"},
+                    {"session":"native-fixture","kind":"prompt","turn":1,"text":self.lifecycle.runner.PROMPT},
+                    {"session":"native-fixture","kind":"answer","turn":1,"text":self.lifecycle.runner.REPLY}]
+            for suffix in ([], [{"session":"native-fixture","kind":"end","text":"invalid boundary body"}]):
+                with self.subTest(end=suffix):
+                    path.write_bytes(b"".join((json.dumps(v, ensure_ascii=False) + "\n").encode("utf-8") for v in rows + suffix))
+                    with self.assertRaises(AssertionError):
+                        self.lifecycle.wait_capture(home, {}, "startup", timeout=.05)
+
+    @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
+    def test_terminal_initialization_failure_reaps_its_actual_child_and_closes_fd(self):
+        import fcntl
+        import pty
+        owned, fork = [], pty.fork
+        def observed_fork():
+            value = fork()
+            if value[0]: owned.append(value)
+            return value
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            self.assertEqual(home.parent, Path(tempfile.gettempdir()).resolve())
+            try:
+                with patch.object(pty, "fork", observed_fork), patch.object(fcntl, "ioctl", side_effect=OSError("fixture ioctl failure")):
+                    with self.assertRaises(OSError):
+                        self.lifecycle.Terminal([sys.executable,"-c","import time;time.sleep(30)"],
+                                                self.lifecycle.runner.base_env(home), home, home / "terminal.bin")
+                self.assertEqual(len(owned), 1)
+                pid, fd = owned[0]
+                with self.assertRaises(ChildProcessError): os.waitpid(pid, os.WNOHANG)
+                with self.assertRaises(OSError): os.fstat(fd)
+            finally:
+                for pid, fd in owned:
+                    try:
+                        if os.waitpid(pid, os.WNOHANG)[0] == 0:
+                            os.killpg(pid, signal.SIGKILL); os.waitpid(pid, 0)
+                    except ChildProcessError: pass
+                    try: os.close(fd)
+                    except OSError: pass
