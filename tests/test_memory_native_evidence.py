@@ -79,12 +79,23 @@ class NativeEvidenceTest(unittest.TestCase):
         self.assertTrue(result["before"])
 
     def test_barrier_observes_the_same_active_retention_frame_after_parent_exit(self):
+        self.barrier_fixture()
+
+    def test_barrier_retries_one_transient_release_read_denial(self):
+        self.barrier_fixture(release_denial=True)
+
+    def barrier_fixture(self, release_denial=False):
         library = self.root / "memory_lib"
         library.mkdir()
         (library / "__init__.py").write_bytes(b"")
         source = library / "retention.py"
         source.write_text("import os\nfrom pathlib import Path\ndef retain_project(memory, project, owner, deadline):\n Path(os.environ['FIXTURE_OLD']).unlink()\n", encoding="utf-8")
-        (self.root / "worker_actual.py").write_text("import time\ntime.monotonic_ns=lambda:1\nimport sys\nfrom pathlib import Path\nsys.path.insert(0,str(Path(__file__).parent))\nfrom memory_lib.retention import retain_project\nretain_project(None,'demo',None,None)\n", encoding="utf-8")
+        denial = ("read=Path.read_bytes\ndenied=[False]\n"
+                  "def transient(path):\n    if path.name=='release.json' and not denied[0]:\n"
+                  "        denied[0]=True\n        Path(__file__).with_name('read-denial').write_text('observed')\n"
+                  "        raise PermissionError('injected temporary release read denial')\n    return read(path)\n"
+                  "Path.read_bytes=transient\n") if release_denial else ""
+        (self.root / "worker_actual.py").write_text("import time\ntime.monotonic_ns=lambda:1\nimport sys\nfrom pathlib import Path\n" + denial + "sys.path.insert(0,str(Path(__file__).parent))\nfrom memory_lib.retention import retain_project\nretain_project(None,'demo',None,None)\n", encoding="utf-8")
         shutil.copyfile(ROOT / ".github/hook-check/lifetime_worker.py", self.root / "worker.py")
         old = self.root / "old.jsonl"
         old.write_text('{"id":"e_000000000001"}\n', encoding="utf-8")
@@ -115,6 +126,7 @@ class NativeEvidenceTest(unittest.TestCase):
         self.assertEqual(seen,[True])
         stdout, stderr = child.communicate(timeout=5)
         self.assertEqual((child.returncode, stdout, stderr), (0, b"", b""), stderr.decode("utf-8", "replace"))
+        self.assertEqual((self.root / "read-denial").exists(),release_denial)
         self.assertTrue(result["verified"],json.dumps(result))
         self.assertEqual((result["expired_record_removed"],result["barrier_timed_out"]),(True,False))
 
