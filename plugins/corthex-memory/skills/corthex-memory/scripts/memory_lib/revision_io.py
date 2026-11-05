@@ -99,6 +99,18 @@ def read(memory, root, deadline):
         return _publish_recovery(memory, root, fence_plan.rotate(value), deadline, check)
 
 
+def read_primary(memory, root, deadline):
+    """Strict primary-only control read; never promotes any recovery copy."""
+    root = Path(root)
+    check = guard(memory, root, deadline)
+    try:
+        value = _read(memory, root / 'curation.json', deadline)
+    except files._RESTORABLE:
+        raise files.RestoreNeeded() from None
+    check()
+    return value
+
+
 def rebuild(memory, root, value, deadline):
     """Publish reconstructed progress only when neither current copy parses."""
     root = Path(root)
@@ -113,10 +125,18 @@ def rebuild(memory, root, value, deadline):
 
 
 class Reservation:
-    def __init__(self, memory, root, value, deadline, check):
+    def __init__(self, memory, root, value, deadline, check, *, primary_only=False):
         self._memory, self._root, self._deadline, self._guard = memory, root, deadline, check
+        if type(primary_only) is not bool:
+            raise TypeError('primary-only policy must be boolean')
+        self._primary_only = primary_only
+        self._reader = read_primary if primary_only else read
         self._value = copy.deepcopy(value)
         self._proof = fence_plan.snapshot(value)
+
+    @property
+    def primary_only(self):
+        return self._primary_only
 
     @property
     def progress(self):
@@ -124,20 +144,23 @@ class Reservation:
 
     def check(self):
         self._guard()
-        if not fence_plan.matches(read(self._memory, self._root, self._deadline), self._proof):
+        if not fence_plan.matches(self._reader(self._memory, self._root, self._deadline), self._proof):
             raise fence_plan.Stale()
         self._guard()
 
 
-def reserve(memory, root, expected, targets, deadline, run_id=None):
+def reserve(memory, root, expected, targets, deadline, run_id=None, *, primary_only=False):
     """Reserve affected keys; run-bearing applies also require curation ownership."""
     root = Path(root)
     check = guard(memory, root, deadline, curator=run_id is not None)
-    fresh = read(memory, root, deadline)
+    if type(primary_only) is not bool:
+        raise TypeError('primary-only policy must be boolean')
+    reader = read_primary if primary_only else read
+    fresh = reader(memory, root, deadline)
     value = fence_plan.advance(fresh, expected, targets, run_id)
     files.replace_bytes(root / 'curation.json', format2.curation_bytes(value),
                         check=check, path_check=memory.fence.check)
-    reservation = Reservation(memory, root, value, deadline, check)
+    reservation = Reservation(memory, root, value, deadline, check, primary_only=primary_only)
     reservation.check()
     return reservation
 
