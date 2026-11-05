@@ -174,7 +174,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       notRead: "files not read: {list}", defaultSource: "default path", showAll: "Show all {n}", close: "Close",
       truthSource: "the text source", truthHuman: "the human view", open: "open", none: "none",
       kind: "Kind", stage: "Stage", status: "Status", type: "Type", priority: "Priority", where: "Where",
-      parent: "Parent", states: "Screen states", screenDoc: "Screen definition", project: "Project",
+      parent: "Parent", screenStates: "Screen states", screenDoc: "Screen definition", project: "Project",
       upstream: "Comes from", downstream: "Leads to", related: "Same kind", decisions: "Decisions",
       chainUp: "Earlier stages reached: {list}", chainDown: "Later stages reached: {list}",
       undefinedId: "{id} is not defined in the sources that were read.", linkedFrom: "Mentioned with it",
@@ -205,7 +205,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       notRead: "읽지 않은 파일: {list}", defaultSource: "기본 경로", showAll: "{n}개 모두 보기", close: "닫기",
       truthSource: "텍스트 원본", truthHuman: "사람 화면", open: "열기", none: "없음",
       kind: "종류", stage: "단계", status: "상태", type: "구분", priority: "우선순위", where: "위치",
-      parent: "상위", states: "화면 상태", screenDoc: "화면 정의", project: "프로젝트",
+      parent: "상위", screenStates: "화면 상태", screenDoc: "화면 정의", project: "프로젝트",
       upstream: "앞 단계", downstream: "뒤 단계", related: "같은 종류", decisions: "결정",
       chainUp: "앞쪽으로 이어진 항목: {list}", chainDown: "뒤쪽으로 이어진 항목: {list}",
       undefinedId: "{id}의 정의를 읽은 원본에서 찾지 못했습니다.", linkedFrom: "함께 언급한 항목",
@@ -634,7 +634,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       if (safeUrl(item.link)) { fact(S.human, link(item.link, S.open)); }
       if (item.parent) { fact(S.parent, idButton(p, item.parent)); }
       if (item.screen_doc) { fact(S.screenDoc, whereNode(p, item.screen_doc)); }
-      if (item.states) { fact(S.states, item.states.join(", ")); }
+      if (item.states) { fact(S.screenStates, item.states.join(", ")); }
     }
     parts.push(facts);
     if (!item) { parts.push(el("p", { class: "note", text: fmt(S.undefinedId, { id: id }) })); }
@@ -700,7 +700,10 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     var close = el("button", { type: "button", class: "btn", text: S.close, onclick: function () { go({}); } });
     var rows = el("ul", { class: "plain rows" }, hits.map(function (hit) {
       var item = hit.p.byId[hit.id];
-      return el("li", null, [idButton(hit.p, hit.id), el("span", { text: item && item.title ? item.title : "" }), el("span", { class: "badge", text: hit.p.project.title || hit.p.project.name })]);
+      return el("li", null, [idButton(hit.p, hit.id), el("span", { text: item && item.title ? item.title : "" }),
+        el("span", { class: "badge", text: kindName(kindOf(hit.p, hit.id)) || S.states.unknown }),
+        el("span", { class: "badge", text: item ? stageName(item.stage) : S.states.unknown }),
+        el("span", { class: "badge", text: hit.p.project.title || hit.p.project.name })]);
     }));
     return el("div", { class: "panel" }, [el("div", { class: "panel-head" }, [heading, close]), rows]);
   }
