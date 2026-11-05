@@ -588,6 +588,13 @@ Before a real migration, establish a maintenance interval with old-package hooks
 Before any C2 record is written, durably fence and verify store.json and every header backup C1 may automatically restore as format 2/migrating. A safe sequence can fence the backup before the primary; a stop between them must still precede all C2 data. Never raise only the primary while leaving a format-1 .bak fallback. Inspect recognized header tmp/backup recovery paths too, keeping preserved originals outside automatic recovery. Resumable migration records distinguish every step; only after the complete header fence rewrite files one by one, then remove migrating last. No intermediate state or missing/damaged primary may let old C1 restore format 1 and write C2 records. Migration tests interrupt/resume every boundary and exercise old-client restoration.
 
 
+### Read-only migration inventory (TASK-074)
+
+The migration preflight takes an explicit existing absolute memory folder and a finite operation deadline. It observes strict named headers and recognized header temporaries, all recognized configuration/progress copies, the union of configured and existing project folders, and every project/raw directory entry. It reads only recognized header, configuration and progress bytes; raw logs and other payloads are metadata-only observations. Unknown project directories, aliases, non-regular files and unrecognized raw names are refused without opening their contents. Originals and file/directory identities are bound in memory and rechecked, including known primary/backup hardlink pairs; an extra alias is refused. A failed check stays failed, even if a file is put back or a later deadline is offered. No file, lease, recovery copy or diagnostic is created or changed.
+
+This transient inventory has no persisted schema and changes no TBL-001/TBL-009 fields or public API. It is not evidence of old-writer quiescence, non-deletion lineage or maintenance ownership. The actual owner must verify those conditions, acquire the complete ordered lease set, then take a fresh inventory and verify that every discovered project/raw lease is covered before preserving originals or fencing headers. Its own acquired locks are present in that new inventory; an earlier observation cannot be silently rebased after any change. Existing C2 payloads are observations to be resolved by the resumable owner, never permission to replay initialization. Missing project folders are reported, not provisioned.
+
+
 ## What leaves the device
 
 - To the sync remote, while sync is on: the curated layer (TBL-012 to TBL-017) and the sync remote marker (TBL-018), nothing else (SPEC-027).
