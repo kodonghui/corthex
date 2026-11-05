@@ -108,17 +108,19 @@ class Attempt:
         value.line()
         return value
 
-    def line(self, *, usage=None, failure=None, first_ms=None, request_id=None):
+    def line(self, *, usage=None, failure=None, first_ms=None, request_id=None, aborted=False):
         elapsed = (clock.now() - self._started) * 1000
         if not math.isfinite(elapsed) or elapsed < 0:
             raise ValueError('invalid memory usage clock')
         if failure is not None and (type(failure) is not model_access.Failure or
                 failure.code not in model_access._KINDS):
             raise ValueError('invalid memory failure')
+        if type(aborted) is not bool or aborted and failure is not None:
+            raise ValueError('invalid memory cancellation accounting')
         tokens = _tokens(self.call, usage)
         prices = store.json_document(self._prices)
         row = dict(at=self.at, project=self.project, call=self.call, model=self.model, **tokens,
-                   total_ms=int(elapsed), result='ok' if failure is None else failure.result,
+                   total_ms=int(elapsed), result='failed' if aborted else 'ok' if failure is None else failure.result,
                    cost=_cost(self.call, self.model, tokens, prices), prices=prices['taken'])
         if self.instructions is not None:
             row['instructions'] = self.instructions

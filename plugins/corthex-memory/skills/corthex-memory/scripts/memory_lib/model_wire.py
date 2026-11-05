@@ -133,7 +133,8 @@ def _once(value):
                 any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in request_id) or
                 secret and secret in request_id):request_id = None
         status = response.status
-        _emit({'response': {'status': status, 'request': request_id}})
+        retry_after = _retry_after(response.headers.get('retry-after')) if status != 200 else None
+        _emit({'response': {'status': status, 'request': request_id, 'retry_after': retry_after}})
         if status != 200:
             if not 400 <= status <= 599:
                 failure = model_access.Failure('invalid_request_error', True, status)
@@ -147,7 +148,6 @@ def _once(value):
                 except Exception:
                     pass
                 failure = model_access.classify('anthropic', status=status, error_type=kind)
-            retry_after = _retry_after(response.headers.get('retry-after'))
         else:
             if response.headers.get_content_type() != 'text/event-stream':
                 failure = model_access.classify('anthropic', reason='bad-answer')
