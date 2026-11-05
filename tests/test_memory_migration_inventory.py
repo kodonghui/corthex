@@ -52,11 +52,21 @@ class MigrationInventoryTest(unittest.TestCase):
 
     def test_tc390_observe_and_check_open_only_metadata_readonly_and_change_nothing(self):
         (self.project/'private-key.txt').write_bytes(b'never open this payload')
+        alias = Path(self.temporary.name)/'parent-link'
+        if os.name == 'nt':
+            command = Path(os.environ['SystemRoot'])/'System32/cmd.exe'
+            done = subprocess.run([str(command), '/d', '/c', 'mklink', '/J', str(alias), self.temporary.name],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(done.returncode, 0)
+            self.addCleanup(alias.rmdir)
+        else:
+            alias.symlink_to(self.temporary.name, target_is_directory=True)
+            self.addCleanup(alias.unlink)
         before = self.tree()
         opened, real_open = [], os.open
         allowed = {'store.json', 'configuration.json', 'projects/sample/curation.json'}
         def guarded(path, flags, *args, **kwargs):
-            relative = Path(path).relative_to(self.root).as_posix()
+            relative = Path(path).relative_to(canonical_root).as_posix()
             self.assertIn(relative, allowed)
             self.assertFalse(flags & (os.O_CREAT | os.O_TRUNC | os.O_APPEND | os.O_WRONLY | os.O_RDWR))
             opened.append(relative)
@@ -64,8 +74,10 @@ class MigrationInventoryTest(unittest.TestCase):
         with mock.patch.object(history_recovery.os, 'open', side_effect=guarded), \
                 mock.patch.object(history_recovery.files, '_sync', side_effect=AssertionError('no fsync')), \
                 mock.patch.object(locks.Lock, 'acquire', side_effect=AssertionError('no lease')):
-            value = self.observe()
-            value.check()
+            for folder in (self.root, alias/self.root.name):
+                canonical_root = folder.resolve()
+                value = self.observe(folder=folder)
+                value.check()
         self.assertEqual(set(opened), allowed)
         self.assertEqual(self.tree(), before)
         self.assertIn('projects/sample/private-key.txt', value.payloads)
