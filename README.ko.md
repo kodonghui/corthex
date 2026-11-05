@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 핵심 `corthex`는 0.7.0, `corthex-memory` 0.2.1은 프로젝트별 확인 목록을 반영한 C1 패키지이며 출시 결정과 알려진 한계는 MEMORY 작업·시험 계획에서 추적하고, `corthex-nexus`는 0.2.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
+> 상태: 핵심 `corthex`는 0.7.0, `corthex-memory` 0.2.1은 프로젝트별 확인 목록을 반영한 C1 패키지이며 출시 결정과 알려진 한계는 MEMORY 작업·시험 계획에서 추적하고, `corthex-nexus`는 0.2.1입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
 
 설치부터 요구사항 하나를 검토하고 진행 기록을 남기기까지는 [첫 프로젝트](docs/first-project.ko.md)를 따라 해 보세요.
 
@@ -101,7 +101,7 @@ Notion에 기록할 때는 프로젝트의 `records.location`이나 프로필의
 
 NEXUS를 쓰도록 설정한 프로젝트에서는 핵심·단계 스킬이 설치된 허브를 통해 세션/프로젝트마다 한 번 할 일을 읽습니다. 사용자가 지금 요청한 일을 먼저 하고, 이후 의견·불일치·반영·확인 지점을 처리합니다. 토큰이나 서버가 없어도 로컬 작업은 계속합니다. 점유와 열린 PR을 존중하고, 결정·반영·단계 기록은 기존 저장소의 PR 규칙을 따릅니다. 첫 실제 보내기는 별도 확인을 거칩니다. [선택적 작업 절차](plugins/corthex/skills/corthex/references/nexus-work.md).
 
-현재 NEXUS 허브는0.2.0이며 서버·화면·이주·되돌리기 안내는 [독립 제품 저장소](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.ko.md)에 있습니다. 먼저 서버를0.2 호환판으로 올린 뒤 허브를 갱신합니다. Node/SQLite 실행부는 Access·Tunnel 뒤에 두고 Worker/D1 호환 경로를 유지합니다. 이 README의 패키지 번호는 태그 발행이나 운영 전환을 뜻하지 않습니다.
+현재 NEXUS 허브는0.2.1이며 서버·화면·이주·되돌리기 안내는 [독립 제품 저장소](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.ko.md)에 있습니다. 먼저 서버를0.2 호환판으로 올린 뒤 허브를 갱신합니다. Node/SQLite 실행부는 Access·Tunnel 뒤에 두고 Worker/D1 호환 경로를 유지합니다. 이 README의 패키지 번호는 태그 발행이나 운영 전환을 뜻하지 않습니다.
 
 ## 개발
 
