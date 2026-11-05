@@ -91,7 +91,7 @@ def result(outcome, answer=None, problem=None, failure=None, retry=False):
 
 
 class Client:
-    def __init__(self, base, env, version="0.2.0", timeout=30):
+    def __init__(self, base, env, version="0.2.1", timeout=30):
         parsed = urllib.parse.urlsplit(base)
         local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
         if (parsed.scheme not in ("https", "http") or not parsed.hostname or

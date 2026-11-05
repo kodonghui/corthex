@@ -554,18 +554,27 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     if (stage.skipped) { sourceParts.push(fmt(S.notRead, { list: Object.keys(stage.skipped).map(function (r) { return r + " " + stage.skipped[r]; }).join(", ") })); }
     fact(S.source, sourceParts.filter(Boolean).join(" · "));
     fact(S.note, stage.note);
-    var parts = [el("h3", { text: stageName(key) }), facts];
+    var parts = [el("h3", { text: stageName(key) + " · " + (S.states[state] || state) }), facts];
     partKeys(p).forEach(function(part){var record=recordOf(p,key,part),section=el("section",{class:"part-record"});if(part)section.appendChild(el("h4",{text:part}));section.appendChild(el("p",{text:(S.states[record.state] || S.states.unknown)+(record.next?" · "+fmt(S.next,{text:record.next}):"")}));(record.checkpoints || []).forEach(function(c){section.appendChild(el("p",null,[c.approved || c.date || "",c.date?" · "+c.date:"",safeUrl(c.where)?link(c.where,S.open):null]));});
       if(remote){section.appendChild(viewLink(p,part,key,false));var picture=(spaceOf(p).pictures || []).filter(function(pic){return pic.part===part&&pic.stage===key;})[0];if(picture){section.appendChild(viewLink(p,part,key,true));section.appendChild(el("p",{class:"note",text:picture.commit+(picture.not_current?" · "+N.notCurrent[picture.not_current]:"")}));}spaceNotes(p,part,key).forEach(function(n){section.appendChild(n);});}else section.appendChild(el("p",{class:"note",text:N.onServer}));parts.push(section);
     });
     if (found.checks.length) {
       parts.push(el("p", { class: "sub", text: S.checks }));
       parts.push(checkList(p, found.checks, false));
+    } else {
+      parts.push(el("p", { class: "note", text: S.noChecks }));
     }
     var items = p.items.filter(function (item) { return item.stage === key || (key === "08-screen-states" && item.screen_doc); });
     if (items.length) {
       parts.push(el("p", { class: "sub", text: S.items + " (" + items.length + ")" }));
-      parts.push(itemList(p, items, 30));
+      var kinds = Object.create(null);
+      items.forEach(function (item) { var kind = item.kind || ""; (kinds[kind] = kinds[kind] || []).push(item); });
+      Object.keys(kinds).sort(function (a, b) {
+        var ai = KIND_ORDER.indexOf(a), bi = KIND_ORDER.indexOf(b);
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
+      }).forEach(function (kind) {
+        parts.push(el("section", { class: "item-kind", "data-kind": kind }, [el("h4", { text: (kindName(kind) || S.none) + " (" + kinds[kind].length + ")" }), itemList(p, kinds[kind], 30)]));
+      });
     }
     return parts;
   }
@@ -644,17 +653,38 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     near.forEach(function (other) {
       var k = kindOf(p, other);
       var there = KIND_ORDER.indexOf(k);
-      if (k === "decision") { groups.decision.push(other); }
+      if (!item) { groups.other.push(other); }
+      else if (k === "decision") { groups.decision.push(other); }
       else if (there < 0 || here < 0) { groups.other.push(other); }
       else if (there < here) { groups.up.push(other); }
       else if (there > here) { groups.down.push(other); }
       else { groups.same.push(other); }
     });
     var box = el("div", { class: "groups" });
+    if (!near.length) { box.appendChild(el("p", { class: "note", text: S.none })); }
     [["up", S.upstream], ["down", S.downstream], ["same", S.related], ["decision", S.decisions], ["other", S.linkedFrom]].forEach(function (pair) {
       var ids = groups[pair[0]];
       if (!ids.length) { return; }
-      box.appendChild(el("div", { class: "group" }, [el("h3", { text: pair[1] + " (" + ids.length + ")" }), el("div", { class: "chips" }, ids.map(function (other) { return idButton(p, other); }))]));
+      var group = el("div", { class: "group" }, [el("h3", { text: pair[1] + " (" + ids.length + ")" })]);
+      var stages = Object.create(null);
+      ids.forEach(function (other) {
+        var key = p.byId[other] && p.byId[other].stage || "";
+        (stages[key] = stages[key] || []).push(other);
+      });
+      Object.keys(stages).sort(function (a, b) {
+        var ai = stageIndex(a), bi = stageIndex(b);
+        return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || a.localeCompare(b);
+      }).forEach(function (key) {
+        var section = el("section", { class: "trace-stage" }, [el("h4", { text: stageName(key) || S.none })]);
+        var rows = el("div", { class: "chips" });
+        stages[key].forEach(function (other) {
+          var reference = p.byId[other];
+          rows.appendChild(el("span", null, [idButton(p, other), !item && reference && reference.where ? whereNode(p, reference.where) : null]));
+        });
+        section.appendChild(rows);
+        group.appendChild(section);
+      });
+      box.appendChild(group);
     });
     parts.push(box);
     var up = chain(p, id, -1), down = chain(p, id, 1);
@@ -771,7 +801,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       cards[p.project.name] = node;
       holder.appendChild(node);
     });
-    var missing = (data.missing || []).map(function (m) { return m && m.name; }).filter(Boolean);
+    var missing = (data.missing || []).filter(function (m) { return m && m.name; }).map(function (m) { return m.name + (m.reason ? " (" + m.reason + ")" : ""); });
     if (missing.length) {
       document.getElementById("missing").appendChild(el("p", { class: "note", text: fmt(S.missing, { list: missing.join(", ") }) }));
     }

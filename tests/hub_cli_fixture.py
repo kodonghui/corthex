@@ -65,17 +65,28 @@ def verify_runtime(checkout):
 
     Later branch commits may contain unrelated core/template work. The nine
     runtime files must still equal the product's accepted hub pin, normalizing
-    only checkout CRLF. Updating this fixture requires a deliberate pin audit.
+    checkout CRLF and the explicitly audited 0.2.1 version-only release fields.
+    Every other byte, including the wire schemas, stays pinned. The returned
+    file hashes describe the actual source, not its normalized baseline.
     """
     pin = json.loads((FIXTURES / "runtime-pin.json").read_text(encoding="utf8"))
     if pin["commit"] != PIN or set(pin["files"]) != set(RUNTIME):
         raise ValueError("CLI fixture runtime pin metadata differs")
     rows = []
     for name in RUNTIME:
-        actual = sha((checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n"))
-        if actual != pin["files"][name]:
+        source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
+        actual = sha(source)
+        approved = {
+            "hub.py": (b'VERSION = "0.2.1"\n', b'VERSION = "0.2.0"\n'),
+            "transport.py": (b'version="0.2.1", timeout=30', b'version="0.2.0", timeout=30'),
+        }.get(name)
+        if approved and source.count(approved[0]) == 1:
+            source = source.replace(approved[0], approved[1], 1)
+        if sha(source) != pin["files"][name]:
             raise ValueError("CLI fixture runtime differs from audited pin: " + name)
-        rows.append({"file": name, "lfSha256": actual})
+        rows.append({"file": name, "lfSha256": actual,
+                     "auditedBaselineLfSha256": pin["files"][name],
+                     "versionOnlyNormalization": actual != sha(source)})
     git = None
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         folder = Path(entry)
