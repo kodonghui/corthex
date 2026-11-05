@@ -595,6 +595,13 @@ The migration preflight takes an explicit existing absolute memory folder and a 
 This transient inventory has no persisted schema and changes no TBL-001/TBL-009 fields or public API. It is not evidence of old-writer quiescence, non-deletion lineage or maintenance ownership. The actual owner must verify those conditions, acquire the complete ordered lease set, then take a fresh inventory and verify that every discovered project/raw lease is covered before preserving originals or fencing headers. Its own acquired locks are present in that new inventory; an earlier observation cannot be silently rebased after any change. Existing C2 payloads are observations to be resolved by the resumable owner, never permission to replay initialization. Missing project folders are reported, not provisioned.
 
 
+### Ordered maintenance admission (TASK-074)
+
+The maintenance owner consumes the original scoped quiescence check from the actual maintenance-interval owner; successful verification returns only None. It does not infer host shutdown/restart prevention from a lock list or a few PIDs. Without that external verification it admits no lease or data effect. It acquires store, every project curation, every project layer and every raw lease in the existing kind/path order, using ordinary stale policy and no forced takeover. Missing project/raw directories require their actual initialization/deletion owner; this helper never provisions them.
+
+After acquisition, compare a fresh inventory with the originals, allowing only exact working-lock names created by those original acquisitions. New projects/raw scope, replaced data or directories and unaccounted working artifacts refuse admission. The issued scope binds its original root/directories, lease objects/tokens/paths and quiescence function; any observed verification failure permanently revokes effects. Cleanup may release only its original tokens on safe original paths, including after deadline/quiescence loss. It reports unconfirmed release without masking an existing publication failure. This ownership scope creates only ordinary working locks; it neither publishes migration records nor establishes initialization/writer/non-deletion lineage or permission for history repair. Those checks remain required before effects.
+
+
 ## What leaves the device
 
 - To the sync remote, while sync is on: the curated layer (TBL-012 to TBL-017) and the sync remote marker (TBL-018), nothing else (SPEC-027).
