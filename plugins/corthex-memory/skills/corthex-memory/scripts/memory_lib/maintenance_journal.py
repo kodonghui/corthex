@@ -38,6 +38,7 @@ class _Guard:
         self.root_names = set(self.original_dirs['.'][1])
         self.parents,self.nodes = {},{}
         self.revoked,self.cleanup_pending = False,False
+        self.writer_check = self.cold
 
     def _node(self,path,binding,directory=False):
         info = self.fence.check(path)
@@ -47,20 +48,24 @@ class _Guard:
         binding.check()
         return info
 
+    def artifact_facts(self):
+        """Callback-free final facts; this never checks or grants ownership."""
+        if self.revoked or self.cleanup_pending:raise locks.LostLock()
+        self.binding.check()
+        for path,(binding,names) in self.parents.items():
+            self._node(path,binding,directory=True)
+            if {p.name for p in path.iterdir()} != names:raise locks.LostLock()
+            self._node(path,binding,directory=True)
+        for path,node in self.nodes.items():
+            self._node(path,node['binding'])
+            if self.fence.read(path,self.deadline) != node['data'][:node['written']]:
+                raise locks.LostLock()
+            self._node(path,node['binding'])
+
     def artifacts(self):
         """Original owner plus auxiliary artifacts only; no effect authority."""
         try:
-            if self.revoked or self.cleanup_pending:raise locks.LostLock()
-            _check(self.owned);self.binding.check()
-            for path,(binding,names) in self.parents.items():
-                self._node(path,binding,directory=True)
-                if {p.name for p in path.iterdir()} != names:raise locks.LostLock()
-                self._node(path,binding,directory=True)
-            for path,node in self.nodes.items():
-                self._node(path,node['binding'])
-                if self.fence.read(path,self.deadline) != node['data'][:node['written']]:
-                    raise locks.LostLock()
-                self._node(path,node['binding'])
+            _check(self.owned);self.artifact_facts()
             _check(self.owned);self.binding.check()
         except BaseException:
             self.revoked = True
@@ -88,7 +93,7 @@ class _Guard:
             raise
 
     def directory_barrier(self,path):
-        self.cold()
+        self.writer_check()
         if os.name == 'nt':
             # Windows file _commit also flushes associated file metadata. The
             # completed seal is not returned until all file barriers succeed.
@@ -101,7 +106,7 @@ class _Guard:
             opened,current = os.fstat(descriptor),self.fence.check(path)
             if current is None or (opened.st_dev,opened.st_ino) != (current.st_dev,current.st_ino):
                 raise locks.LostLock()
-            self.cold();files._sync(descriptor);self.cold()
+            self.writer_check();files._sync(descriptor);self.writer_check()
         except BaseException:
             failed = True
             raise
@@ -134,7 +139,7 @@ class _Guard:
         self.cold();self.directory_barrier(path.parent)
 
     def write(self,path,data):
-        self.cold()
+        self.writer_check()
         if not isinstance(data,bytes) or path.parent not in self.parents or self.fence.check(path) is not None:
             raise locks.LostLock()
         flags = os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0)
@@ -150,15 +155,15 @@ class _Guard:
             node = dict(binding=maintenance_identity.bind(path,entry='file'),data=data,written=0)
             self.nodes[path] = node
             for offset in range(0,len(data),65536):
-                self.cold()
+                self.writer_check()
                 current = os.fstat(descriptor)
                 if (current.st_dev,current.st_ino) != (opened.st_dev,opened.st_ino) or current.st_nlink != 1:
                     raise locks.LostLock()
                 chunk = data[offset:offset+65536]
                 if os.write(descriptor,chunk) != len(chunk):raise OSError('short maintenance write')
                 node['written'] += len(chunk)
-                self.cold()
-            self.cold();files._sync(descriptor);self.cold()
+                self.writer_check()
+            self.writer_check();files._sync(descriptor);self.writer_check()
         except BaseException:
             failed = True
             self.revoked = True
@@ -168,7 +173,7 @@ class _Guard:
             except OSError:
                 self.cleanup_pending = True
                 if not failed:raise
-        self.cold();self.directory_barrier(path.parent)
+        self.writer_check();self.directory_barrier(path.parent)
 
 
 @dataclass(frozen=True)
