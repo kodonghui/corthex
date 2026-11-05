@@ -79,6 +79,8 @@ class ModelAccessTest(unittest.TestCase):
                 f = model_access.classify('anthropic', status=status, error_type=SECRET, error_code=SECRET)
                 self.assertEqual((f.code, f.lasting, f.status, f.result), (code, lasting, status, 'failed'))
                 self.assertNotIn(SECRET, repr(f))
+        self.assertEqual(model_access.classify('anthropic', status=500, error_type='timeout_error'),
+                         model_access.Failure('timeout_error', False, 500))
 
     def test_openai_quota_is_lasting_only_for_the_documented_selectors(self):
         for code in ('credit_balance_exhausted', 'organization_spend_limit_exceeded',

@@ -552,6 +552,14 @@ The script holds no key: the keys go into the environment's secret settings (SPE
 - The provider's error text is never logged, only its error type and the HTTP status.
 - Every text sent has been redacted (SPEC-004). The worker redacts each request document again before it sends it, so that a key set since an entry was recorded is still removed; a quote of text that this second pass changed fails the quote check.
 
+### Internal transport implementation boundary (TASK-079)
+
+The internal protocol components do not activate a hook/command or supply consent, enabled-project, provenance or lifecycle authority. Actual callers retain those gates. Only explicit sending calls use the dedicated credentials and base URLs; no SDK, general host credentials or implicit redirect is used. Per-call TLS verification and environment proxy behavior stay enabled. A bounded typed SSE decoder retains text answers and reported token counters only, discards thinking/signature and unknown event contents, and overwrites cumulative usage instead of adding it. Unknown/malformed, cut, refused, limited and empty answers remain distinct safe outcomes; they grant no apply authority.
+
+One original absolute operation deadline includes attempts and retry waits; connection and byte-gap limits never renew it. A blocking-operation socket timeout alone is not a whole-operation deadline. Every actual attempt has a new TASK-078 accounting context and original credential/price/send-time snapshot. Known timeout_error on HTTP500 is preserved as a passing timeout kind, alongside the table's default api_error; unknown provider strings are still discarded. Local HTTP/HTTPS fixtures establish transport evidence, not real-provider or real-user quality acceptance.
+
+The first TASK-079 implementation slice provides a single isolated wire attempt and the bounded SSE reader only. It does not yet build model requests, own retries, append per-attempt usage or persist rejected-key status. HTTP is allowed only for an explicit loopback test URL and bypasses environment proxies; the connected peer is checked before sending authentication. HTTPS retains certificate/hostname verification and environment proxy/certificate settings. Redirects are refused. Keys/body travel through private stdin, never process arguments or store files. The parent checks the original caller gate and absolute deadline through startup, DNS, TLS, headers and streaming, then kills/reaps its own child. Process creation and OS teardown themselves are blocking system calls; a late return is checked before sending or accepting results, with cleanup uncertainty reported separately, rather than claiming hard kernel preemption. SSE text/action-kind enum normalization grants no quote/provenance or application authority.
+
 ### Requests to the curator model
 
 The three requests to the curator model, to curate (API-006), to merge a group (API-007) and to shorten the current state (API-008), share one form:

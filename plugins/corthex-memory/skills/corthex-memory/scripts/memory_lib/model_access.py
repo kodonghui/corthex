@@ -83,6 +83,8 @@ def classify(provider, *, status=None, error_type=None, error_code=None, reason=
             isinstance(error_code, str) and error_code in _QUOTA):
         return Failure('insufficient_quota', True, status)
     code = ('overloaded_error' if provider == 'openai' and status == 503 else _HTTP.get(status))
+    if provider == 'anthropic' and status == 500 and error_type == 'timeout_error':
+        code = 'timeout_error'
     if code is None:
         code = error_type if isinstance(error_type, str) and error_type in _PROVIDER_TYPES else (
             'invalid_request_error' if status < 500 else 'api_error')
