@@ -814,3 +814,13 @@ The store library comes first in C1: IDs and JSON form, appending, rewriting and
 - An item injected, then three prompts that recall skips: the next prompt can inject the item again (SPEC-023).
 - [memory-index.sql](memory-index.sql) run on an empty file gives the same tables as the code's own; an index of another version is built again.
 - After a sync, the sync remote holds only the files of TBL-012 to TBL-018, and no file of the memory store holds a test key.
+
+### Private migration binding and immutable intent (TASK-074)
+
+The device-local maintenance journal is auxiliary data outside every automatic-recovery family; it adds no public TBL-001/TBL-009 field. Its version-1 identity record uses Windows FILE_ID_INFO volume serial plus all 128 file-ID bits, or POSIX opened-descriptor device/inode/filesystem ID. It distinguishes a file from a directory. Unsupported identity queries, reparse/symbolic links and changed nodes refuse admission. An in-process binding retains the original path, PID and identity, and an observed failure cannot be repaired by retrying that binding. Native identity is not quiescence, initialization, writer/non-deletion lineage or proof against a whole offline filesystem rollback.
+
+An immutable intent retains an independently generated private nonce, canonical-root digest, native identity, the named-header migration context, fixed project epochs, exact original metadata bytes/hashes and reproducible header/progress proposals. Source names are reconstructed from fixed header/configuration/progress families and project IDs; never open a path supplied by the intent. Only named store headers establish the existing from/to/started migration context: no nonce is added to that public marker, and a journal alone never grants a resume context. Missing project/progress facts and preexisting unknown C2 state do not imply fresh initialization.
+
+The first implementation provides only read-only node identity and pure intent serialization/regeneration. Durable original preservation, checkpoint publication, verified whole-scope ownership, resumed effects, actual host coordination, initialization/current privacy facts and history-repair authority remain the actual maintenance owner's work. Reopening a completed header must never replay the old empty initialization plan.
+
+Native identity references: [Windows FILE_ID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info), [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew), [Python stat/statvfs](https://docs.python.org/3/library/os.html).

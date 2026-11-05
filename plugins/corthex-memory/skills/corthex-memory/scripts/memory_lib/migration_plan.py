@@ -75,7 +75,7 @@ def header_fence(headers, *, release, when):
         (('store.json.bak', data), ('store.json', data)))
 
 
-def progress(data):
+def progress(data, *, epoch=None):
     """Propose a fresh format-2 control document from strict C1 or absence.
 
     This is for the migration owner's proven C1 lineage, not damaged C2 repair.
@@ -86,5 +86,7 @@ def progress(data):
         raise ValueError('progress bytes required')
     value = ({'logs': {}, 'applies': 0, 'recent': [], 'consolidation': {'failures': 0}}
              if data is None else curation.parse(bytes(data)))
-    value['fence'] = {'epoch': uuid.uuid4().hex, 'generation': 0, 'revisions': {}}
+    epoch = uuid.uuid4().hex if epoch is None else epoch
+    format2._id(epoch, format2._EPOCH)
+    value['fence'] = {'epoch': epoch, 'generation': 0, 'revisions': {}}
     return format2.curation_bytes(value)
