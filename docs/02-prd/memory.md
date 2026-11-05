@@ -144,12 +144,12 @@ For REQ-195, consent reaches a temporary device only through the user's own envi
 
 ## Success measures
 
-These are the success measures originally approved for the repository's one-week trial. On 2026-11-04 the maintainer removed the C1 trial (TASK-029/TC-114) and chose to proceed with development. After TASK-028, TASK-057 and the checks/reviews, TASK-030 records go/no and known issues, then tags 0.2.0 without another question unless the walks found new recording loss. Curation/recall quality measures remain; ask once at the C2 split about measurement data for TASK-047/048 and trials TASK-050/055:
+These are the success measures originally approved for the repository's one-week trial. On 2026-11-04 the maintainer removed the C1 trial (TASK-029/TC-114) and chose to proceed with development. After TASK-028, TASK-057 and the checks/reviews, TASK-030 records go/no and known issues, then tags 0.2.0 without another question unless the walks found new recording loss. Curation/recall quality targets remain; on 2026-11-05 the maintainer chose an agent-run short real-conversation sample evaluation for C2 and deferred C3 evaluation to its D3 server design:
 
 | Measure | Target | How it is measured |
 | --- | --- | --- |
-| Explaining again | At most once a day, something said in an earlier session of the project had to be explained again | The maintainer notes each case in the trial log |
-| Useless injection | At most one prompt in five gets an item that does not matter for it | The maintainer judges a sample of 30 prompts with what was injected |
+| Explaining again | At most once a day, something said in an earlier session of the project had to be explained again | The agent classifies cases in short sample replays and records the observed temporal/sample scope and unmeasured limits |
+| Useless injection | At most one prompt in five gets an item that does not matter for it | The agent judges at least 30 real prompts with what was injected, recording rationales/ambiguous cases separately from automatic metrics |
 | Taken-back memory | No superseded or withdrawn item is ever injected | Code check over the injection log |
 | Wrong attribution | No user decision quotes anyone but the user | Code check over the items, and the sample above |
 | Speed | REQ-011 and REQ-034 are met | Hook timings in the status |
@@ -161,3 +161,5 @@ These are the success measures originally approved for the repository's one-week
 Passed on 2026-10-27: D1, D2 and D4 as recommended, and D3 as the new option above; 100-day default raw retention (REQ-009); recording only prompts and final answers (REQ-004); the one-week trial on this repository and its success measures; and the seven requirement changes of the functional spec. Consent version 1 still covers C2's external sending, and curation keeps Haiku 5.5 xhigh, compared with medium in the trial. The Git sync details are superseded; the server sync design needs its own confirmation before C3.
 
 2026-11-04 amendment: the 2026-10-27 approval above remains a historical record. C1's one-week trial is removed; the maintainer's 12:26 decision to proceed and 12:44 approval to tag immediately after passing checks now govern C1. This does not remove the C2/C3 trial plans.
+
+2026-11-05 decision: the maintainer chose a short C2 real-conversation sample evaluation instead of a one-week trial and delegated the tests to the agent. The agent selects and locally redacts representative samples, records automatic measurements separately from agent quality judgements, and does not label those judgements as human acceptance. TASK-048 retains at least 30 judged prompts. TASK-050 reports all seven measures after implementation/verification, with observed scope, sample size, costs and explicit unmeasured limits; a short replay is not proof of a week of live use or a measured month of billing. Existing quality targets remain: an unobserved time-based target is recorded as unmeasured, never silently passed. C3 evaluation is set with the D3 server design, while TASK-055 remains superseded Git history. The agent prepares go/no evidence and a recommendation; the existing release decision/tag authorization remains separate. Optional 4/9-week checks are not enabled by this decision.

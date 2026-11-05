@@ -146,7 +146,7 @@ Five behaviours call a model API. The template's "Checked by the server" means h
 | Output | Curation returns change/add/remove line edits and per-change conflicts; consolidation returns merges and disagreement pairs, while only the last state-1 rewrites the whole state. |
 | Checked by the server | The answer parses and fits the schema, and does not end in a refusal or at the output limit. Every quote passes the quote check against the entry it names, which must be in the request; speakers come from the entries, and the speaker rules of SPEC-016 hold; the items a change names exist, are current and were in the request; current state lines cite IDs of the request or raw log entries that the current state already cited (SPEC-017). Apply SPEC-016 speaker/candidate checks and SPEC-017 line-edit, prior-history and provenance checks. |
 | Failure | Retries and the fault guard of SPEC-018. Nothing of a failed attempt is applied, and its turns stay unprocessed. The user sees a notice in the start summary (SPEC-022) and the failures in the memory status. |
-| Human decision | None before an item counts: the quote check and the speaker rules take its place. The user sees items through the start summary, recall and search, and can forget any of them (SPEC-035) or resume a stopped project (SPEC-033). In the trial, the maintainer judges a sample against the success measures. The user settles conflict candidates (SPEC-143) and can undo a run (SPEC-145). |
+| Human decision | None before an item counts: the quote check and the speaker rules take its place. The user sees items through the start summary, recall and search, and can forget any of them (SPEC-035) or resume a stopped project (SPEC-033). Under the 2026-11-05 delegation, the agent judges locally redacted real samples in the short C2 evaluation against the success measures; agent assessment and human acceptance are recorded separately. The user settles conflict candidates (SPEC-143) and can undo a run (SPEC-145). |
 
 ### Consolidate a project (SPEC-019)
 
@@ -168,7 +168,7 @@ Five behaviours call a model API. The template's "Checked by the server" means h
 | Output | One vector. |
 | Checked by the server | The vector has the length asked for; the plugin scales it to length 1 before scoring. |
 | Failure | Later than 800 ms, or an error → nothing is injected, the failure log notes it, and the prompt goes on (REQ-035). The user sees the count in the memory status. |
-| Human decision | None for each prompt. In the trial, the maintainer judges what was injected for a sample of prompts, from the injection log (success measures). |
+| Human decision | None for each prompt. Under the 2026-11-05 delegation, the agent judges the injection log for a short real-prompt sample against the success measures; the report names agent assessment explicitly. |
 
 ### Embed items for the search index (SPEC-016, SPEC-019, SPEC-027)
 
@@ -249,5 +249,5 @@ The release steps of the requirements map to the rows as a starting point: C1, c
 
 - Every acceptance criterion above becomes a test case, on Linux, macOS and Windows and in both hosts where the row runs in a hook.
 - Measured from outside: the whole-hook timings of REQ-011 and REQ-034, and the detached curator surviving the hook and the session (SPEC-013).
-- Set from the trial before C2: the recall threshold, from a judged sample of the trial project, and the safe token estimate, against the token counting endpoint, in English and in Korean.
+- Set from the agent-run short C2 evaluation (2026-11-05 decision): the recall threshold from at least 30 judged, locally redacted real prompts, and the safe token estimate against the counting endpoint in English and Korean. Preserve observed scope/unmeasured limits and keep agent quality judgements separate from automatic metrics and human acceptance.
 - Each AI call, with questions inside and outside its scope: turns that hold instructions aimed at the curator; text the user pasted that is not their own decision; a user's short "yes" to the agent's proposal; quotes that differ from their entry by one character or one symbol; a turn holding a test key; a merge with a new quote.
