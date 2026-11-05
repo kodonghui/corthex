@@ -27,6 +27,7 @@ FIELDS = {
     "TBL-002.prices.models.*": "input output cache_write cache_read above",
     "TBL-002.prices.models.*.above": "tokens input output",
     "TBL-002.sync": "address branch",
+    "TBL-003": "at project call model instructions input output cache_write cache_read first_ms total_ms result error request cost prices",
     "TBL-004": "at step hook host project error log count",
     "TBL-005": "at hook host ms outcome",
     "TBL-007": "id seq turn at host session kind speaker text cut event reason forgotten",

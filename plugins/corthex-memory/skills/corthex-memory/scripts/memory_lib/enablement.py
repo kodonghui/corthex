@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from . import base, clock, commands, configuration, curation, diagnostics, files, locks, projects, store
+from . import base, clock, commands, configuration, curation, diagnostics, files, locks, model_access, projects, store
 from .worker_support import BoundDiagnostics, PathFence
 
 CONSENT = """CORTHEX memory, consent version 1.
@@ -43,8 +43,7 @@ def _header_stamp(memory, accepted):
 
 
 def _keys():
-    return {name: "present" if os.environ.get("CORTHEX_MEMORY_" + name.upper() + "_API_KEY") else "missing"
-            for name in ("anthropic", "openai")}
+    return model_access.Credentials.read().presence()
 
 
 def _data(context, proposal=False):

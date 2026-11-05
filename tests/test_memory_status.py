@@ -167,12 +167,12 @@ class StatusTest(fixture.HookCase):
     def test_usage_aggregates_recorded_cost_and_excludes_count_tokens(self):
         now = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
         row = dict(at="2026-11-02T10:00:00.000Z", model="fixture-model", call="curate",
-                   input=10, output=5, cost=0.1, result="ok", prices="2000-01-01")
+                   input=10, output=5, cache_write=2, cache_read=3, cost=0.1, result="ok", prices="2000-01-01")
         self.write_rows("usage", [row, dict(row, input=20, output=0, cost=0.2, result="failed"),
                                   dict(row, call="count-tokens", cost=9, input=900)], "2026-11")
         with mock.patch.object(status, "_now", return_value=now):
             usage = self.direct()["data"]["usage"]
-        self.assertEqual(usage["models"], [dict(model="fixture-model", calls=2, input=30, output=5,
+        self.assertEqual(usage["models"], [dict(model="fixture-model", calls=2, input=40, output=5,
                                                cost=usage["cost"])])
         self.assertAlmostEqual(usage["cost"], 0.3)
 

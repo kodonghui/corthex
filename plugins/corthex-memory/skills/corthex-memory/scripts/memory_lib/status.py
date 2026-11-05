@@ -9,7 +9,7 @@ import stat
 from urllib.parse import urlsplit
 
 from . import base, clock, commands, command_result, configuration, diagnostics, files, locks
-from . import projects, reading, redaction, retention, status_access, store
+from . import model_access, projects, reading, redaction, retention, status_access, store
 from .worker_support import BoundDiagnostics
 
 
@@ -130,7 +130,7 @@ class Reader:
                 model = row["model"]
                 group = groups.setdefault(model, dict(model=model, calls=0, input=0, output=0, cost=[]))
                 group["calls"] += 1
-                group["input"] += int(row.get("input", 0))
+                group["input"] += sum(int(row.get(key, 0)) for key in ("input", "cache_write", "cache_read"))
                 group["output"] += int(row.get("output", 0))
                 group["cost"].append(row["cost"])
                 if row.get("prices") == catalogue["taken"] and model not in catalogue["models"]:
@@ -287,8 +287,7 @@ def _status(context, reader):
     given = config.values.get("consent")
     if given:
         consent.update(given=given["version"], at=given["at"])
-    keys = {name: "present" if os.environ.get("CORTHEX_MEMORY_" + name.upper() + "_API_KEY") else "missing"
-            for name in ("anthropic", "openai")}
+    keys = model_access.Credentials.read().presence()
     names = sorted(config.values["projects"]) if context.arguments["all"] else (
         [context.project.name] if context.project and context.project.name in config.values["projects"] else [])
     data = dict(store=dict(reader.header, folder=_folder_name(reader.memory.folder),

@@ -173,6 +173,10 @@ One line per request to a model API, also each retry, and per token count (SPEC-
 
 The memory status sums the tokens of the calls that the provider charges for, so a token count is not counted twice.
 
+The TASK-078 component snapshots only the two dedicated memory-key variables through one authentication boundary. Presence reports contain no values; invalid header values fail with a fixed error. The original per-attempt snapshot also excludes its secrets from usage metadata. The general environment-value redactor remains broader and unchanged. Provider messages, bodies, exception text and unknown type/code strings never enter the classification result. Unknown types normalize to the existing safe HTTP-class code; classification owns no retry or sleep.
+
+Usage construction freezes the configured price list and request-send UTC time for each actual attempt, and extracts only the provider token counters, never response/thinking text. Output tokens already include any billed reasoning; no reasoning field is added. Anthropic input, cache-write and cache-read remain separate in the line and all count toward the strict above.tokens price threshold and status input total. Token counts cost zero and are excluded from paid-call totals. Unknown models cost zero and retain the price-list date for unpriced reporting. A bound, guarded usage-lock append writes the send month without provisioning directories; logging failure preserves the call result and reports only safe local error metadata. Actual transport/retry integration remains TASK-079/080.
+
 ### Failure log (TBL-004)
 
 One line per failure of recording, recall, curation, consolidation, sync, retention or the memory skill (SPEC-008), and per backup restored. One file per UTC day, deleted once the whole day is past the retention period. No conversation text, no key, no file path and no error text.
