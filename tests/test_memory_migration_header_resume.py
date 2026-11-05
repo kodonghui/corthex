@@ -141,6 +141,38 @@ class HeaderResumeTest(unittest.TestCase):
             with mock.patch.object(owned.inventory._observer.fence,'read',side_effect=metadata):resume.reopen(owned,nonce)
         self.assertEqual(self.fx.project_bytes(),before)
 
+    def test_uncertain_primary_is_flushed_before_its_reconstructed_checkpoint(self):
+        nonce,intent=self.interrupted(index=1,after=True);folder=self.fx.folder(intent);events=[]
+        barrier=journal._Guard.directory_barrier;rename=headers._checkpoint_rename
+        def synced(guard,path,**kwargs):
+            events.append(Path(path));return barrier(guard,path,**kwargs)
+        def checkpoint(source,target):
+            if Path(target).name=='header-000001.done.json':
+                self.assertIn(self.root,events);self.assertIn(folder,events)
+            return rename(source,target)
+        with mock.patch.object(journal._Guard,'directory_barrier',new=synced),mock.patch.object(headers,'_checkpoint_rename',side_effect=checkpoint):self.finish(nonce)
+
+    def test_existing_complete_fence_must_flush_and_revoke_on_barrier_failure(self):
+        nonce,_=self.interrupted();self.finish(nonce);original=OSError('fixture verified rename barrier')
+        barrier=journal._Guard.directory_barrier
+        def synced(guard,path,**kwargs):
+            if Path(path)==self.root:raise original
+            return barrier(guard,path,**kwargs)
+        with self.fx.own() as owned:
+            with mock.patch.object(journal._Guard,'directory_barrier',new=synced):
+                with self.assertRaises(OSError) as caught:resume.reopen(owned,nonce)
+            self.assertIs(caught.exception,original)
+            with self.assertRaises(locks.LostLock):owned.check()
+
+    def test_returned_check_failure_revokes_original_owner_even_after_cause_is_removed(self):
+        nonce,intent=self.interrupted(index=1,after=True);unknown=self.fx.folder(intent)/'unexpected-after-return'
+        with self.fx.own() as owned:
+            result=resume.reopen(owned,nonce);unknown.write_bytes(b'preserve fixture')
+            with self.assertRaises(locks.LostLock):result.check()
+            unknown.unlink()
+            with self.assertRaises(locks.LostLock):resume.reopen(owned,nonce)
+            with self.assertRaises(locks.LostLock):owned.check()
+
     def test_original_owner_exception_is_not_reclassified_as_a_codec_failure(self):
         nonce,_=self.interrupted();original=ValueError('fixture original interval refusal')
         with self.fx.own() as owned:

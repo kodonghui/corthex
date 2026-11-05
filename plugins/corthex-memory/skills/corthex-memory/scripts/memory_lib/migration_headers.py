@@ -52,8 +52,12 @@ class _Prefix:
             self.guard.artifact_facts();self.facts()
             if clock.now() >= self.guard.deadline:raise locks.LockBusy()
         except BaseException:
-            self.revoked = True
+            self.revoke()
             raise
+
+    def revoke(self):
+        self.revoked=self.guard.revoked=True
+        self.guard.owned.inventory._observer.revoked=True
 
     def facts(self):
         for name,names in self.dirs.items():

@@ -214,6 +214,12 @@ def reopen(owned,nonce):
         operations,published,previous=reader.effects(intent,seal,sources,sealed)
         recorded,previous,final=reader.checkpoints(operations,published,previous)
         prefix=reader.prefix(intent,sealed,operations,published,previous)
+        # A visible verified rename may have stopped before its old barriers.
+        # Flush both directories before adding evidence or returning a fence.
+        if published:
+            prefix.guard.directory_barrier(prefix.root)
+            prefix.guard.directory_barrier(prefix.folder)
+            prefix.check()
         if final is not None:
             prefix.previous=final
             return headers.Fenced(nonce,final,prefix)
