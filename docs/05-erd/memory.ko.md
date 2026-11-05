@@ -824,3 +824,11 @@ C1에서는 기억 폴더 라이브러리가 먼저입니다: ID와 JSON 형식,
 첫 구현은 쓰기 없는 노드 식별과 순수 의도 직렬화/제안 재계산만 제공합니다. 내구성 원본 보존·확인 기록 게시·검증한 전체 범위 소유권·재개 효과·실제 호스트 제어·초기화/현재 개인정보 사실·이력 복구 권한은 실제 유지보수 소유자의 후속 범위입니다. 완료된 헤더를 다시 열어 옛 빈 초기화 계획을 재생하지 않습니다.
 
 파일 식별 근거: [Windows FILE_ID_INFO](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info), [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew), [Python stat/statvfs](https://docs.python.org/3/library/os.html).
+
+### 이관 효과 전 새 C1 메타데이터 보존 (TASK-074)
+
+비공개 보존 포트는 불변 의도 및 원래 파일 식별/루트 경로 결합과 맞는, 현재 원래 소유자가 잡은 엄격한 새 이관 C1 목록만 받습니다. .maintenance/format-1-to-2/<nonce> 아래 코드가 정한 번호 원본·plan.json과 마지막 prepared.json 봉인을 만듭니다. 직렬화한 경로를 소스 이름으로 쓰지 않습니다. 새 파일을 배타적으로 만들고 효과 전후에 정확한 원래 바이트·해시·노드 식별·원래 PID/기한/임대/정지 확인과 알려진 디렉터리 구성원을 검사합니다. 기존 다른 보조 자료를 보존하고 이미 있는 nonce를 인계하거나 덮지 않습니다. 짧은 쓰기·sync/close 실패·관찰한 변경은 보조 자료의 부분 상태를 보존해 거절을 전파하며 헤더/C2 자료 효과나 되돌리기를 주장하지 않습니다.
+
+원본과 계획을 sync·닫기 확인한 뒤 마지막 봉인을 쓰며 POSIX에서는 부모 디렉터리도 sync합니다. Windows는 파일 자료/메타데이터에 기존 파일 sync/_commit 문턱을 씁니다. 내구성은 OS/파일시스템/저장 장치가 문서화한 문턱을 지키는 조건이며 프로세스/고장 주입 시험을 실제 전원 차단이나 전체 파일시스템 되감기 탐지 증명으로 세지 않습니다. 봉인은 원래/제안 해시와 보조 디렉터리/파일의 파일 식별을 묶는 보조 근거일 뿐 초기화·지원 쓰기/비삭제 계보·재개 권한이 아닙니다. 새 이관 검사는 원본 불변을 요구하고 별도 보존물 검사는 같은 원래 소유권 아래 보존물만 검증하므로 후속 헤더/진행 게시를 허가하지 않습니다. 실제 소유자의 정확한 게시 접두부·이름 있는 헤더 문맥·초기화/현재 개인정보 사실과 완료 헤더 마무리는 후속입니다.
+
+근거: [Python fsync](https://docs.python.org/3/library/os.html#os.fsync), [Microsoft _commit](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/commit), [Windows 파일 메타데이터 캐시](https://learn.microsoft.com/en-us/windows/win32/fileio/file-caching), [SQLite 부모 디렉터리 sync 설명](https://sqlite.org/lockingv3.html).
