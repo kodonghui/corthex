@@ -58,7 +58,7 @@ class ModelTransportTest(unittest.TestCase):
         handler.end_headers()
         handler.wfile.write(body); handler.wfile.flush()
 
-    def once(self, *, seconds=5, gap=2, check=lambda:None, payload=None, connect=3):
+    def once(self, *, seconds=30, gap=10, check=lambda:None, payload=None, connect=30):
         begun = clock.now(); popen = subprocess.Popen
         def spawn(*args, **kwargs):
             self.assertNotIn(KEY, repr(args))

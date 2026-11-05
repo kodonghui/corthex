@@ -41,7 +41,7 @@ def _partial(state, code):
     status = state['status']
     if status is not None and status >= 400:
         failure = model_access.classify('anthropic', status=status)
-    return Response('', dict(state['usage']), state['first'], failure, state['request'], None)
+    return Response('', dict(state['usage']), state['first'], failure, state['request'], state['retry_after'])
 
 
 def _result(value, first):
@@ -66,7 +66,7 @@ def _result(value, first):
     return Response(value['text'] if failure is None else '', usage, first, failure, request, retry)
 
 
-def once(payload, *, deadline, started, connect=30, gap=600, check):
+def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=None):
     """Count startup/DNS/TLS/headers/body under the parent's original deadline.
 
     The required original caller check retains eligibility/ownership authority;
@@ -74,7 +74,7 @@ def once(payload, *, deadline, started, connect=30, gap=600, check):
     stdin only. The child has no store, lease or project path and cannot retry.
     """
     store.MemoryStore._deadline(deadline)
-    if not callable(check) or any(type(n) not in (int, float) or not math.isfinite(n) or n <= 0 for n in (connect, gap)):
+    if not callable(check) or on_cancel is not None and not callable(on_cancel) or any(type(n) not in (int, float) or not math.isfinite(n) or n <= 0 for n in (connect, gap)):
         raise ValueError('invalid memory transport budget')
     if type(started) not in (int, float) or not math.isfinite(started) or started > clock.now():
         raise ValueError('invalid memory transport clock')
@@ -99,7 +99,7 @@ def once(payload, *, deadline, started, connect=30, gap=600, check):
         return _failed('timeout' if clock.now() >= min(deadline, started+connect) else 'network')
     mutex, wake = threading.Lock(), threading.Event()
     state = {'phase': 'connect', 'connect_end': started+connect, 'last_byte': None, 'first': None,
-             'result': None, 'status': None, 'request': None, 'usage': {}}
+             'result': None, 'status': None, 'request': None, 'retry_after': None, 'usage': {}}
     def failed(code):
         with mutex:
             if state['result'] is None:state['result'] = _partial(state, code)
@@ -130,11 +130,15 @@ def once(payload, *, deadline, started, connect=30, gap=600, check):
                         if set(item) == {'response'}:
                             meta = item['response']
                             if (state['phase'] != 'read' or state['status'] is not None or not isinstance(meta, dict) or
-                                    set(meta) != {'status', 'request'} or type(meta['status']) is not int or
+                                    set(meta) != {'status', 'request', 'retry_after'} or type(meta['status']) is not int or
                                     not 100 <= meta['status'] <= 599 or meta['request'] is not None and
                                     (not isinstance(meta['request'], str) or not model_usage._REQUEST.fullmatch(meta['request']))):
                                 raise ValueError()
+                            retry = meta['retry_after']
+                            if retry is not None and (type(retry) not in (int,float) or not math.isfinite(retry) or not 0 <= retry <= 301):
+                                raise ValueError()
                             state['status'], state['request'] = meta['status'], meta['request']
+                            state['retry_after'] = retry
                             wake.set(); continue
                         if set(item) == {'usage'}:
                             if state['phase'] != 'read' or state['status'] != 200:raise ValueError()
@@ -186,6 +190,14 @@ def once(payload, *, deadline, started, connect=30, gap=600, check):
             if thread.ident is not None:thread.join(timeout=.1)
             else:stream.close()
             if thread.is_alive():pending = True
-    if original_error is not None:raise original_error
+    if original_error is not None:
+        if on_cancel is not None:
+            try:
+                with mutex:
+                    usage, first, request_id = dict(state['usage']), state['first'], state['request']
+                on_cancel(usage,first,request_id)
+            except BaseException:
+                pass
+        raise original_error
     return Response(answer.text, answer.usage, answer.first_ms, answer.failure,
                     answer.request, answer.retry_after, pending)
