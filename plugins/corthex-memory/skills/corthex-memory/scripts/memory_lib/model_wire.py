@@ -55,6 +55,12 @@ def _contains(value, secret):
     return False
 
 
+def _tls_context():
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 def _once(value):
     if not isinstance(value, dict) or set(value) != {'url', 'headers', 'body', 'schema', 'connect', 'gap'}:
         raise ValueError()
@@ -80,7 +86,7 @@ def _once(value):
         raise ValueError()
     connect, gap = value['connect'], value['gap']
     secret = next((v for k, v in value['headers'].items() if k.lower() == 'x-api-key'), None)
-    tls = ssl.create_default_context()
+    tls = _tls_context()
     reading = [False]
     def ready(connection):
         connection.sock.settimeout(gap)

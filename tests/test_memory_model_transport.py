@@ -17,7 +17,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, locks, model_transport
+from memory_lib import clock, locks, model_transport, model_wire
 from test_memory_model_stream import SCHEMA, start, block, end, event
 
 KEY = 'fixture-private-memory-api-key-38bc'
@@ -228,13 +228,19 @@ class ModelTransportTest(unittest.TestCase):
 
     def tls(self, cert, key):
         self.server.shutdown(); self.thread.join(timeout=3)
-        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); context.load_cert_chain(str(cert),str(key))
+        context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version=ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(str(cert),str(key))
         self.server.socket=context.wrap_socket(self.server.socket,server_side=True)
         self.thread=threading.Thread(target=lambda:self.server.serve_forever(poll_interval=.01),daemon=True)
         self.thread.start()
         self.payload['url']=self.payload['url'].replace('http://','https://')
 
     def test_actual_tls_requires_trust_and_uses_ssl_cert_file(self):
+        client=model_wire._tls_context()
+        self.assertGreaterEqual(client.minimum_version,ssl.TLSVersion.TLSv1_2)
+        self.assertEqual(client.verify_mode,ssl.CERT_REQUIRED)
+        self.assertTrue(client.check_hostname)
         cert,key=self.certificate(); self.tls(cert,key)
         with mock.patch.dict(os.environ,{'SSL_CERT_FILE':''}):
             self.assertEqual(self.once().failure.code,'network')
