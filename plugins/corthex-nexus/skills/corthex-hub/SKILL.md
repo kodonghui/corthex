@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Needs Python 3.8 or later and uses installed Git. Local snapshot, build and status work offline; explicit server commands use only the configured NEXUS address and allowed projects.
 metadata:
   author: kodonghui
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # CORTHEX hub
