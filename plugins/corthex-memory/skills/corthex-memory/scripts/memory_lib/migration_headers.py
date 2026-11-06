@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import os
+from pathlib import PurePosixPath
 import stat
 import uuid
 
@@ -71,6 +72,9 @@ class _Prefix:
                 raise locks.LostLock()
             if node['data'] is not None and self.fence.read(self.root/name,self.guard.deadline) != node['data']:
                 raise locks.LostLock()
+            node['native'].check()
+            current=self.fence.check(self.root/name)
+            if current is None or migration_inventory._stamp(current)!=node['stamp']:raise locks.LostLock()
 
     def _checkpoint(self,name,value):
         self.check()
@@ -107,7 +111,11 @@ class _Prefix:
                     if node is not old and node['native'].identity == old['native'].identity]
         if old['stamp'][-1] != 2 or len(siblings) != 1:raise locks.LostLock()
         name,node = siblings[0]
-        if name not in {'store.json','store.json.bak'}:raise locks.LostLock()
+        original = next((name for name,node in self.files.items() if node is old),None)
+        primary = min(name,original) if original is not None else ''
+        if ({name,original} != {primary,primary+'.bak'} or
+                not (primary=='store.json' or primary.startswith('projects/') and primary.endswith('/curation.json'))):
+            raise locks.LostLock()
         current = self.fence.check(self.root/name)
         if current is None:raise locks.LostLock()
         pin = migration_inventory._stamp(current);before = node['stamp']
@@ -117,7 +125,8 @@ class _Prefix:
         if self.fence.read(self.root/name,self.guard.deadline) != node['data']:raise locks.LostLock()
         node['stamp'] = pin
 
-    def _replace(self,index,stage,target,data):
+    def _replace(self,index,stage,target,data,*,record='header'):
+        if record not in {'header','initialize','final-header'}:raise ValueError('invalid checkpoint family')
         self.check()
         staged = self.guard.nodes[stage]
         identity = staged['binding'].identity
@@ -130,34 +139,54 @@ class _Prefix:
         self.guard.parents[stage.parent][1].remove(stage.name)
         self._advance_link(old)
         self.files[target] = fresh
-        self.dirs['.'].add(target)
+        relative=PurePosixPath(target);parent=relative.parent.as_posix()
+        self.dirs[parent].add(relative.name)
         self.published.append(target)
         self.check()
-        self.guard.directory_barrier(self.root)
+        self.guard.directory_barrier((self.root/target).parent,binding=self.guard.source_dirs[parent])
         self.guard.directory_barrier(stage.parent)
         self.uncertain = None
-        self._checkpoint('header-%06d.done.json'%index,
+        self._checkpoint(record+'-%06d.done.json'%index,
                          dict(step=index,target=target,identity=identity.document(),sha256=_hash(data)))
 
-    def _move_temp(self,index,name):
+    def _move_temp(self,index,name,*,record='header'):
+        if record not in {'header','initialize'}:raise ValueError('invalid checkpoint family')
         self.check()
         old = self.files[name]
-        target = self.folder/('header-original-%06d.bin'%index)
+        target = self.folder/(record+'-original-%06d.bin'%index)
         if self.fence.check(target) is not None:raise locks.LostLock()
         self.uncertain = name
         _rename(str(self.root/name),str(target))
         fresh = self._new_native(target,old['native'].identity,old['data'])
         del self.files[name]
-        self.dirs['.'].remove(name)
+        relative=PurePosixPath(name);parent=relative.parent.as_posix()
+        self.dirs[parent].remove(relative.name)
         self.guard.parents[self.folder][1].add(target.name)
         self.guard.nodes[target] = dict(binding=fresh['native'],data=old['data'],written=len(old['data']))
         self.published.append(name)
         self.check()
-        self.guard.directory_barrier(self.root)
+        self.guard.directory_barrier((self.root/name).parent,binding=self.guard.source_dirs[parent])
         self.guard.directory_barrier(self.folder)
         self.uncertain = None
-        self._checkpoint('header-%06d.done.json'%index,
+        self._checkpoint(record+'-%06d.done.json'%index,
                          dict(step=index,temporary=name,identity=fresh['native'].identity.document(),sha256=_hash(old['data'])))
+
+    def _directory(self,index,stage,target):
+        self.check()
+        if self.guard.parents[stage][1] or self.fence.check(self.root/target) is not None:raise locks.LostLock()
+        identity=self.guard.parents[stage][0].identity
+        self.uncertain=target;_rename(str(stage),str(self.root/target))
+        native=maintenance_identity.bind(self.root/target)
+        if native.identity!=identity or any((self.root/target).iterdir()):raise locks.LostLock()
+        del self.guard.parents[stage];self.guard.parents[stage.parent][1].remove(stage.name)
+        relative=PurePosixPath(target);parent=relative.parent.as_posix()
+        self.dirs[parent].add(relative.name);self.dirs[target]=set()
+        self.guard.source_dirs[target]=native
+        self.published.append(target);self.check()
+        self.guard.directory_barrier((self.root/target).parent,binding=self.guard.source_dirs[parent])
+        self.guard.directory_barrier(self.root/target,binding=native)
+        self.guard.directory_barrier(stage.parent);self.uncertain=None
+        self._checkpoint('initialize-%06d.done.json'%index,dict(step=index,directory=target,identity=identity.document()))
 
 
 @dataclass(frozen=True)
