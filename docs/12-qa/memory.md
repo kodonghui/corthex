@@ -785,3 +785,9 @@ TASK-074 final header publication requires the exact live initialized completion
 The finalizer code and its tests are unchanged from the earlier source. This combined source also includes the archive directory binding regression for both earlier resume paths. It requires full suite verification and fresh current-commit platform CI.
 
 The finalizer's combined validation includes the canonical temporary-project fixture used for earlier barrier checks.
+
+Finalization resumption verifies the original archive directory identities through ownership handoff. Before the first completed header, the live project initialization must match its original publication prefix. After a completed header, the finalization owner pins current project data and continues only the verified header effects. The fixtures cover preserved unpublished stages, recreated consumed stages, copied headers, later C2 data, callback failures, and rename barriers. The POSIX worker fixture also handles a process that exits during a procfs read. TASK-074 continues with the migration entry point and history recovery under the current privacy and retention policy.
+
+This combined source includes the earlier header and initialization archive binding regression. The component keeps its previous scope and receives current-source verification.
+
+This source carries the canonical shared project fixture for temporary directory aliases.
