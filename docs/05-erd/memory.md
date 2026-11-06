@@ -870,3 +870,17 @@ If the initialization manifest exists, keep its private round, stage IDs, fixed 
 Initialization resumption includes the reviewed header barriers and original-interval revocation fixes. Re-flush every verified canonical file/directory effect plus the private source directory before reconstructing a missing initialization checkpoint or returning completed initialization. Renewed lineage checks and returned-scope verification failures revoke the original observer; repairing a local cause cannot revive that owner. Previous evidence is retained for its own frozen bytes, and this combined source requires fresh qualification.
 
 Native identities bind a node lifetime, not every future allocation. The named C1 header nodes have already been replaced before initialization stages are created; do not reserve those dead historical IDs forever. Reserve the actual migrating-header stage IDs instead, together with still-live preserved temporaries, directories and auxiliary originals. A controlled identity-interface regression represents a legitimate reused historical named-header ID while keeping exact native bindings, stage bytes and current progress checks. This synthetic control is not a physical inode-reuse or durability attestation.
+
+### Final header publication under the original initialized owner (TASK-074)
+
+Before clearing any migrating marker, consume only the live exact initialized prefix and its canonical protocol-bound completion chain. Require the original supported C1/non-deletion lineage check and a separate original None-only current-privacy check from the real interval coordinator. Neither a valid-empty record nor the completion receipt alone grants those authorities. Pin all current source/artifact/native facts after the last callback and preserve raw/project bytes and fixed epochs.
+
+Durably stage both code-derived completed header files and their native IDs, recording original header IDs, the immutable intent hash and initialization completion hash before publishing backup then primary. Each verified effect has an atomic hash-linked checkpoint; only after both canonical headers are complete write the final migration-complete record. Failures preserve known/uncertain effects without rollback or granting history recovery. Any completed header observed by a later acquisition requires a separate finalization-only owner and never replays project initialization. This private publisher exposes no production entry, provider call or general retention/history access.
+
+Finalization incorporates the reviewed resume barriers and original-scope revocation. Its own privacy-bound returned checks and all publication failures revoke the original interval too. Old draft fixtures are not final qualification; this combined source is separately frozen and checked.
+
+Finalization includes the initialization-resume native identity lifetime fix and its retained evidence boundaries. The finalizer module and its ten component test methods are unchanged; the combined source still requires its own full/strict qualification and complete current-head platform CI. Current Windows precommit focus is the final publication path and returned-scope revocation plus native/strict checks; older ten-case component runs qualify their own source only.
+
+This finalization source carries forward the verified archive directory bindings for both earlier resume paths.
+
+The combined source uses the canonical project path in the shared migration fixture for all hosts.
