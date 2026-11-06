@@ -20,36 +20,67 @@ class InvalidInitialization(ValueError):
 def _hash(raw):return hashlib.sha256(raw).hexdigest()
 
 
-def _recipes(prefix):
-    """Code-owned paths/proposals; no serialized destination is opened."""
+def recipes(intent,directories):
+    """Pure fixed proposals from the original catalog; no authority or I/O."""
     operations=[]
-    for project,progress in prefix.intent.progress:
+    catalog=json.loads(intent.encoded)['sources']
+    for project,progress in intent.progress:
         root='projects/'+base.project_folder_name(project)
-        if root not in prefix.dirs or root+'/raw' not in prefix.dirs:raise InvalidInitialization()
-        blocked=(root+'/layer/',root+'/runs/')
-        if any(name.startswith(blocked) or name.startswith(root+'/state-history.jsonl') or
-               name.startswith(root+'/notices/conflict-') for name in prefix.files):raise InvalidInitialization()
-        for name in ('layer/items','layer/tombstones','runs'):
-            if prefix.dirs.get(root+'/'+name):raise InvalidInitialization()
         for name in ('layer','layer/items','layer/tombstones','notices','runs'):
             path=root+'/'+name
-            if path not in prefix.dirs:operations.append(('directory',path,None))
-        sources=[source for source in json.loads(prefix.intent.encoded)['sources']
-                 if source['family']=='progress' and source['project']==project]
-        for source in sources:
-            name=source['name']
-            if name not in {'curation.json','curation.json.bak'}:operations.append(('temporary',root+'/'+name,None))
+            if path not in directories:operations.append(('directory',path,None))
+        for source in catalog:
+            if source['family']=='progress' and source['project']==project and source['name'] not in {'curation.json','curation.json.bak'}:
+                operations.append(('temporary',root+'/'+source['name'],None))
         operations += [('file',root+'/'+name,progress) for name in ('curation.json.bak','curation.json')]
         records=[('layer/state.json',state_types.state_bytes({'lines':[]})),
                  ('layer/state-removed.json',state_types.removed_bytes({'removed':[]})),
                  ('layer/pins.json',item_types.pins_bytes({'pins':[]})),
                  ('layer/item-list.txt',item_types.item_list_bytes([])),
                  ('state-history.jsonl',b''),('layer/conflicts.json',journal._bytes({'candidates':[]}))]
-        for name,raw in records:
-            target=root+'/'+name
-            if target in prefix.files:raise InvalidInitialization()
-            operations.append(('file',target,raw))
+        operations += [('file',root+'/'+name,raw) for name,raw in records]
     return tuple(operations)
+
+
+def _recipes(prefix):
+    for project,_ in prefix.intent.progress:
+        root='projects/'+base.project_folder_name(project)
+        if root not in prefix.dirs or root+'/raw' not in prefix.dirs:raise InvalidInitialization()
+        blocked=(root+'/layer/',root+'/runs/')
+        if any(name.startswith(blocked) or name.startswith(root+'/state-history.jsonl') or
+               name.startswith(root+'/notices/conflict-') for name in prefix.files):raise InvalidInitialization()
+        if any(prefix.dirs.get(root+'/'+name) for name in ('layer/items','layer/tombstones','runs')):
+            raise InvalidInitialization()
+    return recipes(prefix.intent,prefix.dirs)
+
+
+def bind_lineage(prefix,verify_c1_lineage):
+    if not callable(verify_c1_lineage):raise TypeError('original supported C1 lineage check required')
+    guard=prefix.guard;context=json.loads(prefix.intent.encoded)['context']
+    projects=tuple(name for name,_ in prefix.intent.progress)
+    def check():
+        try:
+            if prefix.revoked:raise locks.LostLock()
+            journal._check(guard.owned);guard.binding.check()
+            if verify_c1_lineage(prefix.root,dict(context),projects) is not None:
+                raise TypeError('C1 lineage check must return only None')
+            journal._check(guard.owned)
+            guard.artifact_facts();prefix.facts();guard.binding.check()
+            if clock.now()>=guard.deadline:raise locks.LockBusy()
+        except BaseException:
+            prefix.revoke()
+            raise
+    prefix.check=check;guard.writer_check=check;check()
+    return check
+
+
+def complete_value(prefix,manifest):
+    guard=prefix.guard
+    return dict(initialized=True,writer_protocol=1,lifecycle_protocol=1,publications_sha256=manifest,
+        root=dict(path_sha256=guard.binding.path_sha256(),identity=guard.binding.identity.document()),
+        context=json.loads(prefix.intent.encoded)['context'],
+        projects=[dict(name=name,identity=guard.source_dirs['projects/'+base.project_folder_name(name)].identity.document(),
+                       epoch=format2.parse_curation(raw)['fence']['epoch']) for name,raw in prefix.intent.progress])
 
 
 def _verify_headers(fenced):
@@ -79,22 +110,9 @@ def publish(fenced,*,verify_c1_lineage):
     """
     if not callable(verify_c1_lineage):raise TypeError('original supported C1 lineage check required')
     prefix=fenced._prefix;guard=prefix.guard
-    context=json.loads(prefix.intent.encoded)['context'];projects=tuple(name for name,_ in prefix.intent.progress)
     try:
         _verify_headers(fenced)
-        def check():
-            try:
-                if prefix.revoked:raise locks.LostLock()
-                journal._check(guard.owned);guard.binding.check()
-                if verify_c1_lineage(prefix.root,dict(context),projects) is not None:
-                    raise TypeError('C1 lineage check must return only None')
-                journal._check(guard.owned)
-                guard.artifact_facts();prefix.facts();guard.binding.check()
-                if clock.now()>=guard.deadline:raise locks.LockBusy()
-            except BaseException:
-                prefix.revoke()
-                raise
-        prefix.check=check;guard.writer_check=check
+        check=bind_lineage(prefix,verify_c1_lineage)
         check();recipes=_recipes(prefix);effects=[];stages=[];round_id=uuid.uuid4().hex
         for index,(kind,target,raw) in enumerate(recipes):
             if kind=='temporary':
@@ -118,10 +136,7 @@ def publish(fenced,*,verify_c1_lineage):
             elif kind=='directory':prefix._directory(index,stages[index],target)
             else:prefix._replace(index,stages[index],target,raw,record='initialize')
         check()
-        value=dict(initialized=True,writer_protocol=1,lifecycle_protocol=1,publications_sha256=manifest,
-            root=dict(path_sha256=guard.binding.path_sha256(),identity=guard.binding.identity.document()),context=context,
-            projects=[dict(name=name,identity=guard.source_dirs['projects/'+base.project_folder_name(name)].identity.document(),
-                           epoch=format2.parse_curation(raw)['fence']['epoch']) for name,raw in prefix.intent.progress])
+        value=complete_value(prefix,manifest)
         final=prefix._checkpoint('initialization-complete.json',value)
         return Initialized(fenced.nonce,final,prefix)
     except BaseException as error:
