@@ -10,20 +10,23 @@ QA (stage 12) uses this before a release, after a large change, such as a new fl
 
 ## Tools
 
-By default the browser is Aside where it is installed: a desktop browser with its own agent and a command-line tool, `aside`. When this was written, in October 2026, it needed macOS 15 or later with the app open, and it did not run on Windows, on Linux or in CI. Elsewhere the testers drive Playwright, or the host's own browser tool, in the same way, and the report says which tool ran.
+By default the browser is Aside where it is installed: a desktop browser with its own agent and a command-line tool, `aside`. When this was last checked, in November 2026 (Aside 1.0.1022, `aside` 1.26.1104), it ran on macOS 15 or later and on Windows 10 22H2 or later, x64 and ARM64, with the app signed in; `aside` tries to open the app when it is closed. It has no Linux version and does not run in CI. On Linux, `aside` can still drive Aside on the user's Mac or Windows computer while that computer is online and has remote control turned on in Aside's developer settings: set `ASIDE_CLI_AUTH_PATH` to a private file, run `aside login` and have a person approve its code in Aside under Settings > Account > Devices, then pick the computer with `aside host list` and pass `--host <name>`. Where no Aside can be reached, the testers drive Playwright, or the host's own browser tool, in the same way, and the report says which tool ran.
 
 The commands of `aside` change between versions, so check them before each run:
 
-1. `aside --version` answers, and `aside --help`, with `aside guide` where it exists, lists the commands. Where they differ from this file, follow them.
-2. One small script that opens the site and prints a marker works. If the app is closed or signed out, ask the user once to open it, then try again.
-3. A person signs the test accounts in inside Aside. Passwords never pass through an agent, a prompt or a report.
+1. `aside --version` answers, and `aside --help`, with `aside guide` and `aside guide repl`, lists the commands. Where they differ from this file, follow them.
+2. One small script that opens the site and prints a marker works. If the app does not open or is signed out, ask the user once to open it and sign in, then try again. On Windows, `aside` has to run as the Windows user who runs Aside: inside an agent's sandbox, which uses another Windows account, it fails with "Cannot open Windows installation key", so ask the user to let it run outside the sandbox.
+3. A person signs the test accounts in inside Aside. Passwords never pass through an agent, a prompt or a report. Aside's REPL guide says that REPL sessions started by `aside` always run incognito, and its help pages say that incognito runs leave out the normal browser profile's state and cannot use Aside's password manager. So check in the small script that a test account a person signed in is still signed in inside the session. Where it is not, mark the rows that need it `blocked` and tell the user.
 
 The commands this file relies on:
 
-- `aside repl` runs a script in a fresh browser session: open a page, act on it and save a screenshot, all in one script. The tabs it opened close when the script ends.
+- `aside repl "<script>"` runs a script in a fresh session: open a page, act on it and save a screenshot, all in one script. The session closes when the script ends.
+- `aside mcp` gives an agent the same tools as an MCP server. Its `repl` tool keeps one session, with its variables and tabs, from one call to the next, so a tester can take a flow one step per call. It runs one call at a time and, by default, closes the session after 30 minutes without a call, so each tester starts its own `aside mcp`.
 - `aside exec "<task>"` hands a task in plain words to Aside's own agent and returns its answer.
 
-Do not judge a step by the exit code: in the versions checked, it is 0 even when a script fails. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
+Agent sessions run from `aside` are removed about 15 minutes after they finish, unless `aside settings save-sessions true` is on. Copy what a step needs, such as its screenshot or the agent's answer, into the run's evidence folder as soon as the step ends.
+
+Do not judge a step by the exit code: in the versions checked, up to 1.26.1104, it is 0 even when a script fails, and the output ends with `[error | …]` instead of `[ok | …]`. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
 
 ## Who does what
 
@@ -48,7 +51,7 @@ Every agent uses the model. Before a run much wider than the last one, tell the 
 A tester:
 
 1. Opens the site as the row's role, in tabs of its own. It never reads, uses or reports the user's other tabs.
-2. Takes each step of the flow with `aside repl`, saving a screenshot and the visible text after each step, at the widths that the screen definitions name.
+2. Takes each step of the flow with `aside repl` or the `repl` tool of `aside mcp`, saving a screenshot and the visible text after each step, at the widths that the screen definitions name.
 3. Compares what it saw with the expected result: the screen state, the message and, where the test case names one, the effect on the data. It checks the data through the API or a read-only query, not from the screen alone.
 4. Gives the row a verdict: `works` when every step matched; `fails`, with the step, what was expected, what happened and the evidence; or `blocked` when the row could not run, such as at a sign-in wall, with missing data or after a tool error, with the reason.
 5. Writes down its impressions as the row's persona: what was hard to find, slow or confusing, and what looked wrong, such as text cut off on a narrow screen, parts out of line, low contrast or words that differ from the glossary. Each impression names its screen and has a screenshot.
