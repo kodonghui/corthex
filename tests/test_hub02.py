@@ -593,6 +593,15 @@ raise SystemExit(hub.main(["--home", str(home), "--json", "status", "acme-shop",
         self.assertEqual(len(value["entries"]), 30)
         self.assertTrue(any(c["rule"] == "ask-before-long" for c in checks))
 
+    def test_project_entries_that_repeat_an_inherited_one_keep_it(self):
+        checks = []
+        self.write(self.home / ".corthex/profile.json", {"ask_before": ["deploys", "payments", "deletions", "publishing"]})
+        value = SNAPSHOT.ask_before({"ask_before": ["Deletions (repositories, data)", "payments and plan changes", "publishing-only drafts"]},
+                                    self.home, checks, H)
+        self.assertEqual(value["source"], "project")
+        self.assertEqual(value["left_out"], ["deploys", "publishing"])
+        self.assertEqual(checks, [])
+
     def test_default_ask_before_agrees_with_core_example(self):
         from _common import PLUGINS
         text = (PLUGINS / "corthex/skills/corthex/references/profile.md").read_text(encoding="utf8")

@@ -24,7 +24,7 @@ function runtime(lang, projects = [], missing = []) {
   };
   const sandbox = {document, URLSearchParams, location: {hash: ""}, window: {addEventListener() {}}};
   assert.ok(script.includes("  render();\n"));
-  vm.runInNewContext(script.replace("  render();\n", "  globalThis.hubTest = {traceView:traceView,stageDetail:stageDetail,projects:projects,render:render};\n"), sandbox, {timeout: 2000});
+  vm.runInNewContext(script.replace("  render();\n", "  globalThis.hubTest = {traceView:traceView,stageDetail:stageDetail,checkList:checkList,checkText:checkText,spaceSummary:spaceSummary,projects:projects,render:render};\n"), sandbox, {timeout: 2000});
   return {api: sandbox.hubTest, nodes};
 }
 for (const lang of ["en", "ko"]) {
@@ -64,6 +64,45 @@ for (const lang of ["en", "ko"]) {
   assert.ok(!kinds[0].textContent.includes("DEC-001"));
   assert.equal(kinds[1].attributes["data-kind"], "decision");
   assert.ok(kinds[1].textContent.includes("DEC-001"));
+  // Checks start folded unless one is an error, and the summary counts each level.
+  const folded = api.checkList(p, [{level: "warn", message: "Synthetic warning"}, {level: "warn", message: "Another warning"}, {level: "info", message: "Synthetic note"}], true);
+  assert.equal(folded.tagName, "DETAILS");
+  assert.ok(!("open" in folded.attributes));
+  assert.equal(folded.children[0].textContent, lang === "ko" ? "점검 (3) · 경고 2 · 참고 1" : "Checks (3) · 2 warnings · 1 note");
+  const opened = api.checkList(p, [{level: "error", message: "Synthetic error"}, {level: "warn", message: "Synthetic warning"}], true);
+  assert.equal(opened.attributes.open, "");
+  assert.equal(opened.children[0].textContent, lang === "ko" ? "점검 (2) · 오류 1 · 경고 1" : "Checks (2) · 1 error · 1 warning");
+  // Korean texts for the checks whose snapshot message is English only; English shows the message itself.
+  const samples = [
+    [{rule: "records-in-status-file", level: "info", message: "stage records come from this device's status file; move them to the repository"},
+      "단계 기록을 저장소가 아니라 스냅샷을 만든 기기의 상태 파일에서 읽었습니다. 기록을 저장소로 옮겨 주세요"],
+    [{rule: "records-invalid", level: "warn", stage: "05-erd", message: "device status file: done needs a checkpoint and its date", args: {source: "device status file"}},
+      "05 ERD: 기기의 상태 파일: ‘완료’에는 확인 지점과 그 날짜가 있어야 해서 ‘진행 중’으로 보입니다"],
+    [{rule: "records-invalid", level: "warn", message: ".corthex/stages.json: a reason added later", args: {source: ".corthex/stages.json"}},
+      ".corthex/stages.json: 단계 기록에 고칠 곳이 있습니다 (원문: a reason added later)"],
+    [{rule: "picture-partial", level: "warn", stage: "05-erd", message: "docs/05-erd/erd.json:3: synthetic detail"},
+      "05 ERD: 그림 원본의 일부를 읽지 못했거나 그림 한도를 넘었습니다 (원문: docs/05-erd/erd.json:3: synthetic detail)"],
+    [{rule: "picture-left-out", level: "warn", stage: "07-sitemap", message: "a whole picture is left out to keep the snapshot under 1 MB", args: {part: "", stage: "07-sitemap", why: "size"}},
+      "07 사이트맵: 스냅샷을 1MB 안에 담으려고 이 그림을 통째로 뺐습니다"],
+    [{rule: "files-skipped", level: "info", message: "Synthetic skipped files", args: {stage: "05-erd", count: 3, reasons: {size: 1, format: 2}}},
+      "05 ERD: 읽지 않은 파일 3개 (1MB 넘음 1개, 읽지 않는 형식 2개)"],
+    [{rule: "board-term-missing", level: "warn", message: "Order placed has multiple glossary terms", args: {name: "Order placed", context: "CTX-001"}},
+      "Order placed: 용어집에 맞는 용어가 여럿이라 첫 번째를 씁니다"],
+    [{rule: "records-in-status-file", level: "info", by: "review", message: "A reviewer's own words"}, "A reviewer's own words"],
+    [{rule: "invented-rule", level: "info", message: "Synthetic unknown rule"}, "Synthetic unknown rule"],
+  ];
+  for (const [check, korean] of samples) {
+    assert.equal(api.checkText(check), lang === "ko" ? korean : check.message);
+  }
+  // The default ask-before words are translated; the user's own words are kept and marked in Korean.
+  const askNotes = ask => walk(api.spaceSummary({project: {name: "synthetic"}, ask_before: ask})).filter(node => node.className === "note");
+  const own = askNotes({entries: ["deletions (repositories, data)", "payments"], source: "project", left_out: ["deploys"]});
+  assert.equal(own[1].textContent, lang === "ko" ? "원문 deletions (repositories, data) · 결제" : "deletions (repositories, data) · payments");
+  assert.equal(own[1].children.filter(node => node.className === "tag").length, lang === "ko" ? 1 : 0);
+  assert.equal(own[2].textContent, lang === "ko" ? "이 프로젝트에서 먼저 묻지 않는 것: 배포" : "Not asked in this project: deploys");
+  assert.equal(own[2].children.filter(node => node.className === "tag").length, 0);
+  const none = askNotes({entries: [], source: "project", left_out: []});
+  assert.equal(none[1].textContent, lang === "ko" ? "되돌릴 수 없는 일만 먼저 묻습니다." : "Only what cannot be undone is asked.");
   assert.equal(JSON.stringify(p), before, "rendering changes no project data");
   const missing = runtime(lang, [], [{name: "qa-missing-snapshot", reason: "no snapshot"}]);
   missing.api.render();
