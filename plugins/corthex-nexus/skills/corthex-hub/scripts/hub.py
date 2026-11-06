@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 SCHEMA = "corthex-hub/0.2"
 PAGE_SCHEMA = "corthex-hub-page/0.2"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"

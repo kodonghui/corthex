@@ -1,7 +1,7 @@
 {
   "name": "corthex-nexus",
   "displayName": "CORTHEX Nexus",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "One page with the 13 stages, checks and trace links of all your CORTHEX projects, built from local files. It can also send project snapshots to a NEXUS server you run yourself.",
   "author": {
     "name": "kodonghui",

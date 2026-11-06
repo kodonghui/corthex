@@ -27,6 +27,26 @@ EXITS = {"done": 0, "command-line-invalid": 2, "failed": 1, "refused": 1, "kept"
 ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
 WRITE_RE = re.compile(r'"(nw_[0-9a-hjkmnp-tv-z]{12})"\Z')
 PRIVATE_MARKER = "qa-sensitive@example.com"
+# Reviewed release changes after the accepted pin, each mapped back to the audited bytes.
+# 0.2.2 changes the version fields and lets a project ask_before entry keep an inherited
+# entry it repeats with a qualifier, as "deletions (data)" keeps "deletions"; nothing else.
+REVIEWED = {
+    "hub.py": ((b'VERSION = "0.2.2"\n', b'VERSION = "0.2.0"\n'),),
+    "transport.py": ((b'version="0.2.2", timeout=30', b'version="0.2.0", timeout=30'),),
+    "snapshot02.py": ((
+        b'    listed = [x.casefold() for x in entries]\n'
+        b'\n'
+        b'    def kept(entry):\n'
+        b'        # A project entry keeps an inherited one when it repeats it, alone or with a qualifier after it,\n'
+        b'        # as "deletions (repositories, data)" keeps "deletions".\n'
+        b'        word = entry.casefold()\n'
+        b'        return any(x == word or (x.startswith(word) and x[len(word):len(word) + 1] in (" ", "(")) for x in listed)\n'
+        b'\n'
+        b'    return {"entries": entries, "source": source,\n'
+        b'            "left_out": [x for x in inherited[0] if not kept(x)] if source == "project" else []}\n',
+        b'    return {"entries": entries, "source": source,\n'
+        b'            "left_out": [x for x in inherited[0] if x not in entries] if source == "project" else []}\n'),),
+}
 
 
 def sha(data):
@@ -65,7 +85,7 @@ def verify_runtime(checkout):
 
     Later branch commits may contain unrelated core/template work. The nine
     runtime files must still equal the product's accepted hub pin, normalizing
-    checkout CRLF and the explicitly audited 0.2.1 version-only release fields.
+    checkout CRLF and the explicitly reviewed release changes in REVIEWED.
     Every other byte, including the wire schemas, stays pinned. The returned
     file hashes describe the actual source, not its normalized baseline.
     """
@@ -76,17 +96,14 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        approved = {
-            "hub.py": (b'VERSION = "0.2.1"\n', b'VERSION = "0.2.0"\n'),
-            "transport.py": (b'version="0.2.1", timeout=30', b'version="0.2.0", timeout=30'),
-        }.get(name)
-        if approved and source.count(approved[0]) == 1:
-            source = source.replace(approved[0], approved[1], 1)
+        for new, old in REVIEWED.get(name, ()):
+            if source.count(new) == 1:
+                source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:
             raise ValueError("CLI fixture runtime differs from audited pin: " + name)
         rows.append({"file": name, "lfSha256": actual,
                      "auditedBaselineLfSha256": pin["files"][name],
-                     "versionOnlyNormalization": actual != sha(source)})
+                     "reviewedNormalization": actual != sha(source)})
     git = None
     for entry in os.environ.get("PATH", "").split(os.pathsep):
         folder = Path(entry)
