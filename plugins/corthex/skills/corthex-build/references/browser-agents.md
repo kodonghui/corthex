@@ -1,6 +1,6 @@
 # Walking every flow with browser agents
 
-QA (stage 12) uses this before a release, after a large change, such as a new flow or a redesign, and when the user asks. Browser agents walk every user flow (stage 03) in a real browser, as each role that uses it, and report what works, what does not and how it felt to use. The flows that work then become end-to-end tests that run on every pull request, since browser agents cannot run in CI.
+QA (stage 12) uses this on every QA run, without waiting for the user to ask, and on top of the project's own tests: a project that already has unit, API or end-to-end tests, or a QA script of its own, runs them as before, and browser agents then walk the flows. Each run walks the user flows (stage 03) that its changes touch, and every flow before a release, after a large change, such as a new flow or a redesign, and when the user asks. Browser agents walk each flow in a real browser, as each role that uses it, and report what works, what does not and how it felt to use. The flows that work then become end-to-end tests that run on every pull request, since browser agents cannot run in CI. Only a product with no screens in a browser skips the walk, and its report says so.
 
 ## Where it runs
 
@@ -10,7 +10,31 @@ QA (stage 12) uses this before a release, after a large change, such as a new fl
 
 ## Tools
 
-By default the browser is Aside where it is installed: a desktop browser with its own agent and a command-line tool, `aside`. When this was last checked, in November 2026 (Aside 1.0.1022, `aside` 1.26.1104), it ran on macOS 15 or later and on Windows 10 22H2 or later, x64 and ARM64, with the app signed in; `aside` tries to open the app when it is closed. It has no Linux version and does not run in CI. On Linux, `aside` can still drive Aside on the user's Mac or Windows computer while that computer is online and has remote control turned on in Aside's developer settings: set `ASIDE_CLI_AUTH_PATH` to a private file, run `aside login` and have a person approve its code in Aside under Settings > Account > Devices, then pick the computer with `aside host list` and pass `--host <name>`. Where no Aside can be reached, the testers drive Playwright, or the host's own browser tool, in the same way, and the report says which tool ran.
+Use the first browser on this list that the session can reach, and say in the report which one ran and why each one above it did not:
+
+1. ego lite, where it is installed.
+2. Aside, where it is installed, or on another computer that `aside` can drive.
+3. Playwright, or the host's own browser tool, where neither can be reached, such as in CI. The testers drive it in the same way.
+
+ego lite comes first: a failed script makes `ego-browser` exit with 1, each tester gets a Space of its own, and the browser has no model of its own to pay for. A session on another machine, such as a cloud session, reaches ego lite only through a session on the computer where it is installed. When neither ego lite nor Aside can be reached, still walk the flows with Playwright, and say in the report what to install or turn on so that the next run can use one of them.
+
+Do not judge a step by the exit code, whichever tool runs. When checked in November 2026, `ego-browser` (ego lite 0.6.2.8) exited with 1 when a script failed, but `aside`, in the versions checked up to 1.26.1104, exits with 0 even when a script fails, and its output ends with `[error | …]` instead of `[ok | …]`. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
+
+### ego lite
+
+ego lite is a free browser from Citro Labs with no AI model of its own: the agent drives it with the `ego-browser` command, which the app installs together with an `ego-browser` skill for the agents on that computer. Each tester works in a Space of its own. ego lite keeps a Space's tabs apart from the user's and gives each task in it its own cookies and storage, so testers run side by side without touching the user's tabs. When this was last checked, in November 2026 (ego lite 0.6.2.8, guide 2.2.0), it ran on macOS and, as a beta, on Windows; its site listed Linux as planned.
+
+Its guide changes between versions, so check before each run:
+
+1. `ego-browser skill` prints the guide for the installed version. Read it, and where it differs from this file, follow it.
+2. One small script, sent as `ego-browser nodejs <<'EOF'` … `EOF`, opens the site in the tester's own Space and prints a marker. The command starts ego lite and talks to it, so it has to run outside the agent's sandbox. ego lite's own pages tell the user to turn the agent's permission checks off, with Claude Code's bypass permissions mode or Codex's Full access. That choice is the user's: ask once, and say that allowing only the `ego-browser` command, where the host can do that, is the narrower option.
+3. A person signs the test accounts in, in the tester's Space. Passwords and codes never pass through an agent, a prompt or a report. The tester opens the sign-in page and hands the Space to the user (`handOff()` in guide 2.2.0), naming the role whose account to use; the user signs in and says so, and the tester takes the Space back (`takeOverTaskSpace()`). While the user holds a Space, ego lite refuses the tester's commands. A Space can also start with sign-ins that ego lite already has, so check in the small script which account the session is signed in as before walking a row. Where it is not the row's test account, hand the Space over again, or mark the rows that need it `blocked` and tell the user.
+
+Each script runs in a new Node.js process. The Space, its tabs and their labels stay from one script to the next, but the script's variables do not, so a tester names its Space after its row and opens it again by that name.
+
+### Aside
+
+Aside is a desktop browser with its own agent and a command-line tool, `aside`. When this was last checked, in November 2026 (Aside 1.0.1022, `aside` 1.26.1104), it ran on macOS 15 or later and on Windows 10 22H2 or later, x64 and ARM64, with the app signed in; `aside` tries to open the app when it is closed. It has no Linux version and does not run in CI. On Linux, `aside` can still drive Aside on the user's Mac or Windows computer while that computer is online and has remote control turned on in Aside's developer settings: set `ASIDE_CLI_AUTH_PATH` to a private file, run `aside login` and have a person approve its code in Aside under Settings > Account > Devices, then pick the computer with `aside host list` and pass `--host <name>`.
 
 The commands of `aside` change between versions, so check them before each run:
 
@@ -26,8 +50,6 @@ The commands this file relies on:
 
 Agent sessions run from `aside` are removed about 15 minutes after they finish, unless `aside settings save-sessions true` is on. Copy what a step needs, such as its screenshot or the agent's answer, into the run's evidence folder as soon as the step ends.
 
-Do not judge a step by the exit code: in the versions checked, up to 1.26.1104, it is 0 even when a script fails, and the output ends with `[error | …]` instead of `[ok | …]`. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
-
 ## Who does what
 
 - **The orchestrator** is the agent the user works with. It builds the run list, starts the testers, merges their results into one report and files the bugs. It does not drive a browser itself.
@@ -42,7 +64,7 @@ One row per flow, path and role: the main path and each failure path of every fl
 
 ## How wide
 
-No source states how many browser sessions Aside can run at once, so measure it on each machine. Start with three sessions at once. After a round in which every session finished, with no timeout, no session showing another's page and no tool error, double the number, up to the host's agent limit or the number of rows. Stop at the first round that goes wrong, and go back to the last number that worked. Record that number and the date in the stage's `note`, and start from it next time.
+Neither tool states how many sessions run well at once on one machine (ego lite's site says Spaces run "unlimited tasks at once"), so measure it on each machine. Start with three sessions at once, each an ego lite Space or an Aside session. After a round in which every session finished, with no timeout, no session showing another's page and no tool error, double the number, up to the host's agent limit or the number of rows. Stop at the first round that goes wrong, and go back to the last number that worked. Record that number and the date in the stage's `note`, and start from it next time.
 
 Every agent uses the model. Before a run much wider than the last one, tell the user how many agents and browser sessions it will start and how long the last run took.
 
@@ -50,12 +72,12 @@ Every agent uses the model. Before a run much wider than the last one, tell the 
 
 A tester:
 
-1. Opens the site as the row's role, in tabs of its own. It never reads, uses or reports the user's other tabs.
-2. Takes each step of the flow with `aside repl` or the `repl` tool of `aside mcp`, saving a screenshot and the visible text after each step, at the widths that the screen definitions name.
+1. Opens the site as the row's role, in its own Space or tabs. It never reads, uses or reports the user's other tabs.
+2. Takes each step of the flow with a script (`ego-browser nodejs` in its Space, or `aside repl` or the `repl` tool of `aside mcp`), saving a screenshot and the visible text after each step, at the widths that the screen definitions name.
 3. Compares what it saw with the expected result: the screen state, the message and, where the test case names one, the effect on the data. It checks the data through the API or a read-only query, not from the screen alone.
 4. Gives the row a verdict: `works` when every step matched; `fails`, with the step, what was expected, what happened and the evidence; or `blocked` when the row could not run, such as at a sign-in wall, with missing data or after a tool error, with the reason.
 5. Writes down its impressions as the row's persona: what was hard to find, slow or confusing, and what looked wrong, such as text cut off on a narrow screen, parts out of line, low contrast or words that differ from the glossary. Each impression names its screen and has a screenshot.
-6. May hand a task to `aside exec` to explore around the flow as a new user would. The answer is a claim: count it only when the tester's own screenshots back it.
+6. Where Aside runs, may hand a task to `aside exec` to explore around the flow as a new user would. The answer is a claim: count it only when the tester's own screenshots back it.
 
 Every tester also keeps to these rules:
 
@@ -71,7 +93,7 @@ The orchestrator writes one report per run, by default `docs/12-qa/runs/<date>-<
 ```markdown
 # Run 2026-10-24 on staging (commit abc1234)
 
-Tool: Aside 1.26, `aside repl` · 6 browser sessions at once · 4 testers with 12 sub-agents · 38 minutes
+Tool: ego lite 0.6.2, `ego-browser nodejs` · 6 Spaces at once · 4 testers with 12 sub-agents · 38 minutes
 Roles: anonymous, signed-in user, another user, administrator
 
 ## Works
