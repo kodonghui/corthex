@@ -6,11 +6,12 @@ import unittest
 from unittest import mock
 
 from _common import ROOT
+import test_memory_migration_header_resume as header_fixtures
 import test_memory_migration_initialize as fixtures
 sys.path.insert(0,str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import format2,locks,maintenance_identity
 from memory_lib import maintenance_journal as journal,migration_headers as headers,migration_initialize as initialize
-from memory_lib import migration_initialize_resume as resume
+from memory_lib import migration_header_resume, migration_initialize_resume as resume
 
 
 class InitializeResumeTest(unittest.TestCase):
@@ -118,6 +119,43 @@ class InitializeResumeTest(unittest.TestCase):
         with mock.patch.object(headers,'_rename',side_effect=AssertionError('no repeated canonical effect')),mock.patch.object(headers,'_checkpoint_rename',side_effect=AssertionError('no repeated checkpoint')):
             self.finish(nonce)
         self.assertEqual((self.fx.fx.folder(intent)/'initialization-complete.json').read_bytes(),before)
+
+    def test_same_archive_files_cannot_rebind_either_resume_owner(self):
+        earlier = header_fixtures.HeaderResumeTest()
+        earlier.setUp()
+        self.addCleanup(earlier.doCleanups)
+        header_nonce, header_intent = earlier.interrupted(index=0, after=True)
+        nonce, intent = self.interrupted(stop=0, after=True)
+
+        def initialize_again(owned, original_nonce):
+            resume.reopen(owned, original_nonce, verify_c1_lineage=self.fx.lineage)
+
+        cases = (
+            ('header', earlier.root, earlier.fx.folder(header_intent), earlier.fx.own,
+             migration_header_resume.reopen, header_nonce),
+            ('initialize', self.root, self.fx.fx.folder(intent), self.fx.fx.own, initialize_again, nonce)
+        )
+        original = journal._Guard.directory
+        for phase, root, folder, own, reopen, original_nonce in cases:
+            with self.subTest(phase=phase):
+                moved = root.parent / 'preserved-archive-directory'
+
+                def replace_directory(guard, path, **options):
+                    if path == folder:
+                        folder.rename(moved)
+                        folder.mkdir()
+                        for entry in moved.iterdir():
+                            entry.rename(folder / entry.name)
+                    return original(guard, path, **options)
+
+                with own() as owned:
+                    with mock.patch.object(journal._Guard, 'directory', new=replace_directory):
+                        with self.assertRaises(locks.LostLock):
+                            reopen(owned, original_nonce)
+                    with self.assertRaises(locks.LostLock):
+                        owned.check()
+                self.assertTrue(moved.is_dir())
+                self.assertFalse((folder / (phase + '-000000.done.json')).exists())
 
     def test_any_completed_header_defers_without_overwriting_later_c2_data(self):
         nonce,_=self.interrupted();self.finish(nonce)

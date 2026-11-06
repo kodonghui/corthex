@@ -16,7 +16,8 @@ from memory_lib import migration_headers as headers,migration_initialize as init
 class MigrationInitializeTest(unittest.TestCase):
     def setUp(self):
         self.fx=fixtures.MigrationHeadersTest();self.fx.setUp();self.addCleanup(self.fx.doCleanups)
-        self.root,self.project=self.fx.root,self.fx.fixture.project
+        self.root = self.fx.root
+        self.project = self.fx.fixture.project.resolve()
 
     def fenced(self,owned):
         prepared,intent=self.fx.prepared(owned)

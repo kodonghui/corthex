@@ -180,9 +180,19 @@ class _Reader:
             final=_hash(raw)
         return count,previous,final
 
+    def verify_auxiliary_directories(self, guard):
+        seal = store.json_document(self.nodes[self.folder / 'prepared.json']['data'])
+        for path in (self.root / '.maintenance', self.root / '.maintenance/format-1-to-2', self.folder):
+            binding = guard.parents[path][0]
+            identity = seal['directories'][path.relative_to(self.root).as_posix()]
+            if binding.identity != _identity(identity):
+                raise locks.LostLock()
+            binding.check()
+
     def prefix(self,intent,seal_hash,operations,published,previous):
         guard=journal._Guard(self.owned,self.binding)
         for path in (self.root/'.maintenance',self.root/'.maintenance/format-1-to-2',self.folder):guard.directory(path)
+        self.verify_auxiliary_directories(guard)
         allowed={'plan.json','prepared.json','header-publications.json','headers-complete.json'}
         allowed.update('original-%06d.bin'%i for i in range(len(intent.originals)))
         allowed.update('header-%06d.done.json'%i for i in range(len(operations)))

@@ -139,6 +139,7 @@ class _Reader(header_resume._Reader):
     def prefix(self,intent,sealed,header_ops,operations,published,previous):
         guard=journal._Guard(self.owned,self.binding)
         for path in (self.root/'.maintenance',self.root/'.maintenance/format-1-to-2',self.folder):guard.directory(path)
+        self.verify_auxiliary_directories(guard)
         allowed={'plan.json','prepared.json','header-publications.json','headers-complete.json',
                  'initialization-publications.json','initialization-complete.json'}
         allowed.update('original-%06d.bin'%i for i in range(len(intent.originals)))
