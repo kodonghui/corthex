@@ -66,7 +66,7 @@ class _Reader:
     def exists(self,path):
         self.owned.check();return self.fence.check(path) is not None
 
-    def originals(self):
+    def archive(self):
         plan,raw = self.document(self.folder/'plan.json')
         if not isinstance(plan,dict) or not isinstance(plan.get('sources'),list) or not 1<=len(plan['sources'])<=100000:
             raise InvalidResume()
@@ -83,10 +83,15 @@ class _Reader:
         for name,data in expected.items():
             item=seal['files'][name];_keys(item,'identity sha256')
             if item['sha256']!=_hash(data) or self.nodes[self.folder/name]['binding'].identity!=_identity(item['identity']):raise InvalidResume()
-        directories=self.inventory._observer.dirs
-        if not isinstance(seal['source_directories'],dict) or set(seal['source_directories'])!=set(directories):raise InvalidResume()
-        for name in directories:
-            if maintenance_identity.capture(self.root/name)!=_identity(seal['source_directories'][name]):raise InvalidResume()
+        allowed,required={'.','projects'},{'.'}
+        for project,_ in intent.progress:
+            root='projects/'+base.project_folder_name(project)
+            required.update({'projects',root,root+'/raw'})
+            allowed.add(root)
+            allowed.update(root+'/'+name for name in ('raw','unprocessed','notices','injections','layer','layer/items','layer/tombstones','runs'))
+        directories=seal['source_directories']
+        if not isinstance(directories,dict) or not required<=set(directories)<=allowed:raise InvalidResume()
+        if any(_identity(native).document()['entry']!='directory' for native in directories.values()):raise InvalidResume()
         parents=[self.root/'.maintenance',self.root/'.maintenance/format-1-to-2',self.folder]
         if not isinstance(seal['directories'],dict) or set(seal['directories'])!={p.relative_to(self.root).as_posix() for p in parents}:raise InvalidResume()
         for path in parents:
@@ -97,6 +102,14 @@ class _Reader:
             if source['family']=='progress':name='projects/'+base.project_folder_name(source['project'])+'/'+name
             sources[name]=data
         if not isinstance(seal['source_records'],dict) or set(seal['source_records'])!=set(sources):raise InvalidResume()
+        return intent,seal,sources,_hash(sealed)
+
+    def originals(self):
+        intent,seal,sources,sealed_hash=self.archive()
+        directories=self.inventory._observer.dirs
+        if set(seal['source_directories'])!=set(directories):raise InvalidResume()
+        for name in directories:
+            if maintenance_identity.capture(self.root/name)!=_identity(seal['source_directories'][name]):raise InvalidResume()
         for name,data in sources.items():
             if not name.startswith('store.json'):self.same(self.root/name,seal['source_records'][name],data)
         current={name for name in self.inventory._observer.records if not name.startswith('store.json')}
@@ -104,7 +117,7 @@ class _Reader:
         if self.inventory.headers.publications != intent.headers.publications:raise InvalidResume()
         if not any(name in {'store.json','store.json.bak'} and 'migrating' in store.json_document(data)
                    for name,data in self.inventory.headers.originals):raise InvalidResume()
-        return intent,seal,sources,_hash(sealed)
+        return intent,seal,sources,sealed_hash
 
     def effects(self,intent,seal,sources,seal_hash):
         value,raw=self.document(self.folder/'header-publications.json')
