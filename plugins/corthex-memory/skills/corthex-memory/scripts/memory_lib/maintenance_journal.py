@@ -92,13 +92,14 @@ class _Guard:
             self.revoked = True
             raise
 
-    def directory_barrier(self,path):
+    def directory_barrier(self,path,*,binding=None):
         self.writer_check()
         if os.name == 'nt':
             # Windows file _commit also flushes associated file metadata. The
             # completed seal is not returned until all file barriers succeed.
             return
-        binding = self.binding if path == self.root else self.parents[path][0]
+        binding = binding or (self.binding if path == self.root else self.parents[path][0])
+        if binding.path != path:raise locks.LostLock()
         self._node(path,binding,directory=True)
         descriptor = os.open(str(path),os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
         failed = False
@@ -117,13 +118,13 @@ class _Guard:
                 if not failed:raise
 
     def directory(self,path,*,new=False):
-        self.cold()
+        self.writer_check()
         info = self.fence.check(path)
         if info is not None:
             if new or not stat.S_ISDIR(info.st_mode):raise locks.LostLock()
             binding = maintenance_identity.bind(path)
             self.parents[path] = binding,{p.name for p in path.iterdir()}
-            self.cold();return
+            self.writer_check();return
         os.mkdir(str(path),0o700)
         created = self.fence.check(path)
         if created is None or not stat.S_ISDIR(created.st_mode):raise locks.LostLock()
@@ -136,7 +137,7 @@ class _Guard:
         self.parents[path] = binding,set()
         if path.parent == self.root:self.root_names.add(path.name)
         else:self.parents[path.parent][1].add(path.name)
-        self.cold();self.directory_barrier(path.parent)
+        self.writer_check();self.directory_barrier(path.parent)
 
     def write(self,path,data):
         self.writer_check()
