@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   tests:
-    timeout-minutes: 30
+    # Native ownership/fault fixtures need room on the Python 3.8 Windows lane.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
