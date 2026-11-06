@@ -4,7 +4,7 @@ description: CORTHEX stages 02 to 04, defining the product. Use when writing or 
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.7.0"
+  version: "0.8.0"
 ---
 
 # Defining the product
