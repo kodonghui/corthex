@@ -81,7 +81,7 @@ def _pending(root, log):
         forgotten.add(item)
         for quote in item_types._document(data)['quotes']:
             if quote['log'] == log and quote['start'] < quote['end']:
-                named.setdefault(quote['entry'], []).append((quote['start'], quote['end']))
+                named.setdefault(quote['entry'], []).append((int(quote['start']), int(quote['end'])))
     kept = {}
     if named:
         for item, data in _named(folder/'items'):
@@ -112,9 +112,12 @@ def entries(root, log):
             continue
         if found and entry['seq'] <= found[-1]['seq']:
             continue
-        if pending.get(entry['id']):
-            entry['forgotten'] = [list(pair) for pair in entry.get('forgotten', ())] + \
-                [[start, end] for start, end in pending[entry['id']]]
+        # The raw log and the tombstones accept integral JSON numbers such as
+        # 6.0; the ranges hold the integers they are.
+        ranges = [[int(start), int(end)] for start, end in entry.get('forgotten', ())]
+        ranges += [[start, end] for start, end in pending.get(entry['id'], ())]
+        if ranges:
+            entry['forgotten'] = ranges
         found.append(entry)
     return found
 

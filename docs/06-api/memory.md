@@ -602,7 +602,7 @@ The three requests to the curator model, to curate (API-006), to merge a group (
 
 #### The request document
 
-The user message is one text: a document of tags. Every text in it is escaped, `&` as `&amp;` and `<` as `&lt;`, and in attributes also `"` as `&quot;`, so that no text of a turn can open or close a tag. Forgotten ranges show as `[forgotten]` (TBL-007), and so does each range that a tombstone names while a stopped forget has not yet rewritten the raw log, except a range kept whole for an item that stays. A character that XML 1.0 cannot hold, a C0 control other than tab, LF and CR, an unpaired surrogate, U+FFFE or U+FFFF, shows as U+FFFD, and the curator reads CR and CRLF as LF.
+The user message is one text: a document of tags. Every text in it is escaped, `&` as `&amp;` and `<` as `&lt;`, and in attributes also `"` as `&quot;`, so that no text of a turn can open or close a tag. Forgotten ranges show as `[forgotten]` (TBL-007), and so does each range that a tombstone names while a stopped forget has not yet rewritten the raw log, except a range kept whole for an item that stays. A range's ends and a turn's numbers may be integral JSON numbers such as `6.0`, which the raw log and tombstones accept; they count as the integers they are, and `seq` shows as `6`. A character that XML 1.0 cannot hold, a C0 control other than tab, LF and CR, an unpaired surrogate, U+FFFE or U+FFFF, shows as U+FFFD, and the curator reads CR and CRLF as LF.
 
 ```xml
 <request kind="curate" instructions="curate-2">

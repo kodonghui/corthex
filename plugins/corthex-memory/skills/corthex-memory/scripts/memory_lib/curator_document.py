@@ -43,12 +43,22 @@ def _block(tag, attributes, children):
 
 
 def entry_text(entry):
-    """An entry's text as requests show it: each forgotten range is [forgotten]."""
+    """An entry's text as requests show it: each forgotten range is [forgotten].
+
+    An end of a range may be an integral JSON number such as 6.0, which the raw
+    log accepts (TBL-007); it counts as the integer it is.
+    """
     text = entry.get('text', '')
     if not isinstance(text, str):
         raise ValueError('invalid entry text')
+    ranges = []
+    for pair in entry.get('forgotten', ()):
+        pair = tuple(pair)
+        if len(pair) != 2 or not all(configuration.integer(n) for n in pair):
+            raise ValueError('invalid forgotten range')
+        ranges.append((int(pair[0]), int(pair[1])))
     merged = []
-    for start, end in sorted(tuple(pair) for pair in entry.get('forgotten', ())):
+    for start, end in sorted(ranges):
         if not 0 <= start < end <= len(text):
             raise ValueError('invalid forgotten range')
         if merged and start <= merged[-1][1]:
@@ -84,7 +94,9 @@ def session(log, entries, after=0):
             started = entry['at']
         ended = entry['at'] if kind == 'end' else None
         if kind in ('prompt', 'answer') and entry['seq'] > after:
-            turns.setdefault(entry['turn'], []).append(
+            if not configuration.integer(entry.get('turn')):
+                raise ValueError('invalid raw turn')
+            turns.setdefault(int(entry['turn']), []).append(
                 dict(id=entry['id'], speaker=entry['speaker'], at=entry['at'], text=entry_text(entry)))
     return dict(log=log, host=log.rsplit('-', 1)[0], started=started, ended=ended,
                 turns=[dict(seq=seq, entries=group) for seq, group in sorted(turns.items())])
@@ -112,8 +124,9 @@ def _turn(value, seen):
         raise ValueError('invalid request turn part')
     if not isinstance(value['entries'], list) or not value['entries']:
         raise ValueError('invalid request turn entries')
-    attributes = (('seq', str(seq)), ('part', None if part is None else str(part)),
-                  ('parts', None if parts is None else str(parts)))
+    # Integral JSON numbers such as 2.0 show as the integers they are.
+    attributes = (('seq', str(int(seq))), ('part', None if part is None else str(int(part))),
+                  ('parts', None if parts is None else str(int(parts))))
     return _block('turn', attributes, [_entry(entry, seen) for entry in value['entries']])
 
 

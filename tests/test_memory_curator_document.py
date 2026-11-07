@@ -213,6 +213,24 @@ class CuratorDocumentTest(unittest.TestCase):
             curator_document.session(LOG, [entries[1], entries[0]])
         self.assertEqual(curator_document.entry_text(dict(text='abcdef', forgotten=[[3, 5], [0, 2], [1, 3]])),
                          '[forgotten]f')
+        # The raw log accepts integral JSON numbers such as 2.0; they count as the integers they are.
+        self.assertEqual(curator_document.entry_text(dict(text='abcdef', forgotten=[[3.0, 5.0], [0, 2.0]])),
+                         '[forgotten]c[forgotten]f')
+        for bad in ([[0.5, 2]], [[True, 2]], [[0, 2, 3]], [[0, float('nan')]], [[0, float('inf')]]):
+            with self.subTest(forgotten=bad), self.assertRaises(ValueError):
+                curator_document.entry_text(dict(text='abcdef', forgotten=bad))
+        floats = [dict(e, seq=float(e['seq']), **({'turn': float(e['turn'])} if 'turn' in e else {}))
+                  for e in entries]
+        value = curator_document.session(LOG, floats, after=2.0)
+        self.assertEqual([(t['seq'], len(t['entries'])) for t in value['turns']], [(2, 1), (4, 2)])
+        self.assertEqual({type(t['seq']) for t in value['turns']}, {int})
+        document = curator_document.curate(lines=[], items=[], form='full', sessions=[value])
+        self.assertEqual([t.get('seq') for t in ET.fromstring(document).iter('turn')], ['2', '4'])
+        split = dict(value, turns=[dict(value['turns'][0], seq=2.0, part=1.0, parts=2.0)])
+        turn, = ET.fromstring(curator_document.curate(lines=[], items=[], form='full', sessions=[split])).iter('turn')
+        self.assertEqual((turn.get('seq'), turn.get('part'), turn.get('parts')), ('2', '1', '2'))
+        with self.assertRaises(ValueError):
+            curator_document.session(LOG, [dict(floats[1], turn=2.5)])
 
 
 class QuoteCheckTest(unittest.TestCase):
@@ -459,6 +477,31 @@ class RequestInputsTest(unittest.TestCase):
         tombstone(ident('i'), (answer, LOG, 0, len(answer['text']) + 1))
         with self.assertRaises(ValueError):
             request_inputs.session(self.root, LOG)
+
+    def test_integral_json_numbers_in_records_read_as_integers(self):
+        # The raw log and the tombstones accept integral JSON numbers such as 6.0 (TBL-007, TBL-016).
+        prompt = entry(2.0, 'prompt', 'Keep the cache key here', forgotten=[[0.0, 5.0]])
+        answer = entry(3.0, 'answer', 'Noted, the key stays', turn=2.0)
+        self.record([entry(1.0, 'start', event='start'), prompt, answer])
+        gone = ident('i')
+        self.write('layer/tombstones/' + gone + '.json', dict(item=gone, project='sample', at=AT, device=DEVICE,
+                   quotes=[dict(device=DEVICE, entry=answer['id'], log=LOG, start=0.0, end=6.0)]))
+        stored = {e['id']: e for e in request_inputs.entries(self.root, LOG)}
+        self.assertEqual([stored[prompt['id']]['forgotten'], stored[answer['id']]['forgotten']], [[[0, 5]], [[0, 6]]])
+        self.assertEqual({type(n) for e in stored.values() for pair in e.get('forgotten', ()) for n in pair}, {int})
+        document = curator_document.curate(lines=[], items=[], form='full',
+                                           sessions=[request_inputs.session(self.root, LOG)])
+        turn, = ET.fromstring(document).iter('turn')
+        self.assertEqual(turn.get('seq'), '2')
+        self.assertEqual([e.text for e in turn.iter('entry')],
+                         ['[forgotten]the cache key here', '[forgotten] the key stays'])
+        carried = curator_answers.sent(items=[], logs=[(LOG, [stored[prompt['id']], stored[answer['id']]])])
+        result = curator_answers.check_curate({'changes': [
+            dict(action='add', targets=[], kind='fact', quotes=[{'entry': prompt['id'], 'words': words}],
+                 title='A title', text='A text.', conflicts=[]) for words in ('Keep the cache', 'the cache key')],
+            'state': {'change': [], 'add': [], 'remove': []}}, sent=carried, device=DEVICE)
+        self.assertEqual(result.dropped, {'quote': 1})
+        self.assertEqual([(c.quotes[0]['start'], c.quotes[0]['end']) for c in result.changes], [(5, 18)])
 
     def test_layer_reader_refuses_unknown_names_and_mismatched_records(self):
         prompt = entry(2, 'prompt', 'Keep raw logs on this device')
