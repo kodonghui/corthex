@@ -22,6 +22,7 @@ class Layer:
     current: tuple     # current items in item-list order (TBL-015)
     pinned: tuple      # IDs of pinned current items, in pin order
     candidates: tuple  # open candidates of two current items, by time and ID
+    places: dict       # every candidate's rotation place (time, ID) by ID, open or closed (SPEC-015)
 
 
 def _named(folder):
@@ -54,9 +55,11 @@ def layer(root):
     pins = item_types.parse_pins((folder/'pins.json').read_bytes())['pins']
     pinned = tuple(pin['item'] for pin in pins if pin['on'] and pin['item'] in items and
                    items[pin['item']]['status'] == 'current')
-    candidates = conflict_types.open_candidates(conflict_types.parse_conflicts((folder/'conflicts.json').read_bytes()))
+    conflicts = conflict_types.parse_conflicts((folder/'conflicts.json').read_bytes())
+    candidates = conflict_types.open_candidates(conflicts)
     candidates = tuple(c for c in candidates if all(items.get(i, {}).get('status') == 'current' for i in c['items']))
-    return Layer(tuple(view['lines']), tuple(view['hidden']), items, tuple(current), pinned, candidates)
+    places = {c['id']: (c['at'], c['id']) for c in conflicts['candidates']}
+    return Layer(tuple(view['lines']), tuple(view['hidden']), items, tuple(current), pinned, candidates, places)
 
 
 def session(root, log, after=0):
