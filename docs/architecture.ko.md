@@ -253,7 +253,7 @@ Windows 폴더는 기본 생성 모드로 부모의 권한을 상속합니다. P
 | 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, `corthex-uxui`의 스크립트(FFmpeg가 있으면 만든 영상으로), `hub.py`, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 
-CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다. Linux와 Windows에는 FFmpeg를 설치해 미디어 점검을 만든 영상으로 돌리고, macOS에서는 그 검사를 건너뜁니다. `corthex-memory`나 Windows 훅 검사를 바꾸는 풀 리퀘스트는 Windows에서 Claude Code와 Codex로 기억 훅도 돌립니다. Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다.
+CI는 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 서버 검사를 Linux, Windows, macOS에서, Claude Code 검증과 서버의 Wrangler 빌드를 Linux에서 돌립니다. Windows Python 3.8에서 전체 시험이 작업당 한 시간 제한에 닿았기 때문에, 운영체제와 Python 조합마다 저장소 검사를 시험을 번갈아 나눠 맡는 두 작업으로 돌립니다. Linux와 Windows에는 FFmpeg를 설치해 미디어 점검을 만든 영상으로 돌리고, macOS에서는 그 검사를 건너뜁니다. `corthex-memory`나 Windows 훅 검사를 바꾸는 풀 리퀘스트는 Windows에서 Claude Code와 Codex로 기억 훅도 돌립니다. Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다.
 
 ## 앞으로
 
