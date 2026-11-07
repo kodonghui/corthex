@@ -9,6 +9,7 @@ import argparse
 import base64
 import json
 import platform
+import re
 import statistics
 import sys
 import time
@@ -21,8 +22,9 @@ from memory_lib import redaction
 MARKER = "CORTHEX_REDACTION_BENCH="
 SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
 WORD_INPUTS = ("token", "passwd", "secret", "apikey")
-# Inputs whose matches a check refuses: each refused match runs Python code.
-KOREAN_INPUTS = ("korean-password-count", "korean-token-digits", "resident-bad-date", "card-luhn-fail")
+# Inputs whose matches a check refuses, or cuts back to a card: each match runs Python code.
+KOREAN_INPUTS = ("korean-password-count", "korean-token-digits", "resident-bad-date", "card-luhn-fail",
+                 "card-security-code")
 # Each expression, including the private-span pass, has a hostile input.
 GROWTH = ("private-openers", "pem-begin-name-repeat", "jwt-no-dots",
     "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
@@ -31,10 +33,20 @@ GROWTH = ("private-openers", "pem-begin-name-repeat", "jwt-no-dots",
     "notion-near-minimum", "supabase-near-minimum", "atlassian-near-minimum", "stripe-near-minimum",
     "huggingface-near-minimum", "npm-near-minimum", "langsmith-near-minimum", "bearer-short-token",
     "korean-password-count", "korean-token-digits", "resident-bad-date", "resident-label-short",
-    "phone-near-miss", "card-luhn-fail", "account-long-digits")
+    "phone-near-miss", "card-luhn-fail", "card-security-code", "account-long-digits")
+
+
+def made_up_card(body):
+    """`body` and its Luhn check digit, made while the input is built, so no card number is written here."""
+    total = 0
+    for place, digit in enumerate(reversed(body)):
+        value = int(digit) * (2 if place % 2 == 0 else 1)
+        total += value - 9 if value > 9 else value
+    return body + str(-total % 10)
 
 
 def slow_input(name, size):
+    """`size` bytes of UTF-8: the prefix, then the seed repeated, cut at a character and padded with dots."""
     if name == "jwt-base64-json":
         return base64.b64encode(b'{"a":123}' * (size // 8 + 2)).decode("ascii")[:size]
     marker = "-" * 5
@@ -70,9 +82,12 @@ def slow_input(name, size):
         "resident-label-short": ("", "주민번호 " + "1" * 12 + " "),
         "phone-near-miss": ("", "010-1234-123 "),
         "card-luhn-fail": ("", "4111 1111 1111 1112 "),
+        # The match runs on into the code; the check refuses it and passes the card before it.
+        "card-security-code": ("", " ".join(re.findall("....", made_up_card("4" + "1" * 14))) + " 123 "),
         "account-long-digits": ("", "계좌 " + "1" * 17 + " "),
     }[name]
-    return prefix + (seed * (size // len(seed) + 1))[:size - len(prefix)]
+    text = (prefix + seed * (size // len(seed) + 1)).encode("utf-8")[:size].decode("utf-8", "ignore")
+    return text + "." * (size - len(text.encode("utf-8")))
 
 
 def fill(seed):

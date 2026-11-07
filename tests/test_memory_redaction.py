@@ -156,7 +156,7 @@ class MemoryRedactionTest(StoreCase):
 
     def test_tc028_four_small_calls_and_one_large_stay_within_growth_limit(self):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
-        # About 17 seconds on Linux for 30 inputs; macOS Intel runners took 1.7 times as long.
+        # About 17 seconds on Linux for 31 inputs; macOS Intel runners took 1.7 times as long.
         run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "5"],
                              capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, "growth worker exit %d; input remains suppressed" % run.returncode)
@@ -175,12 +175,20 @@ class MemoryRedactionTest(StoreCase):
                           "stripe-near-minimum", "huggingface-near-minimum", "npm-near-minimum",
                           "langsmith-near-minimum", "bearer-short-token", "korean-password-count",
                           "korean-token-digits", "resident-bad-date", "resident-label-short", "phone-near-miss",
-                          "card-luhn-fail", "account-long-digits"})
+                          "card-luhn-fail", "card-security-code", "account-long-digits"})
         for row in data["rows"]:
             self.assertEqual(row["samples"],5)
             self.assertEqual(row["large_bytes"], row["small_bytes"] * 4)
             self.assertGreater(row["small_ms"], 20, json.dumps(row, sort_keys=True))
             self.assertLessEqual(row["ratio"], 2.5, json.dumps(row, sort_keys=True))
+
+    def test_tc028_growth_inputs_hold_the_bytes_that_the_guard_assumes(self):
+        # The growth worker sets the byte limits to four times the small size, plus one.
+        import bench_memory_redaction as bench
+        for name in bench.GROWTH:
+            for size in (1024, 32 * 1024 + 1, 128 * 1024):
+                with self.subTest(name=name, size=size):
+                    self.assertEqual(len(bench.slow_input(name, size).encode("utf-8")), size)
 
     def test_tc024_unclosed_private_span_removes_everything_after_it(self):
         self.assertEqual(redaction.redact("a <private> b c", {}).text, "a [redacted:private]")
@@ -502,6 +510,17 @@ class KoreanAndPersonalRedactionTest(StoreCase):
         self.assertTrue(self.both("비밀번호: " + value + " 그리고 password: " + value) ==
                         "비밀번호: [redacted:assigned-secret] 그리고 password: [redacted:assigned-secret]")
 
+    def test_tc395_quoted_names_as_json_keys_lose_their_values(self):
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                for separator in (": ", ":", " = ", "="):
+                    value = "k" + random_text(15)
+                    for written in (quote + value + quote, value):
+                        with self.subTest(name=name, quote=quote, separator=separator, quoted=written != value):
+                            key = "{" + quote + name + quote + separator
+                            output = self.both(key + written + ", " + quote + "n" + quote + ": 1}")
+                            self.assertTrue(output == key + "[redacted:assigned-secret], " + quote + "n" + quote + ": 1}")
+
     def test_tc395_key_names_need_eight_characters_with_a_letter_and_password_counts_stay(self):
         for name in KOREAN_KEY_NAMES:
             for value in (random_text(7, string.ascii_letters), random_text(12, string.digits), "한글값입니다"):
@@ -554,6 +573,39 @@ class KoreanAndPersonalRedactionTest(StoreCase):
             with self.subTest(kind=kind, label=label, length=len(value)):
                 output = self.both("앞 " + label + value + " 뒤")
                 self.assertTrue(output == "앞 " + label + "[redacted:" + kind + "] 뒤")
+
+    def test_tc397_numbers_written_after_a_card_stay_and_the_card_goes(self):
+        def passes(digits):
+            return 13 <= len(digits) <= 19 and luhn(digits[:-1]) == digits
+        for value in card_numbers():
+            separator = "-" if "-" in value else " "
+            digits = value.replace(separator, "")
+            for sizes in ((3,), (4,), (4, 3)):
+                # A security code, a date or another number that the groups run on into; made again
+                # while the card and its first groups would pass the check together by chance.
+                while True:
+                    extra = [random_text(size, string.digits) for size in sizes]
+                    if not any(passes(digits + "".join(extra[:count])) for count in range(1, len(extra) + 1)):
+                        break
+                after = "".join(separator + part for part in extra)
+                with self.subTest(card=len(value), after=sizes):
+                    self.assertTrue(self.both("앞 " + value + after + " 뒤") == "앞 [redacted:card-number]" + after + " 뒤")
+        # Two cards of four groups in a row: each goes, since the search goes on after the first.
+        cards = [value for value in card_numbers() if len(value) == 19 and " " in value]
+        self.assertTrue(self.both(" ".join(cards)) == " ".join(["[redacted:card-number]"] * len(cards)))
+
+    def test_tc397_quoted_labels_keep_their_quotes_and_lose_the_number(self):
+        for quote in "\"'":
+            for label in ("주민번호", "주민등록번호"):
+                value = resident_numbers()[0]
+                with self.subTest(label=label, quote=quote):
+                    key = "{" + quote + label + quote + ": " + quote
+                    self.assertTrue(self.both(key + value + quote + "}") == key + "[redacted:resident-number]" + quote + "}")
+            for label, bank in (("계좌번호", ""), ("계좌", "국민 ")):
+                value = random_text(3, string.digits) + "-" + random_text(2, string.digits) + "-" + random_text(6, string.digits)
+                with self.subTest(label=label, quote=quote):
+                    key = "{" + quote + label + quote + ": " + quote + bank
+                    self.assertTrue(self.both(key + value + quote + "}") == key + "[redacted:account-number]" + quote + "}")
 
     def test_tc398_ordinary_sentences_long_numbers_and_mail_addresses_stay(self):
         self.assertGreaterEqual(len(ORDINARY), 10)

@@ -21,10 +21,11 @@ SECRET_VALUE = (r'''"(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'''
                 r'''(?=[^\s"',;]{0,512}[A-Za-z])[^\s"',;]{8,512}''')
 # Korean names, a particle, ":", "=" or white space, then a value of ASCII
 # letters, digits and symbols only: a Hangul value is a sentence, not a secret.
+# A name in quotes, as a JSON key, ends with its quote before ":" or "=".
 KO_PASSWORD = r"(?:비밀[ \t]?번호|비번|패스워드|암호)"
 KO_KEY = (r"(?:API[ \t]?키|api[ \t]?키|액세스[ \t]?(?:토큰|키)|비밀[ \t]?키|인증[ \t]?키|시크릿(?:[ \t]?키)?|토큰"
           r"|키(?<![가-힣]키))")
-KO_SEPARATOR = r"(?:[은는이가을를][ \t]*(?:[:=][ \t]*)?|[ \t]*[:=][ \t]*|[ \t]+)"
+KO_SEPARATOR = r'''(?:[은는이가을를][ \t]*(?:[:=][ \t]*)?|["']?[ \t]*[:=][ \t]*|[ \t]+)'''
 KO_VALUE = r'''"[ !#-~]{1,512}"|'[ -&(-~]{1,512}'|[!#-&(-+\--:<-~]{1,512}'''
 KO_SECRET_VALUE = (r'''"(?=[ !#-~]{0,512}[A-Za-z])[ !#-~]{8,512}"|'''
                    r"'(?=[ -&(-~]{0,512}[A-Za-z])[ -&(-~]{8,512}'|"
@@ -56,12 +57,15 @@ PATTERNS = (
     # Stage 06 prints these patterns, so no character class comes right before
     # a parenthesis, which Markdown would read as a link.
     ("resident-number", r"[0-9]{6}(?<![0-9]{7})-[1-8][0-9]{6}(?![0-9])"),
-    ("resident-number", "(주민(?:등록)?번호" + KO_SEPARATOR + r")[0-9]{6}[1-8][0-9]{6}(?![0-9])"),
+    ("resident-number", "(주민(?:등록)?번호" + KO_SEPARATOR + r'''["']?)[0-9]{6}[1-8][0-9]{6}(?![0-9])'''),
     ("phone-number", r"01(?<![0-9]01)[016789][ -][0-9]{3,4}[ -][0-9]{4}(?![0-9])"),
-    ("account-number", r"(계좌(?:[ \t]?번호)?" + KO_SEPARATOR + r"(?:[가-힣A-Za-z]{1,12}[ \t]+)?)(?!-)(?:-?[0-9]){10,16}(?![0-9])"),
+    ("account-number", r"(계좌(?:[ \t]?번호)?" + KO_SEPARATOR + r'''["']?(?:[가-힣A-Za-z]{1,12}[ \t]+)?)(?!-)(?:-?[0-9]){10,16}(?![0-9])'''),
     ("card-number", r"[0-9]{4}(?<![0-9]{5})(?:[0-9]{9,15}|(?:[ -][0-9]{3,6}){2,4})(?![0-9])"),
 )
 COMPILED = tuple((kind, re.compile(pattern)) for kind, pattern in PATTERNS)
+SEPARATOR = re.compile("[ -]")
+# Luhn doubles every second digit from the right; these are the doubled digits' digit sums.
+DOUBLED = str.maketrans("0123456789", "0246813579")
 # A number directly followed by one of these is a count, as in 비밀번호 8자 이상.
 COUNTER = re.compile("자|글자|문자|회|번|개|단계|일|시간|분|초|년|이상|이하|이내|미만|초과")
 
@@ -88,16 +92,15 @@ def _birth_date(match):
     return True
 
 
-def _card(match):
-    """13 to 19 digits of a payment card's industry (3, 4, 5, 6, 9 or 2221-2720) that pass the Luhn check."""
-    digits = re.sub("[^0-9]", "", match.group(0))
-    if not 13 <= len(digits) <= 19 or (digits[0] not in "34569" and not 2221 <= int(digits[:4]) <= 2720):
-        return False
-    total = 0
-    for place, digit in enumerate(reversed(digits)):
-        value = int(digit) * (2 if place % 2 else 1)
-        total += value - 9 if value > 9 else value
-    return total % 10 == 0
+def _industry(digits):
+    """Payment card numbers begin with 3, 4, 5, 6 or 9, or with 2221 to 2720."""
+    return digits[0] in "34569" or 2221 <= int(digits[:4]) <= 2720
+
+
+def _card(digits):
+    """13 to 19 digits of a payment card's industry that pass the Luhn check."""
+    return (13 <= len(digits) <= 19 and _industry(digits) and
+            (sum(map(int, digits[-1::-2])) + sum(map(int, digits[-2::-2].translate(DOUBLED)))) % 10 == 0)
 
 
 def _account(match):
@@ -108,7 +111,7 @@ def _account(match):
 def _check(kind, pattern):
     if kind == "assigned-secret" and pattern.startswith("(" + KO_PASSWORD):
         return _korean_value
-    return {"resident-number": _birth_date, "card-number": _card, "account-number": _account}.get(kind)
+    return {"resident-number": _birth_date, "account-number": _account}.get(kind)
 
 
 # A pattern with a check replaces only the matches that pass it; others stay as they are.
@@ -138,8 +141,37 @@ def _adjust(boundary, start, end, emitted):
     return emitted - (min(end, boundary) - start) if boundary is not None and start < boundary else 0
 
 
+def _cards(text, pattern, mark, boundary):
+    """Replace each card number: the most groups of a match, from its first, that pass `_card`.
+
+    The groups can run on into a number written after the card, such as a
+    security code or a second card. The card then ends at an earlier group, and
+    the search goes on right after it. A match without a card stays.
+    """
+    pieces, used, position, delta = [], 0, 0, 0
+    while True:
+        match = pattern.search(text, position)
+        if match is None:
+            break
+        position = end = match.end()
+        # Every candidate begins as the match does, so one industry check serves them all.
+        if not _industry(match.group(0)):
+            continue
+        groups = SEPARATOR.split(match.group(0))
+        while groups and not _card("".join(groups)):
+            end -= len(groups.pop()) + 1  # the last group and the separator before it
+        if groups:
+            pieces += [text[used:match.start()], mark]
+            if boundary is not None:
+                delta += _adjust(boundary, match.start(), end, len(mark))
+            used = position = end
+    return "".join(pieces) + text[used:], None if boundary is None else boundary + delta
+
+
 def _replace(text, pattern, kind, boundary):
     mark = "[redacted:" + kind + "]"
+    if kind == "card-number":
+        return _cards(text, pattern, mark, boundary)
     check = CHECKS.get(pattern)
     if boundary is None:
         return pattern.sub(lambda m: m.group(0) if check and not check(m) else
