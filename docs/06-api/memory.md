@@ -588,7 +588,7 @@ The three requests to the curator model, to curate (API-006), to merge a group (
 
 #### The request document
 
-The user message is one text: a document of tags. Every text in it is escaped, `&` as `&amp;` and `<` as `&lt;`, and in attributes also `"` as `&quot;`, so that no text of a turn can open or close a tag. Forgotten ranges show as `[forgotten]` (TBL-007).
+The user message is one text: a document of tags. Every text in it is escaped, `&` as `&amp;` and `<` as `&lt;`, and in attributes also `"` as `&quot;`, so that no text of a turn can open or close a tag. Forgotten ranges show as `[forgotten]` (TBL-007). A character that XML 1.0 cannot hold, a C0 control other than tab, LF and CR, an unpaired surrogate, U+FFFE or U+FFFF, shows as U+FFFD, and the curator reads CR and CRLF as LF.
 
 ```xml
 <request kind="curate" instructions="curate-2">
@@ -619,11 +619,11 @@ The user message is one text: a document of tags. Every text in it is escaped, `
 </request>
 ```
 
-- `<items form>`: `full`, each item with its title and text; `short`, titles only; `part`, titles only and only part of the list, as SPEC-015 orders it: the items that the current state cites, the pinned items, whole open-candidate/two-item bundles, then those that rank highest by words for the batch's turns.
-- A `<session>` has `started` and `ended` from its boundaries, when the raw log has them. A turn sent in parts is `<turn seq="42" part="2" parts="3">`, and each part goes with the same state and item list (SPEC-015).
+- `<items form>`: `full`, each item with its title and text; `short`, titles only; `part`, titles only and only part of the list, as SPEC-015 orders it: the items that the current state cites, the pinned items, whole open-candidate/two-item bundles, then those that rank highest by words for the batch's turns. In every form an `<item>` carries its ID, kind and the deciding quote's speaker and date, as the item list does (TBL-015), and only current items go.
+- A `<session>` has `started` and `ended` from its boundaries, when the raw log has them: `started` from the file's first start boundary, and `ended` from an end boundary that is the file's last entry. A turn sent in parts is `<turn seq="42" part="2" parts="3">`, and each part goes with the same state and item list (SPEC-015).
 - A merge request is `<request kind="merge" instructions="merge-2" group="<kind>">` with `<items>` of one group, each item with its title, text and quotes as `<quote n="1" speaker="user" said="…">words</quote>`. A request to shorten the current state is `<request kind="state" instructions="state-1">` with the `<state>` and the item list as `<items form>`.
 
-State uses the TBL-013 validity view. A partial list takes state citations and pins first, then whole open-candidate/two-item bundles, then word-ranked items. Rotate candidates in at/ID order after conflict_after and record the last selected bundle after each batch. <conflicts omitted="N"> counts open candidates left out for the request budget. Include or omit the candidate and both endpoints together; omitted candidates remain open and counted. Keep the 40,000 item budget, 100,000 input limit and 60,000 turn allowance.
+State uses the TBL-013 validity view. A partial list takes state citations and pins first, then whole open-candidate/two-item bundles, then word-ranked items. Rotate candidates in at/ID order after conflict_after and record the last selected bundle after each batch. <conflicts omitted="N"> counts open candidates left out for the request budget. Include or omit the candidate and both endpoints together; omitted candidates remain open and counted. Keep the 40,000 item budget, 100,000 input limit and 60,000 turn allowance. Every request carries `<conflicts>`, empty when no candidate goes.
 
 #### Instructions
 
@@ -667,7 +667,7 @@ The three fixed texts are versioned in the code and named in each usage line (`i
 | `state.remove[]` | `line`, `why` | request line named once across change/remove; why <=200 UTF-8 bytes |
 
 - A line needs at least one citation in `cites` or `changes`, and a line under decisions in force needs at least one current decision item (SPEC-017). An answer with no line edits keeps state when all retained decisions are valid and no stale cleanup is pending.
-- The quote check (SPEC-016): the words are looked for in the entry's text, both in NFC, with line breaks as LF and each run of white space as one space; the words as given are tried first, then with the request's escapes undone. The first place found gives the quote's `start` and `end` in the stored text (TBL-012), and the entry gives its speaker.
+- The quote check (SPEC-016): the words are looked for in the entry's text, both with U+FFFD for the characters that XML cannot hold, as the request shows them, in NFC, with line breaks as LF and each run of white space, line breaks included, as one space, and the words without white space at either end; the words as given are tried first, then with the request's escapes undone. The first place found that touches no forgotten range gives the quote's `start` and `end` in the stored text (TBL-012), and the entry gives its speaker. Text that redaction replaced only in the request is not in the stored text, so a quote of it fails.
 - A decision whose deciding quote lies in pasted text is dropped ([above](#prompts-the-host-makes-and-pasted-text)).
 - A `withdraw` or a `replace` that the speaker rules of SPEC-016 do not allow is saved as an item of its own, from its kind, quotes, title and text.
 
