@@ -156,8 +156,14 @@ class CuratorAnswersTest(unittest.TestCase):
         self.assertEqual(stored['quotes'], [second['quotes'][0], first['quotes'][0]])
         copied[0]['words'] = 'changed'
         self.assertEqual(second['quotes'][0]['words'], 'Korean answers, please.')
+        # Review follow-up: an integral JSON number such as 1.0 or 1e0 names a quote, as the schema allows.
+        self.assertEqual(curator_answers.copied_quotes([first, second], [{'item': second['id'], 'number': 1.0},
+                                                                         {'item': first['id'], 'number': 1e0}]),
+                         [second['quotes'][0], first['quotes'][0]])
         for picks in ([], [{'item': first['id'], 'number': 2}], [{'item': first['id'], 'number': 0}],
                       [{'item': first['id'], 'number': True}], [{'item': ident('i'), 'number': 1}],
+                      [{'item': first['id'], 'number': 1.5}], [{'item': first['id'], 'number': '1'}],
+                      [{'item': first['id'], 'number': float('nan')}], [{'item': first['id'], 'number': float('inf')}],
                       [{'item': first['id'], 'number': 1, 'words': 'x'}], [{'item': first['id'], 'number': 1}] * 21):
             with self.subTest(picks=picks), self.assertRaises(ValueError):
                 curator_answers.copied_quotes([first, second], picks)

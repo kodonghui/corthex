@@ -232,8 +232,9 @@ def copied_quotes(items, picks):
     """The quotes that a merge names by item and number, copied as they were saved.
 
     No raw log is read and no quote is checked again (SPEC-020), so a quote
-    whose entry retention deleted keeps its provenance. ValueError when a pick
-    names no quote of its item, or when there are more than 20.
+    whose entry retention deleted keeps its provenance. A number may be any
+    integral JSON number, as the schema allows. ValueError when a pick names no
+    quote of its item, or when there are more than 20.
     """
     saved = {}
     for value in items:
@@ -246,7 +247,7 @@ def copied_quotes(items, picks):
         if not isinstance(pick, dict) or set(pick) != {'item', 'number'} or pick['item'] not in saved:
             raise ValueError('invalid merged quote')
         number = pick['number']
-        if type(number) is not int or not 1 <= number <= len(saved[pick['item']]['quotes']):
+        if not command_result._integer(number) or not 1 <= number <= len(saved[pick['item']]['quotes']):
             raise ValueError('invalid merged quote')
-        copied.append(copy.deepcopy(saved[pick['item']]['quotes'][number - 1]))
+        copied.append(copy.deepcopy(saved[pick['item']]['quotes'][int(number) - 1]))
     return copied

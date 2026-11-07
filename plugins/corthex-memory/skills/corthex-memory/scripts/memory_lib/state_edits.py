@@ -291,6 +291,15 @@ def _held(failure):
     return type(chain[0]).__name__
 
 
+def _due(memory, root, proof, at, deadline):
+    """Make consolidation due now after a cut; the progress written, or None when it already was."""
+    consolidation = dict(revision_io.read_primary(memory, root, deadline)['consolidation'])
+    if consolidation.get('due', at) < at:
+        return None
+    consolidation['due'] = at
+    return revision_io.update_progress(memory, root, proof, {'consolidation': consolidation}, deadline)
+
+
 def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make_id=None):
     """Apply line edits under the curation and layer leases, after the answer's item changes.
 
@@ -311,6 +320,9 @@ def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make
     outcome = {'state': 'kept', 'held': None, 'dropped': planned.dropped, 'added': (), 'cut': (), 'stale': (),
                'lines': (), 'progress': None}
     if planned.proposal is None:
+        # Every add may be cut with nothing else to publish; the cut still makes consolidation due.
+        if planned.cut_adds:
+            outcome = dict(outcome, state='cut', progress=_due(memory, root, expected, at, deadline))
         return outcome
     bound = tuple(sorted((('state', hashlib.sha256(sources['state.json']).hexdigest()),
                           ('removed', hashlib.sha256(sources['state-removed.json']).hexdigest()))))
@@ -334,10 +346,6 @@ def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make
         return dict(outcome, held=error, progress=failure.progress)
     progress = result['progress']
     if planned.cut or planned.cut_adds:
-        consolidation = dict(revision_io.read_primary(memory, root, deadline)['consolidation'])
-        if consolidation.get('due', at) >= at:
-            consolidation['due'] = at
-            progress = revision_io.update_progress(memory, root, fence_plan.snapshot(progress),
-                                                   {'consolidation': consolidation}, deadline)
+        progress = _due(memory, root, fence_plan.snapshot(progress), at, deadline) or progress
     return dict(outcome, state='cut' if planned.cut or planned.cut_adds else 'new', added=planned.added,
                 cut=planned.cut, stale=planned.stale, lines=result['lines'], progress=progress)

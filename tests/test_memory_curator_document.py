@@ -4,6 +4,7 @@ TC-156, TC-158 and the TASK-083 part of TC-394 on synthetic records. Requests
 go only to a local test server, with a key made while the test runs.
 """
 import copy
+import itertools
 import json
 import os
 from pathlib import Path
@@ -230,6 +231,24 @@ class QuoteCheckTest(unittest.TestCase):
         for words in ('', '   ', None, 'absent', '[redacted:memory-key]'):
             with self.subTest(words=words):
                 self.assertIsNone(quote_check.find('a [secret] text', words))
+
+    def test_a_place_inside_an_nfc_cluster_is_narrowed_or_refused(self):
+        # Review follow-up: the stored range of a quote always compares equal to its words.
+        self.assertEqual(quote_check.find('a\u0301\u0327', '\u00e1'), (0, 2))
+        self.assertEqual(quote_check.find('a\u0301\u0327', 'a\u0327\u0301'), (0, 3))
+        # No range of a, cedilla and acute compares as a with acute alone; a later place still counts.
+        self.assertIsNone(quote_check.find('a\u0327\u0301', '\u00e1'))
+        self.assertEqual(quote_check.find('x a\u0327\u0301 \u00e1', '\u00e1'), (6, 7))
+        # A range that only white space at its ends would make equal is not taken.
+        self.assertEqual(quote_check.find(' \u0301\u0327', '\u0327\u0301'), (1, 3))
+        alphabet = ('a', 'e', ' ', '\u0301', '\u0327', '\u0323', '\u0302', '\u1100', '\u1161', '\u11a8', '\uac00')
+        for text in map(''.join, itertools.product(alphabet, repeat=3)):
+            form = quote_check.Prepared(text).form
+            for start, end in itertools.combinations(range(len(form) + 1), 2):
+                found = quote_check.find(text, form[start:end])
+                if found is not None:
+                    self.assertEqual(quote_check.Prepared(text[found[0]:found[1]]).form,
+                                     quote_check.compared(form[start:end]), (text, start, end))
 
     def test_words_as_given_come_before_escapes_and_forgotten_places_are_skipped(self):
         stored = 'literal &lt; first, then < second'

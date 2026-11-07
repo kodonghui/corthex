@@ -331,6 +331,24 @@ class StateEditsTest(unittest.TestCase):
                          [(ident('s', 'x'), 'cut'), (ident('s', 'y'), 'cut')])
         # Consolidation was already due from the earlier cut, and stays due from then.
         self.assertEqual(self.progress()['consolidation']['due'], LATER)
+        self.assertEqual(result['progress'], self.progress())
+
+    def test_an_answer_whose_only_add_is_cut_still_makes_consolidation_due(self):
+        # Review follow-up: nothing is published, yet the cut makes consolidation due and is reported.
+        rule = self.decision()
+        before = self.snapshot()
+        _, _, result = self.curate(answer(state=edits(add=[added('goal', 'g' * 3000, [self.said['id']])])), [rule],
+                                   make_id=maker(ident('s', 'x')))
+        self.assertEqual((result['state'], result['added'], result['cut'], result['lines']), ('cut', (), (), ()))
+        after = self.snapshot()
+        self.assertEqual([name for name in after if after[name] != before.get(name)], ['curation.json'])
+        self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'due': LATER})
+        self.assertEqual(result['progress'], self.progress())
+        # Due already, the next such answer writes nothing.
+        _, _, result = self.curate(answer(state=edits(add=[added('goal', 'h' * 3000, [self.said['id']])])), [rule],
+                                   make_id=maker(ident('s', 'y')), at='2026-11-06T00:00:00.000Z')
+        self.assertEqual((result['state'], result['progress']), ('cut', None))
+        self.assertEqual(self.snapshot(), after)
 
     def test_tc169_an_unnamed_blocker_citing_an_earlier_entry_stays(self):
         rule = self.decision()
