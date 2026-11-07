@@ -9,6 +9,7 @@ import argparse
 import base64
 import json
 import platform
+import re
 import statistics
 import sys
 import time
@@ -19,16 +20,35 @@ sys.path.insert(0, str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scri
 from memory_lib import redaction
 
 MARKER = "CORTHEX_REDACTION_BENCH="
-SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
+SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json", "token-quoted-escapes")
 WORD_INPUTS = ("token", "passwd", "secret", "apikey")
+# Inputs whose matches a check refuses, or cuts back to a card: each match runs Python code.
+KOREAN_INPUTS = ("korean-password-count", "korean-token-digits", "korean-quote-phrase", "resident-bad-date",
+                 "card-luhn-fail", "card-security-code")
 # Each expression, including the private-span pass, has a hostile input.
 GROWTH = ("private-openers", "pem-begin-name-repeat", "jwt-no-dots",
     "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
     "gitlab-near-minimum", "slack-near-minimum", "aws-short-body", "google-short-body",
-    "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "jwt-percent-repeat")
+    "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "token-quoted-escapes",
+    "jwt-percent-repeat",
+    "notion-near-minimum", "supabase-near-minimum", "atlassian-near-minimum", "stripe-near-minimum",
+    "huggingface-near-minimum", "npm-near-minimum", "langsmith-near-minimum", "bearer-short-token",
+    "korean-password-count", "korean-token-digits", "korean-quote-phrase", "resident-bad-date",
+    "resident-label-short",
+    "phone-near-miss", "card-luhn-fail", "card-security-code", "account-long-digits")
+
+
+def made_up_card(body):
+    """`body` and its Luhn check digit, made while the input is built, so no card number is written here."""
+    total = 0
+    for place, digit in enumerate(reversed(body)):
+        value = int(digit) * (2 if place % 2 == 0 else 1)
+        total += value - 9 if value > 9 else value
+    return body + str(-total % 10)
 
 
 def slow_input(name, size):
+    """`size` bytes of UTF-8: the prefix, then the seed repeated, cut at a character and padded with dots."""
     if name == "jwt-base64-json":
         return base64.b64encode(b'{"a":123}' * (size // 8 + 2)).decode("ascii")[:size]
     marker = "-" * 5
@@ -49,8 +69,31 @@ def slow_input(name, size):
         "authorization-repeat": ("", "authorization"),
         "passwd-repeat": ("", "passwd"),
         "token-repeat": ("", "token"),
+        # Escapes without a letter: the lookahead for a letter runs to the closing quote and fails.
+        "token-quoted-escapes": ("", 'token="' + "\\1" * 255 + '" '),
+        "notion-near-minimum": ("", "ntn_" + "1" * 11 + "a" * 34 + " secret_" + "a" * 42 + " "),
+        "supabase-near-minimum": ("", "sbp_" + "a" * 39 + " sb_secret_" + "a" * 15 + " "),
+        "atlassian-near-minimum": ("", ("ATATT3" * 32)[:191] + " "),
+        "stripe-near-minimum": ("", "sk_live_" + "a" * 9 + " rk_test_" + "a" * 9 + " "),
+        "huggingface-near-minimum": ("", "hf_" + "a" * 33 + " "),
+        "npm-near-minimum": ("", "npm_" + "a" * 35 + " "),
+        "langsmith-near-minimum": ("", "lsv2_tr_" + "a" * 19 + " ls__" + "a" * 19 + " "),
+        "bearer-short-token": ("", "Bearer " + "a" * 15 + " "),
+        # Korean names and personal numbers whose matches a check refuses, or that just miss.
+        "korean-password-count": ("", "비밀번호는 " + "1" * 40 + "자 "),
+        "korean-token-digits": ("", "토큰 " + "1" * 511 + " "),
+        # A quote left open before Hangul and closed later on the line: the check looks for the quote.
+        "korean-quote-phrase": ("", 'API 키는 "Settings 메뉴"에서 '),
+        "resident-bad-date": ("", "991399-1234567 "),
+        "resident-label-short": ("", "주민번호 " + "1" * 12 + " "),
+        "phone-near-miss": ("", "010-1234-123 "),
+        "card-luhn-fail": ("", "4111 1111 1111 1112 "),
+        # The match runs on into the code; the check refuses it and passes the card before it.
+        "card-security-code": ("", " ".join(re.findall("....", made_up_card("4" + "1" * 14))) + " 123 "),
+        "account-long-digits": ("", "계좌 " + "1" * 17 + " "),
     }[name]
-    return prefix + (seed * (size // len(seed) + 1))[:size - len(prefix)]
+    text = (prefix + seed * (size // len(seed) + 1)).encode("utf-8")[:size].decode("utf-8", "ignore")
+    return text + "." * (size - len(text.encode("utf-8")))
 
 
 def fill(seed):
@@ -70,6 +113,7 @@ def inputs():
         **{name: slow_input(name, redaction.ENTRY_BYTES) for name in SLOW},
         **{name + "-repeat": fill(name) for name in WORD_INPUTS},
         "jwt-percent-repeat": slow_input("jwt-percent-repeat", redaction.ENTRY_BYTES),
+        **{name: fill(slow_input(name, 4096)) for name in KOREAN_INPUTS},
     }
 
 

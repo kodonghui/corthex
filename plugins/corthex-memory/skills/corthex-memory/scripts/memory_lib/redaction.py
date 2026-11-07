@@ -4,6 +4,7 @@ Limits use KiB (1024 UTF-8 bytes). The cut value is the original byte size,
 not the redacted size. This module performs no I/O except environment access.
 """
 
+import datetime
 import os
 import re
 from dataclasses import dataclass
@@ -14,10 +15,32 @@ MEMORY_KEYS = ("CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KE
 SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.IGNORECASE | re.ASCII)
 SURROGATE = re.compile(r"[\ud800-\udfff]")
 PRIVATE = re.compile(r"<private>[\s\S]*?(?:</private>|\Z)", re.IGNORECASE | re.ASCII)
-VALUE = r'''"[^"\r\n]{1,512}"|'[^'\r\n]{1,512}'|[^\s"',;]{1,512}'''
-SECRET_VALUE = (r'''"(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'''
-                r"'(?=[^'\r\n]{0,512}[A-Za-z])[^'\r\n]{8,512}'|"
+# A value in quotes holds a backslash and the character after it, so JSON's \"
+# does not end it. Its closing quote is optional: a value whose quote stays open
+# runs on as far as its characters go, since an open quote hides nothing.
+VALUE = (r'''"(?:[^"\\\r\n]|\\[^\r\n]){1,512}"?|'''
+         r"""'(?:[^'\\\r\n]|\\[^\r\n]){1,512}'?|"""
+         r'''[^\s"',;]{1,512}''')
+# In quotes, SECRET_VALUE's 8 characters count either as written up to the first
+# quote, as before quoted values held escapes, or with a backslash and the
+# character after it as one, and its letter may follow a backslash, as in \u0061.
+SECRET_VALUE = (r'''"(?=[^"\r\n]{8}|(?:[^"\\\r\n]|\\[^\r\n]){8})(?=(?:[^"\\\r\n]|\\[^\r\n]){0,512}\\?[A-Za-z])(?:[^"\\\r\n]|\\[^\r\n]){1,512}"?|'''
+                r"""'(?=[^'\r\n]{8}|(?:[^'\\\r\n]|\\[^\r\n]){8})(?=(?:[^'\\\r\n]|\\[^\r\n]){0,512}\\?[A-Za-z])(?:[^'\\\r\n]|\\[^\r\n]){1,512}'?|"""
                 r'''(?=[^\s"',;]{0,512}[A-Za-z])[^\s"',;]{8,512}''')
+# Korean names, a particle, ":", "=" or white space, then a value of ASCII
+# letters, digits and symbols only: a Hangul value is a sentence, not a secret.
+# A name in quotes, as a JSON key, ends with its quote before ":" or "=".
+# Quoted values may hold tabs and escapes and lack their closing quote, as above.
+KO_PASSWORD = r"(?:비밀[ \t]?번호|비번|패스워드|암호)"
+KO_KEY = (r"(?:API[ \t]?키|api[ \t]?키|액세스[ \t]?(?:토큰|키)|비밀[ \t]?키|인증[ \t]?키|시크릿(?:[ \t]?키)?|토큰"
+          r"|키(?<![가-힣]키))")
+KO_SEPARATOR = r'''(?:[은는이가을를][ \t]*(?:[:=][ \t]*)?|["']?[ \t]*[:=][ \t]*|[ \t]+)'''
+KO_VALUE = (r'''"(?:[\t !#-\[\]-~]|\\[\t -~]){1,512}"?|'''
+            r"""'(?:[\t -&(-\[\]-~]|\\[\t -~]){1,512}'?|"""
+            r'''[!#-&(-+\--:<-~]{1,512}''')
+KO_SECRET_VALUE = (r'''"(?=[ !#-~]{8}|(?:[\t !#-\[\]-~]|\\[\t -~]){8})(?=(?:[\t !#-\[\]-~]|\\[\t -~]){0,512}\\?[A-Za-z])(?:[\t !#-\[\]-~]|\\[\t -~]){1,512}"?|'''
+                   r"""'(?=[ -&(-~]{8}|(?:[\t -&(-\[\]-~]|\\[\t -~]){8})(?=(?:[\t -&(-\[\]-~]|\\[\t -~]){0,512}\\?[A-Za-z])(?:[\t -&(-\[\]-~]|\\[\t -~]){1,512}'?|"""
+                   r'''(?=[!#-&(-+\--:<-~]{0,512}[A-Za-z])[!#-&(-+\--:<-~]{8,512}''')
 PATTERNS = (
     ("private-key", r"-{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)"),
     ("anthropic-key", r"sk-ant-[A-Za-z0-9_-]{20,}"),
@@ -27,13 +50,120 @@ PATTERNS = (
     ("slack-token", r"xox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/_-]{8,}"),
     ("aws-key", r"(?:AKIA|ASIA)[A-Z0-9]{16}"),
     ("google-key", r"AIza[0-9A-Za-z_-]{35}|ya29\.[0-9A-Za-z_-]{20,}"),
+    ("notion-token", r"ntn_[0-9]{11}[A-Za-z0-9]{35,}|secret_[A-Za-z0-9]{43,}"),
+    ("supabase-key", r"sbp_[a-z0-9]{40,}|sb_secret_[A-Za-z0-9_-]{16,}"),
+    ("atlassian-token", r"ATATT3[A-Za-z0-9_=-]{186,}"),
+    ("stripe-key", r"[rs]k_(?:live|test|prod)_[A-Za-z0-9]{10,}"),
+    ("huggingface-token", r"hf_[A-Za-z]{34,}"),
+    ("npm-token", r"npm_[A-Za-z0-9]{36,}"),
+    ("langsmith-key", r"lsv2_(?:pt|sk|tr)_[A-Za-z0-9_]{20,}|ls__[A-Za-z0-9]{20,}"),
     ("jwt", r"(?:(?<![A-Za-z0-9_-])|(?<=%[0-9A-Fa-f]{2}))eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("url-credentials", r"(?<=://)[^/\s:@]{1,256}:[^/\s@]{1,256}(?=@)"),
     ("authorization", r"(?i)((?:proxy-)?authorization[ \t]*:[ \t]*)[^\r\n]+"),
+    ("bearer-token", r"([Bb]earer[ \t]+)[A-Za-z0-9._~+/-]{16,}=*"),
     ("assigned-secret", r'''(?i)((?:password|passwd|secret)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)(?:''' + VALUE + ")"),
     ("assigned-secret", r'''(?i)((?:token|api[_-]?key|access[_-]?key)[A-Za-z0-9_.-]{0,40}["']?[ \t]*[:=][ \t]*)(?:''' + SECRET_VALUE + ")"),
+    ("assigned-secret", "(" + KO_PASSWORD + KO_SEPARATOR + ")(?:" + KO_VALUE + ")"),
+    ("assigned-secret", "(" + KO_KEY + KO_SEPARATOR + ")(?:" + KO_SECRET_VALUE + ")"),
+    # Stage 06 prints these patterns, so no character class comes right before
+    # a parenthesis, which Markdown would read as a link.
+    ("resident-number", r"[0-9]{6}(?<![0-9]{7})-[1-8][0-9]{6}(?![0-9])"),
+    ("resident-number", "(주민(?:등록)?번호" + KO_SEPARATOR + r'''["']?)[0-9]{6}[1-8][0-9]{6}(?![0-9])'''),
+    ("phone-number", r"01(?<![0-9]01)[016789][ -][0-9]{3,4}[ -][0-9]{4}(?![0-9])"),
+    ("account-number", r"(계좌(?:[ \t]?번호)?" + KO_SEPARATOR + r'''["']?(?:[가-힣A-Za-z]{1,12}[ \t]+)?)(?!-)(?:-?[0-9]){10,16}(?![0-9])'''),
+    ("card-number", r"[0-9]{4}(?<![0-9]{5})(?:[0-9]{9,15}|(?:[ -][0-9]{3,6}){2,4})(?![0-9])"),
 )
 COMPILED = tuple((kind, re.compile(pattern)) for kind, pattern in PATTERNS)
+SEPARATOR = re.compile("[ -]")
+# Luhn doubles every second digit from the right; these are the doubled digits' digit sums.
+DOUBLED = str.maketrans("0123456789", "0246813579")
+# A number directly followed by one of these is a count, as in 비밀번호 8자 이상.
+COUNTER = re.compile("자|글자|문자|회|번|개|단계|일|시간|분|초|년|이상|이하|이내|미만|초과")
+# The first of a quote or a line end.
+LINE_QUOTE = {quote: re.compile("[" + quote + "\r\n]") for quote in "\"'"}
+
+
+def _open(value):
+    """A value that begins with a quote and that no closing quote ends."""
+    if value[0] not in "\"'":
+        return False
+    if len(value) < 2 or value[-1] != value[0]:
+        return True
+    body = value[1:-1]
+    return (len(body) - len(body.rstrip("\\"))) % 2 == 1  # an odd run of backslashes escapes the last quote
+
+
+def _phrase(match):
+    """A Korean value's quote, left open before a character outside ASCII such as
+    Hangul, holds a phrase when a quote of its kind closes it later on the line,
+    right after a character other than white space, as in
+    API 키는 "Settings 메뉴"에서 만듭니다. Any other open quote hides nothing, and
+    a value that holds a backslash is code, never a phrase."""
+    value = match.string[match.end(1):match.end()]
+    if "\\" in value or not _open(value):
+        return False
+    after = match.string[match.end():match.end() + 1]
+    if not after or after.isascii():  # the end of the text or line, the length limit or a lone backslash
+        return False
+    found = LINE_QUOTE[value[0]].search(match.string, match.end())
+    # A quote after white space opens another quoted text instead.
+    return found is not None and found.group() == value[0] and not match.string[found.start() - 1].isspace()
+
+
+def _korean_value(match):
+    """After a Korean password name: not punctuation alone, a count or a phrase in quotes.
+    A value with a letter or a backslash is never a count."""
+    value = match.string[match.end(1):match.end()]
+    if not re.search("[A-Za-z0-9]", value) or _phrase(match):
+        return False
+    if value[0] in "\"'" and not _open(value) or re.search(r"[A-Za-z\\]", value):
+        return True
+    return not COUNTER.match(match.string, match.end())
+
+
+def _korean_key(match):
+    """After a Korean key name: not a phrase in quotes."""
+    return not _phrase(match)
+
+
+def _birth_date(match):
+    """YYMMDD is a date of the century that the seventh digit gives (1, 2, 5, 6: 1900s; 3, 4, 7, 8: 2000s)."""
+    start = match.end(1) if match.re.groups else match.start()
+    digits = match.string[start:match.end()].replace("-", "")
+    century = 1900 if digits[6] in "1256" else 2000
+    try:
+        datetime.date(century + int(digits[:2]), int(digits[2:4]), int(digits[4:6]))
+    except ValueError:
+        return False
+    return True
+
+
+def _industry(digits):
+    """Payment card numbers begin with 3, 4, 5, 6 or 9, or with 2221 to 2720."""
+    return digits[0] in "34569" or 2221 <= int(digits[:4]) <= 2720
+
+
+def _card(digits):
+    """13 to 19 digits of a payment card's industry that pass the Luhn check."""
+    return (13 <= len(digits) <= 19 and _industry(digits) and
+            (sum(map(int, digits[-1::-2])) + sum(map(int, digits[-2::-2].translate(DOUBLED)))) % 10 == 0)
+
+
+def _account(match):
+    """An amount of money in won after the name is not an account number."""
+    return not match.string.startswith("원", match.end())
+
+
+def _check(kind, pattern):
+    if kind == "assigned-secret" and pattern.startswith("(" + KO_PASSWORD):
+        return _korean_value
+    if kind == "assigned-secret" and pattern.startswith("(" + KO_KEY):
+        return _korean_key
+    return {"resident-number": _birth_date, "account-number": _account}.get(kind)
+
+
+# A pattern with a check replaces only the matches that pass it; others stay as they are.
+CHECKS = {compiled: _check(kind, compiled.pattern) for kind, compiled in COMPILED if _check(kind, compiled.pattern)}
 
 
 @dataclass(frozen=True)
@@ -59,13 +189,46 @@ def _adjust(boundary, start, end, emitted):
     return emitted - (min(end, boundary) - start) if boundary is not None and start < boundary else 0
 
 
+def _cards(text, pattern, mark, boundary):
+    """Replace each card number: the most groups of a match, from its first, that pass `_card`.
+
+    The groups can run on into a number written after the card, such as a
+    security code or a second card. The card then ends at an earlier group, and
+    the search goes on right after it. A match without a card stays.
+    """
+    pieces, used, position, delta = [], 0, 0, 0
+    while True:
+        match = pattern.search(text, position)
+        if match is None:
+            break
+        position = end = match.end()
+        # Every candidate begins as the match does, so one industry check serves them all.
+        if not _industry(match.group(0)):
+            continue
+        groups = SEPARATOR.split(match.group(0))
+        while groups and not _card("".join(groups)):
+            end -= len(groups.pop()) + 1  # the last group and the separator before it
+        if groups:
+            pieces += [text[used:match.start()], mark]
+            if boundary is not None:
+                delta += _adjust(boundary, match.start(), end, len(mark))
+            used = position = end
+    return "".join(pieces) + text[used:], None if boundary is None else boundary + delta
+
+
 def _replace(text, pattern, kind, boundary):
     mark = "[redacted:" + kind + "]"
+    if kind == "card-number":
+        return _cards(text, pattern, mark, boundary)
+    check = CHECKS.get(pattern)
     if boundary is None:
-        return pattern.sub(lambda m: (m.group(1) if pattern.groups else "") + mark, text), None
+        return pattern.sub(lambda m: m.group(0) if check and not check(m) else
+                           (m.group(1) if pattern.groups else "") + mark, text), None
     delta = 0
     def emit(match):
         nonlocal delta
+        if check and not check(match):
+            return match.group(0)
         prefix = match.group(1) if pattern.groups else ""
         start = match.end(1) if pattern.groups else match.start()
         delta += _adjust(boundary, start, match.end(), len(mark))
