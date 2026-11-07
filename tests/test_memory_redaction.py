@@ -484,6 +484,15 @@ def sent_text(text):
     return ET.fromstring(sent).find(".//entry").text or ""
 
 
+def escaped_values(quote):
+    """Values in quotes whose letter follows a backslash or that are 8 characters long only
+    as written: letters as JSON's \\u escapes, whose hexadecimal digits hold no letter;
+    \\n counted as two characters; and an escaped quote after 8 written characters."""
+    letters = "".join("\\u%04x" % ord(c) for c in random_text(3, "abcdefghi") + random_text(5, string.digits))
+    return (("unicode escapes", letters), ("written length", "k" + random_text(1) + "\\n" + random_text(2) + "\\n"),
+            ("escaped quote", "\\n" * 4 + "\\" + quote + random_text(2)))
+
+
 class KoreanAndPersonalRedactionTest(StoreCase):
     def both(self, text):
         """The recorded text and the sent text, which must agree."""
@@ -550,6 +559,27 @@ class KoreanAndPersonalRedactionTest(StoreCase):
             with self.subTest(text=text):
                 self.assertEqual(self.both(text), text)
 
+    def test_tc395_an_escaped_letter_counts_and_a_backslash_is_never_a_phrase_or_count(self):
+        for name in KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                for case, value in escaped_values(quote):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        key = "{" + quote + name + quote + ": "
+                        self.assertTrue(self.both(key + quote + value + quote + "}") == key + "[redacted:assigned-secret]}")
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                value, digits = "k" + random_text(7), random_text(4, string.digits)
+                cases = [("phrase", name + ": " + quote + value + "\\" + quote + "한글" + quote + "에서",
+                          name + ": [redacted:assigned-secret]한글" + quote + "에서", value)]
+                if name in KOREAN_PASSWORD_NAMES:
+                    cases.append(("count", name + ": " + quote + digits + "\\" + quote + "5자 이상",
+                                  name + ": [redacted:assigned-secret]자 이상", digits))
+                for case, source, expected, hidden in cases:
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(hidden in output)
+
     def test_tc023_english_quoted_values_hold_escapes_and_open_quotes_hide_nothing(self):
         for name in ("password", "passwd", "secret", "token", "api_key", "access-key"):
             for quote in "\"'":
@@ -565,6 +595,19 @@ class KoreanAndPersonalRedactionTest(StoreCase):
                         output = self.both(source)
                         self.assertTrue(output == expected)
                         self.assertFalse(tail in output)
+
+    def test_tc023_an_escaped_letter_counts_and_eight_characters_count_as_written(self):
+        for name in ("token", "api_key", "access-key"):
+            for quote in "\"'":
+                for case, value in escaped_values(quote):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        key = "{" + quote + name + quote + ": "
+                        self.assertTrue(self.both(key + quote + value + quote + "}") == key + "[redacted:assigned-secret]}")
+        # Without a letter, or shorter than 8 both ways, a value stays.
+        for text in ('{"token": "\\1\\2\\3\\4"}', '{"token": "' + random_text(8, string.digits) + '"}',
+                     "{'token': 'abc\\'d'}", '{"API 키": "\\1\\2\\3\\4"}'):
+            with self.subTest(text=text):
+                self.assertEqual(self.both(text), text)
 
     def test_tc395_key_names_need_eight_characters_with_a_letter_and_password_counts_stay(self):
         for name in KOREAN_KEY_NAMES:

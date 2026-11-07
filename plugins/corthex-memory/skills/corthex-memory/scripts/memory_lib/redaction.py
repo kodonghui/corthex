@@ -21,8 +21,11 @@ PRIVATE = re.compile(r"<private>[\s\S]*?(?:</private>|\Z)", re.IGNORECASE | re.A
 VALUE = (r'''"(?:[^"\\\r\n]|\\[^\r\n]){1,512}"?|'''
          r"""'(?:[^'\\\r\n]|\\[^\r\n]){1,512}'?|"""
          r'''[^\s"',;]{1,512}''')
-SECRET_VALUE = (r'''"(?=(?:[^"\\\r\n]|\\[^\r\n]){0,512}[A-Za-z])(?:[^"\\\r\n]|\\[^\r\n]){8,512}"?|'''
-                r"""'(?=(?:[^'\\\r\n]|\\[^\r\n]){0,512}[A-Za-z])(?:[^'\\\r\n]|\\[^\r\n]){8,512}'?|"""
+# In quotes, SECRET_VALUE's 8 characters count either as written up to the first
+# quote, as before quoted values held escapes, or with a backslash and the
+# character after it as one, and its letter may follow a backslash, as in \u0061.
+SECRET_VALUE = (r'''"(?=[^"\r\n]{8}|(?:[^"\\\r\n]|\\[^\r\n]){8})(?=(?:[^"\\\r\n]|\\[^\r\n]){0,512}\\?[A-Za-z])(?:[^"\\\r\n]|\\[^\r\n]){1,512}"?|'''
+                r"""'(?=[^'\r\n]{8}|(?:[^'\\\r\n]|\\[^\r\n]){8})(?=(?:[^'\\\r\n]|\\[^\r\n]){0,512}\\?[A-Za-z])(?:[^'\\\r\n]|\\[^\r\n]){1,512}'?|"""
                 r'''(?=[^\s"',;]{0,512}[A-Za-z])[^\s"',;]{8,512}''')
 # Korean names, a particle, ":", "=" or white space, then a value of ASCII
 # letters, digits and symbols only: a Hangul value is a sentence, not a secret.
@@ -35,8 +38,8 @@ KO_SEPARATOR = r'''(?:[은는이가을를][ \t]*(?:[:=][ \t]*)?|["']?[ \t]*[:=][
 KO_VALUE = (r'''"(?:[\t !#-\[\]-~]|\\[\t -~]){1,512}"?|'''
             r"""'(?:[\t -&(-\[\]-~]|\\[\t -~]){1,512}'?|"""
             r'''[!#-&(-+\--:<-~]{1,512}''')
-KO_SECRET_VALUE = (r'''"(?=(?:[\t !#-\[\]-~]|\\[\t -~]){0,512}[A-Za-z])(?:[\t !#-\[\]-~]|\\[\t -~]){8,512}"?|'''
-                   r"""'(?=(?:[\t -&(-\[\]-~]|\\[\t -~]){0,512}[A-Za-z])(?:[\t -&(-\[\]-~]|\\[\t -~]){8,512}'?|"""
+KO_SECRET_VALUE = (r'''"(?=[ !#-~]{8}|(?:[\t !#-\[\]-~]|\\[\t -~]){8})(?=(?:[\t !#-\[\]-~]|\\[\t -~]){0,512}\\?[A-Za-z])(?:[\t !#-\[\]-~]|\\[\t -~]){1,512}"?|'''
+                   r"""'(?=[ -&(-~]{8}|(?:[\t -&(-\[\]-~]|\\[\t -~]){8})(?=(?:[\t -&(-\[\]-~]|\\[\t -~]){0,512}\\?[A-Za-z])(?:[\t -&(-\[\]-~]|\\[\t -~]){1,512}'?|"""
                    r'''(?=[!#-&(-+\--:<-~]{0,512}[A-Za-z])[!#-&(-+\--:<-~]{8,512}''')
 PATTERNS = (
     ("private-key", r"-{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)"),
@@ -94,9 +97,10 @@ def _phrase(match):
     """A Korean value's quote, left open before a character outside ASCII such as
     Hangul, holds a phrase when a quote of its kind closes it later on the line,
     right after a character other than white space, as in
-    API 키는 "Settings 메뉴"에서 만듭니다. Any other open quote hides nothing."""
+    API 키는 "Settings 메뉴"에서 만듭니다. Any other open quote hides nothing, and
+    a value that holds a backslash is code, never a phrase."""
     value = match.string[match.end(1):match.end()]
-    if not _open(value):
+    if "\\" in value or not _open(value):
         return False
     after = match.string[match.end():match.end() + 1]
     if not after or after.isascii():  # the end of the text or line, the length limit or a lone backslash
@@ -107,11 +111,12 @@ def _phrase(match):
 
 
 def _korean_value(match):
-    """After a Korean password name: not punctuation alone, a count or a phrase in quotes."""
+    """After a Korean password name: not punctuation alone, a count or a phrase in quotes.
+    A value with a letter or a backslash is never a count."""
     value = match.string[match.end(1):match.end()]
     if not re.search("[A-Za-z0-9]", value) or _phrase(match):
         return False
-    if value[0] in "\"'" and not _open(value) or re.search("[A-Za-z]", value):
+    if value[0] in "\"'" and not _open(value) or re.search(r"[A-Za-z\\]", value):
         return True
     return not COUNTER.match(match.string, match.end())
 
