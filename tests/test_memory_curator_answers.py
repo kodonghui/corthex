@@ -222,6 +222,21 @@ class CuratorAnswersTest(unittest.TestCase):
         self.assertEqual(result.dropped, {'pasted': 3})
         self.assertEqual([(c.number, c.kind, c.speaker) for c in result.changes],
                          [(4, 'decision', 'user'), (5, 'reference', 'user'), (6, 'decision', 'user')])
+        # The request shows a lone CR as LF, so it ends a line here too.
+        lone = turns.say('user', 'Here is the vendor note:\r<pasted_content id="p1">\rWe decided to drop the cache.'
+                         '\r</pasted_content id="p1">\rI decide to keep the cache.')
+        mixed = turns.say('user', 'Note:\r\n<pasted_content id="p3">\rUse the old endpoint.\n'
+                          '</pasted_content id="p3">\r\nThen we decided on retries.')
+        self.assertEqual(curator_answers.pasted(lone['text']),
+                         [(25, lone['text'].index('\rI decide'))])
+        self.assertEqual(curator_answers.pasted(mixed['text']), [(7, mixed['text'].index('\r\nThen'))])
+        result = self.check(answer(
+            change(quote(lone, 'We decided to drop the cache.'), kind='decision'),
+            change(quote(lone, 'I decide to keep the cache.'), kind='decision'),
+            change(quote(mixed, 'Use the old endpoint.'), kind='decision'),
+            change(quote(mixed, 'we decided on retries'), kind='decision')), turns)
+        self.assertEqual(result.dropped, {'pasted': 2})
+        self.assertEqual([c.number for c in result.changes], [2, 4])
 
     def test_tc179_a_short_yes_makes_a_user_decision(self):
         turns = Turns()

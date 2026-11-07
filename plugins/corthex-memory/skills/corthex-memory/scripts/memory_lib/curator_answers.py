@@ -24,6 +24,7 @@ QUOTES = 20
 ITEM_BYTES = 64 * 1024
 _OPEN = re.compile(r'[ \t]*<pasted_content id="([^"]*)">[ \t]*\Z')
 _CLOSE = re.compile(r'[ \t]*</pasted_content id="([^"]*)">[ \t]*\Z')
+_BREAK = re.compile(r'\r\n|\r|\n')
 
 
 def schema():
@@ -97,18 +98,19 @@ def pasted(text):
 
     A span opens at a line `<pasted_content id="...">` and closes at the line
     `</pasted_content id="...">` with the same ID; without one it runs to the end.
+    Lines end at CR LF, LF or a lone CR, as the request shows each as LF.
     """
     spans, opened, name, at = [], None, None, 0
-    for line in text.split('\n'):
-        bare = line[:-1] if line.endswith('\r') else line
+    for end in [m.start() for m in _BREAK.finditer(text)] + [len(text)]:
+        line = text[at:end]
         if opened is None:
-            match = _OPEN.match(bare)
+            match = _OPEN.match(line)
             if match:
                 opened, name = at, match.group(1)
-        elif _CLOSE.match(bare) and _CLOSE.match(bare).group(1) == name:
-            spans.append((opened, at + len(bare)))
+        elif _CLOSE.match(line) and _CLOSE.match(line).group(1) == name:
+            spans.append((opened, end))
             opened = None
-        at += len(line) + 1
+        at = end + (2 if text.startswith('\r\n', end) else 1)
     if opened is not None:
         spans.append((opened, len(text)))
     return spans
