@@ -334,3 +334,5 @@ TASK-074 final header publication requires the exact live initialized completion
 The finalizer code and its tests are unchanged from the earlier source. This combined source also includes the archive directory binding regression for both earlier resume paths. It requires full suite verification and fresh current-commit platform CI.
 
 The finalizer's combined validation includes the canonical temporary-project fixture used for earlier barrier checks.
+
+TASK-079 closes with the rejected-key status and client-level loopback cases. The C1 status reader keeps the latest usage line of each API this month and shows a set key as `rejected` while that line is a failed call with `authentication_error`; any later line of that API, a free token count included, clears it. C1 makes no model calls, so installed stores show no change; C2 status (TASK-096) shows it for format-2 stores. TC-121, TC-123, TC-125, TC-128 and TC-133 pass; TC-122, TC-124, TC-130, TC-131 and TC-132 keep partial verdicts for TASK-080. No real API call, key request, hook activation, migration or release tag is part of this task.
