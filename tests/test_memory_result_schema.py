@@ -22,7 +22,7 @@ class PackagedResultSchemaTest(unittest.TestCase):
     def test_tc333_all_result_fixtures_retain_independent_schema_verdicts(self):
         schema = load_json(PLUGIN / RESOURCE)
         examples = load_json(ROOT / "docs/06-api/memory-examples.json")["result"]
-        self.assertEqual((len(examples["valid"]), len(examples["invalid"])), (38, 13))
+        self.assertEqual((len(examples["valid"]), len(examples["invalid"])), (42, 14))
         for group, fits in (("valid", True), ("invalid", False)):
             for name, value in examples[group].items():
                 with self.subTest(group=group, example=name):

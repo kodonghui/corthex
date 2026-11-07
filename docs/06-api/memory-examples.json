@@ -1511,6 +1511,55 @@
           ],
           "limit": 10
         }
+      },
+      "migrate-asks": {
+        "command": "migrate",
+        "outcome": "confirm",
+        "code": "ok",
+        "say": "Migration moves this memory store to format 2 for curation and recall. Before you confirm, update the CORTHEX memory plugin to this release in both Claude Code and Codex on this device and close every other session that uses it; older versions cannot record into the moved store.",
+        "data": {
+          "phase": "fresh",
+          "release": "0.3.0",
+          "projects": [
+            "corthex"
+          ],
+          "binding": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "confirm": "3k8m2q7v"
+      },
+      "migrate-done": {
+        "command": "migrate",
+        "outcome": "done",
+        "code": "ok",
+        "say": "The memory store now uses format 2. Sessions with this release record into it.",
+        "data": {
+          "phase": "migrated",
+          "resumed": "initialization",
+          "release": "0.3.0",
+          "projects": [
+            "corthex"
+          ]
+        }
+      },
+      "migrate-blocked": {
+        "command": "migrate",
+        "outcome": "refused",
+        "code": "migration-blocked",
+        "say": "This memory store cannot be migrated now; data.reason names why. Nothing was changed.",
+        "data": {
+          "reason": "migration-record-ambiguous"
+        }
+      },
+      "migrate-stopped": {
+        "command": "migrate",
+        "outcome": "failed",
+        "code": "migration-stopped",
+        "say": "The migration stopped part way and kept what it had written; data.reason says why when known. Older plugin versions cannot record into this store until it finishes. Run migrate again to resume it; if the store changed, undo that change first.",
+        "data": {
+          "phase": "final-headers",
+          "release": "0.3.0",
+          "reason": "deadline"
+        }
       }
     },
     "invalid": {
@@ -1699,6 +1748,15 @@
             }
           ],
           "limit": 10
+        }
+      },
+      "migrate-stopped-as-refusal": {
+        "command": "migrate",
+        "outcome": "refused",
+        "code": "migration-stopped",
+        "say": "The migration stopped part way.",
+        "data": {
+          "phase": "headers"
         }
       }
     }

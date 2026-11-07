@@ -8,7 +8,7 @@ a fresh migration, or the resume of headers, initialization or finalization.
 The classification is a read-only hint. Every effect and every verification
 stays with the component that owns it, under the original ordered owner.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -38,6 +38,8 @@ class MigrationRefused(ValueError):
 class Plan:
     phase: str
     nonce: object = None
+    # The (device, made) pair of the named headers; a hint, not compared.
+    identity: object = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)
@@ -141,8 +143,9 @@ def plan(root, *, release):
     values = [value for _, value in named]
     if len({(value['device'], value['made']) for value in values}) != 1:
         raise MigrationRefused('store-damaged')
+    identity = values[0]['device'], values[0]['made']
     if kinds == {'c1'}:
-        return Plan('fresh')
+        return Plan('fresh', identity=identity)
     releases = {value['release'] for kind, value in named if kind != 'c1'}
     markers = [value['migrating'] for value in values if 'migrating' in value]
     if 'c1' in kinds and 'completed' in kinds or len(releases) != 1 or any(m != markers[0] for m in markers):
@@ -158,23 +161,25 @@ def plan(root, *, release):
             raise MigrationRefused('migration-record-ambiguous')
         if not unfinished:
             # A completed store needs nothing from this release, older or newer.
-            return Plan('complete', matches[0][0] if len(matches) == 1 else None) if matches else Plan('format-2')
+            if not matches:
+                return Plan('format-2', identity=identity)
+            return Plan('complete', matches[0][0] if len(matches) == 1 else None, identity)
     # Every resume publishes the release that the interrupted migration fixed.
     if expected['release'] != release:
         raise MigrationRefused('release-changed')
     if not markers:
-        return Plan('final-headers', unfinished[0][0])
+        return Plan('final-headers', unfinished[0][0], identity)
     if not matches:
         raise MigrationRefused('migration-record-unavailable')
     if len(matches) > 1:
         raise MigrationRefused('migration-record-ambiguous')
     nonce, marks = matches[0]
     if 'completed' in kinds:
-        return Plan('final-headers', nonce)
+        return Plan('final-headers', nonce, identity)
     for mark, phase in (('headers-complete.json', 'headers'), ('initialization-complete.json', 'initialization')):
         if mark not in marks:
-            return Plan(phase, nonce)
-    return Plan('finalization', nonce)
+            return Plan(phase, nonce, identity)
+    return Plan('finalization', nonce, identity)
 
 
 def migrate(root, *, release, when, deadline, verify_quiescence, verify_c1_lineage, verify_current_privacy):

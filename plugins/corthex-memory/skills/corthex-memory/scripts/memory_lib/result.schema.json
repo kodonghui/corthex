@@ -35,6 +35,7 @@
         "conflicts",
         "runs",
         "undo",
+        "migrate",
         "none"
       ]
     },
@@ -75,7 +76,9 @@
         "newer-format",
         "internal",
         "conflict-not-found",
-        "run-not-found"
+        "run-not-found",
+        "migration-blocked",
+        "migration-stopped"
       ]
     },
     "say": {
@@ -182,7 +185,8 @@
                 "files-left",
                 "lock-busy",
                 "unreachable",
-                "internal"
+                "internal",
+                "migration-stopped"
               ]
             },
             "outcome": {
@@ -211,7 +215,8 @@
                 "other-files",
                 "newer-format",
                 "conflict-not-found",
-                "run-not-found"
+                "run-not-found",
+                "migration-blocked"
               ]
             },
             "outcome": {
@@ -555,6 +560,24 @@
               },
               "data": {
                 "$ref": "#/$defs/data-undo"
+              }
+            }
+          },
+          {
+            "properties": {
+              "command": {
+                "const": "migrate"
+              },
+              "code": {
+                "enum": [
+                  "ok",
+                  "confirm-stale",
+                  "migration-blocked",
+                  "migration-stopped"
+                ]
+              },
+              "data": {
+                "$ref": "#/$defs/data-migrate"
               }
             }
           }
@@ -2387,6 +2410,64 @@
               "binding"
             ]
           }
+        }
+      }
+    },
+    "data-migrate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "phase": {
+          "description": "Asking: where the migration starts; nothing: complete or format-2; done: migrated; with migration-stopped: where the next run resumes, when known.",
+          "enum": [
+            "fresh",
+            "headers",
+            "initialization",
+            "finalization",
+            "final-headers",
+            "complete",
+            "format-2",
+            "migrated"
+          ]
+        },
+        "resumed": {
+          "description": "Once done: the phase that this run resumed; absent for a fresh migration.",
+          "enum": [
+            "headers",
+            "initialization",
+            "finalization",
+            "final-headers"
+          ]
+        },
+        "release": {
+          "description": "The plugin release that the migrated store records.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "projects": {
+          "description": "The configured projects, by name.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/project-name"
+          }
+        },
+        "binding": {
+          "description": "Asking: the lowercase SHA-256 of the store folder, the phase and its record, the named headers and the configuration copies that the confirmation binds.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "reason": {
+          "description": "With migration-blocked: why the store cannot be migrated now; unsupported-release means the C1 release that made the store, or the running release, is not one this migration supports. With migration-stopped: why the run stopped, when known; deadline means the operation deadline passed, and store-changed means the store, its configuration or the confirmed facts changed after the migration began.",
+          "enum": [
+            "unsupported-release",
+            "release-changed",
+            "migration-record-unavailable",
+            "migration-record-ambiguous",
+            "store-contents",
+            "deadline",
+            "store-changed"
+          ]
         }
       }
     }
