@@ -74,6 +74,7 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | API-151 | `conflicts` | command | SPEC-143 | active |
 | API-152 | `runs` | command | SPEC-144 | active |
 | API-153 | `undo` | command | SPEC-145, SPEC-012 | active |
+| API-154 | `migrate` | command | SPEC-039 | active |
 
 ## Hooks
 
@@ -492,6 +493,7 @@ An undo confirmation preview (outcome=confirm, including confirm-stale) requires
 | `conflicts` | API-151 | `[--dismiss <candidate>]` | no | List open candidates, or dismiss one without changing its items (SPEC-143) |
 | `runs` | API-152 | `[--limit N]` | no | Recent eligible runs newest first, 10 by default: ID, kind, times, change counts, up to three saved-item titles and undo eligibility (SPEC-144) |
 | `undo` | API-153 | `<run>` | yes, showing what it changes and what later changes stay | Reverse the confirmed run as a new run (SPEC-145) |
+| `migrate` | API-154 | | yes, after asking to update both hosts and close other sessions | Move the device's format-1 memory store to format 2, or finish a migration that stopped, under the documented maintenance interval (SPEC-039) |
 
 What each command's `data` holds, in brief; the result schema has every field, and [memory-examples.json](memory-examples.json) an example of most outcomes:
 
@@ -509,6 +511,7 @@ What each command's `data` holds, in brief; the result schema has every field, a
 - `sync`: `state` (`on` or `off`), `address`, `branch`, `checked_by`, for `now` `pulled` and `pushed`, and with `other-files` up to 20 of the `other` paths.
 - `setup`: `project`, `at`, and `script`, the text to put in the environment's setup ([below](#setup-for-a-temporary-device)).
 - `repair`: `device`, once done the new device ID; with a readable record, the current device and `nothing`. A missing memory directory returns `nothing` with empty data and guidance to use `on`; only `on` creates that directory. Repair writes only an irrecoverable store record in an existing directory and preserves configuration, consent and all other memory.
+- `migrate`: `phase`, `release`, `projects` and, when it asks, `binding`; once done, `resumed` when the run finished a stopped migration; with `migration-blocked`, `reason`; with `migration-stopped`, the `phase` that the next run resumes and the `reason`, when known.
 
 C2 forget data.history_records counts history records removed or with a nonempty why cleared. Clear all surviving reasons and prevent staged/recovery copies from reviving them before claiming success. Explain before confirmation that retained prior text may lose an older undo's exact history link. Undo previews omit empty reasons.
 
@@ -541,6 +544,17 @@ A release that sends new kinds of data raises the version, and each device asks 
 
 The script holds no key: the keys go into the environment's secret settings (SPEC-011, SPEC-031).
 
+### Migrating the store (API-154)
+
+`migrate` moves the device's format-1 memory store to format 2 (TBL-001), or finishes a migration that stopped part way. It is a store command: it takes no project, and the store gate's `store-newer` does not refuse it, because a stopped migration leaves format-2 headers. It may run only in the documented maintenance interval, which no process list or lock can prove, so it always asks first:
+
+- Without `--confirm` it classifies the store and changes nothing. A complete or format-2 store returns `nothing`. Otherwise it returns `confirm` with `phase`, `release`, the configured `projects` and `binding`, the SHA-256 of the store folder, the phase and its record, the named headers' bytes and the bytes of every configuration copy. `say` asks the user to update the plugin to this release in both Claude Code and Codex on the device and to close every other session first, because older releases cannot record into a migrated store.
+- A fresh migration is refused with `migration-blocked` and `unsupported-release` unless each named header whose bytes the preview hashes is a format-1 store record made by a supported C1 release, 0.2.0 or 0.2.1; every migration also needs a running C2 release, 0.3.0 or later. A classification that the migration driver refuses returns its common code (`no-store`, `store-damaged` or `store-newer`) or `migration-blocked` with its reason.
+- The user's yes runs the migration driver once, with a nine-minute operation deadline so that the command answers within a ten-minute host command limit; a busy lease refuses at once instead of waiting. Its interval, lineage and privacy checks pass only while the store folder, device ID, creation time and target release match the confirmed preview and every configuration copy matches the reviewed bytes; any change stops the migration without rollback. Once the driver's owner holds every lease, and before any effect, the named headers it observed must be exactly the bytes that the preview hashed, so a header changed after the yes, even to another supported release, is never migrated; a fresh migration then returns `migration-blocked` with `store-contents` and changes nothing. Nothing in the command decides that other sessions are closed: the user's yes is that fact.
+- A failure before any named header changed returns its cause (`lock-busy`, `migration-blocked` with `store-contents`, or `internal`). A stop after that returns `migration-stopped` with the `phase` that the next run resumes and, when known, `reason`: `deadline` when the operation deadline passed, or `store-changed` when the store, its configuration or a confirmed fact changed after the migration began. Old releases stay refused meanwhile (TC-390), and the agent runs `migrate` again after the user's yes. The migration records keep the original bytes, so a resume after `store-changed` succeeds only once that change is undone; for example, a configuration edited during the run must be put back. The agent gives the command the longest command timeout its host allows.
+
+Before 0.3.0 the command runner does not accept `migrate`, so an installed plugin keeps C1 behaviour and the command answers `usage`. The 0.3.0 activation adds it together with the C2 hooks.
+
 ## Model calls
 
 ### Common rules
@@ -558,7 +572,7 @@ The internal protocol components do not activate a hook/command or supply consen
 
 One original absolute operation deadline includes attempts and retry waits; connection and byte-gap limits never renew it. A blocking-operation socket timeout alone is not a whole-operation deadline. Every actual attempt has a new TASK-078 accounting context and original credential/price/send-time snapshot. Known timeout_error on HTTP500 is preserved as a passing timeout kind, alongside the table's default api_error; unknown provider strings are still discarded. Local HTTP/HTTPS fixtures establish transport evidence, not real-provider or real-user quality acceptance.
 
-PR #140 supplied the single isolated wire attempt and bounded SSE reader. The subsequent private client assembles/redacts fixed requests, owns retries and connects per-attempt usage; rejected-key presentation remains separate. HTTP is allowed only for an explicit loopback test URL and bypasses environment proxies; the connected peer is checked before sending authentication. HTTPS requires TLS 1.2 or newer and retains certificate/hostname verification and environment proxy/certificate settings, including on Python 3.8. Redirects are refused. Keys/body travel through private stdin, never process arguments or store files. The parent checks the original caller gate and absolute deadline through startup, DNS, TLS, headers and streaming, then kills/reaps its own child. Process creation and OS teardown themselves are blocking system calls; a late return is checked before sending or accepting results, with cleanup uncertainty reported separately, rather than claiming hard kernel preemption. SSE text/action-kind enum normalization grants no quote/provenance or application authority.
+PR #140 supplied the single isolated wire attempt and bounded SSE reader. The subsequent private client assembles/redacts fixed requests, owns retries and connects per-attempt usage. The memory status shows a set key as `rejected` while this month's latest usage line of its API is a failed call with `authentication_error`; any later line of that API, a free token count included, clears it. HTTP is allowed only for an explicit loopback test URL and bypasses environment proxies; the connected peer is checked before sending authentication. HTTPS requires TLS 1.2 or newer and retains certificate/hostname verification and environment proxy/certificate settings, including on Python 3.8. Redirects are refused. Keys/body travel through private stdin, never process arguments or store files. The parent checks the original caller gate and absolute deadline through startup, DNS, TLS, headers and streaming, then kills/reaps its own child. Process creation and OS teardown themselves are blocking system calls; a late return is checked before sending or accepting results, with cleanup uncertainty reported separately, rather than claiming hard kernel preemption. SSE text/action-kind enum normalization grants no quote/provenance or application authority.
 
 ### Requests to the curator model
 
@@ -796,8 +810,8 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 The search index splits text into words in the way named `words-1`, which `index_meta` records (TBL-019); another way of splitting is another version, and the index is then built again.
 
 1. The text in NFC, then in lower case. Identifiers are found before lower-casing.
-2. Identifiers: each run of letters A to Z, digits, `_`, `.`, `/` and `-`, with `.`, `/` and `-` stripped from its end, of 2 to 100 characters, that has a letter and also a digit, `_`, `.` or `/`, or a capital letter after its first character, such as `REQ-001`, `memory.py`, `src/app` or `getItem`. Each is one word.
-3. Each run of letters and digits outside the scripts of step 4 is a word, of at most 100 characters; longer runs are skipped. This step runs over the whole text, so the parts of an identifier are words too.
+2. Identifiers: each run of letters A to Z in either case, digits 0 to 9, `_`, `.`, `/` and `-`, with `.`, `/` and `-` stripped from its end, of 2 to 100 characters, that has a letter and also a digit, `_`, `.` or `/`, or a capital letter after its first character, such as `REQ-001`, `memory.py`, `src/app` or `getItem`. Each is one word. A run that touches another letter, digit or combining mark outside the scripts of step 4 is part of a longer word and not an identifier, as `CAF` in `CAFÉ`; the scripts of step 4 may touch it, as in `REQ-001을`.
+3. Each run of letters and digits outside the scripts of step 4 is a word, of at most 100 characters; longer runs are skipped. This step runs over the whole text, so the parts of an identifier are words too. Letters are the Unicode letter categories (L) and digits the decimal digits (Nd); a combining mark (M) stays in the run it follows, and any other character separates words.
 4. Hangul (U+1100 to U+11FF, U+3130 to U+318F, U+AC00 to U+D7A3), CJK ideographs (U+3400 to U+4DBF, U+4E00 to U+9FFF, U+F900 to U+FAFF), Hiragana and Katakana (U+3040 to U+30FF): each run gives its overlapping pairs of characters, and a run of one character gives that character.
 5. No stop words.
 
@@ -805,7 +819,7 @@ An item's words come from its kind, title, text and the words of its quotes. For
 
 ### Search
 
-- By words: BM25 over the project's items, with k1 1.2 and b 0.75, the weight of a word ln(1 + (N − n + 0.5) ÷ (n + 0.5)), where N is the number of items and n the number that hold the word, and each item's length its number of words (`terms`, TBL-020).
+- By words: BM25 over the project's items, with k1 1.2 and b 0.75, the weight of a word ln(1 + (N − n + 0.5) ÷ (n + 0.5)), where N is the number of items and n the number that hold the word, and each item's length its number of words (`terms`, TBL-020). Each distinct word of the request counts once, and items with equal scores go in the order of their IDs.
 - By meaning, with consent and the OpenAI memory key: the request is embedded (API-012) and items are ranked by the cosine of the vectors.
 - Both: an item's score is the sum, over the rankings it is in, of 1 ÷ (60 + its rank). `--words-only` skips the embedding; without consent or the key, the search goes by words and says so (SPEC-025).
 - Search covers items of every status, each marked with its status (SPEC-025).
@@ -967,7 +981,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | --- | --- | --- | --- |
 | `usage` | refused | all | Unknown command or arguments, with `command` `none` when the command is unknown; exit status 2 |
 | `no-store` | refused, or nothing for `status` | all but `on`, `purge` and `repair` | No memory store yet; `on` makes one |
-| `store-newer` | refused | all but `purge` | The memory store is from a newer release |
+| `store-newer` | refused | all but `purge` and `migrate` | The memory store is from a newer release |
 | `store-damaged` | refused | all but `purge` and `repair` | The store record is missing or damaged; `repair` writes a new one |
 | `configuration-invalid` | refused | all but `status`, `purge` and `repair` for a schema-invalid configuration; every command for an invalid `CORTHEX_MEMORY_HOME` | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion; `data.field` names the field or environment variable. When it is `CORTHEX_MEMORY_HOME`, `status`, `purge` and `repair` are also refused: there is no store to act on, no command falls back to the default folder, and `say` explains the refusal without changing the result schema |
 | `no-project-list` | refused | the commands for a project | The project list is missing or cannot be read |
@@ -991,6 +1005,8 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `internal` | failed | all | An unexpected error; `data.error` and the failure log name its class |
 | `conflict-not-found` | refused | `conflicts` | No such open candidate; data.open lists the open ones |
 | `run-not-found` | refused | `undo` | No such complete eligible run of the project within retention; data.runs lists recent runs |
+| `migration-blocked` | refused | `migrate` | The store cannot be migrated as it is; `data.reason` is `unsupported-release` (the C1 release of the store, or the running release), `release-changed`, `migration-record-unavailable`, `migration-record-ambiguous` or `store-contents`, and nothing changed |
+| `migration-stopped` | failed | `migrate` | The migration stopped after a named header changed and kept its effects; `data.phase` names where `migrate` resumes and `data.reason`, when known, is `deadline` or `store-changed` |
 
 ## Breaking changes
 
