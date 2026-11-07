@@ -4,6 +4,7 @@ import importlib.util
 import contextlib
 import io
 import json
+import struct
 import tempfile
 import threading
 import time
@@ -140,6 +141,49 @@ class HostCaptureTest(unittest.TestCase):
                      "wsl_launcher":"system/bash.exe","powershell_version":"5.1.1"}
         for label in ("no-git-bash", "powershell-5.1-only"):
             self.assertEqual(self.run_fake_host(label=label, inventory=inventory), 0)
+
+    def app_alias_buffer(self, *, family=None, app=None, target=None, tag=None, version=3):
+        aliases = self.fixture.windows_app_alias
+        family = family or aliases._WSL_FAMILY
+        app = app or family + "!wsl"
+        package = aliases._WSL_NAME + "_2.7.11.0_x64__8wekyb3d8bbwe"
+        target = target or r"C:\Program Files\WindowsApps" + "\\" + package + r"\wsl.exe"
+        payload = struct.pack("<I", version) + "\0".join((family, app, target, "0", "")).encode("utf-16-le")
+        return struct.pack("<IHH", tag if tag is not None else aliases.APP_EXEC_LINK, len(payload), 0) + payload
+
+    def test_windows_alias_requires_the_wsl_reparse_type_package_and_target(self):
+        aliases = self.fixture.windows_app_alias
+        buffer = self.app_alias_buffer()
+        self.assertTrue(aliases.is_wsl(aliases.decode(buffer)))
+        for raw in (buffer[:-1], self.app_alias_buffer(tag=0xA000000C), self.app_alias_buffer(version=2)):
+            with self.subTest(raw=raw[:12]):
+                self.assertIsNone(aliases.decode(raw))
+        for options in ({"family": "GitForWindows.App_123"}, {"app": aliases._WSL_FAMILY + "!other"},
+                        {"target": r"C:\Program Files\Git\bin\bash.exe"},
+                        {"target": r"C:\Temp\MicrosoftCorporationII.WindowsSubsystemForLinux_2.7.11.0_x64__8wekyb3d8bbwe\wsl.exe"}):
+            with self.subTest(options=options):
+                self.assertFalse(aliases.is_wsl(aliases.decode(self.app_alias_buffer(**options))))
+
+    def test_wsl_app_alias_does_not_hide_another_bash_or_sh(self):
+        aliases = self.fixture.windows_app_alias
+        path = r"C:\Sandbox\AppData\Local\Microsoft\WindowsApps\bash.exe"
+        legacy = r"C:\Windows\System32\bash.exe"
+        metadata = aliases.decode(self.app_alias_buffer())
+        inventory = {"found": {"bash": path.lower(), "powershell": "powershell.exe"},
+                     "wsl_launcher": legacy, "powershell_version": "5.1.26100",
+                     "bash_candidates": [legacy, path],
+                     "windows_apps_bash": {"path": path, "metadata": metadata, "verified_wsl": True}}
+        for label in ("no-git-bash", "powershell-5.1-only"):
+            with self.subTest(label=label):
+                self.assertEqual(self.run_fake_host(label=label, inventory=inventory), 0)
+                for name in ("bash.exe", "sh.exe"):
+                    extra = r"D:\PortableGit\usr\bin" + "\\" + name
+                    self.assertEqual(self.run_fake_host(label=label, inventory=dict(
+                        inventory, bash_candidates=[legacy, path, extra])), 1)
+                unknown = dict(inventory, windows_apps_bash={"path": path, "metadata": None, "verified_wsl": False})
+                self.assertEqual(self.run_fake_host(label=label, inventory=unknown), 1)
+                unknown["windows_apps_bash"]["verified_wsl"] = True
+                self.assertEqual(self.run_fake_host(label=label, inventory=unknown), 1)
 
     def test_controlled_evidence_omits_unrelated_slow_shell_diagnostics(self):
         self.assertEqual(self.run_fake_host(evidence=True), 0)

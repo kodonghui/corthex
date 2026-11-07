@@ -13,6 +13,7 @@ otherwise; any other failure is part of the report.
 
 import gzip
 import json
+import ntpath
 import os
 import platform
 import re
@@ -31,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import native_evidence
 import benchmark_hooks
 import native_benchmark
+import windows_app_alias
 from network_proxy import NetworkProxy
 
 REPO = Path(__file__).resolve().parents[2]
@@ -281,6 +283,9 @@ def facts():
     found = {name: shutil.which(name, path=env.get("PATH")) for name in names}
     result = {"platform": platform.platform(), "python": sys.version.split()[0], "found": found,
               "git_bash": str(GIT_BASH) if GIT_BASH.exists() else None}
+    image_version = os.environ.get("ImageVersion")
+    if image_version:
+        result["runner_image"] = {"os": os.environ.get("ImageOS"), "version": image_version}
     system = os.environ.get("SystemRoot")
     result["wsl_launcher"] = str(Path(system)/"System32/bash.exe") if os.name == "nt" and system else None
     folders = (Path(folder.strip('"')) for folder in env.get("PATH", "").split(os.pathsep))
@@ -290,6 +295,11 @@ def facts():
             result[name + "_version"] = run([found[name], "-NoProfile", "-NonInteractive", "-Command",
                                              "$PSVersionTable.PSVersion.ToString()"], env, timeout=60)["stdout"].strip()
     apps = Path(env.get("LOCALAPPDATA", "")) / "Microsoft" / "WindowsApps"
+    if os.name == "nt" and apps.is_absolute():
+        alias = apps / "bash.exe"
+        metadata = windows_app_alias.read(alias)
+        result["windows_apps_bash"] = {"path": str(alias), "metadata": metadata,
+                                       "verified_wsl": windows_app_alias.is_wsl(metadata)}
     result["windows_apps_python"] = sorted(p.name for p in apps.glob("python*")) if apps.is_dir() else None
     return result
 
@@ -606,16 +616,26 @@ def summary(report):
 
 
 def shell_variant_ok(label, info):
+    if label not in ("git-bash", "no-git-bash", "powershell-5.1-only"):
+        return True
     found = info.get("found", {})
-    if label in ("git-bash","no-git-bash","powershell-5.1-only") and (not isinstance(found,dict) or not found or "crash" in info):
+    if not isinstance(found, dict) or not found or "crash" in info:
         return False
-    bashes, launcher = [found.get("bash")] + info.get("bash_candidates", []), info.get("wsl_launcher")
-    no_bash = not info.get("git_bash") and all(not bash or bool(launcher) and Path(bash).as_posix().casefold() == Path(launcher).as_posix().casefold() for bash in bashes)
+    if label == "git-bash":
+        return bool(info.get("git_bash"))
+
+    launcher = info.get("wsl_launcher")
+    wsl_paths = {ntpath.normcase(ntpath.normpath(launcher))} if launcher else set()
+    alias = info.get("windows_apps_bash", {})
+    if windows_app_alias.is_wsl(alias.get("metadata")):
+        wsl_paths.add(ntpath.normcase(ntpath.normpath(alias["path"])))
+    candidates = [found.get("bash"), found.get("sh"), *info.get("bash_candidates", ())]
+    no_bash = not info.get("git_bash") and all(
+        not path or ntpath.normcase(ntpath.normpath(path)) in wsl_paths for path in candidates)
     if label == "no-git-bash":
         return no_bash
-    if label == "powershell-5.1-only":
-        return no_bash and not found.get("pwsh") and bool(found.get("powershell")) and info.get("powershell_version", "").startswith("5.1.")
-    return label != "git-bash" or bool(info.get("git_bash"))
+    return (no_bash and not found.get("pwsh") and bool(found.get("powershell")) and
+            info.get("powershell_version", "").startswith("5.1."))
 
 
 def main():
