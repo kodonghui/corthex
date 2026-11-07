@@ -61,7 +61,7 @@ def owned_worker_exit(case, receipt):
     def identity():
         try:
             raw = Path("/proc/%d/stat" % pid).read_text()
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             if sys.platform.startswith("linux"):
                 return None
             result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "stat=", "-o", "lstart="],

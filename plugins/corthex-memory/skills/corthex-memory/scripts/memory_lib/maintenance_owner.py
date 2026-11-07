@@ -21,6 +21,7 @@ class Ownership:
     inventory: migration_inventory.Inventory
     _verify: object = field(repr=False, compare=False)
     _cleanup: list = field(repr=False, compare=False)
+    mode: str = 'migration'
 
     def check(self):
         self._verify()
@@ -50,7 +51,7 @@ def _same_inventory(before, after, acquired):
 
 
 @contextlib.contextmanager
-def acquire(folder, *, release, when, deadline, verify_quiescence):
+def _acquire(folder, *, release, when, deadline, verify_quiescence, finalization):
     """Own ordinary leases only after the actual interval owner's verification.
 
     The original callback takes canonical root and immutable store binding, and
@@ -60,10 +61,12 @@ def acquire(folder, *, release, when, deadline, verify_quiescence):
     if not callable(verify_quiescence):
         raise TypeError('original maintenance interval check required')
     store.MemoryStore._deadline(deadline)
-    before = migration_inventory.observe(folder, release=release, when=when, deadline=deadline)
+    observe=migration_inventory.observe_finalization if finalization else migration_inventory.observe
+    before = observe(folder, release=release, when=when, deadline=deadline)
     root, fence = before.folder, before._observer.fence
     header = store.json_document(before.headers.publications[0][1])
-    binding = header['device'], header['made'], header['release'], header['migrating']['started']
+    started=before.headers.started if finalization else header['migrating']['started']
+    binding = header['device'], header['made'], header['release'], started
     directories = tuple((name, identity) for name, (identity, _) in before._observer.dirs.items())
     original_root, original_identity = fence.root, fence.identity
     pid, acquired = os.getpid(), []
@@ -133,11 +136,11 @@ def acquire(folder, *, release, when, deadline, verify_quiescence):
             info = paths(lease.path)
             acquired[-1] = acquired[-1][:6] + ((info.st_dev, info.st_ino), acquired[-1][-1])
             check()
-        after = migration_inventory.observe(root, release=release, when=when, deadline=deadline)
+        after = observe(root, release=release, when=when, deadline=deadline)
         _same_inventory(before, after, acquired)
         admitted[0] = after._observer
         check()
-        ownership = Ownership(after, check, cleanup)
+        ownership = Ownership(after, check, cleanup,'finalization-only' if finalization else 'migration')
         issued = True
         yield ownership
     except BaseException as error:
@@ -159,3 +162,17 @@ def acquire(folder, *, release, when, deadline, verify_quiescence):
                     cleanup[0] = True
             if cleanup[0] and (not issued or failure[0] is None):
                 raise CleanupPending() from None
+
+
+def acquire(folder, *, release, when, deadline, verify_quiescence):
+    """Acquire the original migration-only interval; completed headers refuse."""
+    return _acquire(folder,release=release,when=when,deadline=deadline,verify_quiescence=verify_quiescence,finalization=False)
+
+
+def acquire_finalization(folder, *, release, when, deadline, verify_quiescence):
+    """Acquire only finalization leases under the actual C1/C2 quiet interval.
+
+    The immutable quiescence binding has the observed residual migration start,
+    or None if both headers are completed. No new start or lineage is invented.
+    """
+    return _acquire(folder,release=release,when=when,deadline=deadline,verify_quiescence=verify_quiescence,finalization=True)

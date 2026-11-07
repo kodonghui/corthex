@@ -184,10 +184,14 @@ def _walk(observer, folder, kind, payloads, raw_logs):
             payloads.append(path)
 
 
-def _collect(observer, release, when):
+def _collect(observer, release, when, *, finalization=False):
     names = observer.directory('.')
     headers = {n: observer.file(n, read=True) for n in _copies(names, 'store.json')}
-    proposal = migration_plan.header_fence(headers, release=release, when=when)
+    if finalization:
+        from . import migration_final_headers
+        proposal = migration_final_headers.observe(headers,release=release)
+    else:
+        proposal = migration_plan.header_fence(headers, release=release, when=when)
     configured, configuration = set(), []
     for name in _copies(names, 'configuration.json'):
         raw = observer.file(name, read=True)
@@ -207,7 +211,7 @@ def _collect(observer, release, when):
             for child in copies:
                 raw = observer.file(folder + '/' + child, read=True)
                 value = store.json_document(raw)
-                parsed = (format2.parse_curation(raw) if migrating and isinstance(value, dict) and 'fence' in value
+                parsed = (format2.parse_curation(raw) if finalization or migrating and isinstance(value, dict) and 'fence' in value
                           else curation.parse(raw))
                 raw_logs.update(parsed['logs'])
                 progress.append((child, raw))
@@ -238,7 +242,7 @@ def _collect(observer, release, when):
                      tuple(sorted(payloads)), observer)
 
 
-def observe(folder, *, release, when, deadline):
+def _observe(folder, *, release, when, deadline, finalization):
     """Observe only; unknown/missing/damaged inputs never trigger restoration.
 
     Configured missing folders remain absent. Existing unregistered projects
@@ -248,10 +252,19 @@ def observe(folder, *, release, when, deadline):
     observer = None
     try:
         observer = _Observer(folder, deadline)
-        return _collect(observer, release, when)
+        return _collect(observer, release, when,finalization=finalization)
     except Exception as error:
         if observer is not None:
             observer.revoked = True
         if isinstance(error, (locks.LostLock, locks.LockBusy)):
             raise
         raise InvalidInventory() from None
+
+
+def observe(folder, *, release, when, deadline):
+    return _observe(folder,release=release,when=when,deadline=deadline,finalization=False)
+
+
+def observe_finalization(folder, *, release, when, deadline):
+    """Read a named completed store without initialization or recovery effects."""
+    return _observe(folder,release=release,when=when,deadline=deadline,finalization=True)
