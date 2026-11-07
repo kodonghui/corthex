@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: ${{ matrix.lane.python }}
       # Node also checks the dependency-free browser helper.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       # FFmpeg runs corthex-uxui's media check on made-up clips; without it those tests are skipped.
@@ -68,7 +68,7 @@ jobs:
           python-version: ${{ matrix.python }}
           architecture: x64
           check-latest: true
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       # Discovery includes test_hub_cli_outcomes.py: one method per TASK-250 TC,
@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - run: npm install -g @anthropic-ai/claude-code@2.1.309
