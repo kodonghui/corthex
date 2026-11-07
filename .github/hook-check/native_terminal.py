@@ -85,6 +85,13 @@ class Terminal:
                             os.killpg(self.pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
+                        except PermissionError:
+                            # macOS answers EPERM once every member of the group has
+                            # exited but is not yet reaped. End the CLI itself, then reap it.
+                            try:
+                                os.kill(self.pid, signal.SIGKILL)
+                            except OSError:
+                                pass
                         _, self.status = os.waitpid(self.pid, 0)
         finally:
             try:
