@@ -5,8 +5,11 @@ cannot hold as U+FFFD, then NFC, then each run of white space, line breaks
 included, as one space; the words also lose the white space at both ends. The
 words as given are tried first, then with the request's escapes undone. The
 first place found that touches no forgotten range gives the quote's start and
-end in the stored text (TBL-012). Text that redaction replaced in the request
-is not in the stored text, so a quote of the replacement is never found.
+end in the stored text (TBL-012). A place counts only when that range of the
+stored text, compared the same way, is exactly the words; a place that begins
+or ends inside a cluster that NFC changed is narrowed within the cluster. Text
+that redaction replaced in the request is not in the stored text, so a quote
+of the replacement is never found.
 """
 import bisect
 import re
@@ -22,6 +25,9 @@ _UNESCAPED = {'amp': '&', 'lt': '<', 'gt': '>', 'quot': '"'}
 # one of them therefore never changes NFC, so runs of other characters can be
 # normalized as pieces, each with the character before it.
 _JOINING = re.compile('[^\u0000-\u02ff\uac00-\ud7a3]+')
+# At most this many stored ranges are tried for one place inside the clusters
+# at its two ends; past it only the whole clusters are.
+_NARROWING = 256
 
 
 def _clusters(text, start, end):
@@ -60,6 +66,7 @@ class Prepared:
     def __init__(self, text):
         if not isinstance(text, str):
             raise ValueError('invalid stored text')
+        self.text = text
         normal = curator_document.INVALID.sub('\ufffd', text)
         # low[i] and high[i]: the stored range that character i of the NFC text
         # came from; None when NFC changed nothing and the map is the identity.
@@ -92,12 +99,21 @@ class Prepared:
             return stop - 1 if end else start
         return stop + position - at - 1
 
-    def span(self, start, end):
-        """The stored [start, end) of the compared form's [start, end)."""
+    def spans(self, start, end):
+        """The stored ranges that the compared form's [start, end) may come from.
+
+        Each character of a cluster that NFC changed maps to the whole cluster,
+        so a place that begins or ends inside one may come from part of it:
+        every start in the first cluster is paired with every end in the last.
+        """
         first, last = self._normal(start, False), self._normal(end - 1, True)
         if self._low is None:
-            return first, last + 1
-        return self._low[first], self._high[last]
+            return [(first, last + 1)]
+        starts = range(self._low[first], self._high[first])
+        ends = range(self._high[last], self._low[last], -1)
+        if len(starts) * len(ends) > _NARROWING:
+            starts, ends = starts[:1], ends[:1]
+        return [(low, high) for low in starts for high in ends if low < high]
 
 
 def compared(words):
@@ -118,8 +134,9 @@ def find(stored, words, forgotten=()):
         target = compared(candidate)
         position = prepared.form.find(target) if target else -1
         while position >= 0:
-            start, end = prepared.span(position, position + len(target))
-            if not any(start < high and low < end for low, high in forgotten):
-                return start, end
+            for start, end in prepared.spans(position, position + len(target)):
+                if (Prepared(prepared.text[start:end]).form == target and
+                        not any(start < high and low < end for low, high in forgotten)):
+                    return start, end
             position = prepared.form.find(target, position + 1)
     return None

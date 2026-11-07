@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.8.0"
+  version: "0.9.0"
 ---
 
 # CORTHEX
@@ -41,6 +41,8 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 6. Done means checked. Say what you verified and what you did not. Copy numbers in records and reports from their named command output or source.
 7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
+
+In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
 
 ## 4. Route to a stage
 

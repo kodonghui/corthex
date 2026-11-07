@@ -4,6 +4,7 @@ TC-156, TC-158 and the TASK-083 part of TC-394 on synthetic records. Requests
 go only to a local test server, with a key made while the test runs.
 """
 import copy
+import itertools
 import json
 import os
 from pathlib import Path
@@ -20,7 +21,7 @@ import test_memory_model_transport as transport_fixture
 import test_memory_model_usage as usage_fixture
 from test_memory_model_stream import SCHEMA
 sys.path.insert(0, str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import base, conflict_types, curator_document, item_types, model_access, model_client
+from memory_lib import base, conflict_types, curator_answers, curator_document, item_types, model_access, model_client
 from memory_lib import model_request, quote_check, raw_log, request_inputs, state_types
 
 AT = '2026-11-04T03:00:00.000Z'
@@ -212,6 +213,24 @@ class CuratorDocumentTest(unittest.TestCase):
             curator_document.session(LOG, [entries[1], entries[0]])
         self.assertEqual(curator_document.entry_text(dict(text='abcdef', forgotten=[[3, 5], [0, 2], [1, 3]])),
                          '[forgotten]f')
+        # The raw log accepts integral JSON numbers such as 2.0; they count as the integers they are.
+        self.assertEqual(curator_document.entry_text(dict(text='abcdef', forgotten=[[3.0, 5.0], [0, 2.0]])),
+                         '[forgotten]c[forgotten]f')
+        for bad in ([[0.5, 2]], [[True, 2]], [[0, 2, 3]], [[0, float('nan')]], [[0, float('inf')]]):
+            with self.subTest(forgotten=bad), self.assertRaises(ValueError):
+                curator_document.entry_text(dict(text='abcdef', forgotten=bad))
+        floats = [dict(e, seq=float(e['seq']), **({'turn': float(e['turn'])} if 'turn' in e else {}))
+                  for e in entries]
+        value = curator_document.session(LOG, floats, after=2.0)
+        self.assertEqual([(t['seq'], len(t['entries'])) for t in value['turns']], [(2, 1), (4, 2)])
+        self.assertEqual({type(t['seq']) for t in value['turns']}, {int})
+        document = curator_document.curate(lines=[], items=[], form='full', sessions=[value])
+        self.assertEqual([t.get('seq') for t in ET.fromstring(document).iter('turn')], ['2', '4'])
+        split = dict(value, turns=[dict(value['turns'][0], seq=2.0, part=1.0, parts=2.0)])
+        turn, = ET.fromstring(curator_document.curate(lines=[], items=[], form='full', sessions=[split])).iter('turn')
+        self.assertEqual((turn.get('seq'), turn.get('part'), turn.get('parts')), ('2', '1', '2'))
+        with self.assertRaises(ValueError):
+            curator_document.session(LOG, [dict(floats[1], turn=2.5)])
 
 
 class QuoteCheckTest(unittest.TestCase):
@@ -230,6 +249,24 @@ class QuoteCheckTest(unittest.TestCase):
         for words in ('', '   ', None, 'absent', '[redacted:memory-key]'):
             with self.subTest(words=words):
                 self.assertIsNone(quote_check.find('a [secret] text', words))
+
+    def test_a_place_inside_an_nfc_cluster_is_narrowed_or_refused(self):
+        # Review follow-up: the stored range of a quote always compares equal to its words.
+        self.assertEqual(quote_check.find('a\u0301\u0327', '\u00e1'), (0, 2))
+        self.assertEqual(quote_check.find('a\u0301\u0327', 'a\u0327\u0301'), (0, 3))
+        # No range of a, cedilla and acute compares as a with acute alone; a later place still counts.
+        self.assertIsNone(quote_check.find('a\u0327\u0301', '\u00e1'))
+        self.assertEqual(quote_check.find('x a\u0327\u0301 \u00e1', '\u00e1'), (6, 7))
+        # A range that only white space at its ends would make equal is not taken.
+        self.assertEqual(quote_check.find(' \u0301\u0327', '\u0327\u0301'), (1, 3))
+        alphabet = ('a', 'e', ' ', '\u0301', '\u0327', '\u0323', '\u0302', '\u1100', '\u1161', '\u11a8', '\uac00')
+        for text in map(''.join, itertools.product(alphabet, repeat=3)):
+            form = quote_check.Prepared(text).form
+            for start, end in itertools.combinations(range(len(form) + 1), 2):
+                found = quote_check.find(text, form[start:end])
+                if found is not None:
+                    self.assertEqual(quote_check.Prepared(text[found[0]:found[1]]).form,
+                                     quote_check.compared(form[start:end]), (text, start, end))
 
     def test_words_as_given_come_before_escapes_and_forgotten_places_are_skipped(self):
         stored = 'literal &lt; first, then < second'
@@ -380,16 +417,91 @@ class RequestInputsTest(unittest.TestCase):
         for name, mark in sorted(marks.items()) + [('epoch', epoch), ('applies', '7654321'),
                                                     ('generation', '8765432'), ('revision', '9876543'),
                                                     ('settled', settled['id']), ('forgotten-item', dropped['id']),
-                                                    ('forgotten-candidate', orphan['id'])]:
+                                                    ('forgotten-candidate', orphan['id']),
+                                                    ('forgotten-range', 'A private')]:
             with self.subTest(record=name):
                 self.assertNotIn(mark, sent)
         curate = ET.fromstring(bodies[0]['messages'][0]['content'])
         self.assertEqual([v.text for v in curate.iter('line')], ['Raw logs stay on the device'])
         self.assertEqual({v.get('id') for v in curate.iter('item')}, {first['id'], second['id'], third['id']})
+        # The raw log was not rewritten yet: the tombstone's range shows as forgotten, while the
+        # answer's range stays whole for the items that stay and quote it.
         self.assertEqual([v.text for v in curate.iter('entry')],
-                         ['Keep raw logs on this device', 'Agreed: raw logs stay local', 'A private remark'])
+                         ['Keep raw logs on this device', 'Agreed: raw logs stay local', '[forgotten] remark'])
         self.assertEqual([v.get('id') for v in curate.iter('conflict')], [known['id']])
         self.assertEqual(curate.find('turns/session').get('started'), AT)
+
+    def test_tc394_ranges_of_pending_tombstones_stay_out_of_requests_and_quotes(self):
+        start = entry(1, 'start', event='start')
+        prompt = entry(2, 'prompt', 'Use port 8080 and keep the token in the vault')
+        answer = entry(3, 'answer', 'Port 8080 it is; the vault keeps the token', turn=2)
+        self.record([start, prompt, answer])
+        stays = item('Port choice', prompt)  # quotes the prompt's first four characters
+        self.write('layer/items/' + stays['id'] + '.json', item_types.item_bytes(stays))
+        secret = prompt['text'].index('token in the vault')
+
+        def tombstone(name, *ranges):
+            self.write('layer/tombstones/' + name + '.json', dict(
+                item=name, project='sample', at=AT, device=DEVICE,
+                quotes=[dict(device=DEVICE, entry=source['id'], log=log, start=low, end=high)
+                        for source, log, low, high in ranges]))
+
+        # A forget stopped after its tombstone: no raw range was rewritten yet.
+        gone = ident('i')
+        tombstone(gone, (prompt, LOG, secret, len(prompt['text'])), (answer, LOG, 0, 9), (prompt, LOG, 0, 3),
+                  (prompt, raw_log.log_name(HOST, 'another-session'), 0, 20), (answer, LOG, 12, 12))
+
+        def shown():
+            return [e['text'] for t in request_inputs.session(self.root, LOG)['turns'] for e in t['entries']]
+
+        self.assertEqual(shown(), ['Use port 8080 and keep the [forgotten]', '[forgotten] it is; the vault keeps the token'])
+        stored = {e['id']: e for e in request_inputs.entries(self.root, LOG)}
+        self.assertEqual(stored[prompt['id']]['forgotten'], [[secret, len(prompt['text'])]])
+        self.assertEqual(stored[answer['id']]['forgotten'], [[0, 9]])
+        self.assertEqual(stored[prompt['id']]['text'], prompt['text'])
+        # The answer's quote check reads the same entries: a quote of a pending range is dropped.
+        carried = curator_answers.sent(items=[stays], logs=[(LOG, [stored[prompt['id']], stored[answer['id']]])])
+        quotes = [{'entry': prompt['id'], 'words': 'keep the token in the vault'},
+                  {'entry': answer['id'], 'words': 'Port 8080 it is'},
+                  {'entry': prompt['id'], 'words': 'Use port 8080'}]
+        result = curator_answers.check_curate({'changes': [
+            dict(action='add', targets=[], kind='fact', quotes=[q], title='A title', text='A text.', conflicts=[])
+            for q in quotes], 'state': {'change': [], 'add': [], 'remove': []}}, sent=carried, device=DEVICE)
+        self.assertEqual(result.dropped, {'quote': 2})
+        self.assertEqual([c.quotes[0]['words'] for c in result.changes], ['Use port 8080'])
+        # Once a later stopped forget names the item that stayed, its range is no longer kept whole.
+        tombstone(stays['id'], *[(prompt, LOG, q['start'], q['end']) for q in stays['quotes']])
+        self.assertEqual(shown(), ['[forgotten]port 8080 and keep the [forgotten]',
+                                   '[forgotten] it is; the vault keeps the token'])
+        # A range that does not fit its entry refuses the request rather than sending the entry.
+        tombstone(ident('i'), (answer, LOG, 0, len(answer['text']) + 1))
+        with self.assertRaises(ValueError):
+            request_inputs.session(self.root, LOG)
+
+    def test_integral_json_numbers_in_records_read_as_integers(self):
+        # The raw log and the tombstones accept integral JSON numbers such as 6.0 (TBL-007, TBL-016).
+        prompt = entry(2.0, 'prompt', 'Keep the cache key here', forgotten=[[0.0, 5.0]])
+        answer = entry(3.0, 'answer', 'Noted, the key stays', turn=2.0)
+        self.record([entry(1.0, 'start', event='start'), prompt, answer])
+        gone = ident('i')
+        self.write('layer/tombstones/' + gone + '.json', dict(item=gone, project='sample', at=AT, device=DEVICE,
+                   quotes=[dict(device=DEVICE, entry=answer['id'], log=LOG, start=0.0, end=6.0)]))
+        stored = {e['id']: e for e in request_inputs.entries(self.root, LOG)}
+        self.assertEqual([stored[prompt['id']]['forgotten'], stored[answer['id']]['forgotten']], [[[0, 5]], [[0, 6]]])
+        self.assertEqual({type(n) for e in stored.values() for pair in e.get('forgotten', ()) for n in pair}, {int})
+        document = curator_document.curate(lines=[], items=[], form='full',
+                                           sessions=[request_inputs.session(self.root, LOG)])
+        turn, = ET.fromstring(document).iter('turn')
+        self.assertEqual(turn.get('seq'), '2')
+        self.assertEqual([e.text for e in turn.iter('entry')],
+                         ['[forgotten]the cache key here', '[forgotten] the key stays'])
+        carried = curator_answers.sent(items=[], logs=[(LOG, [stored[prompt['id']], stored[answer['id']]])])
+        result = curator_answers.check_curate({'changes': [
+            dict(action='add', targets=[], kind='fact', quotes=[{'entry': prompt['id'], 'words': words}],
+                 title='A title', text='A text.', conflicts=[]) for words in ('Keep the cache', 'the cache key')],
+            'state': {'change': [], 'add': [], 'remove': []}}, sent=carried, device=DEVICE)
+        self.assertEqual(result.dropped, {'quote': 1})
+        self.assertEqual([(c.quotes[0]['start'], c.quotes[0]['end']) for c in result.changes], [(5, 18)])
 
     def test_layer_reader_refuses_unknown_names_and_mismatched_records(self):
         prompt = entry(2, 'prompt', 'Keep raw logs on this device')

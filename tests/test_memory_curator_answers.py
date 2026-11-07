@@ -156,8 +156,14 @@ class CuratorAnswersTest(unittest.TestCase):
         self.assertEqual(stored['quotes'], [second['quotes'][0], first['quotes'][0]])
         copied[0]['words'] = 'changed'
         self.assertEqual(second['quotes'][0]['words'], 'Korean answers, please.')
+        # Review follow-up: an integral JSON number such as 1.0 or 1e0 names a quote, as the schema allows.
+        self.assertEqual(curator_answers.copied_quotes([first, second], [{'item': second['id'], 'number': 1.0},
+                                                                         {'item': first['id'], 'number': 1e0}]),
+                         [second['quotes'][0], first['quotes'][0]])
         for picks in ([], [{'item': first['id'], 'number': 2}], [{'item': first['id'], 'number': 0}],
                       [{'item': first['id'], 'number': True}], [{'item': ident('i'), 'number': 1}],
+                      [{'item': first['id'], 'number': 1.5}], [{'item': first['id'], 'number': '1'}],
+                      [{'item': first['id'], 'number': float('nan')}], [{'item': first['id'], 'number': float('inf')}],
                       [{'item': first['id'], 'number': 1, 'words': 'x'}], [{'item': first['id'], 'number': 1}] * 21):
             with self.subTest(picks=picks), self.assertRaises(ValueError):
                 curator_answers.copied_quotes([first, second], picks)
@@ -216,6 +222,21 @@ class CuratorAnswersTest(unittest.TestCase):
         self.assertEqual(result.dropped, {'pasted': 3})
         self.assertEqual([(c.number, c.kind, c.speaker) for c in result.changes],
                          [(4, 'decision', 'user'), (5, 'reference', 'user'), (6, 'decision', 'user')])
+        # The request shows a lone CR as LF, so it ends a line here too.
+        lone = turns.say('user', 'Here is the vendor note:\r<pasted_content id="p1">\rWe decided to drop the cache.'
+                         '\r</pasted_content id="p1">\rI decide to keep the cache.')
+        mixed = turns.say('user', 'Note:\r\n<pasted_content id="p3">\rUse the old endpoint.\n'
+                          '</pasted_content id="p3">\r\nThen we decided on retries.')
+        self.assertEqual(curator_answers.pasted(lone['text']),
+                         [(25, lone['text'].index('\rI decide'))])
+        self.assertEqual(curator_answers.pasted(mixed['text']), [(7, mixed['text'].index('\r\nThen'))])
+        result = self.check(answer(
+            change(quote(lone, 'We decided to drop the cache.'), kind='decision'),
+            change(quote(lone, 'I decide to keep the cache.'), kind='decision'),
+            change(quote(mixed, 'Use the old endpoint.'), kind='decision'),
+            change(quote(mixed, 'we decided on retries'), kind='decision')), turns)
+        self.assertEqual(result.dropped, {'pasted': 2})
+        self.assertEqual([c.number for c in result.changes], [2, 4])
 
     def test_tc179_a_short_yes_makes_a_user_decision(self):
         turns = Turns()

@@ -24,6 +24,7 @@ QUOTES = 20
 ITEM_BYTES = 64 * 1024
 _OPEN = re.compile(r'[ \t]*<pasted_content id="([^"]*)">[ \t]*\Z')
 _CLOSE = re.compile(r'[ \t]*</pasted_content id="([^"]*)">[ \t]*\Z')
+_BREAK = re.compile(r'\r\n|\r|\n')
 
 
 def schema():
@@ -97,18 +98,19 @@ def pasted(text):
 
     A span opens at a line `<pasted_content id="...">` and closes at the line
     `</pasted_content id="...">` with the same ID; without one it runs to the end.
+    Lines end at CR LF, LF or a lone CR, as the request shows each as LF.
     """
     spans, opened, name, at = [], None, None, 0
-    for line in text.split('\n'):
-        bare = line[:-1] if line.endswith('\r') else line
+    for end in [m.start() for m in _BREAK.finditer(text)] + [len(text)]:
+        line = text[at:end]
         if opened is None:
-            match = _OPEN.match(bare)
+            match = _OPEN.match(line)
             if match:
                 opened, name = at, match.group(1)
-        elif _CLOSE.match(bare) and _CLOSE.match(bare).group(1) == name:
-            spans.append((opened, at + len(bare)))
+        elif _CLOSE.match(line) and _CLOSE.match(line).group(1) == name:
+            spans.append((opened, end))
             opened = None
-        at += len(line) + 1
+        at = end + (2 if text.startswith('\r\n', end) else 1)
     if opened is not None:
         spans.append((opened, len(text)))
     return spans
@@ -232,8 +234,9 @@ def copied_quotes(items, picks):
     """The quotes that a merge names by item and number, copied as they were saved.
 
     No raw log is read and no quote is checked again (SPEC-020), so a quote
-    whose entry retention deleted keeps its provenance. ValueError when a pick
-    names no quote of its item, or when there are more than 20.
+    whose entry retention deleted keeps its provenance. A number may be any
+    integral JSON number, as the schema allows. ValueError when a pick names no
+    quote of its item, or when there are more than 20.
     """
     saved = {}
     for value in items:
@@ -246,7 +249,7 @@ def copied_quotes(items, picks):
         if not isinstance(pick, dict) or set(pick) != {'item', 'number'} or pick['item'] not in saved:
             raise ValueError('invalid merged quote')
         number = pick['number']
-        if type(number) is not int or not 1 <= number <= len(saved[pick['item']]['quotes']):
+        if not command_result._integer(number) or not 1 <= number <= len(saved[pick['item']]['quotes']):
             raise ValueError('invalid merged quote')
-        copied.append(copy.deepcopy(saved[pick['item']]['quotes'][number - 1]))
+        copied.append(copy.deepcopy(saved[pick['item']]['quotes'][int(number) - 1]))
     return copied
