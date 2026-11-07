@@ -7,6 +7,9 @@ import xml.etree.ElementTree as ET
 from . import configuration, model_prompts, redaction
 
 _LIMIT = 6*1024*1024
+AGENT = 'corthex-memory/0.2.1'
+_BASES = {'anthropic': ('CORTHEX_MEMORY_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+          'openai': ('CORTHEX_MEMORY_OPENAI_BASE_URL', 'https://api.openai.com')}
 _TAGS = frozenset('request state line items item title text conflicts conflict turns session turn entry quote'.split())
 _KINDS = {'curate-2': 'curate', 'merge-2': 'merge', 'state-1': 'state'}
 _ATTRS = dict(request={'kind','instructions','group'},state=set(),line={'id','part','cites'},
@@ -58,11 +61,13 @@ def document(text, *, instructions, environment, credentials):
     return result
 
 
-def build(*, config, instructions, source, schema, credentials, environment):
-    """Return fixed wire data and the exact sent XML; do not read keys or files."""
-    if instructions not in _KINDS or not isinstance(schema, dict):raise ValueError('invalid memory request')
-    settings = configuration.prepare(config, temporary=False).values
-    base_url = environment.get('CORTHEX_MEMORY_ANTHROPIC_BASE_URL', 'https://api.anthropic.com')
+def endpoint(environment, provider, path):
+    """The API's address: the provider's, or the test server that the base URL variable sets.
+
+    An explicitly set invalid value refuses the call; it never falls back to the provider.
+    """
+    name, default = _BASES[provider]
+    base_url = environment.get(name, default)
     if not isinstance(base_url, str) or not base_url or any(not 33 <= ord(c) <= 126 for c in base_url):
         raise ValueError('invalid memory API base URL')
     try:
@@ -74,7 +79,14 @@ def build(*, config, instructions, source, schema, credentials, environment):
             target.password is not None or target.query or target.fragment or
             target.scheme == 'http' and target.hostname not in {'localhost','127.0.0.1','::1'}):
         raise ValueError('invalid memory API base URL')
-    url = base_url.rstrip('/')+'/v1/messages'
+    return base_url.rstrip('/')+path
+
+
+def build(*, config, instructions, source, schema, credentials, environment):
+    """Return fixed wire data and the exact sent XML; do not read keys or files."""
+    if instructions not in _KINDS or not isinstance(schema, dict):raise ValueError('invalid memory request')
+    settings = configuration.prepare(config, temporary=False).values
+    url = endpoint(environment, 'anthropic', '/v1/messages')
     sent = document(source, instructions=instructions, environment=environment, credentials=credentials)
     system = _redact(model_prompts.PROMPTS[instructions], environment, credentials)
     body = dict(model=settings['models']['curator'], max_tokens=64000, stream=True,
@@ -91,5 +103,5 @@ def build(*, config, instructions, source, schema, credentials, environment):
     if len(encoded) > _LIMIT or not credentials.safe(encoded):raise ValueError('unsafe memory request')
     headers = credentials.headers('anthropic')
     if headers is None:raise ValueError('dedicated memory API key missing')
-    headers.update({'anthropic-version':'2026-10-21','content-type':'application/json','user-agent':'corthex-memory/0.2.1'})
+    headers.update({'anthropic-version':'2026-10-21','content-type':'application/json','user-agent':AGENT})
     return dict(url=url, headers=headers, body=body, schema=copy.deepcopy(schema)), sent

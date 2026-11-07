@@ -154,7 +154,7 @@ class CommandsTest(unittest.TestCase):
 
     def test_tc073_internal_dispatch_preserves_each_result_fixture(self):
         for name, value in self.examples["valid"].items():
-            if value["command"] in {"conflicts", "runs", "undo"}:
+            if value["command"] in {"conflicts", "runs", "undo", "migrate"}:
                 with self.subTest(future_contract=name):
                     self.assertNotIn(value["command"], ARGV)
                     actual, status = command_result.finalize(value["command"], value)
@@ -198,7 +198,7 @@ class CommandsTest(unittest.TestCase):
     def test_c2_result_contract_does_not_enable_future_commands(self):
         before = self.snapshot()
         for argv in (["conflicts"], ["conflicts", "--dismiss", "c_7f3k2m9q4x1v"],
-                     ["runs"], ["undo", "r_7f3k2m9q4x1v"]):
+                     ["runs"], ["undo", "r_7f3k2m9q4x1v"], ["migrate"], ["migrate", "--confirm", "abcdefgh"]):
             with self.subTest(argv=argv):
                 completed = subprocess.run(
                     [sys.executable, str(SCRIPTS / "memory.py"), "--folder", str(self.project)] + argv,
@@ -210,7 +210,7 @@ class CommandsTest(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_tc074_argument_defaults_repetition_and_folder_positions(self):
-        self.assertEqual(set(ARGV) | {"conflicts", "runs", "undo"},
+        self.assertEqual(set(ARGV) | {"conflicts", "runs", "undo", "migrate"},
                          set(self.schema["properties"]["command"]["enum"]) - {"none"})
         cases = [("list", [], {"limit": 200}), ("search", ["--words-only"], {"limit": 20, "words_only": True}),
                  ("open", ["second", "--around", "2000"], {"item": ARGV["open"] + ["second"], "around": 2000}),

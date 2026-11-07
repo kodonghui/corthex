@@ -176,6 +176,37 @@ class StatusTest(fixture.HookCase):
                                                cost=usage["cost"])])
         self.assertAlmostEqual(usage["cost"], 0.3)
 
+    def test_tc128_a_401_shows_its_key_as_rejected_until_a_later_call_of_that_api(self):
+        now = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+        refused = dict(at="2026-11-02T10:00:00.000Z", model="fixture-model", call="curate", input=0, output=0,
+                       cost=0, result="failed", error="authentication_error", prices="2000-01-01")
+        embedded = dict(refused, at="2026-11-02T09:00:00.000Z", call="embed-items", result="ok")
+        del embedded["error"]
+        keys = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": KEY, "CORTHEX_MEMORY_OPENAI_API_KEY": KEY}
+
+        def states(rows, environment=keys):
+            self.write_rows("usage", rows, "2026-11")
+            with mock.patch.object(status, "_now", return_value=now), mock.patch.dict(os.environ, environment):
+                data = self.direct()["data"]
+            self.assertNotIn(KEY, commands.canonical(data))
+            return data["keys"], data["waits"]
+
+        self.assertEqual(states([embedded, refused])[0], dict(anthropic="rejected", openai="present"))
+        # A later call of the same API, even a free token count, clears it.
+        counted = dict(refused, at="2026-11-02T11:00:00.000Z", call="count-tokens", result="ok")
+        del counted["error"]
+        self.assertEqual(states([refused, counted, embedded])[0], dict(anthropic="present", openai="present"))
+        # File order breaks a tie in time, and another failure kind is not a rejection.
+        self.assertEqual(states([counted, dict(refused, at=counted["at"])])[0]["anthropic"], "rejected")
+        self.assertEqual(states([dict(refused, error="overloaded_error")])[0]["anthropic"], "present")
+        # An OpenAI 401 marks only its own key; without the key it is missing and recall waits.
+        openai = dict(embedded, result="failed", error="authentication_error")
+        self.assertEqual(states([openai])[0], dict(anthropic="present", openai="rejected"))
+        found, waits = states([refused, openai], dict(keys, CORTHEX_MEMORY_ANTHROPIC_API_KEY=""))
+        self.assertEqual(found, dict(anthropic="missing", openai="rejected"))
+        self.assertIn("anthropic-key", waits)
+        self.assertNotIn("openai-key", waits)
+
     def test_unreadable_usage_is_omitted_while_other_parts_survive(self):
         day = datetime.now(timezone.utc).strftime("%Y-%m")
         self.write_rows("usage", [dict(at=self.header["made"], model="fixture-model", call="curate",

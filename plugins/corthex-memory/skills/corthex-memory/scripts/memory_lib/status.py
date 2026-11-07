@@ -56,6 +56,8 @@ class Reader:
         self.memory.pin = self.logger._ready[1]
         context.record = self.header
         self.now, self.unreadable = _now(), set()
+        # The latest usage row of each API this month; a 401 there shows its key as rejected.
+        self.latest = {}
 
     def note(self, error, count=None):
         self.notes.append((error, count))
@@ -113,7 +115,7 @@ class Reader:
         groups, unpriced = {}, set()
         catalogue = config.values["prices"]
         calls = {"curate", "consolidate", "embed-prompt", "embed-items", "embed-search", "count-tokens"}
-        for row in self.rows(self.memory.folder / "logs" / ("usage-" + month + ".jsonl"), "usage"):
+        for order, row in enumerate(self.rows(self.memory.folder / "logs" / ("usage-" + month + ".jsonl"), "usage")):
             try:
                 stamp = _time(row["at"])
                 if stamp.strftime("%Y-%m") != month or stamp > self.now or row["call"] not in calls:
@@ -125,6 +127,10 @@ class Reader:
                 for name in ("input", "output", "cache_read", "cache_write"):
                     if not configuration.integer(row.get(name, 0)) or row.get(name, 0) < 0:
                         raise ValueError()
+                api = "openai" if row["call"].startswith("embed-") else "anthropic"
+                if (stamp, order) >= self.latest.get(api, ((stamp, order), None))[0]:
+                    rejected = row["result"] == "failed" and row.get("error") == "authentication_error"
+                    self.latest[api] = ((stamp, order), rejected)
                 if row["call"] == "count-tokens":
                     continue
                 model = row["model"]
@@ -299,6 +305,10 @@ def _status(context, reader):
     data["store"].pop("made")
     data.update(failures=reader.failures(), hooks=reader.hooks())
     usage = reader.usage(config)
+    for api, (_, rejected) in reader.latest.items():
+        # Shown only while the key is still set; a later call of that API clears it.
+        if rejected and data["keys"].get(api) == "present":
+            data["keys"][api] = "rejected"
     if "usage" not in reader.unreadable:
         data["usage"] = usage
     if reader.unreadable:
