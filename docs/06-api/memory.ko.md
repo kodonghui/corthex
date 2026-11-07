@@ -74,6 +74,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 | API-151 | `conflicts` | command | SPEC-143 | active |
 | API-152 | `runs` | command | SPEC-144 | active |
 | API-153 | `undo` | command | SPEC-145, SPEC-012 | active |
+| API-154 | `migrate` | command | SPEC-039 | active |
 
 ## 훅
 
@@ -492,6 +493,7 @@ undo의 확인 미리보기(outcome=confirm, confirm-stale 포함)는 data.bindi
 | `conflicts` | API-151 | `[--dismiss <candidate>]` | no | 열린 후보를 보거나 항목은 그대로 두고 후보를 닫음(SPEC-143) |
 | `runs` | API-152 | `[--limit N]` | no | 최근 실행을 새것부터 기본10개. ID·종류·시각·변경 수·저장 항목 제목 최대3개·되돌릴 수 있는지(SPEC-144) |
 | `undo` | API-153 | `<run>` | yes, showing what it changes and what later changes stay | 확인한 실행을 새 실행으로 반대로 적용(SPEC-145) |
+| `migrate` | API-154 | | 예, 먼저 양쪽 호스트를 올리고 다른 세션을 닫도록 요청 | 문서화한 유지보수 구간에서 이 기기의 형식1 기억 저장소를 형식2로 옮기거나 멈춘 이관을 마침(SPEC-039) |
 
 명령마다 `data`에 담는 것을 짧게 적습니다. 모든 필드는 결과 스키마에 있고, 대부분의 결과에 대한 예시는 [memory-examples.json](memory-examples.json)에 있습니다:
 
@@ -509,6 +511,7 @@ undo의 확인 미리보기(outcome=confirm, confirm-stale 포함)는 data.bindi
 - `sync`: `state`(`on`이나 `off`), `address`, `branch`, `checked_by`, `now`일 때 `pulled`와 `pushed`, `other-files`일 때 `other` 경로 20개까지.
 - `setup`: `project`, `at`, 그리고 환경의 설정에 넣을 글 `script`([아래](#임시-기기를-위한-설정)).
 - `repair`: `device`, 끝나면 새 기기 ID이며, 읽을 수 있는 정보가 있으면 현재 기기 ID와 `nothing`입니다. 기억 디렉터리 자체가 없으면 빈 data와 `nothing`, `on` 안내를 돌려주며 그 디렉터리는 `on`만 만듭니다. 복구는 기존 디렉터리에서 복원할 수 없는 저장소 정보만 다시 쓰고 설정·동의·나머지 기억은 보존합니다.
+- `migrate`: `phase`, `release`, `projects`, 물을 때 `binding`. 끝나면 멈춘 이관을 마친 실행에서 `resumed`. `migration-blocked`는 `reason`, `migration-stopped`는 알 수 있을 때 다음 실행이 이어 갈 `phase`와 `reason`.
 
 C2 forget의 data.history_records는 삭제하거나 비어 있지 않은 why를 지울 줄 기록 수입니다. 남는 기록의 이유도 전부 비우며 준비·복구 사본에서 되살릴 수 없어야 성공합니다. 사용자에게 직전 글이 남아도 오래된 되돌리기의 정확한 기록 연결은 무효가 될 수 있음을 미리 알립니다. undo 미리보기는 빈 이유를 표시하지 않습니다.
 
@@ -540,6 +543,17 @@ CORTHEX memory, consent version 1.
 - 동기화가 켜져 있으면 정리된 층: 환경 자신의 Git 인증 정보로 동기화 브랜치를 읽고(`git clone --depth 1 --branch <branch>`), 표지의 형식이 1이면 `projects/<project>/`를 프로젝트의 `layer/`로 복사합니다. 빈 기기에서는 복사가 곧 합치기의 전부이며, 첫 세션 시작이 뒤에서 다시 동기화합니다.
 
 스크립트에는 키가 없습니다. 키는 환경의 비밀값 설정에 둡니다(SPEC-011, SPEC-031).
+
+### 저장소 옮기기 (API-154)
+
+`migrate`는 이 기기의 형식1 기억 저장소를 형식2로 옮기거나(TBL-001), 중간에 멈춘 이관을 마칩니다. 프로젝트를 받지 않는 저장소 명령이며, 멈춘 이관은 형식2 헤더를 남기므로 저장소 관문의 `store-newer`가 이 명령을 거절하지 않습니다. 프로세스 목록이나 잠금으로는 입증할 수 없는 문서화한 유지보수 구간에서만 돌 수 있으므로 늘 먼저 묻습니다:
+
+- `--confirm` 없이는 저장소를 분류만 하고 아무것도 바꾸지 않습니다. 이관이 끝났거나 형식2인 저장소는 `nothing`을 돌려줍니다. 그 밖에는 `phase`, `release`, 설정한 `projects`, `binding`(저장소 폴더, 단계와 그 기록, 이름 있는 헤더 바이트, 모든 설정 사본 바이트의 SHA-256)과 함께 `confirm`을 돌려줍니다. `say`는 먼저 이 기기의 Claude Code와 Codex 양쪽에서 플러그인을 이 릴리스로 올리고 다른 세션을 모두 닫으라고 요청합니다. 옛 릴리스는 옮긴 저장소에 기록하지 못하기 때문입니다.
+- 미리보기가 바이트를 해시한 이름 있는 헤더가 모두 지원하는 C1 릴리스(0.2.0 또는 0.2.1)가 만든 형식1 저장소 기록이 아니면 새 이관은 `migration-blocked`와 `unsupported-release`로 거절합니다. 모든 이관은 실행 중인 릴리스도 C2(0.3.0 이상)여야 합니다. 이관 진행기가 거절한 분류는 그 공통 코드(`no-store`, `store-damaged`, `store-newer`)나 이유를 담은 `migration-blocked`로 돌려줍니다.
+- 사용자의 yes는 명령이 10분 호스트 명령 제한 안에 답하도록 9분 작업 기한으로 이관 진행기를 한 번 돌리며, 바쁜 임대는 기다리지 않고 바로 거절합니다. 저장소 폴더·기기 ID·생성 시각·대상 릴리스가 확인한 미리보기와 같고 모든 설정 사본이 검토한 바이트와 같을 때만 구간·계보·개인정보 확인을 통과하며, 무엇이든 바뀌면 되돌리지 않고 이관을 멈춥니다. 진행기의 소유자가 모든 임대를 잡은 뒤 어떤 효과보다 먼저, 관찰한 이름 있는 헤더가 미리보기가 해시한 바이트와 정확히 같아야 합니다. 그래서 yes 뒤에 바뀐 헤더는 다른 지원 릴리스로 바뀌었더라도 옮기지 않으며, 새 이관은 아무것도 바꾸지 않고 `store-contents`를 담은 `migration-blocked`를 돌려줍니다. 다른 세션이 닫혔다는 판단은 명령이 하지 않습니다. 사용자의 yes가 그 사실입니다.
+- 이름 있는 헤더가 바뀌기 전의 실패는 그 원인(`lock-busy`, `store-contents`를 담은 `migration-blocked`, `internal`)을 돌려줍니다. 그 뒤에 멈추면 다음 실행이 이어 갈 `phase`, 알 수 있을 때 `reason`(작업 기한이 지나면 `deadline`, 이관이 시작된 뒤 저장소·설정·확인한 사실이 바뀌면 `store-changed`)과 함께 `migration-stopped`를 돌려줍니다. 그동안 옛 릴리스는 계속 거절되며(TC-390), 에이전트는 사용자의 yes를 받은 뒤 `migrate`를 다시 돌립니다. 이관 기록은 원래 바이트를 보존하므로 `store-changed` 뒤의 재개는 그 변경을 되돌린 뒤에만 성공합니다. 예를 들어 실행 중에 고친 설정은 원래대로 돌려놓아야 합니다. 에이전트는 호스트가 허용하는 가장 긴 명령 제한 시간을 줍니다.
+
+0.3.0 전에는 명령 실행기가 `migrate`를 받지 않으므로 설치된 플러그인은 C1 동작을 유지하고 명령은 `usage`로 답합니다. 0.3.0 활성화에서 C2 훅과 함께 추가합니다.
 
 ## 모델 호출
 
@@ -965,7 +979,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | --- | --- | --- | --- |
 | `usage` | `refused` | 모두 | 모르는 명령이나 인자. 명령을 모르면 `command`는 `none`. 종료 상태 2 |
 | `no-store` | `refused`, `status`에서는 `nothing` | `on`, `purge`, `repair`를 뺀 모두 | 아직 기억 폴더가 없음. `on`이 만듦 |
-| `store-newer` | `refused` | `purge`를 뺀 모두 | 기억 폴더가 더 새로운 판에서 옴 |
+| `store-newer` | `refused` | `purge`, `migrate`를 뺀 모두 | 기억 폴더가 더 새로운 판에서 옴 |
 | `store-damaged` | `refused` | `purge`와 `repair`를 뺀 모두 | 기억 폴더 정보가 없거나 망가짐. `repair`가 새로 씀 |
 | `configuration-invalid` | `refused` | 스키마에 맞지 않는 설정은 `status`, `purge`, `repair`를 뺀 모두. 잘못된 `CORTHEX_MEMORY_HOME`은 모든 명령 | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님. `data.field`가 필드나 환경 변수를 알려 줍니다. 그것이 `CORTHEX_MEMORY_HOME`이면 `status`, `purge`, `repair`도 거절합니다. 처리할 저장소가 없으므로 어느 명령도 기본 폴더로 돌아가지 않고, 결과 스키마를 바꾸지 않고 `say`로 거절 이유를 말합니다 |
 | `no-project-list` | `refused` | 프로젝트에 대한 명령 | 프로젝트 목록이 없거나 읽을 수 없음 |
@@ -989,6 +1003,8 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | `internal` | `failed` | 모두 | 뜻밖의 오류. `data.error`와 실패 기록이 그 클래스를 알려 줌 |
 | `conflict-not-found` | refused | `conflicts` | 열린 후보가 없음. data.open에 열린 목록 |
 | `run-not-found` | refused | `undo` | 프로젝트·기간 안에 완전한 해당 실행이 없음. data.runs에 최근 목록 |
+| `migration-blocked` | refused | `migrate` | 저장소를 지금 그대로 옮길 수 없음. `data.reason`은 `unsupported-release`(저장소의 C1 릴리스나 실행 중인 릴리스), `release-changed`, `migration-record-unavailable`, `migration-record-ambiguous`, `store-contents` 중 하나이며 아무것도 바뀌지 않음 |
+| `migration-stopped` | failed | `migrate` | 이름 있는 헤더가 바뀐 뒤 이관이 멈추고 효과를 유지함. `data.phase`가 `migrate`가 이어 갈 곳이고, 알 수 있을 때 `data.reason`은 `deadline` 또는 `store-changed` |
 
 ## 호환되지 않는 변경
 

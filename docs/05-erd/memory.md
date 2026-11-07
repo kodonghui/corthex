@@ -896,3 +896,18 @@ Before the first completed final header exists, resumption must re-establish the
 This combined source includes the earlier header and initialization archive binding regression. The component keeps its previous scope and receives current-source verification.
 
 This source carries the canonical shared project fixture for temporary directory aliases.
+
+### One migration driver for fresh and interrupted stores (TASK-074)
+
+The private migration driver takes an explicit absolute memory folder, the running release, a start time, one finite deadline and the three original None-only checks of the actual interval coordinator: quiescence, supported C1/non-deletion lineage and current privacy. Without all three callables it reads nothing. It is not a command, hook or production check, and it supplies none of those facts itself.
+
+Before any lease, it classifies the store from the two named headers and, when a header is format 2, from the plan context and four fixed phase-record names in code-shaped folders under `.maintenance/format-1-to-2`. It opens no raw, payload, configuration or progress bytes and repairs nothing. The classification only selects a path; the chosen owner and reader verify everything again, and a wrong selection is refused there.
+
+- Strict format-1 named headers start a fresh migration under the ordinary ordered owner: binding, immutable intent, cold preservation, header fence, initialization and final headers. A record left by an earlier attempt that never published a header stays auxiliary data, and the fresh attempt uses a new nonce.
+- A migrating named header needs exactly one record whose context matches its device, creation time, release and start. Without headers-complete it resumes the header fence; without initialization-complete it resumes initialization; otherwise it resumes finalization under the ordinary owner. Any completed named header uses the finalization-only owner.
+- Two completed named headers with a matching unfinished record resume final headers. With only completed records the store is complete, and with no matching record it is a format-2 store with nothing to migrate; neither takes a lease, whatever the running release.
+- Refused before any lease: no store; a damaged, mixed or symbolic-link named header; a newer format; a format-1 header beside a completed one; a running release that differs from the release an unfinished migration fixed; and no matching record or more than one.
+
+A failure keeps the component's published and uncertain attributes. The driver never rolls back, and a later call resumes from the durable records. Privacy-safe history recovery and marker-only prefix reconciliation remain TASK-074. Real-device migration still requires the documented maintenance interval.
+
+For a person's device, the `migrate` command (API-154) is the actual interval coordinator and its entry. The person's yes to a preview bound to the exact store folder, headers, phase and configuration is the interval fact, and a supported C1 release that made the store is the lineage fact; the checks then pass only while the store identity, target release and reviewed configuration bytes stay the same. The migration records keep the original bytes, so a change during the run stops it and a resume succeeds only once the change is undone. Before 0.3.0 the command runner does not accept it, so installed plugins keep C1 behaviour.
