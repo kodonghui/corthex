@@ -487,6 +487,8 @@ Healthy-primary-only history retention owns its fixed cutoff and preserves each 
 | `status` | `open`, `settled`, `dismissed` | Both items stay current while open |
 | `closed` | optional time | When it settled or was dismissed |
 
+The item writer that publishes it with item changes keeps every candidate in place, appends new open ones and closes only open ones. After its batch every open candidate names two current items: it settles each open candidate that names an item no longer current, which also closes one that an earlier stopped batch left open.
+
 Showing counts live outside the layer in TBL-010. Durably initialize zero before first publishing a candidate and preserve its 0-to-3 high-water for the candidate ID's lifetime. After the third showing the individual notice is removed but its high-water remains; reopening through undo never resets it.
 
 ### Run log (TBL-121)
