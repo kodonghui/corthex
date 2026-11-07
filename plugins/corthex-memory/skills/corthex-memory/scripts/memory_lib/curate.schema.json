@@ -1,0 +1,243 @@
+{
+  "description": "An answer to a curate request: ordered item changes and current-state line edits; conflict candidates never replace an item on the model's own reading.",
+  "type": "object",
+  "properties": {
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/change"
+      }
+    },
+    "state": {
+      "$ref": "#/$defs/state"
+    }
+  },
+  "required": [
+    "changes",
+    "state"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "item-id": {
+      "type": "string",
+      "pattern": "^i_[0-9a-hjkmnp-tv-z]{12}$"
+    },
+    "entry-id": {
+      "type": "string",
+      "pattern": "^e_[0-9a-hjkmnp-tv-z]{12}$"
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "add",
+            "replace",
+            "withdraw"
+          ]
+        },
+        "targets": {
+          "description": "No items for add, the items it replaces for replace, and the one item its speaker takes back for withdraw.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item-id"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "decision",
+            "preference",
+            "lesson",
+            "reference",
+            "fact"
+          ]
+        },
+        "quotes": {
+          "description": "Words copied exactly from entries of the request, the deciding quote first.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/quote"
+          }
+        },
+        "title": {
+          "description": "One line.",
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "conflicts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item-id"
+          },
+          "description": "Current items of the request that this change's item may disagree with and does not replace."
+        }
+      },
+      "required": [
+        "action",
+        "targets",
+        "kind",
+        "quotes",
+        "title",
+        "text",
+        "conflicts"
+      ],
+      "additionalProperties": false
+    },
+    "quote": {
+      "type": "object",
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/entry-id"
+        },
+        "words": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "entry",
+        "words"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "change": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/line-change"
+          }
+        },
+        "add": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/line-add"
+          }
+        },
+        "remove": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/line-remove"
+          }
+        }
+      },
+      "required": [
+        "change",
+        "add",
+        "remove"
+      ],
+      "additionalProperties": false,
+      "description": "Edits to the current state; every line that they do not name stays as it is."
+    },
+    "line-change": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "string",
+          "pattern": "^s_[0-9a-hjkmnp-tv-z]{12}$"
+        },
+        "text": {
+          "description": "One sentence.",
+          "type": "string"
+        },
+        "cites": {
+          "description": "The items and entries the line rests on.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[ei]_[0-9a-hjkmnp-tv-z]{12}$"
+          }
+        },
+        "changes": {
+          "description": "The numbers of this answer's changes that the line rests on, counted from 1.",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "why": {
+          "type": "string",
+          "description": "A short reason; the code checks at most 200 UTF-8 bytes."
+        }
+      },
+      "required": [
+        "line",
+        "text",
+        "cites",
+        "changes",
+        "why"
+      ],
+      "additionalProperties": false
+    },
+    "line-add": {
+      "type": "object",
+      "properties": {
+        "part": {
+          "type": "string",
+          "enum": [
+            "goal",
+            "decisions",
+            "progress",
+            "blockers",
+            "next"
+          ]
+        },
+        "after": {
+          "type": "string",
+          "pattern": "^(s_[0-9a-hjkmnp-tv-z]{12})?$",
+          "description": "Empty for the start of the part; otherwise an existing line of that part."
+        },
+        "text": {
+          "description": "One sentence.",
+          "type": "string"
+        },
+        "cites": {
+          "description": "The items and entries the line rests on.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[ei]_[0-9a-hjkmnp-tv-z]{12}$"
+          }
+        },
+        "changes": {
+          "description": "The numbers of this answer's changes that the line rests on, counted from 1.",
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "required": [
+        "part",
+        "after",
+        "text",
+        "cites",
+        "changes"
+      ],
+      "additionalProperties": false
+    },
+    "line-remove": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "string",
+          "pattern": "^s_[0-9a-hjkmnp-tv-z]{12}$"
+        },
+        "why": {
+          "type": "string",
+          "description": "A short reason; the code checks at most 200 UTF-8 bytes."
+        }
+      },
+      "required": [
+        "line",
+        "why"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

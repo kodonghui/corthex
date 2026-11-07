@@ -576,7 +576,8 @@ class RawRewriteTest(StoreCase):
         def after(result, check):
             check()
             calls.append(result)
-            self.assertEqual([lease.policy.rank for lease in self.worker.held], [1, 3, 4])
+            self.assertEqual([lease.policy for lease in self.worker.held],
+                             [locks.POLICIES[kind] for kind in ('curation', 'layer', 'raw')])
             self.assertFalse(self.path.with_name(self.path.name + ".bak").exists())
         result = self.rewrite(lambda e: True, after)
         self.assertEqual(calls, [result])

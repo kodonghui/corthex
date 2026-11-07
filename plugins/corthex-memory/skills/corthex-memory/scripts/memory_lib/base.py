@@ -44,8 +44,8 @@ RESERVED = {"con", "prn", "aux", "nul"} | {
 
 
 def new_id(prefix):
-    """Return a device/entry/item/state ID with 60 random bits."""
-    if prefix not in ("d", "e", "i", "s"):
+    """Return a device/entry/item/state/candidate ID with 60 random bits."""
+    if prefix not in ("d", "e", "i", "s", "c"):
         raise ValueError("unknown ID prefix")
     bits = secrets.randbits(60)
     return prefix + "_" + "".join(CROCKFORD[(bits >> shift) & 31]

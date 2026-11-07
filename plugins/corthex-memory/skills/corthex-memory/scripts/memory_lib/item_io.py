@@ -6,7 +6,7 @@ ID-only attempted/known-published effects; unconfirmed attempts are uncertain.
 import os
 from pathlib import Path
 
-from . import fence_plan, files, item_plan, item_types, revision_io
+from . import conflict_counts, conflict_plan, conflict_types, fence_plan, files, item_plan, item_types, revision_io
 
 
 class WriteFailed(RuntimeError):
@@ -101,12 +101,30 @@ def _publish(path, data, durable, check, path_check, published):
         files._unlink(temporary, ready[0])
 
 
-def apply(memory, root, expected, additions, transitions, at, deadline, run_id=None):
+def _conflicts(memory, root, conflicts, items, plan, deadline, check):
+    """Bytes for TBL-120 and the candidates they add and close, checked against the batch (TASK-086)."""
+    before = _record(memory, root / 'layer/conflicts.json', conflict_types.parse_conflicts, deadline, check)
+    final = {value['id']: value['status'] for value in items}
+    final.update((item, item_types.parse_item(data)['status']) for item, data in plan['records'])
+    data, added, closed = conflict_plan.changes(before, conflicts, {i for i, s in final.items() if s == 'current'})
+    return before, (data if added or closed else None), added, closed
+
+
+def apply(memory, root, expected, additions, transitions, at, deadline, run_id=None, conflicts=None):
+    """Publish item changes and, when `conflicts` is given, the TBL-120 value that goes with them.
+
+    New candidates are counted zero durably (TBL-010) before the reservation,
+    and conflicts.json is published after the items that its candidates name.
+    """
     root = Path(root)
     check, ownership = _checked(memory, root, expected, deadline, curator=run_id is not None)
     items = _items(memory, root, deadline, check)
     pins = _record(memory, root / 'layer/pins.json', item_types.parse_pins, deadline, check)
     plan = item_plan.plan(items, pins, additions, transitions, at, memory.device)
+    candidates, added, closed = None, [], []
+    if conflicts is not None:
+        before, candidates, added, closed = _conflicts(memory, root, conflicts, items, plan, deadline, check)
+    targets = sorted(set(plan['targets']) | {'candidate:' + candidate for candidate in added + closed})
     item_ids = [item for item, data in plan['records']]
     for key in plan['targets']:
         if key.startswith('pin:'):
@@ -118,7 +136,10 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
 
     check()
     privacy()
-    reservation = revision_io.reserve(memory, root, expected, plan['targets'], deadline, run_id)
+    if added:
+        conflict_counts.initialize(memory, root, added, before, deadline)
+        check()
+    reservation = revision_io.reserve(memory, root, expected, targets, deadline, run_id)
 
     def guard():
         ownership()
@@ -130,6 +151,9 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
     writes = [(root / 'layer/items' / (item + '.json'), data, True, 'item:' + item) for item, data in plan['records']]
     if plan['pins'] is not None:
         writes.append((root / 'layer/pins.json', plan['pins'], True, 'pins'))
+    if candidates is not None:
+        # Candidates follow the items they name (SPEC-016).
+        writes.append((root / 'layer/conflicts.json', candidates, True, 'conflicts'))
     writes.append((root / 'layer/item-list.txt', plan['list'], False, 'item-list'))
     writes.extend((root / 'notices' / ('pin-' + item + '.json'), data, False, 'notice:pin-' + item)
                   for item, data in plan['notices'])
