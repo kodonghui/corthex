@@ -884,3 +884,15 @@ Finalization includes the initialization-resume native identity lifetime fix and
 This finalization source carries forward the verified archive directory bindings for both earlier resume paths.
 
 The combined source uses the canonical project path in the shared migration fixture for all hosts.
+
+### Finalization-only renewed ownership and header resumption (TASK-074)
+
+Any observed named completed format-2 header routes to a distinct finalization-only observation/ownership path. It parses current format-2 progress, preserves all current C2 payload bytes without opening them and acquires the original store/curation/layer/raw lease order under the actual interval owner. The ordinary migration admission still refuses every completed header. No new migration start, nonce, epoch, project initialization, history/run/archive entry or sidecar recovery is inferred.
+
+Resumption strictly verifies the original root/archive binding, the immutable initialization/publication completion chain, code-derived final header stages, their recorded native identities, the exact two-header publication prefix and canonical checkpoint chain. Original current supported-lineage and privacy callbacks are mandatory and None-only; journal records alone grant neither. Flush verified canonical/private directories before reconstructing a missing checkpoint or returning completion. Revoke the original interval after every verification failure, including returned checks. Current legitimate C2 project changes stay pinned and untouched. An entirely unpublished final-header stage may be preserved under a fresh auxiliary orphan name before retrying only unpublished header preparation inside the same intent. A named damaged publication record is never treated as absent. Actual driver/preflight and privacy-safe history recovery remain separate.
+
+Before the first completed final header exists, resumption must re-establish the exact live initialized native/file/directory prefix through the initialization owner, even when all historical completion records survive. Once a completed final header is proven, the finalization-only owner pins current C2 data instead and never replays initialization. These are distinct admission paths; a changed pre-finalization item/progress cannot borrow the later-C2 preservation path.
+
+This combined source includes the earlier header and initialization archive binding regression. The component keeps its previous scope and receives current-source verification.
+
+This source carries the canonical shared project fixture for temporary directory aliases.

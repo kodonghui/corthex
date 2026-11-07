@@ -63,6 +63,10 @@ class RawRewriteTest(StoreCase):
     def progress(self):
         return curation.parse(self.record.read_bytes())
 
+    def assert_fixture_stop(self, raised):
+        # LockBusy and LostLock are RuntimeErrors too; only the injected stop counts.
+        self.assertEqual((type(raised.exception), str(raised.exception)), (RuntimeError, "fixture stop"))
+
     def unchanged_metadata(self, expected):
         actual = self.progress()
         actual["logs"] = expected["logs"]
@@ -261,8 +265,9 @@ class RawRewriteTest(StoreCase):
                 self.assertEqual(self.progress()["logs"][self.log], 1)
                 raise RuntimeError("fixture stop")
             return backup(path, *args, **kwargs)
-        with mock.patch.object(files, "_backup", stop), self.assertRaises(RuntimeError):
+        with mock.patch.object(files, "_backup", stop), self.assertRaises(RuntimeError) as raised:
             self.rewrite(lambda e: e["seq"] == 1)
+        self.assert_fixture_stop(raised)
         self.assertEqual(self.path.read_bytes(), self.original)
         self.assertEqual(self.progress()["logs"][self.log], 1)
         self.assertFalse(list(self.project.rglob("*.tmp")))
@@ -275,14 +280,40 @@ class RawRewriteTest(StoreCase):
                 self.assertFalse(self.path.exists())
                 raise RuntimeError("fixture stop")
             return write(*args, **kwargs)
-        with mock.patch.object(curation, "write", stop), self.assertRaises(RuntimeError):
+        with mock.patch.object(curation, "write", stop), self.assertRaises(RuntimeError) as raised:
             self.rewrite(lambda e: False)
+        self.assert_fixture_stop(raised)
         self.assertEqual(self.progress()["logs"][self.log], 0)
         added = raw_log.RawLog(self.worker, "sample", "codex", "fixture").append(
             "prompt", raw_log.prepare("new"), diagnostic_deadline=clock.now() + 5)
         self.assertEqual(added.outcome, "ok")
         self.assertEqual(added.entry["seq"], 1)
         self.assertGreater(added.entry["seq"], self.progress()["logs"][self.log])
+
+    def test_tc336_second_raw_acquisition_tries_a_free_lock_after_its_wait_is_spent(self):
+        # A slow runner: the first acquisition leaves half of the wait, and the
+        # second lease's own checks outlast that half before its first attempt.
+        lease, now, skew, limits = worker_support.WorkerStore.lease, clock.now, [0.0], []
+        @contextlib.contextmanager
+        def slow(memory, path, kind, deadline, *args, acquire_deadline=None, **kwargs):
+            number = None
+            if kind == "raw" and acquire_deadline is not None:
+                limits.append(acquire_deadline)
+                number = len(limits)
+                if number == 2:
+                    skew[0] += 10
+            with lease(memory, path, kind, deadline, *args, acquire_deadline=acquire_deadline, **kwargs) as held:
+                if number == 1:
+                    skew[0] += acquire_deadline - 5 - clock.now()
+                yield held
+        with mock.patch.object(raw_rewrite, "RAW_LEASE_WAIT_SECONDS", 10), \
+                mock.patch.object(clock, "now", lambda: now() + skew[0]), \
+                mock.patch.object(worker_support.WorkerStore, "lease", slow):
+            result = self.rewrite(lambda entry: False)
+        self.assertEqual(len(limits), 2)
+        self.assertTrue(result.deleted)
+        self.assertFalse(self.path.exists())
+        self.assertNotIn(self.log, self.progress()["logs"])
 
     def test_tc336_actual_child_append_during_build_is_carried_byte_for_byte(self):
         context = multiprocessing.get_context("spawn")

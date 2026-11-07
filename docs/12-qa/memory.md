@@ -178,6 +178,8 @@ Release 0.2.0 has 138 cases, TC-001 to TC-115 and TC-316 to TC-338, used by TASK
 
 The Windows hook check records the app execution alias metadata for the current user's WindowsApps bash.exe. The no-Git-Bash variants permit the Microsoft WSL package alias to wsl.exe and the existing System32 launcher. Other bash.exe and sh.exe candidates still fail the shell check. [The runner image that exposed the alias](https://github.com/kodonghui/corthex/actions/runs/42180746169/job/127769520982).
 
+TC-336 follow-up: on [Windows Python 3.15](https://github.com/kodonghui/corthex/actions/runs/42333315054/job/128284590965), `test_tc336_interruption_after_deletion_cannot_count_reused_seq_as_processed` appended seq 4 where 1 was expected. The rewrite's first raw acquisition had used nearly all of the shared 50 ms wait and the second lease's own checks used the rest, so the free raw lock was refused with `LockBusy` before any attempt. The method's `RuntimeError` check accepted that as its injected stop. Each acquisition now makes a first attempt and waits only within the shared budget. A new direct method replays that timing, and the two interruption methods require their injected stop. On Linux Python 3.13 the same timing reproduced the seq-4 failure before the change and passes after it. Earlier verdicts are unchanged.
+
 The [recording contention follow-up](runs/2026-11-04-memory-capture-contention.md) supplements TC-336/TC-337 and TASK-030 without changing earlier case verdicts. The stress adds an expired seed and verifies an actual inode replacement on every success, retaining 100 successes, 500 attempts, 120 seconds and the 10ms writer interval. Recording wait remains 50ms. Historical #101/#113 observations are not closed by a fresh pass.
 
 TASK-030 release checkpoint completed: [0.2.0 qualification](runs/2026-11-04-memory-020-release.md) binds the annotated tag, main c98306b, 48 actual-model turns and the preserved limits. C1 is 36/36 active tasks done and 116/138 retained cases passing (136 active). The release does not add a case pass or remove C2/C3 trial plans.
@@ -787,6 +789,12 @@ TASK-074 final header publication requires the exact live initialized completion
 The finalizer code and its tests are unchanged from the earlier source. This combined source also includes the archive directory binding regression for both earlier resume paths. It requires full suite verification and fresh current-commit platform CI.
 
 The finalizer's combined validation includes the canonical temporary-project fixture used for earlier barrier checks.
+
+Finalization resumption verifies the original archive directory identities through ownership handoff. Before the first completed header, the live project initialization must match its original publication prefix. After a completed header, the finalization owner pins current project data and continues only the verified header effects. The fixtures cover preserved unpublished stages, recreated consumed stages, copied headers, later C2 data, callback failures, and rename barriers. The POSIX worker fixture also handles a process that exits during a procfs read. TASK-074 continues with the migration entry point and history recovery under the current privacy and retention policy.
+
+This combined source includes the earlier header and initialization archive binding regression. The component keeps its previous scope and receives current-source verification.
+
+This source carries the canonical shared project fixture for temporary directory aliases.
 
 TASK-079 closing slice (commit 074c4b7): loopback client cases now pass TC-121, TC-123, TC-125, TC-128 and TC-133, and the status reader shows a set key as `rejected` after a 401 until a later call of that API. They remain synthetic: actual-provider behaviour stays with the real calls of TASK-047 and TASK-100, the display for format-2 stores with C2 status (TASK-096), and the OpenAI halves of TC-122, TC-124, TC-130, TC-131 and TC-132 with TASK-080.
 

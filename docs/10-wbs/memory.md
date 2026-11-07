@@ -34,6 +34,8 @@ On 2026-11-01, before implementation, TASK-062 is retained as removed history an
 
 Retention contention follow-up (#46, CODE `51727156e34d`): cache only lexical path-prefix parts while retaining live root/component identities, the deadline before raw metadata and every lease/store guard before payload I/O. Check metadata-time lease/store/deadline loss and root replacement after caching. TC-336 has 32 direct foundation methods; TC-337 retains 20 policy methods and its original 100-rewrite concurrent-append limits. Original task completion PRs, case counts and coverage stay unchanged. Actual worker/session-start/status integration remains TASK-062/017/021. The recording-loss follow-up for TASK-030 moves initial snapshot durability and needed progress writes outside raw, preserves unchanged raw/progress, and shares the existing 50-ms acquisition wait across at most two validations; other maintenance acquisitions stay nonblocking. See the [recording contention report](../12-qa/runs/2026-11-04-memory-capture-contention.md). Canonical full-path lease order is process-wide across stores/drives and independent of an invalid default root, preserving relative separator order.
 
+Raw wait follow-up (2026-11-07): a rewrite's second raw acquisition no longer refuses a free lock when its own lease checks use up the remaining shared wait. Each acquisition makes a first attempt and waits only within the shared 50 ms. TC-336 gains one direct method, and two interruption methods now require their injected stop. Task status, completion PRs and case verdicts stay unchanged.
+
 | ID | Task | From | Touches | Depends on | Owner | Estimate | Done when | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | TASK-001 | The memory library's base: IDs, times, the JSON form of every file, the memory store's folder and permissions, and project folder names | SPEC-039 | none | none | agent | S | Tests show IDs with the four prefixes and 12 characters of lowercase Crockford base32, none repeated in 100,000; the same content giving the same bytes; the store at `CORTHEX_MEMORY_HOME` when it is set; folders 0700 and files 0600 on Linux and macOS; and `con` and `lpt1` named `con_` and `lpt1_`. | done (#30) |
@@ -334,6 +336,12 @@ TASK-074 final header publication requires the exact live initialized completion
 The finalizer code and its tests are unchanged from the earlier source. This combined source also includes the archive directory binding regression for both earlier resume paths. It requires full suite verification and fresh current-commit platform CI.
 
 The finalizer's combined validation includes the canonical temporary-project fixture used for earlier barrier checks.
+
+Finalization resumption verifies the original archive directory identities through ownership handoff. Before the first completed header, the live project initialization must match its original publication prefix. After a completed header, the finalization owner pins current project data and continues only the verified header effects. The fixtures cover preserved unpublished stages, recreated consumed stages, copied headers, later C2 data, callback failures, and rename barriers. The POSIX worker fixture also handles a process that exits during a procfs read. TASK-074 continues with the migration entry point and history recovery under the current privacy and retention policy.
+
+This combined source includes the earlier header and initialization archive binding regression. The component keeps its previous scope and receives current-source verification.
+
+This source carries the canonical shared project fixture for temporary directory aliases.
 
 TASK-079 closes with the rejected-key status and client-level loopback cases. The C1 status reader keeps the latest usage line of each API this month and shows a set key as `rejected` while that line is a failed call with `authentication_error`; any later line of that API, a free token count included, clears it. C1 makes no model calls, so installed stores show no change; C2 status (TASK-096) shows it for format-2 stores. TC-121, TC-123, TC-125, TC-128 and TC-133 pass; TC-122, TC-124, TC-130, TC-131 and TC-132 keep partial verdicts for TASK-080. No real API call, key request, hook activation, migration or release tag is part of this task.
 

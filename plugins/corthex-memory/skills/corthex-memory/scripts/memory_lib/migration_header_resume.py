@@ -119,7 +119,7 @@ class _Reader:
                    for name,data in self.inventory.headers.originals):raise InvalidResume()
         return intent,seal,sources,sealed_hash
 
-    def effects(self,intent,seal,sources,seal_hash):
+    def operations(self,intent,seal,sources,seal_hash):
         value,raw=self.document(self.folder/'header-publications.json')
         _keys(value,'version nonce previous effects plan_sha256')
         if type(value['version']) is not int or value['version']!=1 or value['nonce']!=self.nonce or value['previous']!=seal_hash or value['plan_sha256']!=_hash(intent.encoded):raise InvalidResume()
@@ -139,6 +139,10 @@ class _Reader:
                 if identity in [_identity(v) for v in seal['source_records'].values()]:raise InvalidResume()
                 operations.append((name,self.folder/effect['stage'],data,effect['identity'],False))
         if len(set(i.encoded for i in stage_ids))!=len(stage_ids):raise InvalidResume()
+        return operations,_hash(raw)
+
+    def effects(self,intent,seal,sources,seal_hash):
+        operations,manifest=self.operations(intent,seal,sources,seal_hash)
         published=0;gap=False;active=False
         for name,artifact,data,identity,temporary in operations:
             source,target=(self.root/name,artifact) if temporary else (artifact,self.root/name)
@@ -158,7 +162,7 @@ class _Reader:
             if temporary:expected_names.remove(name)
             else:expected_names.add(name)
         if actual_names!=expected_names:raise InvalidResume()
-        return operations,published,_hash(raw)
+        return operations,published,manifest
 
     def checkpoints(self,operations,published,previous):
         count=0;gap=False

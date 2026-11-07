@@ -147,9 +147,14 @@ class _Reader(header_resume._Reader):
         allowed.update(path.name for _,path,_,_,_ in header_ops)
         allowed.update('initialize-%06d.done.json'%i for i in range(len(operations)))
         allowed.update(path.name for _,_,path,_,_ in operations)
+        # Only a fully completed initialization can carry later header staging.
+        final_names={'final-header-stage-000000.bin','final-header-stage-000001.bin','final-header-publications.json',
+                     'final-header-000000.done.json','final-header-000001.done.json','migration-complete.json'}
+        if self.exists(self.folder/'initialization-complete.json'):allowed.update(final_names)
         for path in self.folder.iterdir():
             staged=re.fullmatch('initialize-[0-9a-f]{32}-[0-9]{6}',path.name) is not None
-            if path.name not in allowed and not staged and re.fullmatch(r'checkpoint-[0-9a-f]{32}\.tmp',path.name) is None:raise InvalidResume()
+            orphan=re.fullmatch(r'final-header-orphan-[0-9a-f]{32}-[01]\.bin',path.name) is not None and self.exists(self.folder/'initialization-complete.json')
+            if path.name not in allowed and not staged and not orphan and re.fullmatch(r'checkpoint-[0-9a-f]{32}\.tmp',path.name) is None:raise InvalidResume()
             info=self.fence.check(path)
             if info is None:raise locks.LostLock()
             if stat.S_ISDIR(info.st_mode):
