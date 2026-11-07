@@ -794,8 +794,8 @@ VS  "(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'(?=[^'\r\n]{0,512}[A-Za-z])[^'
 The search index splits text into words in the way named `words-1`, which `index_meta` records (TBL-019); another way of splitting is another version, and the index is then built again.
 
 1. The text in NFC, then in lower case. Identifiers are found before lower-casing.
-2. Identifiers: each run of letters A to Z, digits, `_`, `.`, `/` and `-`, with `.`, `/` and `-` stripped from its end, of 2 to 100 characters, that has a letter and also a digit, `_`, `.` or `/`, or a capital letter after its first character, such as `REQ-001`, `memory.py`, `src/app` or `getItem`. Each is one word.
-3. Each run of letters and digits outside the scripts of step 4 is a word, of at most 100 characters; longer runs are skipped. This step runs over the whole text, so the parts of an identifier are words too.
+2. Identifiers: each run of letters A to Z in either case, digits 0 to 9, `_`, `.`, `/` and `-`, with `.`, `/` and `-` stripped from its end, of 2 to 100 characters, that has a letter and also a digit, `_`, `.` or `/`, or a capital letter after its first character, such as `REQ-001`, `memory.py`, `src/app` or `getItem`. Each is one word. A run that touches another letter, digit or combining mark outside the scripts of step 4 is part of a longer word and not an identifier, as `CAF` in `CAFÉ`; the scripts of step 4 may touch it, as in `REQ-001을`.
+3. Each run of letters and digits outside the scripts of step 4 is a word, of at most 100 characters; longer runs are skipped. This step runs over the whole text, so the parts of an identifier are words too. Letters are the Unicode letter categories (L) and digits the decimal digits (Nd); a combining mark (M) stays in the run it follows, and any other character separates words.
 4. Hangul (U+1100 to U+11FF, U+3130 to U+318F, U+AC00 to U+D7A3), CJK ideographs (U+3400 to U+4DBF, U+4E00 to U+9FFF, U+F900 to U+FAFF), Hiragana and Katakana (U+3040 to U+30FF): each run gives its overlapping pairs of characters, and a run of one character gives that character.
 5. No stop words.
 
@@ -803,7 +803,7 @@ An item's words come from its kind, title, text and the words of its quotes. For
 
 ### Search
 
-- By words: BM25 over the project's items, with k1 1.2 and b 0.75, the weight of a word ln(1 + (N − n + 0.5) ÷ (n + 0.5)), where N is the number of items and n the number that hold the word, and each item's length its number of words (`terms`, TBL-020).
+- By words: BM25 over the project's items, with k1 1.2 and b 0.75, the weight of a word ln(1 + (N − n + 0.5) ÷ (n + 0.5)), where N is the number of items and n the number that hold the word, and each item's length its number of words (`terms`, TBL-020). Each distinct word of the request counts once, and items with equal scores go in the order of their IDs.
 - By meaning, with consent and the OpenAI memory key: the request is embedded (API-012) and items are ranked by the cosine of the vectors.
 - Both: an item's score is the sum, over the rankings it is in, of 1 ÷ (60 + its rank). `--words-only` skips the embedding; without consent or the key, the search goes by words and says so (SPEC-025).
 - Search covers items of every status, each marked with its status (SPEC-025).
