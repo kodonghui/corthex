@@ -21,9 +21,10 @@ from .base import private_open, utc_time
 from . import clock
 
 Policy = namedtuple("Policy", "rank refresh stale")
-POLICIES = dict(zip(("store", "curation", "sync", "layer", "raw", "log"),
+# Stage 05 order; C1 never takes the notice-counter lease (TASK-092).
+POLICIES = dict(zip(("store", "curation", "sync", "layer", "notice", "raw", "log"),
                     (Policy(0, 30, 120), Policy(1, 60, 600), Policy(2, 60, 600),
-                     Policy(3, 30, 120), Policy(4, None, 10), Policy(5, None, 10))))
+                     Policy(3, 30, 120), Policy(4, None, 10), Policy(5, None, 10), Policy(6, None, 10))))
 _registry_guard = threading.RLock()
 _registry_pid = os.getpid()
 _active = {}

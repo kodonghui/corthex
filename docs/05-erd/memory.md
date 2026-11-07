@@ -295,7 +295,8 @@ One file per notice that the start summary shows once (SPEC-022): `curation-fail
 | `item` | optional item ID | The item whose pin moved or was dropped (SPEC-034) |
 | `to` | optional item ID | The item that the pin moved to |
 | `candidate`, `shown` | optional candidate ID and count 0 to 3 | Conflict notice target and count; conflict-counts.json owns the durable high-water. |
-C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID. Durably initialize zero before first publishing a candidate; after the third showing remove its individual notice but retain the high-water for the ID's lifetime. Reopening, cleanup or backup recovery never resets zero. Missing/unverifiable counters conservatively exhaust existing candidates, reporting the failure/status while conflicts still lists them. After deciding a line fits, Start takes the independent conflict-counts lease, rereads, and shows it only after an atomic durable reservation. Lease/deadline/write failure omits the line without incrementing. A stop after reservation but before output may consume one showing. Concurrent starts together cannot exceed three. Unlike ordinary notices, this high-water cannot lose fsync or be reduced by restoring an old backup. The start hook never writes the curated layer.
+
+C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID. Its bytes are `{"counts": {"<candidate>": <count>}}` with the IDs in order, and it has no backup: a missing, damaged or unreadable file, or a candidate that it does not name, counts as shown three times. Durably initialize zero before first publishing a candidate; after the third showing remove its individual notice but retain the high-water for the ID's lifetime. Reopening, cleanup or backup recovery never resets zero. Missing/unverifiable counters conservatively exhaust existing candidates, reporting the failure/status while conflicts still lists them. After deciding a line fits, Start takes the independent conflict-counts lease, rereads, and shows it only after an atomic durable reservation. Lease/deadline/write failure omits the line without incrementing. A stop after reservation but before output may consume one showing. Concurrent starts together cannot exceed three. Unlike ordinary notices, this high-water cannot lose fsync or be reduced by restoring an old backup. The start hook never writes the curated layer.
 
 
 ### Injection log (TBL-011)
@@ -486,6 +487,8 @@ Healthy-primary-only history retention owns its fixed cutoff and preserves each 
 | `by` | `curate` or `consolidate` | The source kind |
 | `status` | `open`, `settled`, `dismissed` | Both items stay current while open |
 | `closed` | optional time | When it settled or was dismissed |
+
+The item writer that publishes it with item changes keeps every candidate in place, appends new open ones and closes only open ones. After its batch every open candidate names two current items: it settles each open candidate that names an item no longer current, which also closes one that an earlier stopped batch left open.
 
 Showing counts live outside the layer in TBL-010. Durably initialize zero before first publishing a candidate and preserve its 0-to-3 high-water for the candidate ID's lifetime. After the third showing the individual notice is removed but its high-water remains; reopening through undo never resets it.
 
