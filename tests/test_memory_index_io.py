@@ -236,6 +236,31 @@ class RebuildTest(unittest.TestCase):
         self.assertEqual((self.index.stat().st_ino, self.index.stat().st_mtime_ns), (before.st_ino, before.st_mtime_ns))
         self.assertEqual(self.ensure(dims=256), 'embedding')
 
+    def test_a_damaged_table_page_is_malformed_and_rebuilt(self):
+        self.assertEqual(self.ensure(), 'missing')
+        expected = self.expected()
+        for table in ('index_terms', 'index_items'):
+            with self.subTest(table=table):
+                connection = self.opened()
+                size = connection.execute('PRAGMA page_size').fetchone()[0]
+                page = connection.execute('SELECT rootpage FROM sqlite_master WHERE name = ?', (table,)).fetchone()[0]
+                connection.close()
+                data = bytearray(self.index.read_bytes())
+                data[(page - 1) * size:page * size] = bytes(size)
+                self.index.write_bytes(bytes(data))
+                connection = self.opened()
+                # The schema and index_meta still read; only the table's own page is damaged.
+                self.assertEqual(index_io._schema(connection), index_io.schema())
+                with self.assertRaises(sqlite3.DatabaseError):
+                    index_io.search(connection, 'raw')
+                self.assertEqual(index_io.state(connection, model=MODEL, dims=DIMS), 'malformed')
+                connection.close()
+                self.assertEqual(self.ensure(), 'malformed')
+                connection = self.opened()
+                self.assertIsNone(index_io.state(connection, model=MODEL, dims=DIMS))
+                self.assertEqual(rows(connection), expected)
+                connection.close()
+
     def test_a_rebuild_leaves_out_forgotten_items_and_needs_the_layer_lease(self):
         (self.project / 'layer/tombstones' / (C['id'] + '.json')).write_bytes(b'{}\n')
         self.assertEqual(self.ensure(), 'missing')

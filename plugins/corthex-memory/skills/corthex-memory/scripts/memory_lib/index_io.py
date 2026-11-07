@@ -142,13 +142,19 @@ def connect(path, create=False, timeout=1.0):
 
 
 def state(connection, *, model, dims):
-    """None when the index can be used, otherwise why it must be built again."""
+    """None when the index can be used, otherwise why it must be built again.
+
+    SQLite's quick check reads every page, so a damaged table that the schema
+    and index_meta do not show is found here rather than by a later search.
+    """
     try:
         if connection.execute('PRAGMA user_version').fetchone()[0] != VERSION:
             return 'version'
         if _schema(connection) != schema():
             return 'schema'
         meta = dict(connection.execute('SELECT name, value FROM index_meta').fetchall())
+        if connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+            return 'malformed'
     except sqlite3.DatabaseError:
         return 'malformed'
     if set(meta) - set(NAMES) or set(NAMES[:3]) - set(meta):
