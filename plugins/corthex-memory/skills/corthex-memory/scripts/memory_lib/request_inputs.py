@@ -2,6 +2,8 @@
 
 From the curated layer it opens only the items, tombstones, current state,
 removed lines, pins and conflict candidates, and from raw/ only the named log.
+An item that a tombstone names is left out even while its file remains, as
+after a forget stopped between its tombstone and the item's removal (TBL-016).
 Line history, run logs, the curation record and its fences, notices, the
 injection log and the search index stay unread, so no request can carry them.
 The caller holds the curation and layer leases while it reads (TASK-088); an
@@ -18,7 +20,7 @@ from . import raw_rewrite, state_types
 class Layer:
     lines: tuple       # the TBL-013 validity view, by part, position and ID
     hidden: tuple      # lines the view hides, each with its reason
-    items: dict        # every item by ID
+    items: dict        # every item by ID that no tombstone names
     current: tuple     # current items in item-list order (TBL-015)
     pinned: tuple      # IDs of pinned current items, in pin order
     candidates: tuple  # open candidates of two current items, by time and ID
@@ -39,14 +41,17 @@ def _named(folder):
 def layer(root):
     root = Path(root)
     folder = root/'layer'
-    items, private = {}, set()
+    items, private, forgotten = {}, set(), set()
+    for item, data in _named(folder/'tombstones'):
+        private.update(history_recovery._tombstone(data, item, root.name))
+        forgotten.add(item)
     for item, data in _named(folder/'items'):
+        if item in forgotten:
+            continue
         value = item_types.parse_item(data)
         if value['id'] != item:
             raise ValueError('item file name differs from its ID')
         items[item] = value
-    for item, data in _named(folder/'tombstones'):
-        private.update(history_recovery._tombstone(data, item, root.name))
     view = state_types.validity_view(state_types.parse_state((folder/'state.json').read_bytes()),
                                      state_types.parse_removed((folder/'state-removed.json').read_bytes()),
                                      items, private)

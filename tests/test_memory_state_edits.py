@@ -119,7 +119,7 @@ class StateEditsTest(unittest.TestCase):
         return [value['id'] for value in request_inputs.layer(self.project).lines]
 
     def snapshot(self):
-        return {str(path.relative_to(self.project)): path.read_bytes()
+        return {path.relative_to(self.project).as_posix(): path.read_bytes()
                 for path in sorted(self.project.rglob('*')) if path.is_file()}
 
     @contextlib.contextmanager

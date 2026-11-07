@@ -184,6 +184,13 @@ class CuratorDocumentTest(unittest.TestCase):
         # The quote check compares the stored text as the request showed it.
         self.assertEqual(quote_check.find(text, 'escape\ufffd[31m red'), (11, 26))
         self.assertEqual(quote_check.find(text, 'end next'), (28, 37))
+        # Every code point outside the XML 1.0 Char production, and only those, becomes U+FFFD.
+        every = ''.join(map(chr, range(0x110000)))
+        shown = curator_document.INVALID.sub('\ufffd', every)
+        self.assertEqual(len(shown), len(every))
+        self.assertEqual([code for code in range(0x110000) if shown[code] != every[code]],
+                         [code for code in range(0x110000) if not (code in (0x9, 0xa, 0xd) or 0x20 <= code <= 0xd7ff or
+                                                                  0xe000 <= code <= 0xfffd or code >= 0x10000)])
 
     def test_sessions_hold_turns_after_progress_and_their_boundary_times(self):
         entries = [entry(1, 'start', at='2026-11-04T01:00:00.000Z', event='start'),
@@ -309,7 +316,7 @@ class RequestInputsTest(unittest.TestCase):
     def test_tc394_requests_from_the_project_folder_carry_no_history_runs_fences_or_counters(self):
         marks = {name: name + '-' + secrets.token_hex(8) for name in
                  ('history', 'run', 'notice', 'injection', 'index', 'removed', 'private', 'superseded', 'damaged',
-                  'unfinished')}
+                  'unfinished', 'forgotten')}
         start, prompt = entry(1, 'start', event='start'), entry(2, 'prompt', 'Keep raw logs on this device')
         answer = entry(3, 'answer', 'Agreed: raw logs stay local', turn=2)
         hidden = entry(4, 'prompt', 'A private remark')
@@ -327,15 +334,24 @@ class RequestInputsTest(unittest.TestCase):
         gone = ident('i')
         self.write('layer/tombstones/' + gone + '.json', dict(item=gone, project='sample', at=AT, device=DEVICE,
                    quotes=[dict(device=DEVICE, entry=hidden['id'], log=LOG, start=0, end=9)]))
+        # A forget that stopped after its tombstones leaves item files, readable or not; neither is read.
+        dropped = item(marks['forgotten'], answer)
+        self.write('layer/items/' + dropped['id'] + '.json', item_types.item_bytes(dropped))
+        self.write('layer/tombstones/' + dropped['id'] + '.json', dict(
+            item=dropped['id'], project='sample', at=AT, device=DEVICE,
+            quotes=[dict(device=DEVICE, entry=answer['id'], log=LOG, start=0, end=4)]))
+        self.write('layer/items/' + gone + '.json', b'{"damaged')
         kept = line('Raw logs stay on the device', [first['id']])
         removed = line(marks['removed'], [first['id']], 'progress', 2)
         private = line(marks['private'], [hidden['id']], 'progress', 3)
         self.write('layer/state.json', state_types.state_bytes({'lines': [kept, removed, private]}))
         self.write('layer/state-removed.json', state_types.removed_bytes(
             {'removed': [state_types.removal_marker(removed['id'], AT, DEVICE, 'edit')]}))
-        self.write('layer/pins.json', item_types.pins_bytes({'pins': [dict(item=first['id'], on=True, at=AT, device=DEVICE)]}))
+        self.write('layer/pins.json', item_types.pins_bytes({'pins': [dict(item=first['id'], on=True, at=AT, device=DEVICE),
+                                                                     dict(item=dropped['id'], on=True, at=AT, device=DEVICE)]}))
         known, settled = candidate(first, second), candidate(first, third, status='settled')
-        self.write('layer/conflicts.json', {'candidates': [known, settled]})
+        orphan = candidate(dropped, second)
+        self.write('layer/conflicts.json', {'candidates': [known, settled, orphan]})
         self.write('layer/item-list.txt', item_types.item_list_bytes([first, second, third, old]))
         self.write('state-history.jsonl', (json.dumps(dict(text=marks['history'], line=removed['id'])) + '\n').encode())
         self.write('runs/' + ident('r') + '.json', dict(effects=[marks['run']], epoch='e' * 32))
@@ -347,6 +363,7 @@ class RequestInputsTest(unittest.TestCase):
         self.write('injections/' + LOG + '.jsonl', (json.dumps(dict(prompt=marks['injection'])) + '\n').encode())
         self.write('index.db', marks['index'].encode())
         layer = request_inputs.layer(self.root)
+        self.assertEqual(set(layer.items), {first['id'], second['id'], third['id'], old['id']})
         self.assertEqual([v['id'] for v in layer.lines], [kept['id']])
         self.assertEqual(sorted((v['id'], v['why']) for v in layer.hidden),
                          sorted([(removed['id'], 'removed'), (private['id'], 'privacy')]))
@@ -362,7 +379,8 @@ class RequestInputsTest(unittest.TestCase):
         sent = json.dumps(bodies, ensure_ascii=False)
         for name, mark in sorted(marks.items()) + [('epoch', epoch), ('applies', '7654321'),
                                                     ('generation', '8765432'), ('revision', '9876543'),
-                                                    ('settled', settled['id'])]:
+                                                    ('settled', settled['id']), ('forgotten-item', dropped['id']),
+                                                    ('forgotten-candidate', orphan['id'])]:
             with self.subTest(record=name):
                 self.assertNotIn(mark, sent)
         curate = ET.fromstring(bodies[0]['messages'][0]['content'])

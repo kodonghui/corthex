@@ -97,7 +97,7 @@ class CurateApplyTest(unittest.TestCase):
 
     def snapshot(self):
         """Every file of the project, to show that nothing changed."""
-        return {str(path.relative_to(self.project)): path.read_bytes()
+        return {path.relative_to(self.project).as_posix(): path.read_bytes()
                 for path in sorted(self.project.rglob('*')) if path.is_file()}
 
     def checked(self, value, items):

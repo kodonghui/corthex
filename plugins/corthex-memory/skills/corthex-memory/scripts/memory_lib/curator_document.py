@@ -16,7 +16,7 @@ FORMS = ('full', 'short', 'part')
 FORGOTTEN = '[forgotten]'
 # Outside the XML 1.0 Char production: C0 controls other than tab, LF and CR,
 # unpaired surrogates, U+FFFE and U+FFFF.
-INVALID = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]')
+INVALID = re.compile('[^\t\n\r\x20-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]')
 
 
 def _text(value):
