@@ -20,19 +20,21 @@ sys.path.insert(0, str(ROOT / "plugins/corthex-memory/skills/corthex-memory/scri
 from memory_lib import redaction
 
 MARKER = "CORTHEX_REDACTION_BENCH="
-SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json")
+SLOW = ("pem-begin-name-repeat", "pem-end-name-repeat", "jwt-no-dots", "jwt-base64-json", "token-quoted-escapes")
 WORD_INPUTS = ("token", "passwd", "secret", "apikey")
 # Inputs whose matches a check refuses, or cuts back to a card: each match runs Python code.
-KOREAN_INPUTS = ("korean-password-count", "korean-token-digits", "resident-bad-date", "card-luhn-fail",
-                 "card-security-code")
+KOREAN_INPUTS = ("korean-password-count", "korean-token-digits", "korean-quote-phrase", "resident-bad-date",
+                 "card-luhn-fail", "card-security-code")
 # Each expression, including the private-span pass, has a hostile input.
 GROWTH = ("private-openers", "pem-begin-name-repeat", "jwt-no-dots",
     "anthropic-near-minimum", "openai-near-minimum", "github-near-minimum",
     "gitlab-near-minimum", "slack-near-minimum", "aws-short-body", "google-short-body",
-    "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "jwt-percent-repeat",
+    "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat", "token-quoted-escapes",
+    "jwt-percent-repeat",
     "notion-near-minimum", "supabase-near-minimum", "atlassian-near-minimum", "stripe-near-minimum",
     "huggingface-near-minimum", "npm-near-minimum", "langsmith-near-minimum", "bearer-short-token",
-    "korean-password-count", "korean-token-digits", "resident-bad-date", "resident-label-short",
+    "korean-password-count", "korean-token-digits", "korean-quote-phrase", "resident-bad-date",
+    "resident-label-short",
     "phone-near-miss", "card-luhn-fail", "card-security-code", "account-long-digits")
 
 
@@ -67,6 +69,8 @@ def slow_input(name, size):
         "authorization-repeat": ("", "authorization"),
         "passwd-repeat": ("", "passwd"),
         "token-repeat": ("", "token"),
+        # Escapes without a letter: the lookahead for a letter runs to the closing quote and fails.
+        "token-quoted-escapes": ("", 'token="' + "\\1" * 255 + '" '),
         "notion-near-minimum": ("", "ntn_" + "1" * 11 + "a" * 34 + " secret_" + "a" * 42 + " "),
         "supabase-near-minimum": ("", "sbp_" + "a" * 39 + " sb_secret_" + "a" * 15 + " "),
         "atlassian-near-minimum": ("", ("ATATT3" * 32)[:191] + " "),
@@ -78,6 +82,8 @@ def slow_input(name, size):
         # Korean names and personal numbers whose matches a check refuses, or that just miss.
         "korean-password-count": ("", "비밀번호는 " + "1" * 40 + "자 "),
         "korean-token-digits": ("", "토큰 " + "1" * 511 + " "),
+        # A quote left open before Hangul and closed later on the line: the check looks for the quote.
+        "korean-quote-phrase": ("", 'API 키는 "Settings 메뉴"에서 '),
         "resident-bad-date": ("", "991399-1234567 "),
         "resident-label-short": ("", "주민번호 " + "1" * 12 + " "),
         "phone-near-miss": ("", "010-1234-123 "),

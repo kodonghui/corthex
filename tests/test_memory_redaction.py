@@ -156,7 +156,7 @@ class MemoryRedactionTest(StoreCase):
 
     def test_tc028_four_small_calls_and_one_large_stay_within_growth_limit(self):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
-        # About 17 seconds on Linux for 31 inputs; macOS Intel runners took 1.7 times as long.
+        # About 18 seconds on Linux for 33 inputs; macOS Intel runners took 1.7 times as long.
         run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "5"],
                              capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, "growth worker exit %d; input remains suppressed" % run.returncode)
@@ -171,10 +171,11 @@ class MemoryRedactionTest(StoreCase):
                           "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
                           "github-near-minimum", "gitlab-near-minimum", "slack-near-minimum", "aws-short-body",
                           "google-short-body", "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat",
+                          "token-quoted-escapes",
                           "notion-near-minimum", "supabase-near-minimum", "atlassian-near-minimum",
                           "stripe-near-minimum", "huggingface-near-minimum", "npm-near-minimum",
                           "langsmith-near-minimum", "bearer-short-token", "korean-password-count",
-                          "korean-token-digits", "resident-bad-date", "resident-label-short", "phone-near-miss",
+                          "korean-token-digits", "korean-quote-phrase", "resident-bad-date", "resident-label-short", "phone-near-miss",
                           "card-luhn-fail", "card-security-code", "account-long-digits"})
         for row in data["rows"]:
             self.assertEqual(row["samples"],5)
@@ -520,6 +521,50 @@ class KoreanAndPersonalRedactionTest(StoreCase):
                             key = "{" + quote + name + quote + separator
                             output = self.both(key + written + ", " + quote + "n" + quote + ": 1}")
                             self.assertTrue(output == key + "[redacted:assigned-secret], " + quote + "n" + quote + ": 1}")
+
+    def test_tc395_quoted_values_hold_escapes_and_open_quotes_hide_nothing(self):
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                value = "k" + random_text(7) + "\\" + quote + random_text(8) + "\\\\"
+                tail = random_text(15)
+                for case, source, expected in (
+                        # JSON's escaped quote and backslash stay inside the value.
+                        ("escapes", "{" + quote + name + quote + ": " + quote + value + quote + ", " + quote + "n" + quote + ": 1}",
+                         "{" + quote + name + quote + ": [redacted:assigned-secret], " + quote + "n" + quote + ": 1}"),
+                        # A quote left open runs to the end of the line, or to Hangul when no quote closes it.
+                        ("line end", name + ": " + quote + "k" + tail + "\n다음 줄 " + quote,
+                         name + ": [redacted:assigned-secret]\n다음 줄 " + quote),
+                        ("text end", name + ": " + quote + "k" + tail, name + ": [redacted:assigned-secret]"),
+                        ("Hangul", name + ": " + quote + "k" + tail + " 이고 다음", name + ": [redacted:assigned-secret]이고 다음"),
+                        # A quote after white space opens another text, and a tab stays inside the value.
+                        ("another quote", name + ": " + quote + "k" + tail + " 이고 이름은 " + quote + "b" + quote,
+                         name + ": [redacted:assigned-secret]이고 이름은 " + quote + "b" + quote),
+                        ("tab", name + ": " + quote + "k" + tail + "\t" + tail + quote + " 다음", name + ": [redacted:assigned-secret] 다음")):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(tail in output)
+        # A quote that closes later on its line, after Hangul, holds a phrase.
+        for text in ('API 키는 "Settings 메뉴"에서 만듭니다.', "토큰은 'Developer settings 화면'에서 만들어요.",
+                     '비밀번호는 "8자 이상"이어야 해요.', '비밀번호는 "8자 이상', '비번: "1234 형식"으로 쓰세요.'):
+            with self.subTest(text=text):
+                self.assertEqual(self.both(text), text)
+
+    def test_tc023_english_quoted_values_hold_escapes_and_open_quotes_hide_nothing(self):
+        for name in ("password", "passwd", "secret", "token", "api_key", "access-key"):
+            for quote in "\"'":
+                value = "k" + random_text(7) + "\\" + quote + random_text(8) + "\\\\"
+                tail = random_text(15)
+                for case, source, expected in (
+                        ("escapes", "{" + quote + name + quote + ": " + quote + value + quote + ", " + quote + "n" + quote + ": 1}",
+                         "{" + quote + name + quote + ": [redacted:assigned-secret], " + quote + "n" + quote + ": 1}"),
+                        ("line end", name + " = " + quote + "k" + tail + " and more\nnext " + quote,
+                         name + " = [redacted:assigned-secret]\nnext " + quote),
+                        ("text end", name + " = " + quote + "k" + tail, name + " = [redacted:assigned-secret]")):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(tail in output)
 
     def test_tc395_key_names_need_eight_characters_with_a_letter_and_password_counts_stay(self):
         for name in KOREAN_KEY_NAMES:

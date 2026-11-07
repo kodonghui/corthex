@@ -15,20 +15,28 @@ MEMORY_KEYS = ("CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KE
 SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD", re.IGNORECASE | re.ASCII)
 SURROGATE = re.compile(r"[\ud800-\udfff]")
 PRIVATE = re.compile(r"<private>[\s\S]*?(?:</private>|\Z)", re.IGNORECASE | re.ASCII)
-VALUE = r'''"[^"\r\n]{1,512}"|'[^'\r\n]{1,512}'|[^\s"',;]{1,512}'''
-SECRET_VALUE = (r'''"(?=[^"\r\n]{0,512}[A-Za-z])[^"\r\n]{8,512}"|'''
-                r"'(?=[^'\r\n]{0,512}[A-Za-z])[^'\r\n]{8,512}'|"
+# A value in quotes holds a backslash and the character after it, so JSON's \"
+# does not end it. Its closing quote is optional: a value whose quote stays open
+# runs on as far as its characters go, since an open quote hides nothing.
+VALUE = (r'''"(?:[^"\\\r\n]|\\[^\r\n]){1,512}"?|'''
+         r"""'(?:[^'\\\r\n]|\\[^\r\n]){1,512}'?|"""
+         r'''[^\s"',;]{1,512}''')
+SECRET_VALUE = (r'''"(?=(?:[^"\\\r\n]|\\[^\r\n]){0,512}[A-Za-z])(?:[^"\\\r\n]|\\[^\r\n]){8,512}"?|'''
+                r"""'(?=(?:[^'\\\r\n]|\\[^\r\n]){0,512}[A-Za-z])(?:[^'\\\r\n]|\\[^\r\n]){8,512}'?|"""
                 r'''(?=[^\s"',;]{0,512}[A-Za-z])[^\s"',;]{8,512}''')
 # Korean names, a particle, ":", "=" or white space, then a value of ASCII
 # letters, digits and symbols only: a Hangul value is a sentence, not a secret.
 # A name in quotes, as a JSON key, ends with its quote before ":" or "=".
+# Quoted values may hold tabs and escapes and lack their closing quote, as above.
 KO_PASSWORD = r"(?:비밀[ \t]?번호|비번|패스워드|암호)"
 KO_KEY = (r"(?:API[ \t]?키|api[ \t]?키|액세스[ \t]?(?:토큰|키)|비밀[ \t]?키|인증[ \t]?키|시크릿(?:[ \t]?키)?|토큰"
           r"|키(?<![가-힣]키))")
 KO_SEPARATOR = r'''(?:[은는이가을를][ \t]*(?:[:=][ \t]*)?|["']?[ \t]*[:=][ \t]*|[ \t]+)'''
-KO_VALUE = r'''"[ !#-~]{1,512}"|'[ -&(-~]{1,512}'|[!#-&(-+\--:<-~]{1,512}'''
-KO_SECRET_VALUE = (r'''"(?=[ !#-~]{0,512}[A-Za-z])[ !#-~]{8,512}"|'''
-                   r"'(?=[ -&(-~]{0,512}[A-Za-z])[ -&(-~]{8,512}'|"
+KO_VALUE = (r'''"(?:[\t !#-\[\]-~]|\\[\t -~]){1,512}"?|'''
+            r"""'(?:[\t -&(-\[\]-~]|\\[\t -~]){1,512}'?|"""
+            r'''[!#-&(-+\--:<-~]{1,512}''')
+KO_SECRET_VALUE = (r'''"(?=(?:[\t !#-\[\]-~]|\\[\t -~]){0,512}[A-Za-z])(?:[\t !#-\[\]-~]|\\[\t -~]){8,512}"?|'''
+                   r"""'(?=(?:[\t -&(-\[\]-~]|\\[\t -~]){0,512}[A-Za-z])(?:[\t -&(-\[\]-~]|\\[\t -~]){8,512}'?|"""
                    r'''(?=[!#-&(-+\--:<-~]{0,512}[A-Za-z])[!#-&(-+\--:<-~]{8,512}''')
 PATTERNS = (
     ("private-key", r"-{5}BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}[\s\S]*?(?:-{5}END [A-Z0-9 ]{0,40}PRIVATE KEY[A-Z ]{0,40}-{5}|\Z)"),
@@ -68,16 +76,49 @@ SEPARATOR = re.compile("[ -]")
 DOUBLED = str.maketrans("0123456789", "0246813579")
 # A number directly followed by one of these is a count, as in 비밀번호 8자 이상.
 COUNTER = re.compile("자|글자|문자|회|번|개|단계|일|시간|분|초|년|이상|이하|이내|미만|초과")
+# The first of a quote or a line end.
+LINE_QUOTE = {quote: re.compile("[" + quote + "\r\n]") for quote in "\"'"}
+
+
+def _open(value):
+    """A value that begins with a quote and that no closing quote ends."""
+    if value[0] not in "\"'":
+        return False
+    if len(value) < 2 or value[-1] != value[0]:
+        return True
+    body = value[1:-1]
+    return (len(body) - len(body.rstrip("\\"))) % 2 == 1  # an odd run of backslashes escapes the last quote
+
+
+def _phrase(match):
+    """A Korean value's quote, left open before a character outside ASCII such as
+    Hangul, holds a phrase when a quote of its kind closes it later on the line,
+    right after a character other than white space, as in
+    API 키는 "Settings 메뉴"에서 만듭니다. Any other open quote hides nothing."""
+    value = match.string[match.end(1):match.end()]
+    if not _open(value):
+        return False
+    after = match.string[match.end():match.end() + 1]
+    if not after or after.isascii():  # the end of the text or line, the length limit or a lone backslash
+        return False
+    found = LINE_QUOTE[value[0]].search(match.string, match.end())
+    # A quote after white space opens another quoted text instead.
+    return found is not None and found.group() == value[0] and not match.string[found.start() - 1].isspace()
 
 
 def _korean_value(match):
-    """After a Korean password name: not punctuation alone, nor a count."""
+    """After a Korean password name: not punctuation alone, a count or a phrase in quotes."""
     value = match.string[match.end(1):match.end()]
-    if not re.search("[A-Za-z0-9]", value):
+    if not re.search("[A-Za-z0-9]", value) or _phrase(match):
         return False
-    if value[0] in "\"'" or re.search("[A-Za-z]", value):
+    if value[0] in "\"'" and not _open(value) or re.search("[A-Za-z]", value):
         return True
     return not COUNTER.match(match.string, match.end())
+
+
+def _korean_key(match):
+    """After a Korean key name: not a phrase in quotes."""
+    return not _phrase(match)
 
 
 def _birth_date(match):
@@ -111,6 +152,8 @@ def _account(match):
 def _check(kind, pattern):
     if kind == "assigned-secret" and pattern.startswith("(" + KO_PASSWORD):
         return _korean_value
+    if kind == "assigned-secret" and pattern.startswith("(" + KO_KEY):
+        return _korean_key
     return {"resident-number": _birth_date, "account-number": _account}.get(kind)
 
 
