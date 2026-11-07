@@ -478,7 +478,7 @@ class ModelCallsTest(unittest.TestCase):
                     mock.patch.object(model_transport, 'once', side_effect=once):
                 self.embed('embed-search')
                 self.assertEqual(seen[-1], base.rstrip('/') + '/v1/embeddings')
-        for base in ('http://embeddings.example.invalid', '', 'ftp://127.0.0.1', 'https://user:pass@example.invalid',
+        for base in ('http://embeddings.example.invalid', '', 'ftp://127.0.0.1', 'https://user:pass@example.com',
                      'https://example.invalid/?q=1'):
             with self.subTest(base=base), mock.patch.dict(os.environ, {'CORTHEX_MEMORY_OPENAI_BASE_URL': base}), \
                     mock.patch.object(model_transport, 'once', side_effect=AssertionError('no request')):
