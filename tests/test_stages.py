@@ -402,6 +402,63 @@ class CaseKindsTest(unittest.TestCase):
                 self.assertIn(rule, judgement)
 
 
+class LongSessionTest(unittest.TestCase):
+    """Handoffs and compaction keep exact values, dead ends and the next step."""
+
+    HANDOFF_SLOTS = ["Goal", "Facts", "Changed", "Checks", "Dead ends", "Next", "Done when", "Pointers"]
+    SLOT = re.compile(r"^- ([A-Z][a-z]+(?: [a-z]+)?):", re.M)
+
+    def test_handoff_record_has_its_slots(self):
+        handoff = section(read_text(SKILLS / "corthex-record" / "references" / "progress.md"), "## Handoff")
+        template = re.search(r"```markdown\n(.*?)```", handoff, re.S).group(1)
+        self.assertEqual(self.SLOT.findall(template), self.HANDOFF_SLOTS)
+        for rule in (
+            "60 lines at most",
+            "List the files, the words to search for and the line ranges to read",
+            "is a guess and is labelled as one",
+            "update its handoff instead of writing a second one",
+            "Never include secrets",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, handoff)
+
+    def test_record_skill_routes_handoffs(self):
+        rows = [row for row in table(read_text(SKILLS / "corthex-record" / "SKILL.md")) if row[0] == "Handoff"]
+        self.assertEqual(len(rows), 1)
+        self.assertIn("(references/progress.md#handoff)", rows[0][2])
+
+    def test_long_sessions_keep_their_habits(self):
+        self.assertIn("(references/long-sessions.md)", read_text(SKILLS / "corthex" / "SKILL.md"))
+        text = read_text(SKILLS / "corthex" / "references" / "long-sessions.md")
+        for rule in (
+            "Leave automatic compaction on",
+            "Compact by hand at the end of a step",
+            "`/compact` takes focus instructions",
+            "`# Compact instructions`",
+            "let the user add them",
+            "Treat the summary as a pointer, not as the source",
+            "`transcript_path`",
+            "read only the matching lines",
+            "do not copy tool output from it into records or messages",
+            "Do not rebuild it from memory",
+            "Give the files to read, the words to search for and the line ranges",
+            "`experimental_compact_prompt_file`",
+            "Do not change the user's global configuration yourself",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, text)
+
+    def test_codex_example_uses_the_handoff_slots(self):
+        text = read_text(SKILLS / "corthex" / "references" / "long-sessions.md")
+        example = re.search(r"```toml\n(.*?)```", text, re.S).group(1)
+        self.assertEqual(self.SLOT.findall(example), self.HANDOFF_SLOTS)
+        try:
+            import tomllib
+        except ImportError:  # Python before 3.11
+            return
+        self.assertEqual(set(tomllib.loads(example)), {"compact_prompt"})
+
+
 class DefaultHumanViewTest(unittest.TestCase):
     """Each stage proposes a default human view, and another choice is recorded as a decision."""
 
