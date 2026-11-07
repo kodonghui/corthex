@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.8.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.2.2. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.9.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.2.2. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -28,10 +28,10 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │   ├── LICENSE, NOTICE
 │   │   └── skills/
 │   │       ├── corthex/                 entry skill
-│   │       │   ├── references/          principles, profile, project, stage contract
+│   │       │   ├── references/          principles, profile, project, stage contract, long sessions
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
-│   │       ├── corthex-record/          minutes, decisions, progress, retrospectives
+│   │       ├── corthex-record/          minutes, decisions, progress and handoffs, retrospectives
 │   │       └── corthex-uxui/            craft for screens, motion and video
 │   │           ├── references/          names, values, video, checks and their sources
 │   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
@@ -100,7 +100,7 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-screen` | 07 sitemap, 08 screen states, 09 mockup |
 | `corthex-build` | 10 WBS, 11 development, 12 QA |
 | `corthex-present` | 13 presentation |
-| `corthex-record` | minutes, decisions, progress and retrospectives, at any stage |
+| `corthex-record` | minutes, decisions, progress records and handoffs, and retrospectives, at any stage |
 | `corthex-uxui` | the craft of screens, motion and video, with its checks: in 08, 09 and 13, or on its own |
 
 `corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).
