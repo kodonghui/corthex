@@ -17,7 +17,8 @@ import os
 from pathlib import Path
 import re
 
-from . import conflict_types, curation, diagnostics, files, format2, item_types, revision_io, state_types, store
+from . import (conflict_types, curation, diagnostics, files, format2, item_types, revision_io, state_types, store,
+               worker_support)
 
 KINDS = {'curate', 'consolidate', 'undo'}
 FIELDS = 'id kind at ended device undoes epoch last turns saved statuses merges lines pins conflicts kept revisions applies'.split()
@@ -225,8 +226,9 @@ def _links(value):
     named |= {'item:' + entry['item'] for entry in value['merges']}
     named |= {'pin:' + entry['item'] for entry in value['pins']}
     named |= {'candidate:' + entry['candidate'] for entry in value['conflicts']}
+    # A line's revision at each apply has its own entry: its history reference finds the version before.
     lines = {('line:' + entry['line'], entry['generation']) for entry in value['lines']}
-    if len(lines) != len(value['lines']) or not lines <= linked:
+    if len(lines) != len(value['lines']) or lines != {pair for pair in linked if pair[0].startswith('line:')}:
         raise ValueError('run log lines do not match its applies')
     if any(entry['history'] is not None and entry['history'][0].lower() != value['epoch'].lower()
            for entry in value['lines']):
@@ -400,14 +402,29 @@ def expire(memory, root, deadline, *, when, days):
     A log's time is its last apply. A log that cannot be read, and a backup
     or temporary copy whose log is gone, go by their file's modification
     time. The holder of the layer lease calls this; a lost lease stops it,
-    and what is left waits for the next start.
+    and what is left waits for the next start. Nothing is read or deleted
+    through a link: a linked run folder raises UnsafePath, and a linked log
+    or copy is left with its run.
     """
     root = Path(root)
     check = revision_io.guard(memory, root, deadline)
     cutoff, moment = _cutoff(when, days)
     limit = moment.timestamp()
     folder = root / 'runs'
+    if memory.fence.check(folder) is None:
+        check()
+        return 0
     names = _names(folder)
+    present, copies = set(names), {}
+    for name in names:
+        if _copy(name):
+            copies.setdefault(_copy(name), []).append(name)
+
+    def fenced(path):
+        def guard():
+            check()
+            memory.fence.check(path)
+        return guard
     removed = 0
     for name in names:
         check()
@@ -415,29 +432,30 @@ def expire(memory, root, deadline, *, when, days):
         if not format2._RUN.fullmatch(run):
             continue
         primary = folder / name
-        log = read(root, run)
-        if log is not None:
-            expired = log['ended'] < cutoff
-        else:
-            try:
-                expired = primary.stat().st_mtime < limit
-            except FileNotFoundError:
+        try:
+            info = memory.fence.check(primary)
+            if info is None:
                 continue
-        if not expired:
+            log = read(root, run)
+            expired = log['ended'] < cutoff if log is not None else info.st_mtime < limit
+            if not expired:
+                continue
+            # Its backup and temporary copies go first, so a failed cleanup keeps the log.
+            for other in copies.get(run, []) + [name]:
+                files._unlink(folder / other, fenced(folder / other))
+        except worker_support.UnsafePath:
             continue
-        # Its backup and temporary copies go first, so a failed cleanup keeps the log.
-        files.delete_file(primary, check)
         removed += 1
     for name in names:
         run = _copy(name)
-        if not run or run + '.json' in names:
+        if not run or run + '.json' in present:
             continue
         check()
         try:
-            expired = (folder / name).stat().st_mtime < limit
-        except FileNotFoundError:
+            info = memory.fence.check(folder / name)
+            if info is not None and info.st_mtime < limit:
+                files._unlink(folder / name, fenced(folder / name))
+        except worker_support.UnsafePath:
             continue
-        if expired:
-            files._unlink(folder / name, check)
     check()
     return removed

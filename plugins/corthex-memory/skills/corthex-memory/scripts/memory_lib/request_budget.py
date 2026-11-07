@@ -16,7 +16,10 @@ are API-009's:
 3. A request whose safe estimate is 60,000 or less goes without counting.
 4. Any other is counted. A count of 99,000 or less goes; a higher one loses its
    newest turns until its working estimate is lower by the excess and a tenth
-   more, and is counted again, three counts at most.
+   more, and is counted again, three counts at most. When no request could be
+   that much lower, because the count reads the text far denser than the
+   working estimate, it loses the same share of its working estimate as the
+   excess and a tenth more are of the count.
 5. When counting fails, or the third count is still too high, the turns are
    filled again by the safe estimate up to 90,000, and the request goes
    without counting.
@@ -24,7 +27,8 @@ are API-009's:
    with the same state, list and candidates. Its entries are cut at paragraph
    breaks, at line breaks inside a paragraph that is too long, and at
    character boundaries inside a line that is still too long, never inside a
-   character with its combining marks, a joined emoji, CR LF or `[forgotten]`.
+   character with its combining marks, a conjunct that a virama joins, a
+   joined emoji, CR LF or `[forgotten]`.
 
 The estimates read the request document before redaction, with the
 instructions and the schema; a count reads the request as sent. Nothing here
@@ -48,6 +52,8 @@ COUNTS = 3
 PROVISIONAL = 999999
 # The words that rank a partial list come from the oldest turns that fit beside a full list.
 RANKING = FILL - LIST
+# Unicode's stream-safe form puts at most 30 marks in a row, so a conjunct's virama is looked for that far back.
+_MARKS = 30
 _ASCII = bytes(range(128))
 _BLANK = re.compile(r'\n[ \t\r]*\n')
 _LINE = re.compile(r'\n')
@@ -285,9 +291,11 @@ def _boundary(text, index):
     after, before = text[index], text[index - 1]
     code, previous = ord(after), ord(before)
     # Marks include variation selectors and the keycap; then joiners, skin tones, tags, Hangul V and T jamo.
-    if (unicodedata.category(after)[0] == 'M' or after == '\u200d' or before == '\u200d' or
+    if (unicodedata.category(after)[0] == 'M' or after in '\u200c\u200d' or before == '\u200d' or
             0x1F3FB <= code <= 0x1F3FF or 0xE0020 <= code <= 0xE007F or 0x1160 <= code <= 0x11FF or
             0xD7B0 <= code <= 0xD7FF or before == '\r' and after == '\n'):
+        return False
+    if unicodedata.category(after)[0] == 'L' and _virama(text, index):
         return False
     if 0x1F1E6 <= code <= 0x1F1FF and 0x1F1E6 <= previous <= 0x1F1FF:
         run = 0
@@ -297,6 +305,17 @@ def _boundary(text, index):
             return False
     marker = curator_document.FORGOTTEN
     return not any(text.startswith(marker, start) for start in range(max(0, index - len(marker) + 1), index))
+
+
+def _virama(text, index):
+    """Whether a virama ends the marks before text[index], joining the letter there into a conjunct."""
+    for position in range(index - 1, max(-1, index - 1 - _MARKS), -1):
+        character = text[position]
+        if unicodedata.combining(character) == 9:
+            return True
+        if unicodedata.category(character)[0] != 'M' and character != '\u200d':
+            return False
+    return False
 
 
 def _cut(text, fits):
@@ -410,9 +429,10 @@ def _size(queue, measure_working, measure_safe, count, document, shrink=None):
     if measure_working(chosen) >= FILL:
         return None
     counts = 0
+    if measure_safe(chosen) <= UNCOUNTED:
+        return chosen, rest, None, counts
     while True:
-        if measure_safe(chosen) <= UNCOUNTED:
-            return chosen, rest, None, counts
+        # A request that lost turns after a high count is counted again, whatever its safe estimate.
         tokens = count(document(chosen))
         counts += 1
         if tokens is None:
@@ -422,7 +442,12 @@ def _size(queue, measure_working, measure_safe, count, document, shrink=None):
         if counts == COUNTS:
             break
         excess = tokens - COUNTED
-        target = measure_working(chosen) - excess - -(-excess // 10)
+        size, cut = measure_working(chosen), excess - (-excess // 10)
+        if size - cut <= measure_working([]):
+            # No request is that much lower: the count reads these turns far denser than the
+            # working estimate, so they lose the same share of it as the excess and a tenth more are of the count.
+            cut = -(-size * cut // tokens)
+        target = size - cut
         if not _drop(chosen, rest, measure_working, target):
             if shrink is None:
                 return None

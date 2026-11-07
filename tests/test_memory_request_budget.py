@@ -234,12 +234,15 @@ class RequestBudgetTest(unittest.TestCase):
                   ('\U0001F44D\U0001F3FD', 1), ('\U0001F3F4\U000E0067\U000E007F', 1),
                   ('\U0001F3F4\U000E0067\U000E007F', 2), ('가', 1), ('각', 2),
                   ('ᄀힰ', 1), ('a\r\nb', 2), ('\U0001F1F0\U0001F1F7', 1),
-                  ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 3), ('x[forgotten]y', 2), ('x[forgotten]y', 11)]
+                  ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 3), ('x[forgotten]y', 2), ('x[forgotten]y', 11),
+                  # Conjuncts: a virama joins the next letter, also past a mark or a joiner; Khmer's coeng too.
+                  ('क्ष', 1), ('क्ष', 2), ('क्\u0951ष', 3), ('क्\u200dष', 3), ('ក្ក', 2), ('a\u200cb', 1)]
         for text, index in inside:
             with self.subTest(text=text, index=index):
                 self.assertFalse(request_budget._boundary(text, index))
         between = [('ab', 0), ('ab', 1), ('ab', 2), ('a\nb', 2), ('a\r\nb', 1), ('a\r\nb', 3), ('가나', 1),
-                   ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 2), ('x[forgotten]y', 1), ('x[forgotten]y', 12)]
+                   ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 2), ('x[forgotten]y', 1), ('x[forgotten]y', 12),
+                   ('क्षक्ष', 3), ('कष', 1), ('क्\u200cष', 3), ('क्' + '\u0951' * 30 + 'ष', 32)]
         for text, index in between:
             with self.subTest(text=text, index=index):
                 self.assertTrue(request_budget._boundary(text, index))
@@ -528,6 +531,58 @@ class RequestBudgetTest(unittest.TestCase):
         self.assertEqual(''.join(pieces), text)
         self.assertTrue(set(cuts) <= bounds, sorted(set(cuts) - bounds)[:5])
 
+    def test_conjuncts_stay_whole_across_parts(self):
+        # Devanagari KSSA and Khmer KA with a subscript KA: three code points each, one character to a reader.
+        for cluster in ('क्ष', 'ក្ក'):
+            with self.subTest(cluster=cluster):
+                text = cluster * 50000
+                result = request_budget.plan(self.layer(), [session([(text, None)])], schema=SCHEMA,
+                                             count=lambda source: None)
+                pieces = [''.join(node.text or '' for node in ET.fromstring(request.source).iter('entry'))
+                          for request in result.requests]
+                self.assertGreaterEqual(len(pieces), 3)
+                self.assertEqual(''.join(pieces), text)
+                self.assertEqual([len(piece) % 3 for piece in pieces], [0] * len(pieces))
+
+    def test_a_count_far_above_the_working_estimate_cuts_the_same_share(self):
+        # A counter that reads every character as 1.04 tokens, twice the safe estimate's rate for ASCII.
+        def dense(source):
+            return -(-len(FIXED + source) * 104 // 100)
+        empty = request_budget.working(FIXED + curator_document.curate(lines=[], items=[], form='full', sessions=[]))
+
+        def infeasible(count, sessions):
+            excess = count - 99000
+            return self.estimate((sessions, len(sessions['turns'])), 'working') - excess - -(-excess // 10) <= empty
+        many = session([(prose(2500, 50 + n), prose(2500, 90 + n)) for n in range(30)])
+        calls = []
+
+        def count(source):
+            calls.append((source.count('<turn '), dense(source)))
+            return calls[-1][1]
+        request, = request_budget.plan(self.layer(), [many], schema=SCHEMA, count=count).requests
+        # Lower by the excess and a tenth more, no request would be left; by their share of the count, 15 turns.
+        self.assertTrue(infeasible(calls[0][1], many))
+        self.assertEqual([turns for turns, _ in calls], [30, 15])
+        self.assertEqual((len(request.turns), request.counted, request.counts), (15, calls[-1][1], 2))
+        self.assertLessEqual(request.counted, 99000)
+
+        # One turn of 160,000 characters: it no longer goes whole and uncounted after one count of 173,058.
+        text = prose(160000, 7)
+        big = session([(text, None)])
+        calls.clear()
+        result = request_budget.plan(self.layer(), [big], schema=SCHEMA, count=count)
+        self.assertEqual([request.part for request in result.requests], [(1, 2), (2, 2)])
+        self.assertEqual(calls[0], (1, 173058))
+        first, second = result.requests
+        self.assertEqual((first.counted, first.counts), (calls[-1][1], 2))
+        self.assertLessEqual(first.counted, 99000)
+        self.assertEqual((second.counted, second.counts), (None, 0))
+        self.assertLessEqual(second.safe, 60000)
+        self.assertTrue(all(dense(request.source) < 99000 for request in result.requests))
+        shown = [''.join(node.text or '' for node in ET.fromstring(request.source).iter('entry'))
+                 for request in result.requests]
+        self.assertEqual(''.join(shown), text)
+
     def test_a_single_turn_goes_in_parts_when_the_count_or_the_fallback_cannot_take_it_whole(self):
         # 300,000 ASCII characters: the working estimate fits the fill, the safe one passes 90,000.
         big = session([(prose(150000, 7), prose(150000, 8))])
@@ -606,10 +661,13 @@ class RequestBudgetTest(unittest.TestCase):
     def test_a_turn_counted_too_large_alone_goes_in_parts_even_within_the_fallback(self):
         value = session([(prose(85000, 11), prose(85000, 12))])
         self.assertLessEqual(self.estimate((value, 1), 'safe'), 90000)
-        # Counted alone, the turn passes 99,000; counted again in pieces, it still does.
+        # Counted alone, the turn passes 99,000; counted again in pieces, it still does. The first part,
+        # lower by the excess and a tenth more, is counted a third time, though its safe estimate is under 60,000.
         counter = Counter(120000, 120000)
         result = request_budget.plan(self.layer(), [value], schema=SCHEMA, count=counter)
-        self.assertEqual(counter.turns, [1, 1])
+        self.assertEqual(counter.turns, [1, 1, 1])
+        self.assertLessEqual(result.requests[0].safe, 60000)
+        self.assertEqual((result.requests[0].counted, result.requests[0].counts), (counter.calls[-1], 2))
         self.assertGreaterEqual(len(result.requests), 2)
         self.assertEqual([request.part for request in result.requests],
                          [(n, len(result.requests)) for n in range(1, len(result.requests) + 1)])

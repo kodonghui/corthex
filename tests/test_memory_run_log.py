@@ -10,14 +10,18 @@ import copy
 import hashlib
 import json
 import os
+from pathlib import Path
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import curate_apply, curator_answers, files, item_types, locks, revision_io, run_log
+from memory_lib import curate_apply, curator_answers, files, item_types, locks, revision_io, run_log, worker_support
 from memory_lib import state_edits, state_types
 import test_memory_state_edits as edits_fixture
 from test_memory_curator_answers import AT, DEVICE, LATER, LOG, answer, change, quote, saved
@@ -269,6 +273,26 @@ class RunLogRecordTest(unittest.TestCase):
         undo = logged(kind='undo', undoes='r_0123456789ab')
         self.assertEqual(run_log.parse(run_log.log_bytes(undo))['undoes'], 'r_0123456789ab')
 
+    def test_a_line_changed_by_two_applies_needs_both_entries(self):
+        line = ident('s', '1')
+        value, revisions = run_log.start(RUN, 'curate', AT, DEVICE), {}
+        for generation, before in ((9, None), (11, 9)):
+            revisions.update({'run:' + RUN: generation, 'line:' + line: generation})
+            effects = run_log.lines([{'line': line, 'op': 'changed', 'generation': generation,
+                                      'history': (EPOCH, generation, line, 'a' * 64),
+                                      'before': ['progress', 0, '', ''], 'after': ['progress', 0, '', ''],
+                                      'before_revision': before, 'after_revision': generation}])
+            value = run_log.add(value, progress(generation, revisions), LATER, effects)
+        whole = run_log.parse(run_log.log_bytes(value))
+        self.assertEqual([entry['generation'] for entry in whole['lines']], [9, 11])
+        self.assertTrue(run_log.eligible(whole, progress(11, revisions), DEVICE))
+        # Without its first entry the log has lost the history reference to the line before the run.
+        for kept in (9, 11):
+            with self.subTest(kept=kept):
+                part = dict(value, lines=[entry for entry in value['lines'] if entry['generation'] == kept])
+                with self.assertRaises(ValueError):
+                    run_log.parse(json.dumps(part).encode())
+
     def test_line_entries_follow_the_publishers_operations(self):
         line = ident('s', '1')
         base = {'line': line, 'op': 'changed', 'generation': 9, 'history': [EPOCH, 9, line, 'a' * 64],
@@ -347,6 +371,62 @@ class RunLogRetentionTest(unittest.TestCase):
                                             days=100), 0)
         self.assertEqual(run_log.listed(self.project, progress(9, {}), DEVICE, when=LATER, days=100), [])
         self.assertFalse(self.folder.exists())
+
+    def alias(self, link, target, directory=False):
+        """A symbolic link, or on Windows without the privilege a directory junction."""
+        try:
+            link.symlink_to(target, target_is_directory=directory)
+        except OSError:
+            program = Path(os.environ.get('SystemRoot', '')) / 'System32' / 'cmd.exe'
+            if os.name != 'nt' or not directory or not program.is_absolute():
+                self.skipTest('symbolic links unavailable')
+            made = subprocess.run([str(program), '/d', '/c', 'mklink', '/J', str(link), str(target)],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
+            if made.returncode:
+                self.skipTest('directory junctions unavailable')
+
+    def outside(self):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(folder), True)
+        return folder
+
+    def test_expiry_never_reads_or_deletes_through_a_link(self):
+        when, old = '2026-11-07T12:00:00.000Z', '2026-07-29T12:00:00.000Z'
+        outside = self.outside()
+        run = 'r_0000000000a1'
+        (outside / (run + '.json')).write_bytes(run_log.log_bytes(logged(run, ended=old)))
+        (outside / (run + '.json.bak')).write_bytes(b'{}')
+        self.folder.rmdir()
+        self.alias(self.folder, outside, directory=True)
+        with self.fixture.held(), self.assertRaises(worker_support.UnsafePath):
+            run_log.expire(self.fixture.memory, self.project, self.fixture.deadline, when=when, days=100)
+        self.assertEqual(sorted(path.name for path in outside.iterdir()), [run + '.json', run + '.json.bak'])
+
+    def test_expiry_leaves_a_linked_log_or_copy_with_its_run(self):
+        when, old = '2026-11-07T12:00:00.000Z', '2026-07-29T12:00:00.000Z'
+        outside = self.outside()
+        stamp = time.mktime(time.strptime('2026-07-01', '%Y-%m-%d'))
+        targets = {}
+        for name in ('log', 'bak', 'orphan'):
+            targets[name] = outside / name
+            targets[name].write_bytes(run_log.log_bytes(logged('r_0000000000d1', ended=old)))
+            os.utime(str(targets[name]), (stamp, stamp))
+        linked, with_link, orphan, plain = 'r_0000000000d1', 'r_0000000000d2', 'r_0000000000d3', 'r_0000000000d4'
+        self.alias(self.folder / (linked + '.json'), targets['log'])
+        (self.folder / (with_link + '.json')).write_bytes(run_log.log_bytes(logged(with_link, ended=old)))
+        self.alias(self.folder / (with_link + '.json.bak'), targets['bak'])
+        self.alias(self.folder / (orphan + '.json.bak'), targets['orphan'])
+        (self.folder / (plain + '.json')).write_bytes(run_log.log_bytes(logged(plain, ended=old)))
+        (self.folder / (plain + '.json.bak')).write_bytes(b'{')
+        with self.fixture.held():
+            removed = run_log.expire(self.fixture.memory, self.project, self.fixture.deadline, when=when, days=100)
+        self.assertEqual(removed, 1)
+        self.assertEqual(sorted(path.name for path in self.folder.iterdir()),
+                         [linked + '.json', with_link + '.json', with_link + '.json.bak', orphan + '.json.bak'])
+        self.assertTrue(all(path.is_symlink() for path in (self.folder / (linked + '.json'),
+                                                            self.folder / (with_link + '.json.bak'),
+                                                            self.folder / (orphan + '.json.bak'))))
+        self.assertEqual(sorted(path.name for path in outside.iterdir()), ['bak', 'log', 'orphan'])
 
     def test_expiry_needs_the_layer_lease(self):
         with self.assertRaises(locks.LostLock):
