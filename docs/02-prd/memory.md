@@ -158,7 +158,7 @@ These are the success measures originally approved for the repository's one-week
 
 ## For the checkpoint
 
-Passed on 2026-10-27: D1, D2 and D4 as recommended, and D3 as the new option above; 100-day default raw retention (REQ-009); recording only prompts and final answers (REQ-004); the one-week trial on this repository and its success measures; and the seven requirement changes of the functional spec. Consent version 1 still covers C2's external sending, and curation keeps Haiku 5.5 xhigh, compared with medium in the trial. The Git sync details are superseded; the server sync design needs its own confirmation before C3.
+Passed on 2026-10-27: D1, D2 and D4 as recommended, and D3 as the new option above; 100-day default raw retention (REQ-009); recording only prompts and final answers (REQ-004); the one-week trial on this repository and its success measures; and the seven requirement changes of the functional spec. Consent version 1 was to cover C2's external sending; the maintainer replaced this on 2026-11-06, and 0.3.0 asks again with version 2 (stage 06). Curation keeps Haiku 5.5 xhigh, compared with medium in the trial. The Git sync details are superseded; the server sync design needs its own confirmation before C3.
 
 2026-11-04 amendment: the 2026-10-27 approval above remains a historical record. C1's one-week trial is removed; the maintainer's 12:26 decision to proceed and 12:44 approval to tag immediately after passing checks now govern C1. This does not remove the C2/C3 trial plans.
 

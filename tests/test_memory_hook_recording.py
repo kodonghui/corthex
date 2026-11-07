@@ -4,13 +4,14 @@ import copy
 import json
 import multiprocessing
 import os
+import string
 import tempfile
 import time
 from pathlib import Path
 
 from test_memory_hooks import HookCase
 from test_memory_store import AT
-from test_memory_redaction import key_block, random_text, secret_examples
+from test_memory_redaction import ORDINARY, key_block, luhn, random_text, resident_numbers, secret_examples
 from test_memory_locks import holder
 from test_memory_diagnostics import hold_logs
 from memory_lib import base, files, hooks, raw_log
@@ -674,6 +675,19 @@ class HookRecordingTest(HookCase):
                     self.assertTrue(self.raw()[-1]["text"] == "[redacted:private-key]")
         stored = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
         self.assertTrue(all(value.encode() not in stored for _, value in examples))
+
+    def test_tc395_397_korean_names_and_personal_numbers_are_redacted_through_the_hook(self):
+        value, card, resident = "k" + random_text(15), luhn("4" + random_text(14, string.digits)), resident_numbers()[0]
+        text = ("비밀번호: " + value + " 그리고 password: " + value + "\nAPI 키는 " + value + "\n카드 " + card +
+                "\n주민번호 " + resident + "\n" + "\n".join(ORDINARY))
+        expected = ("비밀번호: [redacted:assigned-secret] 그리고 password: [redacted:assigned-secret]\n"
+                    "API 키는 [redacted:assigned-secret]\n카드 [redacted:card-number]\n"
+                    "주민번호 [redacted:resident-number]\n" + "\n".join(ORDINARY))
+        for hook, field in (("prompt", "prompt"), ("end-of-turn", "last_assistant_message")):
+            self.run_functional(hook, dict(self.event(hook), **{field: text}))
+            self.assertTrue(self.raw()[-1]["text"] == expected)
+        stored = b"".join(p.read_bytes() for p in self.root.rglob("*") if p.is_file())
+        self.assertTrue(all(secret.encode() not in stored for secret in (value, card, resident)))
 
     def test_tc025_memory_and_environment_values_are_masked(self):
         first, second, environment, short = random_text(32), random_text(32), random_text(16), random_text(8)
