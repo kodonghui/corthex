@@ -1,8 +1,9 @@
 """TASK-086: checked curate-2 changes and conflict candidates applied to fabricated format-2 stores.
 
 TC-163 to TC-165, TC-346 to TC-348 and TC-391, and the TASK-086 parts of
-TC-177, TC-182 and TC-351. No model is called; the worker that will apply an
-answer (TASK-088) is not wired to a hook or command before the 0.3.0 activation.
+TC-161, TC-177, TC-178, TC-182 and TC-351. No model is called; the worker
+that will apply an answer (TASK-088) is not wired to a hook or command
+before the 0.3.0 activation.
 """
 import contextlib
 import copy
@@ -119,6 +120,29 @@ class CurateApplyTest(unittest.TestCase):
     def run_answer(self, value, items, **kwargs):
         checked = self.checked(value, items)
         return checked, self.apply(checked, **kwargs)
+
+    def test_tc161_part_a_change_whose_quote_is_one_word_off_is_not_saved(self):
+        said = self.turns.say('user', 'We will ship the plugin on Friday after the checks pass.')
+        checked, result = self.run_answer(answer(
+            change(quote(said, 'We will ship the plugin on Monday after the checks pass.'), title='Monday'),
+            change(quote(said, 'We will ship the plugin on Friday'), title='Friday')), [])
+        self.assertEqual(checked.dropped, {'quote': 1})
+        ((number, new),) = result['saved']
+        self.assertEqual((number, self.item(new)['title']), (2, 'Friday'))
+        self.assertEqual(self.listed(), [new])
+
+    def test_tc178_part_a_user_decision_outside_pasted_text_is_saved(self):
+        said = self.turns.say('user', 'Here is the vendor note:\r\n<pasted_content id="p1">\r\nWe decided to drop '
+                              'the cache.\r\n</pasted_content id="p1">\r\nI decide to keep the cache.')
+        checked, result = self.run_answer(answer(
+            change(quote(said, 'We decided to drop the cache.'), kind='decision'),
+            change(quote(said, 'I decide to keep the cache.'), kind='decision', title='Keep the cache')), [])
+        self.assertEqual(checked.dropped, {'pasted': 1})
+        ((number, new),) = result['saved']
+        saved_item = self.item(new)
+        self.assertEqual((number, saved_item['kind'], saved_item['quotes'][0]['speaker'], saved_item['title']),
+                         (2, 'decision', 'user', 'Keep the cache'))
+        self.assertEqual(self.listed(), [new])
 
     def test_tc163_the_user_corrects_the_agent(self):
         stated = self.turns.say('agent', 'The cache is on by default.')
