@@ -27,8 +27,9 @@ are API-009's:
    with the same state, list and candidates. Its entries are cut at paragraph
    breaks, at line breaks inside a paragraph that is too long, and at
    character boundaries inside a line that is still too long, never inside a
-   character with its combining marks, a conjunct that a virama joins, a
-   joined emoji, CR LF or `[forgotten]`.
+   user-perceived character (an extended grapheme cluster of UAX #29, by the
+   running Python's character data), a conjunct that a virama joins, CR LF or
+   `[forgotten]`.
 
 The estimates read the request document before redaction, with the
 instructions and the schema; a count reads the request as sent. Nothing here
@@ -54,6 +55,13 @@ PROVISIONAL = 999999
 RANKING = FILL - LIST
 # Unicode's stream-safe form puts at most 30 marks in a row, so a conjunct's virama is looked for that far back.
 _MARKS = 30
+# UAX #29 classes that a general category does not show, in Unicode 12.1 to 17.0: the letters that join the
+# character before them like a mark (Thai and Lao AM, the halfwidth sound marks, the Kirat Rai vowel signs), and the
+# prepended signs that join the character after them.
+_JOINS_BEFORE = frozenset([0x0E33, 0x0EB3, 0xFF9E, 0xFF9F, 0x16D63, 0x16D67, 0x16D68, 0x16D69, 0x16D6A])
+_PREPENDED = frozenset(list(range(0x0600, 0x0606)) + [0x06DD, 0x070F, 0x0890, 0x0891, 0x08E2, 0x0D4E, 0x110BD, 0x110CD,
+                       0x111C2, 0x111C3, 0x113D1, 0x1193F, 0x11941, 0x11A3A] + list(range(0x11A84, 0x11A8A)) +
+                       [0x11D46, 0x11F02])
 _ASCII = bytes(range(128))
 _BLANK = re.compile(r'\n[ \t\r]*\n')
 _LINE = re.compile(r'\n')
@@ -290,10 +298,15 @@ def _boundary(text, index):
         return True
     after, before = text[index], text[index - 1]
     code, previous = ord(after), ord(before)
-    # Marks include variation selectors and the keycap; then joiners, skin tones, tags, Hangul V and T jamo.
+    # Marks include variation selectors and the keycap; then joiners, skin tones, tags, Hangul V and T jamo, the
+    # letters that join like marks and the prepended signs.
     if (unicodedata.category(after)[0] == 'M' or after in '\u200c\u200d' or before == '\u200d' or
             0x1F3FB <= code <= 0x1F3FF or 0xE0020 <= code <= 0xE007F or 0x1160 <= code <= 0x11FF or
-            0xD7B0 <= code <= 0xD7FF or before == '\r' and after == '\n'):
+            0xD7B0 <= code <= 0xD7FF or code in _JOINS_BEFORE or previous in _PREPENDED or
+            before == '\r' and after == '\n'):
+        return False
+    # A leading Hangul jamo joins the leading jamo or the syllable after it.
+    if _leading(previous) and (_leading(code) or 0xAC00 <= code <= 0xD7A3):
         return False
     if unicodedata.category(after)[0] == 'L' and _virama(text, index):
         return False
@@ -305,6 +318,10 @@ def _boundary(text, index):
             return False
     marker = curator_document.FORGOTTEN
     return not any(text.startswith(marker, start) for start in range(max(0, index - len(marker) + 1), index))
+
+
+def _leading(code):
+    return 0x1100 <= code <= 0x115F or 0xA960 <= code <= 0xA97C
 
 
 def _virama(text, index):

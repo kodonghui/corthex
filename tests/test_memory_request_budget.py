@@ -236,13 +236,18 @@ class RequestBudgetTest(unittest.TestCase):
                   ('ᄀힰ', 1), ('a\r\nb', 2), ('\U0001F1F0\U0001F1F7', 1),
                   ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 3), ('x[forgotten]y', 2), ('x[forgotten]y', 11),
                   # Conjuncts: a virama joins the next letter, also past a mark or a joiner; Khmer's coeng too.
-                  ('क्ष', 1), ('क्ष', 2), ('क्\u0951ष', 3), ('क्\u200dष', 3), ('ក្ក', 2), ('a\u200cb', 1)]
+                  ('क्ष', 1), ('क्ष', 2), ('क्\u0951ष', 3), ('क्\u200dष', 3), ('ក្ក', 2), ('a\u200cb', 1),
+                  # A leading jamo joins a leading jamo or a syllable; a prepended sign joins what follows it;
+                  # Thai and Lao AM, the halfwidth sound marks and the Kirat Rai vowel signs join like marks.
+                  ('ᄀ가', 1), ('ᄀᄀ', 1), ('ꥠ각', 1), ('\u0600\u0661', 1), ('\u0600 ', 1), ('\U000110BDa', 1),
+                  ('ก\u0e33', 1), ('ກ\u0eb3', 1), ('ｶ\uff9e', 1), ('\U00016D43\U00016D63', 1)]
         for text, index in inside:
             with self.subTest(text=text, index=index):
                 self.assertFalse(request_budget._boundary(text, index))
         between = [('ab', 0), ('ab', 1), ('ab', 2), ('a\nb', 2), ('a\r\nb', 1), ('a\r\nb', 3), ('가나', 1),
                    ('\U0001F1F0\U0001F1F7\U0001F1F0\U0001F1F7', 2), ('x[forgotten]y', 1), ('x[forgotten]y', 12),
-                   ('क्षक्ष', 3), ('कष', 1), ('क्\u200cष', 3), ('क्' + '\u0951' * 30 + 'ष', 32)]
+                   ('क्षक्ष', 3), ('कष', 1), ('क्\u200cष', 3), ('क्' + '\u0951' * 30 + 'ष', 32),
+                   ('가ᄀ', 1), ('ᄀa', 1), ('a\u0600', 1), ('\u0e33ก', 1)]
         for text, index in between:
             with self.subTest(text=text, index=index):
                 self.assertTrue(request_budget._boundary(text, index))
@@ -531,18 +536,19 @@ class RequestBudgetTest(unittest.TestCase):
         self.assertEqual(''.join(pieces), text)
         self.assertTrue(set(cuts) <= bounds, sorted(set(cuts) - bounds)[:5])
 
-    def test_conjuncts_stay_whole_across_parts(self):
-        # Devanagari KSSA and Khmer KA with a subscript KA: three code points each, one character to a reader.
-        for cluster in ('क्ष', 'ក្ក'):
+    def test_clusters_stay_whole_across_parts(self):
+        # Devanagari KSSA and Khmer KA with a subscript KA: three code points each, one character to a reader;
+        # a leading jamo before a syllable, and the Arabic number sign before a digit: two each.
+        for cluster in ('क्ष', 'ក្ក', 'ᄀ가', '\u0600\u0661'):
             with self.subTest(cluster=cluster):
-                text = cluster * 50000
+                text = cluster * (150000 // len(cluster))
                 result = request_budget.plan(self.layer(), [session([(text, None)])], schema=SCHEMA,
                                              count=lambda source: None)
                 pieces = [''.join(node.text or '' for node in ET.fromstring(request.source).iter('entry'))
                           for request in result.requests]
                 self.assertGreaterEqual(len(pieces), 3)
                 self.assertEqual(''.join(pieces), text)
-                self.assertEqual([len(piece) % 3 for piece in pieces], [0] * len(pieces))
+                self.assertEqual([len(piece) % len(cluster) for piece in pieces], [0] * len(pieces))
 
     def test_a_count_far_above_the_working_estimate_cuts_the_same_share(self):
         # A counter that reads every character as 1.04 tokens, twice the safe estimate's rate for ASCII.
