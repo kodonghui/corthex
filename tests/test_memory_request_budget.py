@@ -480,10 +480,12 @@ class RequestBudgetTest(unittest.TestCase):
         result = request_budget.plan(current, [big], schema=SCHEMA, count=counter)
         parts = len(result.requests)
         self.assertGreaterEqual(parts, 3)
-        frames, texts = set(), {}
+        frames, texts, spans = set(), {}, {}
         for number, request in enumerate(result.requests, 1):
             with self.subTest(part=number):
                 self.assertEqual((request.part, request.turns), ((number, parts), ((LOG, big['turns'][0]['seq']),)))
+                for entry, start, end in request.spans:
+                    spans.setdefault(entry, []).append((start, end))
                 self.assertLess(body_rule(sent(request.source)), 100000)
                 root = ET.fromstring(request.source)
                 frames.add(tuple(ET.tostring(root.find(tag), encoding='unicode') for tag in ('state', 'items',
@@ -502,6 +504,11 @@ class RequestBudgetTest(unittest.TestCase):
             self.assertEqual(''.join(pieces), value['text'])
             # Each part ends at a paragraph break of the entry it cuts.
             self.assertTrue(all(piece.endswith('\n\n') for piece in pieces[:-1]))
+            # The worker confines each part's quotes to its spans, which name the same pieces in order.
+            self.assertEqual([value['text'][start:end] for start, end in spans[value['id']]], pieces)
+            ends = [0] + [end for _, end in spans[value['id']]]
+            self.assertEqual([start for start, _ in spans[value['id']]], ends[:-1])
+            self.assertEqual(ends[-1], len(value['text']))
         self.assertEqual(sum(request.counts for request in result.requests), len(counter.calls))
 
     def test_tc154_a_line_of_500_kb_is_cut_only_between_characters(self):
@@ -603,7 +610,7 @@ class RequestBudgetTest(unittest.TestCase):
         middle = session([(prose(100000, 9), prose(100000, 10))])
         counter = Counter(None)
         request, = request_budget.plan(self.layer(), [middle], schema=SCHEMA, count=counter).requests
-        self.assertIsNone(request.part)
+        self.assertEqual((request.part, request.spans), (None, None))
         self.assertEqual((request.counted, request.counts), (counter.calls[-1], 1))
         self.assertEqual(request.source, curator_document.curate(lines=[], items=[], form='full', sessions=[middle]))
         self.assert_whole(request, [middle])

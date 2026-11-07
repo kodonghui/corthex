@@ -34,7 +34,8 @@ are API-009's:
 The estimates read the request document before redaction, with the
 instructions and the schema; a count reads the request as sent. Nothing here
 reads a file or sends anything but through the caller's `count` and `rank`.
-No hook, worker or command calls this module yet (TASK-088).
+Only the curation worker (TASK-088) calls this module, and no hook or command
+reaches the worker before the 0.3.0 activation.
 """
 from dataclasses import dataclass
 import json
@@ -87,6 +88,7 @@ class Request:
     working: int
     counted: object    # the count that let it go, else None
     counts: int        # count calls made while sizing it
+    spans: object = None  # a part's ((entry ID, start, end), ...) of the entries' shown text, else None
 
 
 @dataclass(frozen=True)
@@ -485,8 +487,8 @@ def _source(layer, listed, sessions):
                                    sessions=sessions, candidates=list(listed.candidates), omitted=listed.omitted)
 
 
-def _request(source, turns, part, counted, counts):
-    return Request(source, tuple(turns), part, safe(source), working(source), counted, counts)
+def _request(source, turns, part, counted, counts, spans=None):
+    return Request(source, tuple(turns), part, safe(source), working(source), counted, counts, spans)
 
 
 def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions='curate-2'):
@@ -566,9 +568,26 @@ def _split_turn(layer, listed, frame, session, turn, count):
         whole = dict(turn, entries=_entries(turn, chosen))
         return (_request(_source(layer, listed, [dict(session, turns=[whole])]), [(session['log'], turn['seq'])],
                          None, counted, counts),)
+    spans = _spans(turn, [chosen for chosen, _, _ in sized])
     return tuple(_request(_part_source(layer, listed, session, turn, chosen, number, len(sized)),
-                          [(session['log'], turn['seq'])], (number, len(sized)), counted, counts)
+                          [(session['log'], turn['seq'])], (number, len(sized)), counted, counts, spans[number - 1])
                  for number, (chosen, counted, counts) in enumerate(sized, 1))
+
+
+def _spans(turn, parts):
+    """Each part's (entry ID, start, end) of its entries' shown text: the pieces follow one another in order."""
+    offsets, found = {}, []
+    for pieces in parts:
+        spans = []
+        for index, text in pieces:
+            start = offsets.get(index, 0)
+            offsets[index] = start + len(text)
+            if spans and spans[-1][0] == index:
+                spans[-1][2] = offsets[index]
+            else:
+                spans.append([index, start, offsets[index]])
+        found.append(tuple((turn['entries'][index]['id'], start, end) for index, start, end in spans))
+    return found
 
 
 def _entries(turn, pieces):
