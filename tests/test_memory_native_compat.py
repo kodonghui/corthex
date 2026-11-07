@@ -351,6 +351,8 @@ class NativeCompatibilityGateTest(unittest.TestCase):
     def test_terminal_close_reaps_its_child_when_macos_refuses_the_group_signal(self):
         # macOS answers EPERM to killpg once every member of the group has exited
         # but is not yet reaped. The refusal must not skip reaping the CLI.
+        # Ctrl-C is held back: until exec, the forked child still runs this test's
+        # code, and a SIGINT there would unwind it through these cleanups.
         refusal = PermissionError(errno.EPERM, "fixture group signal refusal")
         for script in ("pass", "import time;time.sleep(30)"):
             with self.subTest(script=script), tempfile.TemporaryDirectory() as temporary:
@@ -360,9 +362,11 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                 try:
                     with patch.object(terminal, "pump"), \
                             patch.object(terminal, "wait", side_effect=AssertionError("fixture graceful timeout")), \
+                            patch.object(os, "write") as keys, \
                             patch.object(os, "killpg", side_effect=refusal) as group, \
                             patch.object(os, "kill", wraps=os.kill) as single:
                         terminal.close()
+                    keys.assert_any_call(terminal.fd, b"\x03")
                     group.assert_called_once_with(terminal.pid, signal.SIGKILL)
                     single.assert_called_once_with(terminal.pid, signal.SIGKILL)
                     self.assertIsNotNone(terminal.status)
