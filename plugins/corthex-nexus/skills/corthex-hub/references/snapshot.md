@@ -28,7 +28,7 @@ Files are written through a temporary file, so a failed write keeps the old one.
 | `stages.<stage>.parts.<part>` | That part's `state`, `checkpoints`, `next`, `updated`; an absent record remains unknown |
 | `pictures` | Each has `part`, pictured `stage`, full default `commit`, `time` and format-1 `source` |
 | `left_out` | Picture omissions with `part`, `stage`, `why: size` or `other-repository` |
-| `ask_before` | Up to 30 `entries`, their `source: project/profile/default`, and inherited entries `left_out` by a project override |
+| `ask_before` | Up to 30 `entries`, their `source: project/profile/default`, and the inherited entries a project override leaves out, `left_out`. A project entry keeps an inherited one when it repeats it, ignoring case, alone or followed by a space or `(`: `deletions (data)` keeps `deletions` |
 | `replaces` | Added only by a sending push when replacing the server's held commit |
 
 Only pictures and repository stage records come from the fetched default commit. `ls-tree` and `cat-file` read regular blobs without a checkout, filters, hooks, submodules or the working branch's text. Replacement refs and automatic object fetches are disabled, so a local replacement or missing partial-clone blob cannot silently change the reported bytes or turn a local command into a network request. Missing Git, origin or origin HEAD gives no pictures and `pictures-not-sent`, with the command to record the head. Sources in another repository are omitted explicitly. A document starts a part name followed by `/`, `.` or `-`; the longest matching name wins. An unmatched document is pictured for the whole project with `part-unknown`.

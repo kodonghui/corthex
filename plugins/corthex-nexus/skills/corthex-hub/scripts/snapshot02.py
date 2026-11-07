@@ -173,8 +173,16 @@ def ask_before(settings, home, checks, h):
 
     inherited = read(profile, "profile", (DEFAULT_ASK_BEFORE[:], "default"))
     entries, source = read(settings, "project", inherited)
+    listed = [x.casefold() for x in entries]
+
+    def kept(entry):
+        # A project entry keeps an inherited one when it repeats it, alone or with a qualifier after it,
+        # as "deletions (repositories, data)" keeps "deletions".
+        word = entry.casefold()
+        return any(x == word or (x.startswith(word) and x[len(word):len(word) + 1] in (" ", "(")) for x in listed)
+
     return {"entries": entries, "source": source,
-            "left_out": [x for x in inherited[0] if x not in entries] if source == "project" else []}
+            "left_out": [x for x in inherited[0] if not kept(x)] if source == "project" else []}
 
 
 def record_check(checks, h, rel, reason, stage=None, part=""):

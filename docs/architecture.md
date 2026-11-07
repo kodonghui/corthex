@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.8.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.2.1. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.8.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.2.2. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -219,7 +219,7 @@ Deadlines and hook elapsed time use `memory_lib/clock.py` and its `now()` backed
 
 ## Project hub
 
-`corthex-nexus` 0.2.1 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The optional NEXUS server and browser application live in [the product repository](https://github.com/kodonghui/corthex-nexus); the hub plugin stays here.
+`corthex-nexus` 0.2.2 has one skill, `corthex-hub`, with one script, `scripts/hub.py`. It turns the files the projects already have into one page for all of them, without a server. The optional NEXUS server and browser application live in [the product repository](https://github.com/kodonghui/corthex-nexus); the hub plugin stays here.
 
 - **Snapshot.** For each project in `~/.corthex/projects.json`, the script reads the stage sources that `.corthex/project.json` names, also in the project's other repositories, and saves what they define and link: trace IDs with their titles and fields, the file and line of each, the links between them, and the checks. A project is read only under the name it is registered with: when its `.corthex/project.json` gives another name, or an unregistered folder gives a registered project's name, the script reads nothing and says why, so a repository's settings cannot save or send its items under another project's name. It reads text only and never runs project code: Git comes from an absolute folder in PATH, never from the current folder, and runs without the repository's fsmonitor hook, clean filters or optional locks, and without looking inside submodules, so reading a repository's state starts none of its programs and rewrites nothing. When a tracked file uses a clean filter, such as Git LFS, the snapshot does not say whether the working tree has changes. It skips files whose names, or whose folders' names, look like secrets, also when a link leads to them, and translations beside their originals, such as `spec.ko.md` beside `spec.md`, when they define only the original's IDs, so those are not defined twice. The forms it reads and the checks are in [reading.md](../plugins/corthex-nexus/skills/corthex-hub/references/reading.md).
 - **Progress.** A stage's state, last checkpoint and next action come only from what was recorded with `hub.py status`, because a file that exists is not a finished stage. `done` is refused without a checkpoint and its date. Findings of a review are recorded the same way.
