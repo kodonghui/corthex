@@ -16,8 +16,8 @@ physical difference before it appends each earlier version to TBL-119.
 - Unnamed lines keep their text, citations and time; a decision line left
   without a current decision item is removed as `stale`.
 - The text of the lines stays below 3,000 UTF-8 bytes: whole lines are cut,
-  one from the end of each part in turn from next actions back to the goal,
-  as the start summary shortens the state (SPEC-021). Lines that the answer
+  the last line of each part in turn from next actions back to the goal, as
+  SPEC-021 shortens the start summary from the end of each part. Lines that the answer
   did not name go first, then changed lines and then added ones, so that a
   cut loses as little as it can: the earlier text of an existing line stays
   in TBL-119, while an added line that is cut leaves nothing.
