@@ -33,6 +33,18 @@ def secret_examples():
     values += [("aws-key", prefix + random_text(16, string.ascii_uppercase + string.digits)) for prefix in ("AKIA", "ASIA")]
     values += [("google-key", "AIza" + random_text(35)), ("google-key", "ya29." + random_text(24))]
     values += [("jwt", "eyJ" + random_text(12) + ".eyJ" + random_text(12) + "." + random_text(12))]
+    values += [("notion-token", "ntn_" + random_text(11, string.digits) + random_text(35)),
+               ("notion-token", "secret_" + random_text(43))]
+    values += [("supabase-key", "sbp_" + random_text(40, string.ascii_lowercase + string.digits)),
+               ("supabase-key", "sb_secret_" + random_text(31) + "_")]
+    values += [("atlassian-token", "ATATT3" + random_text(186) + "=" + random_text(8, "0123456789ABCDEF"))]
+    values += [("stripe-key", kind + "_" + mode + "_" + random_text(24)) for kind in ("sk", "rk") for mode in ("live", "test")]
+    values += [("huggingface-token", "hf_" + random_text(34, string.ascii_letters)),
+               ("npm-token", "npm_" + random_text(36))]
+    hexadecimal = "0123456789abcdef"
+    values += [("langsmith-key", "lsv2_" + kind + "_" + random_text(32, hexadecimal) + "_" + random_text(10, hexadecimal))
+               for kind in ("pt", "sk", "tr")]
+    values += [("langsmith-key", "ls__" + random_text(32, hexadecimal))]
     return values
 
 
@@ -82,16 +94,18 @@ class MemoryRedactionTest(StoreCase):
             text = section((API / filename).read_text(encoding="utf-8"), heading)
             block = re.search(r"```text\n(.*?)\n```", text, re.S).group(1)
             macros = {}
+            names = ("KVS", "KV", "VS", "V")
             for line in block.splitlines():
-                if line.startswith("V ") or line.startswith("VS "):
+                if line.startswith(tuple(name + " " for name in names)):
                     name, value = line.split(None, 1)
                     macros[name] = value
+            self.assertEqual(set(macros), set(names))
             expected = []
             for line in block.splitlines()[1:]:
-                if not line or line.startswith(("V ", "VS ")):
+                if not line or line.startswith(tuple(name + " " for name in names)):
                     continue
                 kind, pattern = line.split(None, 1)
-                for name in ("VS", "V"):
+                for name in names:
                     if pattern.endswith(name):
                         pattern = pattern[:-len(name)] + "(?:" + macros[name] + ")"
                         break
@@ -142,8 +156,9 @@ class MemoryRedactionTest(StoreCase):
 
     def test_tc028_four_small_calls_and_one_large_stay_within_growth_limit(self):
         worker = Path(__file__).with_name("bench_memory_redaction.py")
+        # About 18 seconds on Linux for 33 inputs; macOS Intel runners took 1.7 times as long.
         run = subprocess.run([sys.executable, str(worker), "--growth", "--samples", "5"],
-                             capture_output=True, text=True, timeout=25)
+                             capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, "growth worker exit %d; input remains suppressed" % run.returncode)
         marked = [line for line in run.stdout.splitlines() if line.startswith("CORTHEX_REDACTION_BENCH=")]
         self.assertEqual(len(marked), 1)
@@ -155,12 +170,26 @@ class MemoryRedactionTest(StoreCase):
                          {"private-openers", "pem-begin-name-repeat", "jwt-no-dots",
                           "jwt-percent-repeat", "anthropic-near-minimum", "openai-near-minimum",
                           "github-near-minimum", "gitlab-near-minimum", "slack-near-minimum", "aws-short-body",
-                          "google-short-body", "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat"})
+                          "google-short-body", "url-without-at", "authorization-repeat", "passwd-repeat", "token-repeat",
+                          "token-quoted-escapes",
+                          "notion-near-minimum", "supabase-near-minimum", "atlassian-near-minimum",
+                          "stripe-near-minimum", "huggingface-near-minimum", "npm-near-minimum",
+                          "langsmith-near-minimum", "bearer-short-token", "korean-password-count",
+                          "korean-token-digits", "korean-quote-phrase", "resident-bad-date", "resident-label-short", "phone-near-miss",
+                          "card-luhn-fail", "card-security-code", "account-long-digits"})
         for row in data["rows"]:
             self.assertEqual(row["samples"],5)
             self.assertEqual(row["large_bytes"], row["small_bytes"] * 4)
             self.assertGreater(row["small_ms"], 20, json.dumps(row, sort_keys=True))
             self.assertLessEqual(row["ratio"], 2.5, json.dumps(row, sort_keys=True))
+
+    def test_tc028_growth_inputs_hold_the_bytes_that_the_guard_assumes(self):
+        # The growth worker sets the byte limits to four times the small size, plus one.
+        import bench_memory_redaction as bench
+        for name in bench.GROWTH:
+            for size in (1024, 32 * 1024 + 1, 128 * 1024):
+                with self.subTest(name=name, size=size):
+                    self.assertEqual(len(bench.slow_input(name, size).encode("utf-8")), size)
 
     def test_tc024_unclosed_private_span_removes_everything_after_it(self):
         self.assertEqual(redaction.redact("a <private> b c", {}).text, "a [redacted:private]")
@@ -374,3 +403,310 @@ class MemoryRedactionTest(StoreCase):
             imports = {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
             imports |= {alias.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for alias in n.names}
             self.assertFalse(imports & {"http", "urllib", "socket", "ssl", "sqlite3", "requests"})
+
+
+# TASK-109: Korean names, other services' tokens and personal numbers. Every
+# value is made up while the test runs; only ordinary sentences are fixed.
+KOREAN_PASSWORD_NAMES = ("비밀번호", "비밀 번호", "비번", "패스워드", "암호")
+KOREAN_KEY_NAMES = ("API 키", "API키", "api 키", "키", "토큰", "액세스 토큰", "액세스토큰", "액세스 키", "시크릿",
+                    "시크릿 키", "비밀 키", "비밀키", "인증 키", "인증키")
+SYMBOLS = "!#$%&*+-./:<=>?@^_~"
+# Sentences that hold the names, and numbers that look long, stay as they are.
+ORDINARY = ("비밀번호는 바꿔야 해", "토큰 수가 너무 많아요", "비밀번호는 8자 이상이어야 합니다.",
+            "비밀번호 4자리를 입력하세요.", "비번 5회 틀리면 잠깁니다.", "API 키를 환경 변수에 넣어 주세요.",
+            "토큰 4096개까지 보낼 수 있어요.", "암호화된 파일은 이 기기에 남습니다.",
+            "액세스 토큰이 만료되면 다시 로그인하세요.", "인증 키가 없으면 검색은 낱말로만 합니다.",
+            "시크릿 키는 비밀 저장소에 둡니다.", "비밀번호 (선택)", "비밀번호: ****", "키보드 단축키를 바꿨어요.",
+            "쿠키 sessionid12345는 그대로 둡니다.", "터키 Istanbul123 여행", "토큰 abc는 짧아요.",
+            "토큰: 12345678", "주민번호 앞자리만 적어 주세요.", "계좌 잔액 1000000000원", "계좌번호를 알려 주세요.")
+NUMBERS = ("1794058051195", "20261107135733", "주문 번호 2026110700012345", "run 42378332169",
+           "job 128430412035", "991399-1234567", "010229-3123456", "900101-9123456", "01012345678",
+           "1234 5678 9012 3456", "4111 1111 1111 1112", "v0.2.1 192.168.0.1", "2026-11-07 13:57:33",
+           "메일은 dev@example.com 주소로 보내 주세요.")
+
+
+def has_final_consonant(name):
+    last = name[-1]
+    return "가" <= last <= "힣" and (ord(last) - ord("가")) % 28 != 0
+
+
+def separators(name):
+    """Each particle the name takes, then ":", "=" and white space."""
+    pairs = ("은", "이", "을") if has_final_consonant(name) else ("는", "가", "를")
+    return [pair + " " for pair in pairs] + [pairs[0] + ": ", ": ", " = ", "=", " ", "\t"]
+
+
+def luhn(body):
+    total = 0
+    for place, digit in enumerate(reversed(body)):
+        value = int(digit) * (2 if place % 2 == 0 else 1)
+        total += value - 9 if value > 9 else value
+    return body + str((10 - total % 10) % 10)
+
+
+def card_numbers():
+    """Made-up numbers that pass the Luhn check, as written plain and in groups."""
+    values = []
+    for prefix, length, groups in (("4", 16, (4, 4, 4, 4)), ("51", 16, (4, 4, 4, 4)), ("2221", 16, (4, 4, 4, 4)),
+                                   ("37", 15, (4, 6, 5)), ("36", 14, (4, 6, 4)), ("6011", 16, (4, 4, 4, 4)),
+                                   ("9410", 16, (4, 4, 4, 4)), ("4", 13, (4, 4, 5)), ("62", 19, (4, 4, 4, 4, 3))):
+        digits = luhn(prefix + random_text(length - len(prefix) - 1, string.digits))
+        parts, used = [], 0
+        for size in groups:
+            parts.append(digits[used:used + size])
+            used += size
+        values += [digits, " ".join(parts), "-".join(parts)]
+    return values
+
+
+def resident_numbers():
+    """Made-up numbers whose first six digits are a real date of the century the seventh gives."""
+    values = []
+    for seventh in "12345678":
+        century = 1900 if seventh in "1256" else 2000
+        year = century + secrets.randbelow(100 if century == 1900 else 26)
+        day = 1 + secrets.randbelow(28)
+        values.append("%02d%02d%02d" % (year % 100, 1 + secrets.randbelow(12), day) + seventh +
+                      random_text(6, string.digits))
+    values.append("000229" + "3" + random_text(6, string.digits))
+    return values
+
+
+def sent_text(text):
+    """The text as the pre-send pass gives it, inside a curator request."""
+    from html import escape
+    import xml.etree.ElementTree as ET
+    from memory_lib import model_access, model_request
+    credentials = model_access.Credentials.read({redaction.MEMORY_KEYS[0]: "fixture-" + random_text(32)})
+    document = ('<request kind="curate" instructions="curate-2"><turns><entry id="e_sample">' + escape(text) +
+                '</entry></turns></request>')
+    sent = model_request.document(document, instructions="curate-2", environment={}, credentials=credentials)
+    return ET.fromstring(sent).find(".//entry").text or ""
+
+
+def escaped_values(quote):
+    """Values in quotes whose letter follows a backslash or that are 8 characters long only
+    as written: letters as JSON's \\u escapes, whose hexadecimal digits hold no letter;
+    \\n counted as two characters; and an escaped quote after 8 written characters."""
+    letters = "".join("\\u%04x" % ord(c) for c in random_text(3, "abcdefghi") + random_text(5, string.digits))
+    return (("unicode escapes", letters), ("written length", "k" + random_text(1) + "\\n" + random_text(2) + "\\n"),
+            ("escaped quote", "\\n" * 4 + "\\" + quote + random_text(2)))
+
+
+class KoreanAndPersonalRedactionTest(StoreCase):
+    def both(self, text):
+        """The recorded text and the sent text, which must agree."""
+        recorded, sent = redaction.redact(text, {}).text, sent_text(text)
+        self.assertTrue(recorded == sent, "the record and pre-send passes differ")
+        return recorded
+
+    def test_tc395_korean_names_keep_the_name_and_separator_and_lose_an_ascii_value(self):
+        for names, kind in ((KOREAN_PASSWORD_NAMES, "V"), (KOREAN_KEY_NAMES, "VS")):
+            for name in names:
+                for separator in separators(name):
+                    values = ["k" + random_text(23), random_text(12) + secrets.choice(SYMBOLS) + "x" + random_text(4),
+                              '"' + random_text(8) + " " + random_text(8) + '"', "'" + random_text(16) + "'"]
+                    if kind == "V":
+                        values += [random_text(1, string.ascii_letters), random_text(6, string.digits)]
+                    for value in values:
+                        with self.subTest(name=name, separator=separator, length=len(value)):
+                            text = "앞 문장. " + name + separator + value + " 뒤 문장"
+                            output = self.both(text)
+                            self.assertTrue(output == "앞 문장. " + name + separator + "[redacted:assigned-secret] 뒤 문장")
+                            if len(value) >= 6:  # the equality above already covers a short value
+                                self.assertFalse(value.strip("\"'") in output)
+        # The earlier check's mixed prompt: both values go, the English one as before.
+        value = "k" + random_text(15)
+        self.assertTrue(self.both("비밀번호: " + value + " 그리고 password: " + value) ==
+                        "비밀번호: [redacted:assigned-secret] 그리고 password: [redacted:assigned-secret]")
+
+    def test_tc395_quoted_names_as_json_keys_lose_their_values(self):
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                for separator in (": ", ":", " = ", "="):
+                    value = "k" + random_text(15)
+                    for written in (quote + value + quote, value):
+                        with self.subTest(name=name, quote=quote, separator=separator, quoted=written != value):
+                            key = "{" + quote + name + quote + separator
+                            output = self.both(key + written + ", " + quote + "n" + quote + ": 1}")
+                            self.assertTrue(output == key + "[redacted:assigned-secret], " + quote + "n" + quote + ": 1}")
+
+    def test_tc395_quoted_values_hold_escapes_and_open_quotes_hide_nothing(self):
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                value = "k" + random_text(7) + "\\" + quote + random_text(8) + "\\\\"
+                tail = random_text(15)
+                for case, source, expected in (
+                        # JSON's escaped quote and backslash stay inside the value.
+                        ("escapes", "{" + quote + name + quote + ": " + quote + value + quote + ", " + quote + "n" + quote + ": 1}",
+                         "{" + quote + name + quote + ": [redacted:assigned-secret], " + quote + "n" + quote + ": 1}"),
+                        # A quote left open runs to the end of the line, or to Hangul when no quote closes it.
+                        ("line end", name + ": " + quote + "k" + tail + "\n다음 줄 " + quote,
+                         name + ": [redacted:assigned-secret]\n다음 줄 " + quote),
+                        ("text end", name + ": " + quote + "k" + tail, name + ": [redacted:assigned-secret]"),
+                        ("Hangul", name + ": " + quote + "k" + tail + " 이고 다음", name + ": [redacted:assigned-secret]이고 다음"),
+                        # A quote after white space opens another text, and a tab stays inside the value.
+                        ("another quote", name + ": " + quote + "k" + tail + " 이고 이름은 " + quote + "b" + quote,
+                         name + ": [redacted:assigned-secret]이고 이름은 " + quote + "b" + quote),
+                        ("tab", name + ": " + quote + "k" + tail + "\t" + tail + quote + " 다음", name + ": [redacted:assigned-secret] 다음")):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(tail in output)
+        # A quote that closes later on its line, after Hangul, holds a phrase.
+        for text in ('API 키는 "Settings 메뉴"에서 만듭니다.', "토큰은 'Developer settings 화면'에서 만들어요.",
+                     '비밀번호는 "8자 이상"이어야 해요.', '비밀번호는 "8자 이상', '비번: "1234 형식"으로 쓰세요.'):
+            with self.subTest(text=text):
+                self.assertEqual(self.both(text), text)
+
+    def test_tc395_an_escaped_letter_counts_and_a_backslash_is_never_a_phrase_or_count(self):
+        for name in KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                for case, value in escaped_values(quote):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        key = "{" + quote + name + quote + ": "
+                        self.assertTrue(self.both(key + quote + value + quote + "}") == key + "[redacted:assigned-secret]}")
+        for name in KOREAN_PASSWORD_NAMES + KOREAN_KEY_NAMES:
+            for quote in "\"'":
+                value, digits = "k" + random_text(7), random_text(4, string.digits)
+                cases = [("phrase", name + ": " + quote + value + "\\" + quote + "한글" + quote + "에서",
+                          name + ": [redacted:assigned-secret]한글" + quote + "에서", value)]
+                if name in KOREAN_PASSWORD_NAMES:
+                    cases.append(("count", name + ": " + quote + digits + "\\" + quote + "5자 이상",
+                                  name + ": [redacted:assigned-secret]자 이상", digits))
+                for case, source, expected, hidden in cases:
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(hidden in output)
+
+    def test_tc023_english_quoted_values_hold_escapes_and_open_quotes_hide_nothing(self):
+        for name in ("password", "passwd", "secret", "token", "api_key", "access-key"):
+            for quote in "\"'":
+                value = "k" + random_text(7) + "\\" + quote + random_text(8) + "\\\\"
+                tail = random_text(15)
+                for case, source, expected in (
+                        ("escapes", "{" + quote + name + quote + ": " + quote + value + quote + ", " + quote + "n" + quote + ": 1}",
+                         "{" + quote + name + quote + ": [redacted:assigned-secret], " + quote + "n" + quote + ": 1}"),
+                        ("line end", name + " = " + quote + "k" + tail + " and more\nnext " + quote,
+                         name + " = [redacted:assigned-secret]\nnext " + quote),
+                        ("text end", name + " = " + quote + "k" + tail, name + " = [redacted:assigned-secret]")):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        output = self.both(source)
+                        self.assertTrue(output == expected)
+                        self.assertFalse(tail in output)
+
+    def test_tc023_an_escaped_letter_counts_and_eight_characters_count_as_written(self):
+        for name in ("token", "api_key", "access-key"):
+            for quote in "\"'":
+                for case, value in escaped_values(quote):
+                    with self.subTest(name=name, quote=quote, case=case):
+                        key = "{" + quote + name + quote + ": "
+                        self.assertTrue(self.both(key + quote + value + quote + "}") == key + "[redacted:assigned-secret]}")
+        # Without a letter, or shorter than 8 both ways, a value stays.
+        for text in ('{"token": "\\1\\2\\3\\4"}', '{"token": "' + random_text(8, string.digits) + '"}',
+                     "{'token': 'abc\\'d'}", '{"API 키": "\\1\\2\\3\\4"}'):
+            with self.subTest(text=text):
+                self.assertEqual(self.both(text), text)
+
+    def test_tc395_key_names_need_eight_characters_with_a_letter_and_password_counts_stay(self):
+        for name in KOREAN_KEY_NAMES:
+            for value in (random_text(7, string.ascii_letters), random_text(12, string.digits), "한글값입니다"):
+                with self.subTest(name=name, value=value):
+                    text = name + ": " + value
+                    self.assertEqual(self.both(text), text)
+        for name in KOREAN_PASSWORD_NAMES:
+            for text in (name + "는 8자 이상", name + " 4자리", name + ": 3회", name + "는 바꿨어요", name + ": ****"):
+                with self.subTest(text=text):
+                    self.assertEqual(self.both(text), text)
+            value = random_text(4, string.digits)
+            self.assertTrue(self.both(name + ": " + value + " 입니다") == name + ": [redacted:assigned-secret] 입니다")
+
+    def test_tc396_other_service_tokens_and_bare_bearer_values(self):
+        examples = secret_examples()[-15:]
+        self.assertEqual([kind for kind, _ in examples],
+                         ["notion-token"] * 2 + ["supabase-key"] * 2 + ["atlassian-token"] + ["stripe-key"] * 4 +
+                         ["huggingface-token", "npm-token"] + ["langsmith-key"] * 4)
+        for kind, value in examples:
+            with self.subTest(kind=kind):
+                self.assertTrue(self.both("값 " + value + " 끝") == "값 [redacted:" + kind + "] 끝")
+        for prefix in ("Bearer ", "bearer ", "Bearer\t"):
+            value = random_text(16) + secrets.choice("._~+/-") + random_text(8) + "=="
+            with self.subTest(prefix=prefix):
+                self.assertTrue(self.both("curl -H x " + prefix + value + " y") ==
+                                "curl -H x " + prefix + "[redacted:bearer-token] y")
+        short = "Bearer " + random_text(15)
+        self.assertEqual(self.both(short), short)
+        # Shorter than each format's minimum, the look-alikes stay.
+        for text in ("ntn_" + random_text(11, string.digits) + random_text(34), "secret_" + random_text(42),
+                     "sbp_" + random_text(39, string.ascii_lowercase), "sb_secret_" + random_text(15),
+                     "ATATT3" + random_text(185), "sk_live_" + random_text(9), "hf_" + random_text(33, string.ascii_letters),
+                     "npm_" + random_text(35), "lsv2_pt_" + random_text(19), "ls__" + random_text(19)):
+            with self.subTest(text=text[:12]):
+                self.assertEqual(self.both(text + " 끝"), text + " 끝")
+
+    def test_tc397_personal_numbers_lose_their_digits(self):
+        cases = [(value[:6] + "-" + value[6:], "", "resident-number") for value in resident_numbers()]
+        cases += [(value, label, "resident-number") for value in resident_numbers()[:3]
+                  for label in ("주민번호: ", "주민등록번호는 ", "주민번호 ")]
+        cases += [(value, "", "card-number") for value in card_numbers()]
+        cases += [("01" + middle + separator + random_text(digits, string.digits) + separator + random_text(4, string.digits),
+                   "", "phone-number")
+                  for middle in "016789" for separator in "- " for digits in (3, 4)]
+        cases += [(value, label, "account-number")
+                  for label in ("계좌: ", "계좌번호는 ", "계좌 번호: ", "계좌 국민 ", "계좌번호: 카카오뱅크 ")
+                  for value in (random_text(3, string.digits) + "-" + random_text(2, string.digits) + "-" +
+                                random_text(6, string.digits), random_text(14, string.digits))]
+        for value, label, kind in cases:
+            with self.subTest(kind=kind, label=label, length=len(value)):
+                output = self.both("앞 " + label + value + " 뒤")
+                self.assertTrue(output == "앞 " + label + "[redacted:" + kind + "] 뒤")
+
+    def test_tc397_numbers_written_after_a_card_stay_and_the_card_goes(self):
+        def passes(digits):
+            return 13 <= len(digits) <= 19 and luhn(digits[:-1]) == digits
+        for value in card_numbers():
+            separator = "-" if "-" in value else " "
+            digits = value.replace(separator, "")
+            for sizes in ((3,), (4,), (4, 3)):
+                # A security code, a date or another number that the groups run on into; made again
+                # while the card and its first groups would pass the check together by chance.
+                while True:
+                    extra = [random_text(size, string.digits) for size in sizes]
+                    if not any(passes(digits + "".join(extra[:count])) for count in range(1, len(extra) + 1)):
+                        break
+                after = "".join(separator + part for part in extra)
+                with self.subTest(card=len(value), after=sizes):
+                    self.assertTrue(self.both("앞 " + value + after + " 뒤") == "앞 [redacted:card-number]" + after + " 뒤")
+        # Two cards of four groups in a row: each goes, since the search goes on after the first.
+        cards = [value for value in card_numbers() if len(value) == 19 and " " in value]
+        self.assertTrue(self.both(" ".join(cards)) == " ".join(["[redacted:card-number]"] * len(cards)))
+
+    def test_tc397_quoted_labels_keep_their_quotes_and_lose_the_number(self):
+        for quote in "\"'":
+            for label in ("주민번호", "주민등록번호"):
+                value = resident_numbers()[0]
+                with self.subTest(label=label, quote=quote):
+                    key = "{" + quote + label + quote + ": " + quote
+                    self.assertTrue(self.both(key + value + quote + "}") == key + "[redacted:resident-number]" + quote + "}")
+            for label, bank in (("계좌번호", ""), ("계좌", "국민 ")):
+                value = random_text(3, string.digits) + "-" + random_text(2, string.digits) + "-" + random_text(6, string.digits)
+                with self.subTest(label=label, quote=quote):
+                    key = "{" + quote + label + quote + ": " + quote + bank
+                    self.assertTrue(self.both(key + value + quote + "}") == key + "[redacted:account-number]" + quote + "}")
+
+    def test_tc398_ordinary_sentences_long_numbers_and_mail_addresses_stay(self):
+        self.assertGreaterEqual(len(ORDINARY), 10)
+        for text in ORDINARY + NUMBERS:
+            with self.subTest(text=text):
+                self.assertEqual(self.both(text), text)
+        # A made-up order number that a payment card's first digits and the Luhn check do not fit.
+        for _ in range(20):
+            order = random_text(1, "178") + random_text(15, string.digits)
+            self.assertEqual(self.both("주문 " + order), "주문 " + order)
+        # The instructions sent with every request pass the same patterns and stay whole.
+        from memory_lib import model_access, model_prompts, model_request
+        credentials = model_access.Credentials.read({redaction.MEMORY_KEYS[0]: "fixture-" + random_text(32)})
+        for name, prompt in model_prompts.PROMPTS.items():
+            with self.subTest(prompt=name):
+                self.assertEqual(model_request._redact(prompt, {}, credentials), prompt)
