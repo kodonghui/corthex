@@ -178,6 +178,8 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 12단계�
 
 Windows 훅 검사는 현재 사용자의 WindowsApps bash.exe에서 앱 실행 별칭 정보를 기록합니다. Git Bash가 없어야 하는 두 검사에서는 Microsoft WSL 패키지의 wsl.exe 별칭과 기존 System32 실행기를 허용합니다. 다른 bash.exe나 sh.exe가 발견되면 셸 검사는 실패합니다. [별칭이 처음 확인된 러너 로그](https://github.com/kodonghui/corthex/actions/runs/42180746169/job/127769520982).
 
+TC-336 후속: [Windows Python 3.15](https://github.com/kodonghui/corthex/actions/runs/42333315054/job/128284590965)에서 `test_tc336_interruption_after_deletion_cannot_count_reused_seq_as_processed`가 seq 1 대신 4를 덧붙였습니다. 재작성의 첫 원문 취득이 공유 50ms 대기를 거의 다 썼고 두 번째 lease의 자체 검사가 나머지를 써서, 비어 있는 원문 잠금을 한 번도 시도하지 않고 `LockBusy`로 거절했습니다. 이 시험의 `RuntimeError` 확인은 그것을 넣은 중단으로 받아들였습니다. 이제 취득마다 먼저 한 번 시도하고 공유 예산 안에서만 기다립니다. 새 직접 시험이 그 시간 순서를 재현하고, 중단 시험 두 개는 넣은 중단 예외만 인정합니다. Linux Python 3.13에서 같은 시간 순서로 변경 전에는 seq 4 실패가 재현되고 변경 뒤에는 통과합니다. 이전 판정은 바꾸지 않습니다.
+
 [기록 경합 후속](runs/2026-11-04-memory-capture-contention.ko.md)은 이전 사례 판정을 바꾸지 않고 TC-336·TC-337과 TASK-030을 보완합니다. stress는 매 시도 만료 seed와 성공 때 실제 inode 교체를 확인하며 100회 성공·500회 시도·120초·기록 프로세스 10ms 간격을 유지합니다. 기록 대기는 50ms이며 새 실행의 성공으로 이전 #101·#113 관찰을 닫지 않습니다.
 
 TASK-030 출시 확인 완료: [0.2.0 검증](runs/2026-11-04-memory-020-release.ko.md)에 주석 태그·main c98306b·실제 모델48턴과 보존한 한계를 묶습니다. C1은 활성 작업36/36개 완료·보관 사례116/138개 통과(활성136개)입니다. 출시로 케이스 통과 수를 늘리거나 C2/C3 시험 계획을 지우지 않습니다.
