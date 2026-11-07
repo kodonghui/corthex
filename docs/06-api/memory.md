@@ -737,7 +737,7 @@ A lasting failure ends the attempt, whose turns stay unprocessed; the fault guar
 
 ### Count tokens (API-009) and the estimates
 
-- `POST /v1/messages/count_tokens`, with the request's body less `max_tokens` and `stream`; the endpoint takes `system`, `messages`, `thinking` and `output_config` with its schema, and answers `{"input_tokens": N}`. It costs nothing and has its own rate limit (documented). Its usage line has `call` `count-tokens`, `input` the count and cost 0. Time limit 60 seconds, no retry; when counting fails, the safe estimate decides alone (SPEC-015). The provider calls the count an estimate that can differ slightly from the tokens used.
+- `POST /v1/messages/count_tokens`, with the request's body less `max_tokens` and `stream`; the endpoint takes `system`, `messages`, `thinking` and `output_config` with its schema, and answers `{"input_tokens": N}`. It costs nothing and has its own rate limit (documented). Its usage line has `call` `count-tokens`, the request's `instructions`, `input` the count and cost 0. Time limit 60 seconds, or the caller's deadline when that comes first, and no retry; when counting fails, the safe estimate decides alone (SPEC-015). The provider calls the count an estimate that can differ slightly from the tokens used.
 - The estimates, initial values that the agent-run short evaluation sets before the C2 release (2026-11-05 decision; functional spec, notes for stage 12): the safe estimate is the number of ASCII bytes divided by 2, rounded up, plus 2 per other character; the working estimate is the ASCII bytes divided by 4, rounded up, plus 1 per other character. Claude Haiku 5.5 uses the tokenizer of Claude 4.7 and later, which makes about 30 percent more tokens of the same text than earlier ones (documented); the trial measures both estimates in English and in Korean.
 - A curate request is built so (SPEC-015):
   1. When the safe estimate of the instructions, the schema, the current state and the item list passes 40,000 tokens, the list goes in short lines, and then only in part.
@@ -757,6 +757,7 @@ A lasting failure ends the attempt, whose turns stay unprocessed; the fault guar
 - `POST /v1/embeddings` with `Authorization: Bearer <key>`, and no `user` field.
 - Each input text is cut at a character boundary to 8,192 bytes, which keeps it within the model's 8,192 tokens, since no token is shorter than one byte; an empty text is never sent.
 - The answer gives `data[].embedding` by `index` and `usage.prompt_tokens`. Each vector must hold `dims` finite numbers and have a length above 0, else `bad-vector`; it is scaled to length 1 and stored as float32, little-endian (TBL-021). The usage line's cost is the prompt tokens times the input price.
+- An answer that is not JSON, or whose `data` does not hold exactly one entry for each text, each with its own `index`, is `bad-answer`, passing. A `bad-vector` or `bad-answer` line keeps the prompt tokens that the answer reports, since they are billed. The response header `x-request-id` goes into the usage line.
 - The model gives 1,536 numbers by default, and the `dimensions` parameter is the provider's suggested way to shorten them (documented). 512 is this stage's choice, for the speed of scoring in pure Python (REQ-034); stage 12 compares 512 with 1,536 on the agent-judged short real-sample evaluation (2026-11-05 decision).
 
 | Call | Input | Per request | Time limit | Retries |
@@ -764,6 +765,8 @@ A lasting failure ends the attempt, whose turns stay unprocessed; the fault guar
 | Embed a prompt (API-010) | the redacted prompt | one text | until 800 ms after the hook's start | none |
 | Embed items (API-011) | each item's kind, text and the words of its quotes, joined by line breaks | up to 100 texts and 200,000 bytes | 60 s | passing failures twice, as for the curator |
 | Embed a search request (API-012) | the redacted request | one text | 10 s | none |
+
+Each attempt connects within 30 seconds, or within its time limit when that is shorter, and its whole answer must come within that limit. When no time is left, nothing is sent and no usage line is written.
 
 OpenAI's errors are given the same names: 400 `invalid_request_error`, 401 `authentication_error`, 403 `permission_error` and 404 `not_found_error` are lasting. A 429 with the code `credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded` or `organization_usage_limit_exceeded`, or the type `insufficient_quota`, is `insufficient_quota`, lasting. Another 429 is `rate_limit_error`, 500 `api_error` and 503 `overloaded_error`, all passing, as is another 5xx. `retry-after` is honoured as above.
 

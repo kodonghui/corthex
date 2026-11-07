@@ -24,8 +24,8 @@ class Response:
     cleanup_pending: bool = False
 
 
-def _failed(code):
-    return Response('', {}, None, model_access.classify('anthropic', reason=code), None, None)
+def _failed(code, provider='anthropic'):
+    return Response('', {}, None, model_access.classify(provider, reason=code), None, None)
 
 
 def _tokens(value):
@@ -36,11 +36,11 @@ def _tokens(value):
     return {mapping[k]: n for k, n in tokens.items()}
 
 
-def _partial(state, code):
-    failure = model_access.classify('anthropic', reason=code)
+def _partial(state, code, provider='anthropic'):
+    failure = model_access.classify(provider, reason=code)
     status = state['status']
     if status is not None and status >= 400:
-        failure = model_access.classify('anthropic', status=status)
+        failure = model_access.classify(provider, status=status)
     return Response('', dict(state['usage']), state['first'], failure, state['request'], state['retry_after'])
 
 
@@ -72,16 +72,20 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
     The required original caller check retains eligibility/ownership authority;
     its exception is preserved after canceling the private child. Keys/body use
     stdin only. The child has no store, lease or project path and cannot retry.
+    A payload with `provider` is one of the JSON calls (API-009 to API-012):
+    the answer's text is then the JSON body, which the caller checks.
     """
     store.MemoryStore._deadline(deadline)
     if not callable(check) or on_cancel is not None and not callable(on_cancel) or any(type(n) not in (int, float) or not math.isfinite(n) or n <= 0 for n in (connect, gap)):
         raise ValueError('invalid memory transport budget')
     if type(started) not in (int, float) or not math.isfinite(started) or started > clock.now():
         raise ValueError('invalid memory transport clock')
+    provider = payload.get('provider', 'anthropic') if isinstance(payload, dict) else 'anthropic'
+    if provider not in ('anthropic', 'openai'):raise ValueError('invalid memory provider')
     def verify():
         if check() is not None:raise TypeError('memory transport check must return only None')
     verify()
-    if clock.now() >= deadline:return _failed('timeout')
+    if clock.now() >= deadline:return _failed('timeout', provider)
     if not Path(sys.executable).is_absolute():raise ValueError('absolute memory interpreter required')
     connect, gap = min(connect, 30), min(gap, 600)
     wire = dict(payload, connect=connect, gap=gap)
@@ -89,20 +93,20 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
     if len(encoded) > 8*1024*1024:raise ValueError('memory wire input too large')
     environment = {name: os.environ[name] for name in _ENV if name in os.environ}
     verify()
-    if clock.now() >= min(deadline, started+connect):return _failed('timeout')
+    if clock.now() >= min(deadline, started+connect):return _failed('timeout', provider)
     try:
         process = subprocess.Popen([sys.executable, '-I', '-B', '-X', 'utf8', str(Path(__file__).with_name('model_wire.py').resolve())],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=environment,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), close_fds=True)
     except OSError:
         verify()
-        return _failed('timeout' if clock.now() >= min(deadline, started+connect) else 'network')
+        return _failed('timeout' if clock.now() >= min(deadline, started+connect) else 'network', provider)
     mutex, wake = threading.Lock(), threading.Event()
     state = {'phase': 'connect', 'connect_end': started+connect, 'last_byte': None, 'first': None,
              'result': None, 'status': None, 'request': None, 'retry_after': None, 'usage': {}}
     def failed(code):
         with mutex:
-            if state['result'] is None:state['result'] = _partial(state, code)
+            if state['result'] is None:state['result'] = _partial(state, code, provider)
             wake.set()
     def writer():
         try:
@@ -121,7 +125,7 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
                     with mutex:
                         end = min(deadline, state['connect_end'] if state['phase'] == 'connect' else state['last_byte']+gap)
                         if clock.now() >= end:
-                            if state['result'] is None:state['result'] = _partial(state, 'timeout')
+                            if state['result'] is None:state['result'] = _partial(state, 'timeout', provider)
                             wake.set(); return
                         if set(item) == {'final'}:
                             result = _result(item['final'], state['first'])
@@ -162,7 +166,7 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
     answer, original_error, pending = None, None, False
     try:
         verify()
-        if clock.now() >= min(deadline, state['connect_end']):answer = _partial(state, 'timeout')
+        if clock.now() >= min(deadline, state['connect_end']):answer = _partial(state, 'timeout', provider)
         if answer is None:
             for thread in threads:thread.start()
         while answer is None:
@@ -171,7 +175,7 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
                 end = min(deadline, state['connect_end'] if state['phase'] == 'connect' else state['last_byte']+gap)
                 left = end-clock.now()
                 if left <= 0:
-                    answer = _partial(state, 'timeout'); break
+                    answer = _partial(state, 'timeout', provider); break
                 if state['result'] is not None:
                     answer = state['result']; break
                 wake.clear()
