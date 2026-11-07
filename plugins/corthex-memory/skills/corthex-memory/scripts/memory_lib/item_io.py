@@ -156,10 +156,7 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
         before, candidates, added, closed = _conflicts(memory, root, conflicts, items, plan, deadline, check)
     targets = sorted(set(plan['targets']) | {'candidate:' + candidate for candidate in added + closed})
     effects = _effects(items, pins, plan, candidates, added, closed)
-    item_ids = [item for item, data in plan['records']]
-    for key in plan['targets']:
-        if key.startswith('pin:'):
-            item_ids.append(key[4:])
+    item_ids = [item for item, data in plan['records']] + plan['pinned']
 
     def privacy():
         if any(_private(memory, root, item) for item in item_ids):
