@@ -2,6 +2,7 @@
 from html import escape
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -12,12 +13,17 @@ import xml.etree.ElementTree as ET
 from _common import ROOT
 import test_memory_model_transport as transport_fixture
 import test_memory_model_usage as usage_fixture
-from test_memory_model_stream import SCHEMA, start, block, end
+from test_memory_model_stream import SCHEMA, start, block, end, event
 sys.path.insert(0,str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, locks, model_access, model_client, model_request, model_transport, model_usage
+from memory_lib import clock, configuration, locks, model_access, model_client, model_request, model_transport, model_usage
 
 KEY = transport_fixture.KEY
 DOCUMENT = '<request kind="curate" instructions="curate-2"><turns><entry id="e_sample">Keep the choice.</entry></turns></request>'
+# One minimal document for each curator instruction set.
+DOCUMENTS = {'curate-2': DOCUMENT,
+             'merge-2': '<request kind="merge" instructions="merge-2"><items><item id="i_sample" kind="decision">Keep the choice.</item></items></request>',
+             'state-1': '<request kind="state" instructions="state-1"><state><line id="l_sample">Keep the choice.</line></state></request>'}
+RELEASE = json.loads((ROOT/'plugins/corthex-memory/.codex-plugin/plugin.json').read_text(encoding='utf-8'))['version']
 
 
 class ModelRequestTest(unittest.TestCase):
@@ -78,6 +84,12 @@ class ModelRequestTest(unittest.TestCase):
             with self.subTest(url=url),self.assertRaises(ValueError):
                 self.build(environment={'CORTHEX_MEMORY_ANTHROPIC_BASE_URL':url})
 
+    def test_tc132_https_and_loopback_http_overrides_are_used_as_given(self):
+        for base in ('https://test.example','http://localhost:8080','http://127.0.0.1:8080','http://[::1]:8080/'):
+            with self.subTest(base=base):
+                wire,_=self.build(environment={'CORTHEX_MEMORY_ANTHROPIC_BASE_URL':base})
+                self.assertEqual(wire['url'],base.rstrip('/')+'/v1/messages')
+
     def test_authentication_cannot_be_reflected_by_schema_even_when_json_escaped(self):
         self.credentials=model_access.Credentials.read({'CORTHEX_MEMORY_ANTHROPIC_API_KEY':'credential&"private'})
         with self.assertRaises(ValueError):self.build(schema=dict(SCHEMA,description='credential&"private'))
@@ -114,6 +126,11 @@ class ModelClientTest(unittest.TestCase):
         self.assertIsNone(result.response.failure);self.assertEqual((result.attempts,result.logged),(1,1))
         row,=self.rows();self.assertEqual((row['input'],row['output'],row['cost']),(40000,3000,.0055))
         self.assertEqual(row['instructions'],'curate-2');self.assertNotIn(KEY,json.dumps(row))
+        taken=configuration.prepare({},temporary=False).values['prices']['taken']
+        self.assertEqual((row['project'],row['call'],row['model'],row['result'],row['prices'],row['request']),
+                         ('sample','curate','claude-haiku-5-5','ok',taken,'req_fixture'))
+        self.assertRegex(row['at'],r'\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\Z')
+        self.assertLessEqual(0,row['first_ms']);self.assertLessEqual(row['first_ms'],row['total_ms'])
         self.assertEqual(len(self.transport.requests),1)
         self.assertEqual(self.transport.requests[0][2]['messages'][0]['content'],result.document)
 
@@ -134,6 +151,102 @@ class ModelClientTest(unittest.TestCase):
         self.assertEqual(waits,[10,60]);self.assertEqual((result.attempts,result.logged),(3,3))
         self.assertEqual(len({call.kwargs['deadline'] for call in once.call_args_list}),1)
         self.assertEqual([r['result'] for r in self.rows()],['failed','failed','ok'])
+
+    def test_tc121_spec018_first_criterion_529_twice_then_200_succeeds_after_two_retries(self):
+        replies=[lambda h:self.transport.send(h,b'{"error":{"type":"overloaded_error"}}',status=529,mime='application/json')]*2
+        replies.append(lambda h:self.transport.send(h,start(usage={'input_tokens':40000})+block()+end(output=3000)))
+        self.transport.reply=lambda h:replies[len(self.transport.requests)-1](h)
+        waits=[]
+        with mock.patch.object(model_client,'_wait',side_effect=lambda pause,*args:waits.append(pause) or True):
+            result=self.send()
+        self.assertIsNone(result.response.failure);self.assertEqual(json.loads(result.response.text),{'answer':'가나'})
+        self.assertEqual((result.attempts,result.logged,len(self.transport.requests),waits),(3,3,3,[10,60]))
+        rows=self.rows()
+        self.assertEqual([(r['result'],r.get('error')) for r in rows],
+                         [('failed','overloaded_error'),('failed','overloaded_error'),('ok',None)])
+        self.assertEqual((rows[-1]['input'],rows[-1]['output'],rows[-1]['cost']),(40000,3000,.0055))
+
+    def test_tc125_refusal_output_limit_and_empty_answers_of_every_curator_request(self):
+        endings=(('refusal',start()+block()+end('refusal'),True,'refused'),
+                 ('max-tokens',start()+block('{"answer":"가')+end('max_tokens'),True,'limit'),
+                 ('empty-answer',start()+end(),False,'failed'))
+        for instructions,source in DOCUMENTS.items():
+            call='curate' if instructions=='curate-2' else 'consolidate'
+            for code,wire,lasting,usage in endings:
+                before,requests,waits=len(self.rows()),len(self.transport.requests),[]
+                self.transport.reply=lambda h,w=wire:self.transport.send(h,w)
+                with self.subTest(instructions=instructions,code=code), \
+                        mock.patch.object(model_client,'_wait',side_effect=lambda pause,*args:waits.append(pause) or True):
+                    result=self.send(instructions=instructions,source=source)
+                    failure,attempts=result.response.failure,1 if lasting else 3
+                    self.assertEqual((failure.code,failure.lasting,failure.result),(code,lasting,usage))
+                    self.assertEqual(result.response.text,'')
+                    self.assertEqual((result.attempts,result.logged,len(self.transport.requests)-requests),(attempts,)*3)
+                    self.assertEqual(waits,[] if lasting else [10,60])
+                    self.assertEqual([(r['call'],r['instructions'],r['result'],r['error'],r['output']) for r in self.rows()[before:]],
+                                     [(call,instructions,usage,code,7)]*attempts)
+                    self.assertEqual(self.transport.requests[-1][2]['messages'][0]['content'],result.document)
+
+    def test_tc128_a_stream_error_event_is_retried_like_its_http_row(self):
+        marker='PRIVATE_STREAM_ERROR_MARKER_2d7a'
+        self.transport.reply=lambda h:self.transport.send(h,start()+event('error',error={'type':'overloaded_error','message':marker}))
+        waits=[]
+        with mock.patch.object(model_client,'_wait',side_effect=lambda pause,*args:waits.append(pause) or True):
+            result=self.send()
+        self.assertEqual((result.response.failure.code,result.response.failure.lasting),('overloaded_error',False))
+        self.assertEqual((result.attempts,result.logged,len(self.transport.requests),waits),(3,3,3,[10,60]))
+        rows=self.rows()
+        self.assertEqual([(r['result'],r['error'],r['input']) for r in rows],[('failed','overloaded_error',4)]*3)
+        self.assertNotIn(marker,json.dumps(rows)+repr(result))
+
+    def test_tc131_anthropic_requests_carry_only_their_own_key_and_no_identity(self):
+        openai,error,project='PRIVATE_OPENAI_KEY_MARKER_41d0','PRIVATE_PROVIDER_ERROR_MARKER_8e2a','project-marker-7d1c'
+        self.transport.reply=lambda h:self.transport.send(h,json.dumps({'error':{'type':'overloaded_error','message':error}}).encode(),
+                                                         status=529,mime='application/json')
+        launched,real=[],subprocess.Popen
+        def popen(arguments,*args,**options):
+            launched.append((arguments,dict(options.get('env') or {})));return real(arguments,*args,**options)
+        with mock.patch.dict(os.environ,{'CORTHEX_MEMORY_OPENAI_API_KEY':openai}), \
+                mock.patch.object(model_client,'_wait',return_value=True), \
+                mock.patch.object(model_transport.subprocess,'Popen',side_effect=popen):
+            result=self.send(project=project)
+        self.assertEqual((result.attempts,len(self.transport.requests),len(launched)),(3,3,3))
+        for path,headers,body in self.transport.requests:
+            headers={name.lower():value for name,value in headers.items()}
+            self.assertEqual((path,headers['content-type'],headers['user-agent'],headers['x-api-key']),
+                             ('/v1/messages','application/json','corthex-memory/'+RELEASE,KEY))
+            self.assertNotIn('authorization',headers)
+            self.assertFalse({'metadata','user'}&set(body))
+            sent=json.dumps([headers,body],ensure_ascii=False)
+            for value in (openai,project,usage_fixture.DEVICE):self.assertNotIn(value,sent)
+        stored=b''.join(path.read_bytes() for path in sorted(self.usage.folder.rglob('*')) if path.is_file())
+        commands=json.dumps(launched)
+        for value in (KEY,openai,error):
+            self.assertNotIn(value.encode(),stored);self.assertNotIn(value,commands)
+
+    def test_tc133_thinking_pings_and_split_bytes_reach_only_the_text_and_every_counter(self):
+        hidden,text='PRIVATE_THINKING_MARKER_5c1e','{"answer":"가나"}'
+        wire=(start(usage={'input_tokens':1200,'output_tokens':1,'cache_creation_input_tokens':300,'cache_read_input_tokens':500})+
+              event('ping')+event('content_block_start',index=0,content_block={'type':'thinking','thinking':''})+
+              event('content_block_delta',index=0,delta={'type':'thinking_delta','thinking':hidden})+
+              event('content_block_delta',index=0,delta={'type':'signature_delta','signature':hidden})+
+              event('content_block_stop',index=0)+event('content_block_start',index=1,content_block={'type':'text','text':''})+
+              b''.join(event('content_block_delta',index=1,delta={'type':'text_delta','text':part})
+                       for part in (text[:7],text[7:12],text[12:]))+
+              event('ping')+event('content_block_stop',index=1)+end(output=55))
+        def reply(handler):
+            handler.send_response(200);handler.send_header('Content-Type','text/event-stream')
+            handler.send_header('request-id','req_fixture');handler.end_headers()
+            # One byte at a time, so lines, events and UTF-8 characters arrive split.
+            for index in range(len(wire)):handler.wfile.write(wire[index:index+1]);handler.wfile.flush()
+        self.transport.reply=reply
+        result=self.send()
+        self.assertIsNone(result.response.failure);self.assertEqual(result.response.text,text)
+        row,=self.rows()
+        self.assertEqual({name:row[name] for name in ('input','output','cache_write','cache_read','request','result')},
+                         dict(input=1200,output=55,cache_write=300,cache_read=500,request='req_fixture',result='ok'))
+        self.assertLessEqual(0,row['first_ms']);self.assertLessEqual(row['first_ms'],row['total_ms'])
+        self.assertNotIn(hidden,json.dumps(row)+repr(result))
 
     def test_retry_after_lasting_failure_and_cleanup_uncertainty_stop_retries(self):
         for answer in (self.response('authentication_error'),self.response('network',301),self.response('network',pending=True)):
