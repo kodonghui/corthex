@@ -239,7 +239,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     "source-outside": function (a) { return stageName(a.stage) + ": 원본 경로가 저장소 밖을 가리킵니다 (" + a.source + ")"; },
     "unknown-alias": function (a) { return stageName(a.stage) + ": project.json의 repos에 없는 저장소 이름입니다 (" + a.alias + ")"; },
     "no-checkout": function (a) { return stageName(a.stage) + ": " + a.alias + " 저장소가 이 기기에 없습니다. ~/.corthex/projects.json에 경로를 적어 주세요"; },
-    "files-skipped": function (a) { return stageName(a.stage) + ": 읽지 않은 파일 " + a.count + "개 (" + Object.keys(a.reasons).map(function (r) { return r + " " + a.reasons[r]; }).join(", ") + ")"; },
+    "files-skipped": function (a) { return stageName(a.stage) + ": 읽지 않은 파일 " + a.count + "개 (" + Object.keys(a.reasons).map(function (r) { return (KO_SKIPPED[r] || r) + " " + a.reasons[r] + "개"; }).join(", ") + ")"; },
     "truncated": function (a) {
       var parts = [];
       if (a.shown < a.total) parts.push("항목 " + a.total + "개 가운데 " + a.shown + "개");
@@ -247,6 +247,36 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       return "스냅샷 크기 한도 때문에 " + parts.join(", ") + "만 담았습니다";
     }
   };
+  var KO_SKIPPED = { format: "읽지 않는 형식", secret: "비밀 정보 자리", outside: "저장소 밖", size: "1MB 넘음", limit: "400개 넘음", unreadable: "읽을 수 없음", translation: "원본과 같은 번역본" };
+  // The 0.2 checks name their place in the English message, so these read the check itself.
+  // A detail only the message holds is kept as written, marked as the original text.
+  var KO_PLAIN = {
+    "records-in-status-file": function () { return "단계 기록을 저장소가 아니라 스냅샷을 만든 기기의 상태 파일에서 읽었습니다. 기록을 저장소로 옮겨 주세요"; },
+    "records-invalid": function (c) {
+      var source = c.args && c.args.source ? c.args.source : "";
+      var reason = source && c.message.indexOf(source + ": ") === 0 ? c.message.slice(source.length + 2) : c.message;
+      return koPlace(c) + (source ? (source === "device status file" ? "기기의 상태 파일" : source) + ": " : "") +
+        (KO_RECORDS[reason] || "단계 기록에 고칠 곳이 있습니다 (원문: " + reason + ")");
+    },
+    "parts-invalid": function () { return "project.json의 parts는 서로 다른 소문자 이름 1–50개여야 해서 parts를 쓰지 않았습니다"; },
+    "ask-before-invalid": function (c) { return /^the profile cannot be read/.test(c.message) ? "프로필 파일을 읽지 못해 기본 ask_before 목록을 씁니다" : (/^profile /.test(c.message) ? "프로필" : "프로젝트 설정") + "의 ask_before가 글자 목록이 아니어서 그다음 목록을 씁니다"; },
+    "ask-before-long": function (c) { return (/^profile /.test(c.message) ? "프로필" : "프로젝트 설정") + "의 ask_before가 30개를 넘어 앞의 30개만 씁니다"; },
+    "pictures-not-sent": function () { return "origin의 기본 브랜치를 읽지 못해 그림을 보내지 않았습니다. fetch한 뒤 git remote set-head origin --auto를 실행해 주세요"; },
+    "picture-left-out": function (c) { return koPlace(c) + (c.args && c.args.why === "size" ? "스냅샷을 1MB 안에 담으려고 이 그림을 통째로 뺐습니다" : "그림 원본이 다른 저장소에 있어 이 그림을 보내지 않았습니다"); },
+    "picture-partial": function (c) { return koPlace(c) + "그림 원본의 일부를 읽지 못했거나 그림 한도를 넘었습니다 (원문: " + c.message + ")"; },
+    "part-unknown": function (c) { return koPlace(c) + c.message.split(": document belongs")[0] + ": 선언한 parts 어디에도 속하지 않는 문서입니다"; },
+    "board-term-missing": function (c) { var name = c.args && c.args.name ? c.args.name : ""; return (name ? name + ": " : "") + (/ has multiple /.test(c.message) ? "용어집에 맞는 용어가 여럿이라 첫 번째를 씁니다" : "용어집에 맞는 용어가 없어 용어 없이 보드에 둡니다"); }
+  };
+  var KO_RECORDS = {
+    "not a format-1 record for this project and part": "이 프로젝트와 부분의 형식 1 기록이 아니어서 읽지 않았습니다",
+    "unknown stage key": "13단계에 없는 단계 이름이 있어 그 단계는 건너뛰었습니다",
+    "invalid recorded state, checkpoints, next action or timestamp": "상태, 확인 지점, 다음 행동, 시각 가운데 잘못된 값이 있어 이 단계를 읽지 않았습니다",
+    "checkpoint needs approval, role and date": "확인 지점에는 승인한 말, 역할, 날짜가 모두 있어야 해서 이 확인 지점은 뺐습니다",
+    "done needs a checkpoint and its date": "‘완료’에는 확인 지점과 그 날짜가 있어야 해서 ‘진행 중’으로 보입니다",
+    "part is not declared in project settings": "project.json에 선언하지 않은 부분의 기록입니다"
+  };
+  // The default ask_before list in Korean; other entries are the user's own words.
+  var KO_ASK = { "external messages": "외부로 보내는 메시지", deploys: "배포", payments: "결제", deletions: "삭제", publishing: "공개 게시" };
 
   var data;
   try {
@@ -264,7 +294,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     comments:"열린 의견", proposals:"열린 제안", discrepancies:"열린 어긋남", waiting:"기록을 기다리는 확인 지점", inNexus:"NEXUS에서",
     passed:"{date}에 NEXUS에서 통과, 기록을 기다림", withdrawn:"기록에 NEXUS에서 철회한 확인 지점이 적혀 있습니다. 에이전트가 기록을 고칩니다.",
     notCurrent:{size:"최신 아님: 최신 원본이 스냅샷에 담을 수 있는 크기보다 큼.","source-gone":"최신 아님: 최신 원본이 저장소에서 사라짐.","other-repository":"최신 아님: 최신 원본이 다른 저장소에 있음."},
-    ask:"먼저 물어볼 것", askSource:{project:"프로젝트 설정",profile:"프로필",default:"기본 목록"}, irreversible:"되돌릴 수 없는 일은 어느 경우에도 먼저 묻습니다.", onlyIrreversible:"되돌릴 수 없는 일만 먼저 묻습니다.", more:"설정에 {n}개 더 있음", notAsked:"이 프로젝트에서 먼저 묻지 않는 것: {list}",
+    ask:"먼저 물어볼 것", askSource:{project:"프로젝트 설정",profile:"프로필",default:"기본 목록"}, irreversible:"되돌릴 수 없는 일은 어느 경우에도 먼저 묻습니다.", onlyIrreversible:"되돌릴 수 없는 일만 먼저 묻습니다.", more:"설정에 {n}개 더 있음", notAsked:"이 프로젝트에서 먼저 묻지 않는 것: {list}", original:"원문",
     record:"기록 출처", repository:"저장소의 기본 브랜치", statusFile:"기기의 상태 파일",
     broken:"이 페이지의 데이터를 읽지 못했습니다. 페이지를 다시 불러와 주세요. 기기에서는 허브를 다시 만들어 주세요.", noProject:"이 프로젝트는 이 페이지에 없습니다.", noStage:"13단계에 없는 단계입니다.",
     emptyServer:"아직 이 서버에 올라온 프로젝트가 없습니다. 이 서버는 올라온 프로젝트마다 단계, 점검, 그림을 보여 줍니다. 프로젝트를 올리려면 corthex 스킬로 등록하고, nexus.push에 넣고 nexus.url에 이 서버의 주소를 적고, 서비스 토큰의 환경 변수 두 개 CORTHEX_NEXUS_CLIENT_ID와 CORTHEX_NEXUS_CLIENT_SECRET을 설정한 뒤, 에이전트에게 미리 보기를 보이고 올려 달라고 하세요."
@@ -273,7 +303,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     comments:"open comments", proposals:"open proposals", discrepancies:"open discrepancies", waiting:"Waiting for their records", inNexus:"In NEXUS",
     passed:"Passed in NEXUS on {date}, waiting for its record", withdrawn:"The record names a checkpoint that was withdrawn in NEXUS. The agent corrects the record.",
     notCurrent:{size:"Not current: its newest source is larger than a snapshot may hold.","source-gone":"Not current: its newest source is gone from the repository.","other-repository":"Not current: its newest source is in another repository."},
-    ask:"Ask first", askSource:{project:"the project's settings",profile:"the profile",default:"the default list"}, irreversible:"Anything that cannot be undone is asked in any case.", onlyIrreversible:"Only what cannot be undone is asked.", more:"{n} more in the settings", notAsked:"Not asked in this project: {list}",
+    ask:"Ask first", askSource:{project:"the project's settings",profile:"the profile",default:"the default list"}, irreversible:"Anything that cannot be undone is asked in any case.", onlyIrreversible:"Only what cannot be undone is asked.", more:"{n} more in the settings", notAsked:"Not asked in this project: {list}", original:"as written",
     record:"Records from", repository:"the repository's default branch", statusFile:"the device's status file",
     broken:"This page's data could not be read. Load the page again. On a device: Build the hub again.", noProject:"This project is not on this page.", noStage:"This stage is not one of the 13.",
     emptyServer:"Nothing has been pushed to this server yet. It shows each pushed project's stages, checks and pictures. To push a project: register it with the corthex skill; list it in nexus.push with this server's address in nexus.url; set the service token's two environment variables, CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET; then have the agent show a dry run and push."
@@ -298,6 +328,8 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     return index < 0 ? String(key || "") : key.slice(0, 2) + " " + S.stages[index];
   }
   function kindName(kind) { return S.kinds[kind] || kind; }
+  function koPlace(c) { return c.stage ? stageName(c.stage) + ": " : ""; }
+  function askWord(entry) { return lang === "ko" && KO_ASK[entry] ? KO_ASK[entry] : entry; }
   function pad(n) { return (n < 10 ? "0" : "") + n; }
   function when(text) {
     if (!text) { return ""; }
@@ -380,8 +412,11 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     if (remote && c.rule === "no-checkout" && c.args) {
       return fmt(S.serverNoCheckoutCheck, { stage: lang === "ko" ? stageName(c.args.stage) : c.args.stage, alias: c.args.alias });
     }
-    if (lang === "ko" && c.by !== "review" && KO_CHECKS[c.rule] && c.args) {
-      try { return KO_CHECKS[c.rule](c.args); } catch (error) { return c.message; }
+    if (lang === "ko" && c.by !== "review") {
+      try {
+        if (KO_CHECKS[c.rule] && c.args) { return KO_CHECKS[c.rule](c.args); }
+        if (KO_PLAIN[c.rule] && typeof c.message === "string") { return KO_PLAIN[c.rule](c); }
+      } catch (error) { return c.message; }
     }
     return c.message;
   }
@@ -426,6 +461,11 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     (space.warnings || []).filter(function(c){return c.part===part && (!stage || c.stage===stage);}).forEach(function(c){notes.push(el("p",{class:"alert"},[viewLink(p,part,c.stage,false,N.withdrawn)]));});
     return notes;
   }
+  // In Korean, settings shown in their own words carry a small mark before them.
+  function written(entries, text) {
+    if (lang !== "ko" || !entries.some(function (entry) { return !KO_ASK[entry]; })) { return [text]; }
+    return [el("span", { class: "tag", text: N.original }), " " + text];
+  }
   function spaceSummary(p) {
     var space=spaceOf(p), region=el("section",{class:"nexus-summary"});
     if(remote){
@@ -435,7 +475,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
       (space.pictures || []).filter(function(pic){return pic.not_current;}).forEach(function(pic){region.appendChild(el("p",{class:"alert"},[viewLink(p,pic.part,pic.stage,true,(pic.part?pic.part+" · ":"")+stageName(pic.stage)+": "+N.notCurrent[pic.not_current])]));});
     }else region.appendChild(el("p",{class:"note",text:N.onServer}));
     if(p.records)region.appendChild(el("p",{class:"note",text:N.record+": "+(p.records.from==="repository"?N.repository:N.statusFile)+(p.records.commit?" · "+p.records.commit:"")+(p.records.time?" · "+when(p.records.time):"")}));
-    if(p.ask_before){var ask=p.ask_before,entries=ask.entries || [];region.appendChild(el("h3",{class:"sub",text:N.ask+" · "+(N.askSource[ask.source] || "")}));region.appendChild(el("p",{class:"note",text:entries.length?entries.slice(0,10).join(" · "):N.onlyIrreversible}));if(entries.length>10)region.appendChild(el("p",{class:"note",text:fmt(N.more,{n:entries.length-10})}));if((ask.left_out || []).length)region.appendChild(el("p",{class:"note",text:fmt(N.notAsked,{list:ask.left_out.join(", ")})}));if(entries.length)region.appendChild(el("p",{class:"note",text:N.irreversible}));}
+    if(p.ask_before){var ask=p.ask_before,entries=ask.entries || [],shown=entries.slice(0,10),left=ask.left_out || [];region.appendChild(el("h3",{class:"sub",text:N.ask+" · "+(N.askSource[ask.source] || "")}));region.appendChild(el("p",{class:"note"},written(shown,shown.length?shown.map(askWord).join(" · "):N.onlyIrreversible)));if(entries.length>10)region.appendChild(el("p",{class:"note",text:fmt(N.more,{n:entries.length-10})}));if(left.length)region.appendChild(el("p",{class:"note"},written(left,fmt(N.notAsked,{list:left.map(askWord).join(", ")}))));if(entries.length)region.appendChild(el("p",{class:"note",text:N.irreversible}));}
     return region;
   }
 
@@ -520,8 +560,14 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     }
     var rows = el("ul", { class: "plain rows" }, checks.map(function (c) { return checkRow(p, c); }));
     if (!collapsible) { return rows; }
-    var serious = checks.some(function (c) { return c.level !== "info"; });
-    return el("details", { class: "checks", open: serious }, [el("summary", { text: fmt(S.checksN, { n: checks.length }) }), rows]);
+    // Only errors open the list by themselves: hundreds of warnings would push the rest of the page away.
+    var levels = { error: 0, warn: 0, info: 0 };
+    checks.forEach(function (c) { if (levels[c.level] !== undefined) { levels[c.level] += 1; } });
+    var label = [fmt(S.checksN, { n: checks.length })];
+    [[S.errorsN, levels.error], [S.warnsN, levels.warn], [S.notesN, levels.info]].forEach(function (pair) {
+      if (pair[1]) { label.push(count(pair[0], pair[1])); }
+    });
+    return el("details", { class: "checks", open: levels.error > 0 }, [el("summary", { text: label.join(" · ") }), rows]);
   }
 
   function stageDetail(p, key) {

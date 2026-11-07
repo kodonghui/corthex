@@ -145,13 +145,18 @@ class WorkerStore(store.MemoryStore):
 
     @contextlib.contextmanager
     def lease(self, path, kind, deadline, step="restore", *, acquire_deadline=None):
+        """Lease under the phase deadline; acquire_deadline bounds only waiting.
+
+        Without it, make one attempt. With it, wait no longer than it, but make
+        a first attempt even when this lease's own checks used up the wait.
+        """
         self.check(deadline)
         if acquire_deadline is not None:
             self._deadline(acquire_deadline)
             acquire_deadline = min(deadline, acquire_deadline)
         lease = self._lock(path, kind, self.device).acquire(
             deadline if acquire_deadline is None else acquire_deadline,
-            wait=acquire_deadline is not None)
+            wait=acquire_deadline is not None, at_least_once=acquire_deadline is not None)
         self.held.append(lease)
         try:
             self.check(deadline, self.held)
