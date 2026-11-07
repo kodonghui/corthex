@@ -16,7 +16,7 @@ from _common import ROOT
 import test_memory_migration_inventory as fixtures
 
 sys.path.insert(0, str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import commands, format2, migration_command, migration_headers, store
+from memory_lib import commands, format2, migration_command, migration_driver, migration_headers, store
 
 FORMAT2 = dict(format=2, device=fixtures.HEADER['device'], made=fixtures.AT, release='0.3.0')
 
@@ -155,6 +155,30 @@ class MigrateCommandTest(unittest.TestCase):
         self.assertEqual((busy['outcome'], busy['code']), ('failed', 'lock-busy'))
         self.assertEqual(self.fixture.tree(), before)
         self.assertEqual(self.command()['data']['phase'], 'fresh')
+
+    def test_tc390_a_header_changed_after_the_yes_is_not_migrated(self):
+        header = self.root/'store.json'
+        original, real = header.read_bytes(), migration_driver.migrate
+        # Unsupported, then supported but not the reviewed bytes.
+        for release in ('0.1.0', '0.2.0'):
+            with self.subTest(release=release):
+                preview = self.command()
+                changed = fixtures.data(dict(fixtures.HEADER, release=release))
+                self.assertNotEqual(changed, original)
+
+                def late(*args, **kwargs):
+                    # The header changes after the confirmed preview, before the owner observes it.
+                    header.write_bytes(changed)
+                    return real(*args, **kwargs)
+                before = dict(self.fixture.tree(), **{'store.json': (header.stat().st_mode, changed)})
+                with mock.patch.object(migration_driver, 'migrate', side_effect=late):
+                    blocked = self.command(preview['confirm'])
+                self.assertEqual((blocked['outcome'], blocked['code'], blocked['data']),
+                                 ('refused', 'migration-blocked', dict(reason='store-contents')))
+                self.assertEqual(self.fixture.tree(), before)
+                header.write_bytes(original)
+        self.assertEqual(self.command(self.command()['confirm'])['data']['phase'], 'migrated')
+        self.assertEqual(format2.parse_store(header.read_bytes()), FORMAT2)
 
     def test_tc390_runner_still_answers_usage_for_migrate_before_activation(self):
         before = self.fixture.tree()

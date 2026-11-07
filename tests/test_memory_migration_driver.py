@@ -1,4 +1,5 @@
 """Synthetic migration driver paths; fixture checks never prove a real interval."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -143,13 +144,18 @@ class MigrationPlanTest(unittest.TestCase):
                 (self.root/'store.json').symlink_to(self.root/'linked-header')
                 self.refused('store-damaged')
 
-    def test_migrate_requires_three_callable_checks_before_reading(self):
+    def test_migrate_requires_three_callable_checks_and_confirmed_digests_before_reading(self):
         self.headers(fixtures.data(fixtures.HEADER))
         quiet = lambda *args: None
-        for checks in ((None, quiet, quiet), (quiet, None, quiet), (quiet, quiet, None)):
-            with self.subTest(checks=checks), self.assertRaises(TypeError):
+        digest = {'store.json': '0' * 64}
+        cases = [(digest, None, quiet, quiet), (digest, quiet, None, quiet), (digest, quiet, quiet, None)]
+        cases += [(headers, quiet, quiet, quiet) for headers in (
+            None, {}, [('store.json', '0' * 64)], {'store.json': '0' * 63}, {'store.json': 'F' * 64},
+            {'store.json': 0}, {'configuration.json': '0' * 64}, dict(digest, **{'store.json.tmp': '0' * 64}))]
+        for headers, *checks in cases:
+            with self.subTest(headers=headers, checks=checks), self.assertRaises(TypeError):
                 driver.migrate(self.root, release='0.3.0', when=fixtures.LATER, deadline=time.monotonic()+30,
-                               verify_quiescence=checks[0], verify_c1_lineage=checks[1],
+                               headers=headers, verify_quiescence=checks[0], verify_c1_lineage=checks[1],
                                verify_current_privacy=checks[2])
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), ['store.json'])
 
@@ -179,8 +185,13 @@ class MigrationDriverTest(unittest.TestCase):
         self.assertEqual((root, projects), (self.root, ('sample',)))
         self.calls['privacy'] += 1
 
+    def named(self):
+        """The digests a coordinator's confirmation covers: the named headers as they are now."""
+        return {name: hashlib.sha256((self.root/name).read_bytes()).hexdigest()
+                for name in ('store.json', 'store.json.bak') if (self.root/name).exists()}
+
     def migrate(self, **changes):
-        checks = dict(verify_quiescence=self.quiet, verify_c1_lineage=self.lineage,
+        checks = dict(headers=self.named(), verify_quiescence=self.quiet, verify_c1_lineage=self.lineage,
                       verify_current_privacy=self.privacy)
         checks.update(changes)
         return driver.migrate(self.root, release='0.3.0', when=fixtures.LATER,
@@ -265,6 +276,28 @@ class MigrationDriverTest(unittest.TestCase):
         self.assertEqual(driver.plan(self.root, release='0.3.0'), driver.Plan('complete', first.nonce))
         self.assertEqual(os.listdir(str(self.root/'.maintenance/format-1-to-2')), [first.nonce])
         self.assertEqual(self.fixture.raw.read_bytes(), raw)
+
+    def test_tc390_owned_headers_must_be_the_confirmed_bytes_before_any_effect(self):
+        confirmed = self.named()
+        (self.root/'store.json').write_bytes(fixtures.data(dict(fixtures.HEADER, release='0.1.0')))
+        before = self.fixture.tree()
+        with self.assertRaises(locks.LostLock):
+            self.migrate(headers=confirmed)
+        # The owner verified the interval, then refused before the lineage check or any effect.
+        self.assertEqual((self.calls['quiescence'] > 0, self.calls['lineage']), (True, 0))
+        self.assertEqual(self.fixture.tree(), before)
+        self.assertEqual(driver.plan(self.root, release='0.3.0').phase, 'fresh')
+        (self.root/'store.json').write_bytes(fixtures.data(fixtures.HEADER))
+        self.interrupted('store.json', after=True)
+        self.assertEqual(driver.plan(self.root, release='0.3.0').phase, 'headers')
+        before = self.fixture.tree()
+        for name in ('store.json', 'store.json.bak'):
+            with self.subTest(name=name), self.assertRaises(locks.LostLock):
+                self.migrate(headers=dict(self.named(), **{name: '0' * 64}))
+            with self.subTest(name=name, missing=True), self.assertRaises(locks.LostLock):
+                self.migrate(headers={key: value for key, value in self.named().items() if key != name})
+        self.assertEqual(self.fixture.tree(), before)
+        self.assertEqual(self.migrate().resumed, 'headers')
 
     def test_tc390_refused_interval_check_publishes_nothing_and_takes_no_lease(self):
         before = self.fixture.tree()

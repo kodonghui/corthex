@@ -9,17 +9,20 @@ The classification is a read-only hint. Every effect and every verification
 stays with the component that owns it, under the original ordered owner.
 """
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import stat
 
-from . import configuration, format2, maintenance_identity, maintenance_journal, maintenance_owner, store
+from . import configuration, format2, locks, maintenance_identity, maintenance_journal, maintenance_owner, store
 from . import migration_finalize, migration_finalize_resume, migration_header_resume, migration_headers
 from . import migration_initialize, migration_initialize_resume, migration_intent
 
 _NONCE = re.compile(r'[0-9a-f]{32}\Z')
+_SHA256 = re.compile(r'[0-9a-f]{64}\Z')
+NAMED = ('store.json', 'store.json.bak')
 _LIMIT = 1 << 20
 _MARKS = ('headers-complete.json', 'initialization-complete.json',
           'final-header-publications.json', 'migration-complete.json')
@@ -133,7 +136,7 @@ def plan(root, *, release):
     if not root.is_absolute():
         raise MigrationRefused('no-store')
     named = []
-    for name in ('store.json', 'store.json.bak'):
+    for name in NAMED:
         raw = _read(root / name, 'store-damaged')
         if raw is not None:
             named.append(_header(raw))
@@ -182,9 +185,14 @@ def plan(root, *, release):
     return Plan('finalization', nonce, identity)
 
 
-def migrate(root, *, release, when, deadline, verify_quiescence, verify_c1_lineage, verify_current_privacy):
+def migrate(root, *, release, when, deadline, headers, verify_quiescence, verify_c1_lineage,
+            verify_current_privacy):
     """Run or resume one migration under a fresh original ordered owner.
 
+    `headers` maps each named header that the coordinator's confirmation
+    covered to the SHA-256 of its bytes. Once the owner holds every lease, and
+    before any effect, the named headers it observed must be exactly those, so
+    a header changed after the confirmation is never migrated: LostLock.
     The three checks take what their components pass and return only None.
     An exception keeps the component's published/uncertain attributes; nothing
     is rolled back, and a later call resumes from the durable records.
@@ -192,6 +200,11 @@ def migrate(root, *, release, when, deadline, verify_quiescence, verify_c1_linea
     for check in (verify_quiescence, verify_c1_lineage, verify_current_privacy):
         if not callable(check):
             raise TypeError('original maintenance-interval checks required')
+    if not isinstance(headers, dict) or not headers or any(
+            name not in NAMED or not isinstance(digest, str) or not _SHA256.fullmatch(digest)
+            for name, digest in headers.items()):
+        raise TypeError('confirmed named header digests required')
+    confirmed = dict(headers)
     current = plan(root, release=release)
     if current.phase in ('complete', 'format-2'):
         return Outcome(current.phase, current.nonce)
@@ -199,6 +212,10 @@ def migrate(root, *, release, when, deadline, verify_quiescence, verify_c1_linea
     nonce, initialized = current.nonce, None
     with acquire(Path(root), release=release, when=when, deadline=deadline,
                  verify_quiescence=verify_quiescence) as owned:
+        observed = {name: hashlib.sha256(raw).hexdigest() for name, raw in owned.inventory.headers.originals
+                    if name in NAMED}
+        if observed != confirmed:
+            raise locks.LostLock()
         if current.phase == 'fresh':
             native = maintenance_identity.bind(owned.inventory.folder)
             intent = migration_intent.prepare(owned, native)

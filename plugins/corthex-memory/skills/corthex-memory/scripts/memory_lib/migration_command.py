@@ -3,9 +3,11 @@
 The command runner does not accept it before the 0.3.0 activation, so an
 installed plugin keeps C1 behaviour. The coordinator never infers from
 processes or locks that other sessions are closed. Its facts are the user's
-yes to a preview bound to this exact store, the supported C1 release that made
-the store, and the configuration bytes the user reviewed. A later change to
-any of them stops the migration, which then resumes from its durable records.
+yes to a preview bound to this exact store, the named header bytes that
+preview hashed with the supported C1 release they carry, and the configuration
+bytes the user reviewed. The driver migrates only those header bytes; a later
+change to any of them stops the migration, which then resumes from its
+durable records.
 """
 import hashlib
 import json
@@ -103,23 +105,37 @@ def _refusal(code):
     return _blocked(code)
 
 
-def _preview(context, root, target):
+def _source_release(raw):
+    """The release in a format-1 store record; a header that is not one is damaged."""
+    try:
+        return store._record(raw)['release']
+    except Exception:
+        raise migration_driver.MigrationRefused('store-damaged') from None
+
+
+def _preview(root, target):
     """The proposal and its data, or None and the final result."""
     current = migration_driver.plan(root, release=target)
     if current.phase in ('complete', 'format-2'):
         return None, commands.result('migrate', dict(phase=current.phase, release=target), SAY['nothing'], 'nothing')
-    if not _c2(target) or current.phase == 'fresh' and (context.record or {}).get('release') not in SUPPORTED_C1:
+    if not _c2(target):
         return None, _blocked('unsupported-release')
     damaged = lambda: migration_driver.MigrationRefused('store-damaged')
-    headers = {name: hashlib.sha256(_bytes(root / name, damaged) or b'').hexdigest()
-               for name in ('store.json', 'store.json.bak') if (root / name).exists()}
+    named = {name: _bytes(root / name, damaged) for name in migration_driver.NAMED}
+    named = {name: raw for name, raw in named.items() if raw is not None}
+    if not named:
+        raise migration_driver.MigrationRefused('no-store')
+    # The release is read from the very bytes the confirmation binds.
+    if current.phase == 'fresh' and any(_source_release(raw) not in SUPPORTED_C1 for raw in named.values()):
+        return None, _blocked('unsupported-release')
+    headers = {name: hashlib.sha256(raw).hexdigest() for name, raw in named.items()}
     reviewed = _configuration(root)
     binding = hashlib.sha256(commands.canonical(dict(
         root=str(root), phase=current.phase, nonce=current.nonce, headers=headers,
         configuration=reviewed)).encode('ascii')).hexdigest()
     projects = _projects(_bytes(root / 'configuration.json', _invalid))
     data = dict(phase=current.phase, release=target, projects=projects, binding=binding)
-    return (current, reviewed), data
+    return (current, reviewed, headers), data
 
 
 def migrate(context):
@@ -127,19 +143,19 @@ def migrate(context):
     root = Path(os.path.abspath(str(context.memory.folder)))
     target = release()
     try:
-        prepared, data = _preview(context, root, target)
+        prepared, data = _preview(root, target)
     except migration_driver.MigrationRefused as error:
         return _refusal(error.code)
     except configuration.ConfigurationInvalid as error:
         return commands.common_result('migrate', 'configuration-invalid', field=error.field)
     if prepared is None:
         return data
-    current, reviewed = prepared
+    current, reviewed, headers = prepared
     say = SAY['fresh' if current.phase == 'fresh' else 'resume']
-    return context.confirm(data, say, lambda: _apply(root, target, current, reviewed, data['projects']))
+    return context.confirm(data, say, lambda: _apply(root, target, current, reviewed, headers, data['projects']))
 
 
-def _apply(root, target, current, reviewed, projects):
+def _apply(root, target, current, reviewed, headers, projects):
     canonical, (device, made) = root.resolve(), current.identity
 
     def same_store(folder, device_now, made_now, release_now, configuration_too):
@@ -165,7 +181,7 @@ def _apply(root, target, current, reviewed, projects):
     deadline = clock.now() + SECONDS
     try:
         outcome = migration_driver.migrate(
-            root, release=target, when=base.utc_time(), deadline=deadline,
+            root, release=target, when=base.utc_time(), deadline=deadline, headers=headers,
             verify_quiescence=quiescence, verify_c1_lineage=lineage, verify_current_privacy=privacy)
     except migration_driver.MigrationRefused as error:
         return _refusal(error.code)
