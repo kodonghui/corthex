@@ -24,13 +24,14 @@ COMMANDS = tuple("on off status resume list search open pin unpin forget delete-
 ALL = frozenset(COMMANDS)
 PROJECT = ALL - {"status", "purge", "retention", "sync", "repair"}
 CHANGES = ALL - {"status", "list", "search", "open", "setup"}
-ASKS = frozenset("on resume forget delete-project purge retention sync repair".split())
+# migrate (API-154) asks first but stays out of COMMANDS until the 0.3.0 activation.
+ASKS = frozenset("on resume forget delete-project purge retention sync repair migrate".split())
 # The common command-code applicability table, including the on/off exceptions.
 # Invalid CORTHEX_MEMORY_HOME precedes the store and overrides the schema row.
 COMMON = {
     "usage": (ALL | {"none"}, "refused"),
     "no-store": (ALL - {"on", "purge", "repair"}, "refused"),
-    "store-newer": (ALL - {"purge"}, "refused"),
+    "store-newer": (ALL - {"purge", "migrate"}, "refused"),
     "store-damaged": (ALL - {"purge", "repair"}, "refused"),
     "configuration-invalid": (ALL - {"status", "purge", "repair"}, "refused"),
     "no-project-list": (PROJECT, "refused"),

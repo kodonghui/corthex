@@ -348,7 +348,7 @@ class InterfacesTest(unittest.TestCase):
 
     def test_every_behaviour_is_served(self):
         rows = table(section(self.doc, "## Interfaces"))
-        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in list(range(1, 33)) + [151, 152, 153]])
+        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in list(range(1, 33)) + [151, 152, 153, 154]])
         expected_specs = {"SPEC-%03d" % n for n in list(range(1, 40)) + [143, 144, 145]}
         served = set()
         for row in rows:

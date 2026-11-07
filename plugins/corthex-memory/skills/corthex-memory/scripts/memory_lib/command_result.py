@@ -15,9 +15,9 @@ from pathlib import Path
 import re
 
 RESOURCE = Path(__file__).with_name("result.schema.json")
-SCHEMA_SHA256 = "08e11a168ee1ff645d1c0234c814699980ef220cf773ca36fdcda9bfb1bbda93"
+SCHEMA_SHA256 = "7e3443e2787190f67280a9a757a6745471af5d445936cfa31e53aecc6632a2c8"
 COMMANDS = tuple(("on off status resume list search open pin unpin forget "
-                  "delete-project purge leave-out retention sync setup repair conflicts runs undo none").split())
+                  "delete-project purge leave-out retention sync setup repair conflicts runs undo migrate none").split())
 KEYWORDS = frozenset(("$schema title description $defs $ref type properties required "
                       "additionalProperties propertyNames minimum maximum minLength maxLength "
                       "pattern minItems maxItems uniqueItems items enum const allOf anyOf "

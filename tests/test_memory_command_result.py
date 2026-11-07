@@ -49,8 +49,8 @@ class CommandResultTest(unittest.TestCase):
         return out
 
     def test_tc334_all_result_examples_keep_independent_verdicts_and_statuses(self):
-        self.assertEqual(len(self.group["valid"]), 38)
-        self.assertEqual(len(self.group["invalid"]), 13)
+        self.assertEqual(len(self.group["valid"]), 42)
+        self.assertEqual(len(self.group["invalid"]), 14)
         self.assertEqual(result.RESOURCE.read_bytes(), self.raw)
         for name, value in self.group["valid"].items():
             with self.subTest(valid=name):
