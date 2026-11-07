@@ -1,7 +1,8 @@
 """TASK-083: escaped curator documents, the quote check and request inputs.
 
-TC-156, TC-158 and the TASK-083 part of TC-394 on synthetic records. Requests
-go only to a local test server, with a key made while the test runs.
+TC-156, TC-158 and the TASK-083 part of TC-394 on synthetic records, and TC-399
+of TASK-109. Requests go only to a local test server, with a key made while
+the test runs.
 """
 import copy
 import itertools
@@ -9,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import string
 import sys
 import tempfile
 import unicodedata
@@ -20,6 +22,7 @@ from _common import ROOT
 import test_memory_model_transport as transport_fixture
 import test_memory_model_usage as usage_fixture
 from test_memory_model_stream import SCHEMA
+from test_memory_redaction import luhn, random_text
 sys.path.insert(0, str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import base, conflict_types, curator_answers, curator_document, item_types, model_access, model_client
 from memory_lib import model_request, quote_check, raw_log, request_inputs, state_types
@@ -349,6 +352,38 @@ class RequestInputsTest(unittest.TestCase):
         self.assertIsNone(quote_check.find(recorded, 'the value [redacted:memory-key] tonight'))
         self.assertIsNone(quote_check.find(recorded, '[redacted:memory-key]'))
         self.assertEqual(quote_check.find(recorded, 'Deploy with the value'), (0, 21))
+
+    def test_tc399_text_recorded_under_the_old_rules_is_redacted_when_sent_and_its_quotes_drop(self):
+        password = random_text(6, string.ascii_lowercase) + random_text(6, string.digits) + '!'
+        token = 'npm_' + random_text(36)
+        card = luhn('4' + random_text(14, string.digits))
+        text = '비밀번호: ' + password + ' 로 바꿨고 ' + token + ' 도 받았고 카드 ' + card + ' 입니다.'
+        # Release 0.2 recorded these values as they were. The record path now
+        # removes them, while a raw log written before keeps the old text.
+        self.assertNotEqual(raw_log.prepare(text, environment={}).text, text)
+        prompt = entry(2, 'prompt', text)
+        self.record([entry(1, 'start', event='start'), prompt])
+        document = curator_document.curate(lines=[], items=[], form='full',
+                                           sessions=[request_inputs.session(self.root, LOG)])
+        self.assertIn(password, document)
+        body = self.send(document)[2]
+        shown = ET.fromstring(body['messages'][0]['content']).find('.//entry').text
+        self.assertEqual(shown, '비밀번호: [redacted:assigned-secret] 로 바꿨고 [redacted:npm-token] 도 받았고 '
+                                '카드 [redacted:card-number] 입니다.')
+        for value in (password, token, card):
+            self.assertNotIn(value, json.dumps(body))
+        # An answer can quote only what the request showed. A quote with a
+        # marker is not in the stored text, so its change drops as `quote`.
+        stored = {e['id']: e for e in request_inputs.entries(self.root, LOG)}
+        sent = curator_answers.sent(items=[], logs=[(LOG, [stored[prompt['id']]])])
+        changes = [dict(action='add', targets=[], kind='fact', title=title, text=title + '.',
+                        quotes=[{'entry': prompt['id'], 'words': words}], conflicts=[])
+                   for title, words in (('A card was given', '카드 [redacted:card-number] 입니다'),
+                                        ('The password changed', '로 바꿨고'))]
+        result = curator_answers.check_curate({'changes': changes, 'state': {'change': [], 'add': [], 'remove': []}},
+                                              sent=sent, device=DEVICE)
+        self.assertEqual(([c.number for c in result.changes], result.dropped), ([2], {'quote': 1}))
+
 
     def test_tc394_requests_from_the_project_folder_carry_no_history_runs_fences_or_counters(self):
         marks = {name: name + '-' + secrets.token_hex(8) for name in
