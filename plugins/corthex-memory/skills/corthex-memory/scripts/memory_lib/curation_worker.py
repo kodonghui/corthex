@@ -13,16 +13,25 @@ answers apply together once the last part has succeeded: a quote must lie
 within its own part, and a later part cannot change an item that an earlier
 part ended.
 
-- A failed attempt applies nothing and leaves its turns unprocessed. It is
-  counted against the first unprocessed turn it started from, writes a
-  `curation-failed` notice and ends the run; the next trigger tries again.
-  Three in a row from the same turn stop curation for the project (SPEC-018).
-  A successful attempt sets the count to zero.
+- A failed attempt leaves its turns unprocessed. It is counted against the
+  first unprocessed turn it started from, writes a `curation-failed` notice
+  and ends the run; the next trigger tries again. Three in a row from the
+  same turn stop curation for the project (SPEC-018). A successful attempt
+  sets the count to zero.
 - A fence that changed after the request was built, as a forget, an undo or a
   tombstone changes it, makes the attempt stale, whether its requests
   succeeded or failed: nothing applies, nothing counts as a failure, and the
   next attempt builds the request again from the raw log as it now is
-  (SPEC-012). Three stale attempts in a row end the run.
+  (SPEC-012). Three stale attempts in a row end the run. The fence is
+  compared when the layer lease is taken again to apply; after that only the
+  attempt itself moves it, so a later error is a failure, never stale, and
+  the request is not sent again in the same run.
+- When the line edits fail after the item changes were published and before
+  they moved the fence, the state stays as it was and the item changes and
+  the turns count, as when a required history append fails (SPEC-017); the
+  failure log notes the error. A failure after anything else was published
+  keeps what was published and leaves the turns unprocessed: the next run
+  curates them again and consolidation merges what was saved twice (TBL-009).
 - Every file of a request is read through the store's path fence, so that a
   link or junction in the project folder ends the run (`lost-lock`) before
   anything is sent.
@@ -442,6 +451,22 @@ def _logged(memory, root, log, progress, at, effects, check):
     return log
 
 
+def _kept(memory, root, deadline, result, proof, error):
+    """The line edits' outcome when they fail after the item changes were published: the state as it was.
+
+    As when a required history append fails (SPEC-017), the item changes stay
+    and the turns count, since building the request again would save the item
+    changes twice. That holds only while the line edits have not moved the
+    fence; otherwise, or when no item change was published, or a lease was
+    lost, the error goes on.
+    """
+    chain = _chain(error)
+    if (result is None or any(isinstance(cause, _LEASES) for cause in chain) or
+            not fence_plan.matches(revision_io.read(memory, root, deadline), proof)):
+        raise error
+    return {'state': 'kept', 'held': _code(chain[-1]), 'dropped': {}, 'lines': (), 'progress': None}
+
+
 def _apply(memory, root, deadline, batch, checked, expected, at):
     """Apply a batch's checked answers under both leases: (attempt, line edits dropped, held error, counts)."""
     check = revision_io.guard(memory, root, deadline, curator=True)
@@ -453,9 +478,15 @@ def _apply(memory, root, deadline, batch, checked, expected, at):
     if result is not None:
         latest = result['progress']
         log = _logged(memory, root, log, latest, at, dict(result['effects'], turns=turns), check)
-    edits = state_edits.apply(memory, root, expected if latest is None else fence_plan.snapshot(latest),
-                              checked.state, sent=batch.sent(), saved=() if result is None else result['saved'],
-                              at=at, run=run, deadline=deadline)
+    proof = expected if latest is None else fence_plan.snapshot(latest)
+    try:
+        edits = state_edits.apply(memory, root, proof, checked.state, sent=batch.sent(),
+                                  saved=() if result is None else result['saved'], at=at, run=run,
+                                  deadline=deadline)
+    except _LEASES:
+        raise
+    except _BREAKS as error:
+        edits = _kept(memory, root, deadline, result, proof, error)
     if edits['lines']:
         effects = run_log.lines(edits['lines'])
         if result is None:
@@ -542,27 +573,37 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
         return Attempt(_stale(memory, root, deadline, at), first, turns, sent, {}, {}, None, False)
 
     def failed(code):
-        """A failure; or a stale attempt when the fence moved after the request was built (SPEC-012)."""
-        if not fence_plan.matches(revision_io.read(memory, root, deadline), expected):
-            return stale()
         record, stopped = _failure(memory, root, deadline, first, code, at)
         return Attempt(record, first, turns, sent, {}, {}, None, stopped)
 
+    def unmoved():
+        return fence_plan.matches(revision_io.read(memory, root, deadline), expected)
+
     with _layer(memory, root, deadline):
+        # A forget, an undo or a tombstone that moved the fence after the request was built makes the
+        # attempt stale, whether its requests succeeded or failed (SPEC-012). From here on only this
+        # attempt moves the fence, under the layer lease.
+        if not unmoved():
+            return stale()
         if code is not None:
             return failed(code)
         try:
             record, edits, held, counts = _apply(memory, root, deadline, batch[0], checked, expected, at)
         except _LEASES:
             raise
-        except fence_plan.Stale:
-            return stale()
+        except fence_plan.Stale as error:
+            # A check found the layer changed without the fence: built again, unless this attempt has
+            # published something, which a second request would save twice.
+            if unmoved():
+                return stale()
+            memory.note(error, step='curate')
+            return failed(_code(error))
         except (item_io.WriteFailed, state_io.PublicationFailed) as error:
             chain = _chain(error)
             for cause in chain:
                 if isinstance(cause, _LEASES):
                     raise cause
-            if any(isinstance(cause, fence_plan.Stale) for cause in chain):
+            if any(isinstance(cause, fence_plan.Stale) for cause in chain) and unmoved():
                 return stale()
             memory.note(chain[-1], step='curate')
             return failed(_code(chain[-1]))

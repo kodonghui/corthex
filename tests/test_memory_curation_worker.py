@@ -291,6 +291,11 @@ class CurationWorkerTest(unittest.TestCase):
         return [json.loads(line) for path in sorted((self.folder / 'logs').glob('usage-*.jsonl'))
                 for line in path.read_bytes().splitlines()]
 
+    def failures(self):
+        return [(value['step'], value['error']) for value in (
+            json.loads(line) for path in sorted((self.folder / 'logs').glob('failures-*.jsonl'))
+            for line in path.read_bytes().splitlines())]
+
     def runs(self):
         return sorted(path.name for path in (self.root / 'runs').iterdir())
 
@@ -936,6 +941,67 @@ class CurationWorkerTest(unittest.TestCase):
         outcome = self.curate()
         self.assertEqual((outcome.reason, outcome.attempts[0].record['error']), ('failed', 'refusal'))
         self.assertEqual(self.progress()['failures']['count'], 1)
+
+    def decision_and_line(self):
+        said, _ = self.one_turn()
+        added = {'part': 'decisions', 'after': '', 'text': 'One script serves the hooks.', 'cites': [],
+                 'changes': [1]}
+        self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'),
+                                      state={'change': [], 'add': [added], 'remove': []})]
+
+    def test_line_edits_that_fail_after_the_item_changes_keep_the_state_and_count_the_turns(self):
+        self.decision_and_line()
+        with mock.patch.object(curation_worker.state_edits, 'apply', side_effect=OSError('one-shot')):
+            outcome = self.curate()
+        (attempt,) = outcome.attempts
+        self.assertEqual((outcome.reason, attempt.held, len(self.server.requests)), ('done', 'OSError', 1))
+        progress = self.progress()
+        record = progress['recent'][0]
+        self.assertEqual(record, {'at': STAMP, 'kind': 'curate', 'result': 'ok', 'applied': 1, 'dropped': 0,
+                                  'state': 'kept', 'run': record['run']})
+        # The decision is saved once, the state is as it was, and the turns count (SPEC-017).
+        self.assertEqual((progress['logs'], progress['applies'], len(self.items()), self.lines()),
+                         ({LOG: 3}, 1, 1, []))
+        self.assertEqual((self.notice(), self.failures()), (None, [('curate', 'OSError')]))
+
+    def test_a_failure_after_the_line_edits_moved_the_fence_is_a_failure_not_stale(self):
+        self.decision_and_line()
+        real = curation_worker.state_edits.apply
+
+        def published_then_failed(*args, **kwargs):
+            real(*args, **kwargs)
+            raise OSError('after the state was published')
+        with mock.patch.object(curation_worker.state_edits, 'apply', side_effect=published_then_failed):
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts], len(self.server.requests)),
+                         ('failed', ['failed'], 1))
+        progress = self.progress()
+        self.assertEqual((progress['logs'], progress['failures']['count'], self.notice()['error']), ({}, 1, 'OSError'))
+        # What was published stays, and the next run curates the turns again (TBL-009).
+        self.assertEqual((len(self.items()), len(self.lines())), (1, 1))
+
+    def test_a_check_that_fails_is_stale_before_the_attempt_publishes_and_a_failure_after(self):
+        said, _ = self.one_turn()
+        self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'))] * 2
+        real, calls = curation_worker.curate_apply.apply, []
+
+        def stale_once(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise fence_plan.Stale()
+            return real(*args, **kwargs)
+        with mock.patch.object(curation_worker.curate_apply, 'apply', side_effect=stale_once):
+            outcome = self.curate()
+        self.assertEqual(([a.record['result'] for a in outcome.attempts], len(self.server.requests), len(self.items())),
+                         (['stale', 'ok'], 2, 1))
+        named, _ = self.one_turn('Name the script hook.py.', 'The script is hook.py now.')
+        self.server.answers = self.server.answers[:2] + [answer(change(quote(named, 'Name the script hook.py'),
+                                                                       kind='decision'))]
+        with mock.patch.object(curation_worker.run_log, 'write', side_effect=fence_plan.Stale()):
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts], len(self.server.requests)),
+                         ('failed', ['failed'], 3))
+        self.assertEqual((len(self.items()), self.progress()['failures']['count']), (2, 1))
 
 
 if __name__ == '__main__':
