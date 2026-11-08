@@ -11,7 +11,7 @@ ENTRY = re.compile(r'e_' + format2._DIGITS + r'\Z')
 ITEM_FIELDS = 'id kind title text quotes status superseded_by undone_by merges saved device changed'.split()
 QUOTE_FIELDS = 'entry log device start end speaker said words'.split()
 PIN_FIELDS = 'item on at device'.split()
-NOTICE_FIELDS = 'at kind error item to candidate shown'.split()
+NOTICE_FIELDS = 'at kind error item to run candidate shown'.split()
 BREAKS = '\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029'
 
 
@@ -91,15 +91,18 @@ def parse_pins(data):
 
 def parse_notice(data):
     value = _document(data)
-    curation._shape(value, 'at kind', 'error item to candidate shown')
+    curation._shape(value, 'at kind', 'error item to run candidate shown')
     format2._time(value['at'])
     curation._choice(value['kind'], {'curation-failed', 'consolidation-failed', 'rebuilt',
-                                    'pin-moved', 'pin-dropped', 'conflict'})
+                                    'pin-moved', 'pin-dropped', 'pin-restored', 'pin-removed', 'conflict'})
     if 'error' in value:
         _text(value['error'])
     for name in ('item', 'to', 'candidate'):
         if name in value:
             format2._id(value[name], format2._CANDIDATE if name == 'candidate' else ITEM)
+    # The undo that moved a pin back or removed it (SPEC-034, SPEC-145).
+    if 'run' in value:
+        format2._id(value['run'], format2._RUN)
     if 'shown' in value and (not configuration.integer(value['shown']) or not 0 <= value['shown'] <= 3):
         raise ValueError('invalid notice count')
     return value
