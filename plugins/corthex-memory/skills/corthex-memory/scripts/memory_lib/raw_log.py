@@ -63,11 +63,18 @@ def _positive(value):
 
 
 def _entry(line, host, session):
-    """Validate the recording shape used for turn inference.
-
-    The byte limit for future forget rewrites is decided with that C2 task.
-    """
+    """Validate the recording shape used for turn inference."""
     return _parsed_entry(store.json_document(line), host, session)
+
+
+def _filled(text, ranges):
+    """How many U+FFFD characters a text holds inside its merged forgotten ranges."""
+    count = reach = 0
+    for start, end in sorted((int(pair[0]), int(pair[1])) for pair in ranges):
+        if end > reach:
+            count += text.count("\ufffd", max(start, reach), end)
+            reach = end
+    return count
 
 
 def _parsed_entry(value, host, session):
@@ -81,7 +88,7 @@ def _parsed_entry(value, host, session):
         raise ValueError("invalid raw entry")
     if value["kind"] in ("prompt", "answer"):
         text = value.get("text")
-        if (not isinstance(text, str) or len(text.encode("utf-8")) > redaction.ENTRY_BYTES or
+        if (not isinstance(text, str) or
                 not _positive(value.get("turn")) or value["turn"] > value["seq"] or
                 value.get("speaker") != ("user" if value["kind"] == "prompt" else "agent") or
                 value["kind"] == "prompt" and value["turn"] != value["seq"] or
@@ -89,6 +96,7 @@ def _parsed_entry(value, host, session):
             raise ValueError("invalid raw turn")
         if "cut" in value and not _positive(value["cut"]):
             raise ValueError("invalid raw cut")
+        filled = 0
         if "forgotten" in value:
             ranges = value["forgotten"]
             if not isinstance(ranges, list) or any(
@@ -96,6 +104,13 @@ def _parsed_entry(value, host, session):
                     not all(configuration.integer(n) for n in pair) or
                     not 0 <= pair[0] < pair[1] <= len(text) for pair in ranges):
                 raise ValueError("invalid forgotten range")
+            filled = _filled(text, ranges)
+        # A forget fills each character of a range with U+FFFD (TBL-007), whose
+        # three UTF-8 bytes can outweigh the character that it replaced. Each
+        # filled character counts as one byte, so a fill never takes an entry
+        # past the limit that its recording kept.
+        if len(text.encode("utf-8")) - 2 * filled > redaction.ENTRY_BYTES:
+            raise ValueError("invalid raw turn")
     elif set(value) - required - ({"event"} if value["kind"] == "start" else {"reason"}):
         raise ValueError("invalid raw boundary")
     if "event" in value and (not isinstance(value["event"], str) or value["event"] not in EVENTS):
