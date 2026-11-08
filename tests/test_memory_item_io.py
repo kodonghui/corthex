@@ -11,7 +11,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, fence_plan, files, format2, item_io, item_plan, item_types, locks, revision_io
+from memory_lib import clock, fence_plan, files, format2, item_io, item_plan, item_types, locks, revision_io, run_log
 from memory_lib.c2_store import C2Store
 from test_memory_fence_plan import PROGRESS
 from test_memory_item_types import AT, DEVICE, ITEM
@@ -92,6 +92,39 @@ class ItemIOTest(unittest.TestCase):
         revisions = result['progress']['fence']['revisions']
         self.assertTrue(all(revisions[key] == result['progress']['fence']['generation']
                             for key in ('item:'+FIRST, 'item:'+SECOND, 'pin:'+FIRST, 'pin:'+SECOND, 'run:r_0123456789ac')))
+
+    def test_a_replacement_already_pinned_at_this_time_takes_no_revision_and_logs(self):
+        # Its pin keeps its record, so the batch reserves no revision for it and its run log names every one.
+        self.item_path(SECOND).write_bytes(item_types.item_bytes(self.item(SECOND)))
+        same = dict(self.pin(SECOND), at=CHANGED)
+        self.pins_path.write_bytes(item_types.pins_bytes({'pins': [self.pin(), same]}))
+        run, transition = 'r_0123456789ac', {'id': FIRST, 'status': 'superseded', 'superseded_by': SECOND}
+        # The writer still checks the pin it touched: the replacement deleted after the reservation stops the batch.
+        tombstone, original = self.project / 'layer/tombstones' / (SECOND + '.json'), revision_io.reserve
+
+        def reserve(*args):
+            value = original(*args)
+            tombstone.write_bytes(b'fixture privacy')
+            return value
+        with self.held(curator=True), mock.patch.object(revision_io, 'reserve', side_effect=reserve):
+            with self.assertRaises(item_io.WriteFailed) as caught:
+                self.apply(transitions=[transition], run_id=run)
+        self.assertIsInstance(caught.exception.__cause__, fence_plan.Stale)
+        self.assertEqual(caught.exception.published, ())
+        tombstone.unlink()
+        before = self.progress()['fence']['revisions']
+        with self.held(curator=True):
+            result = self.apply(transitions=[transition], run_id=run)
+        self.assertEqual(item_types.parse_pins(self.pins_path.read_bytes())['pins'],
+                         [dict(self.pin(), on=False, at=CHANGED), same])
+        self.assertEqual(item_types.parse_notice((self.project/('notices/pin-'+FIRST+'.json')).read_bytes()),
+                         {'at': CHANGED, 'kind': 'pin-moved', 'item': FIRST, 'to': SECOND})
+        effects, fence = result['effects'], result['progress']['fence']
+        self.assertEqual([value['id'] for value in effects['revisions']], ['item:' + FIRST, 'pin:' + FIRST])
+        self.assertEqual(fence['revisions'].get('pin:' + SECOND), before.get('pin:' + SECOND))
+        self.assertEqual([entry['item'] for entry in effects['pins']], [FIRST])
+        log = run_log.add(run_log.start(run, 'curate', CHANGED, DEVICE), result['progress'], CHANGED, effects)
+        self.assertEqual((log['pins'], log['last']), (effects['pins'], fence['generation']))
 
     def test_withdrawal_drops_pin_and_preserves_unrelated_off_record(self):
         off = self.pin(SECOND, False)

@@ -110,11 +110,41 @@ def _conflicts(memory, root, conflicts, items, plan, deadline, check):
     return before, (data if added or closed else None), added, closed
 
 
+def _effects(items, pins, plan, candidates, added, closed):
+    """The batch's actual changes as its run log names them (TBL-121): IDs, statuses and pin records, no text."""
+    before = {value['id']: value for value in items}
+
+    def status(value):
+        return item_types._ordered(value, ('status', 'superseded_by', 'undone_by'))
+    saved, statuses = [], []
+    for item, data in plan['records']:
+        if item in before:
+            statuses.append({'item': item, 'before': status(before[item]), 'after': status(item_types.parse_item(data))})
+        else:
+            saved.append(item)
+    moves = []
+    if plan['pins'] is not None:
+        old = {pin['item']: (index, pin) for index, pin in enumerate(pins['pins'])}
+        for index, pin in enumerate(item_types.parse_pins(plan['pins'])['pins']):
+            place, prior = old.get(pin['item'], (None, None))
+            if prior != pin:
+                moves.append({'item': pin['item'], 'from': None if prior is None else
+                              item_types._ordered(prior, ('on', 'at', 'device')),
+                              'to': item_types._ordered(pin, ('on', 'at', 'device')), 'place': [place, index]})
+    after = {} if candidates is None else {
+        value['id']: value['status'] for value in conflict_types.parse_conflicts(candidates)['candidates']}
+    conflicts = [{'candidate': candidate, 'from': 'absent', 'to': 'open'} for candidate in added]
+    conflicts += [{'candidate': candidate, 'from': 'open', 'to': after[candidate]} for candidate in closed]
+    return {'saved': saved, 'statuses': statuses, 'pins': moves, 'conflicts': conflicts}
+
+
 def apply(memory, root, expected, additions, transitions, at, deadline, run_id=None, conflicts=None):
     """Publish item changes and, when `conflicts` is given, the TBL-120 value that goes with them.
 
     New candidates are counted zero durably (TBL-010) before the reservation,
     and conflicts.json is published after the items that its candidates name.
+    Returns the published keys, the reservation's progress and the batch's
+    `effects` for its run log (TASK-103), with each object's revisions.
     """
     root = Path(root)
     check, ownership = _checked(memory, root, expected, deadline, curator=run_id is not None)
@@ -125,10 +155,8 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
     if conflicts is not None:
         before, candidates, added, closed = _conflicts(memory, root, conflicts, items, plan, deadline, check)
     targets = sorted(set(plan['targets']) | {'candidate:' + candidate for candidate in added + closed})
-    item_ids = [item for item, data in plan['records']]
-    for key in plan['targets']:
-        if key.startswith('pin:'):
-            item_ids.append(key[4:])
+    effects = _effects(items, pins, plan, candidates, added, closed)
+    item_ids = [item for item, data in plan['records']] + plan['pinned']
 
     def privacy():
         if any(_private(memory, root, item) for item in item_ids):
@@ -166,7 +194,9 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
         guard()
     except Exception as error:
         raise WriteFailed(attempted, published, reservation.progress) from error
-    return {'published': tuple(published), 'progress': reservation.progress}
+    generation, revisions = reservation.progress['fence']['generation'], expected['fence']['revisions']
+    effects['revisions'] = [{'id': key, 'before': revisions.get(key), 'after': generation} for key in targets]
+    return {'published': tuple(published), 'progress': reservation.progress, 'effects': effects}
 
 
 def rebuild_list(memory, root, expected, deadline):

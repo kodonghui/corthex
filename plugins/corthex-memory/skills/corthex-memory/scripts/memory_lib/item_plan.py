@@ -14,6 +14,7 @@ def plan(items, pins, additions, transitions, at, device):
     final = copy.deepcopy(before)
     pins = item_types.parse_pins(item_types.pins_bytes(pins))
     pin_map = {value['item']: value for value in pins['pins']}
+    original, pinned = dict(pin_map), set()
     records, notices, targets = [], [], set()
     for record in additions:
         value = item_types.parse_item(item_types.item_bytes(record))
@@ -51,16 +52,20 @@ def plan(items, pins, additions, transitions, at, device):
         if pin is None or not pin['on']:
             continue
         pin_map[item] = {'item': item, 'on': False, 'at': at, 'device': device}
-        targets.add('pin:' + item)
+        pinned.add(item)
         notice = {'at': at, 'kind': 'pin-dropped', 'item': item}
         if replacement is not None:
             pin_map[replacement] = {'item': replacement, 'on': True, 'at': at, 'device': device}
-            targets.add('pin:' + replacement)
+            pinned.add(replacement)
             notice.update(kind='pin-moved', to=replacement)
         notices.append((item, item_types.notice_bytes(notice)))
+    # Only a pin whose record changes is a target: a replacement already pinned at this time on this device
+    # keeps its record, takes no revision and leaves its run log nothing to name (TBL-121). The writer still
+    # checks every pin it touched for privacy.
+    targets.update('pin:' + item for item in pinned if pin_map[item] != original.get(item))
     if not records:
         raise ValueError('item change required')
     return {'records': [(v['id'], item_types.item_bytes(v)) for v in records],
             'pins': item_types.pins_bytes({'pins': list(pin_map.values())}) if notices else None,
             'list': item_types.item_list_bytes(list(final.values())),
-            'notices': sorted(notices), 'targets': sorted(targets)}
+            'notices': sorted(notices), 'targets': sorted(targets), 'pinned': sorted(pinned)}
