@@ -404,13 +404,18 @@ class UndoEffectsTest(Inverse, UndoStore, unittest.TestCase):
     def test_the_search_index_rows_take_the_new_statuses(self):
         run, item, _ = self.first_run()
         self.fixture.index()
-        self.undo(run)
+        undo = self.undo(run)
+        self.assertEqual(self.rows(), [(item, 'undone')])
+        # Undone again, the item is current again and so is its row.
+        self.undo(undo, stamp='2026-11-08T11:00:00.000Z')
+        self.assertEqual(self.rows(), [(item, 'current')])
+
+    def rows(self):
         connection = sqlite3.connect(str(self.root / 'index.db'))
         try:
-            rows = connection.execute('SELECT item, status FROM index_items').fetchall()
+            return connection.execute('SELECT item, status FROM index_items').fetchall()
         finally:
             connection.close()
-        self.assertEqual(rows, [(item, 'undone')])
 
     def test_an_undo_can_be_undone_from_its_own_log_and_puts_the_run_back(self):
         run, item, line = self.first_run()
@@ -469,7 +474,7 @@ class UndoEffectsTest(Inverse, UndoStore, unittest.TestCase):
         read, reads = undo_effects.files._retry, []
 
         def misread(function, deadline):
-            # The first file that the inverse reads back, the item, reads back other than it was written.
+            # The first file that the inverse reads back, the line's removal marker, reads back other than written.
             reads.append(function)
             data = read(function, deadline)
             return b'' if len(reads) == 1 else data
@@ -477,11 +482,12 @@ class UndoEffectsTest(Inverse, UndoStore, unittest.TestCase):
                 self.at(), self.assertRaises(undo_effects.Unverified):
             self.command(run, code=preview['confirm'])
         after = self.fixture.snapshot()
-        # The fence moved and the line's text went to the line history; the item was written and read back wrong,
-        # so nothing after it was written.
+        # The fence moved and the line's text went to the line history; the marker was written and read back
+        # wrong, so nothing after it was written: the line is hidden and the item is still current.
         self.assertEqual({name for name in after if after[name] != before.get(name)},
-                         {'curation.json', 'state-history.jsonl', 'layer/items/' + item + '.json'})
-        self.assertEqual(self.fixture.items()[item]['status'], 'undone')
+                         {'curation.json', 'state-history.jsonl', 'layer/state-removed.json'})
+        self.assertEqual(self.fixture.items()[item]['status'], 'current')
+        self.assertEqual(self.view(self.fixture.items()), [])
 
     def test_the_done_example_answers_as_the_yes_does(self):
         valid = json.loads((ROOT / 'docs/06-api/memory-examples.json').read_text(encoding='utf-8'))['result']['valid']
@@ -509,8 +515,8 @@ class UndoEffectsTest(Inverse, UndoStore, unittest.TestCase):
         self.assertEqual((self.fixture.snapshot(), self.memory.held), (after, []))
 
 
-class UndoMergeTest(Inverse, unittest.TestCase):
-    """SPEC-145's third acceptance criterion, with a pin and a candidate that the merge moved."""
+class MergeStore(Inverse):
+    """A consolidation that merges two items, moving a pin, settling a candidate and changing a line twice."""
     setUp = merge_fixture.ConsolidationWorkerTest.setUp
     configure = merge_fixture.ConsolidationWorkerTest.configure
     layer = merge_fixture.ConsolidationWorkerTest.layer
@@ -531,7 +537,11 @@ class UndoMergeTest(Inverse, unittest.TestCase):
     def snapshot(self):
         return worker_fixture.CurationWorkerTest.snapshot(self)
 
-    def test_a_merge_undone_makes_both_items_current_and_moves_the_pin_and_candidate_back(self):
+    def progress(self):
+        return format2.parse_curation((self.root / 'curation.json').read_bytes())
+
+    def merged_run(self):
+        """The merge's run, its items and candidate, and the line and pins as they were before it."""
         first = self.item('decision', 'Keep raw logs on the device')
         second = self.item('decision', 'Raw logs stay on this device', saved=merge_fixture.LATER)
         other = self.item('decision', 'Send raw logs to the server', saved=merge_fixture.LATER)
@@ -558,6 +568,17 @@ class UndoMergeTest(Inverse, unittest.TestCase):
         run = self.progress()['recent'][0]['run']
         self.assertEqual(sorted(entry['op'] for entry in run_log.read(self.root, run)['lines']),
                          ['changed', 'recited'])
+        return types.SimpleNamespace(run=run, first=first, second=second, other=other, merged=merged,
+                                     candidate=candidate, line=line, pins=pins)
+
+
+class UndoMergeTest(MergeStore, unittest.TestCase):
+    """SPEC-145's third acceptance criterion, with a pin and a candidate that the merge moved."""
+
+    def test_a_merge_undone_makes_both_items_current_and_moves_the_pin_and_candidate_back(self):
+        merge = self.merged_run()
+        run, first, second, merged = merge.run, merge.first, merge.second, merge.merged
+        candidate, line, pins = merge.candidate, merge.line, merge.pins
         preview = self.command(run)
         self.assertEqual(preview['data']['changes'], dict(COUNTS, saved=1, statuses=2, merges=1, lines=1, pins=2,
                                                           conflicts=1))
@@ -584,9 +605,6 @@ class UndoMergeTest(Inverse, unittest.TestCase):
                                   {'on': True, 'at': worker_fixture.AT, 'device': DEVICE}, [0, 0]),
                                  (merged['id'], {'on': True, 'at': merge_fixture.STAMP, 'device': DEVICE},
                                   None, [1, None])]))
-
-    def progress(self):
-        return format2.parse_curation((self.root / 'curation.json').read_bytes())
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-"""The confirmed undo's inverse (API-153; SPEC-145, SPEC-012, SPEC-017, SPEC-034; TASK-107).
+"""The confirmed undo's inverse (API-153; SPEC-145, SPEC-012, SPEC-017, SPEC-034; TASK-107, TASK-108).
 
 `undo_command` calls `apply` with the plan that it has just checked against the
 user's code, under the project's curation lease and then its layer lease. Every
@@ -16,27 +16,36 @@ kind `undo` that names the run it reverses, and it works in this order:
 2. Each state line that the undo changes or removes, as it is now, appended to
    the line history (TBL-119) as `undone`, durably, so that an undo of this
    undo can put it back without the older run's log.
-3. The items: a saved item undone by the new run, every other item with the
-   status that it had before the run; the pins at their places before the run;
-   then the candidates (after the items that they name, as SPEC-016 orders
-   them): those that the run recorded closed as settled, those that it closed
-   open again, and the open candidates that name an item that stops being
-   current settled.
-4. The state lines: a removal marker for each line that the undo removes, the
-   state with each line removed, put back or restored with its ID, and then the
-   restored lines' markers marked restored. A stop between these files only
-   hides a line that the undo was putting back, never shows one that it removes.
-5. The item list, one notice for each pin that the undo moves (SPEC-034) and
-   the changed items' rows of the search index, whose files go when they
-   cannot be written, so that the next curation builds the index again.
+3. What the undo hides: a removal marker for each line that it removes; then
+   the search index rows and the item list without the items that stop being
+   current, and only then those items (a saved item undone by the new run, any
+   other with the status that it had before the run).
+4. What the undo shows: the items that become current again; the pins at their
+   places before the run; the candidates (after the items that they name, as
+   SPEC-016 orders them): those that the run recorded closed as settled, those
+   that it closed open again, and the open candidates that name an item that
+   stops being current settled; the state with each line removed, put back or
+   restored with its ID; and last the restored lines' markers marked restored.
+5. The item list as it ends, one notice for each pin that the undo moves
+   (SPEC-034) and the search index rows of the items that became current. The
+   index's files go when its rows cannot be written, so that the next curation
+   builds it again.
 6. The new run's log (TBL-121), with each change's before and after, the
    history records that it appended and what it kept and why, and its attempt
    in the curation record. A log that cannot be written leaves the inverse in
    place and the undo unlisted, as for any run (SPEC-144).
 
 Each file is read back after it is written. A failure stops the inverse where it
-is and reports no success; the moved fence keeps every earlier request and
-confirmation from applying. Recovering an inverse that stopped is TASK-108's.
+is and reports no success, and the inverse is not resumed (TASK-108). Each file
+is whole, and the order keeps every reader on the safe side: the start summary
+and the requests never show a line that the undo removes, nor a line that it
+puts back before its marker says so, nor an item that it makes current beside
+one that it makes not current; the item list and the search index never offer
+an item whose own file is not current. The moved fence keeps every earlier
+request and confirmation from applying, and the reserved objects have revisions
+that no log names, so a later undo keeps them and never applies the inverse
+twice. A stopped undo has no log, so no undo can use the records that it
+appended to the line history, and a forget removes them as it removes any.
 """
 import contextlib
 import copy
@@ -282,21 +291,29 @@ def apply(memory, root, plan, snapshot, deadline, *, at, run=None):
     history = (history_io.append(memory, root, reservation, values, deadline, archive_precondition=precondition)
                if values else contextlib.nullcontext(None))
     layer = root / 'layer'
+    hidden = {name: value for name, value in items.items() if value['status'] != 'current'}
+    shown = {name: value for name, value in items.items() if value['status'] == 'current'}
     with history as receipt:
         if receipt is not None:
             receipt.check()
         check()
-        for name, value in sorted(items.items()):
-            _publish(memory, layer / 'items' / (name + '.json'), item_types.item_bytes(value), True, deadline, check)
+        # What the undo hides comes first; the derived views leave an item out before its own file does.
+        if ops and first != list(snapshot.removed):
+            _publish(memory, layer / 'state-removed.json', state_types.removed_bytes({'removed': first}), True,
+                     deadline, check)
+        if hidden:
+            _index(memory, root, [hidden[name] for name in sorted(hidden)], check)
+            _publish(memory, layer / 'item-list.txt',
+                     item_types.item_list_bytes(list(dict(snapshot.items, **hidden).values())), False, deadline, check)
+        for name in sorted(hidden) + sorted(shown):
+            _publish(memory, layer / 'items' / (name + '.json'), item_types.item_bytes(items[name]), True, deadline,
+                     check)
         if pin_entries:
             _publish(memory, layer / 'pins.json', item_types.pins_bytes({'pins': pins}), True, deadline, check)
         if candidate_entries:
             _publish(memory, layer / 'conflicts.json', conflict_plan.conflicts_bytes(candidates), True, deadline,
                      check)
         if ops:
-            if first != list(snapshot.removed):
-                _publish(memory, layer / 'state-removed.json', state_types.removed_bytes({'removed': first}), True,
-                         deadline, check)
             if receipt is not None:
                 receipt.check()
             _publish(memory, layer / 'state.json', state_types.state_bytes({'lines': lines}), True, deadline, check)
@@ -308,7 +325,8 @@ def apply(memory, root, plan, snapshot, deadline, *, at, run=None):
              check)
     for name, data in notices:
         _publish(memory, root / 'notices' / ('pin-' + name + '.json'), data, False, deadline, check)
-    _index(memory, root, [items[name] for name in sorted(items)], check)
+    if shown:
+        _index(memory, root, [shown[name] for name in sorted(shown)], check)
     generation = reservation.progress['fence']['generation']
     before, after = state_plan._placements(list(snapshot.lines)), state_plan._placements(lines)
     epoch = reservation.progress['fence']['epoch']
