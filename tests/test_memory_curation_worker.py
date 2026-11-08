@@ -1,8 +1,9 @@
 """TASK-088: the curation worker on made-up format-2 stores, against a local test server.
 
 TC-118, TC-119, TC-152, TC-153, TC-155, TC-159, TC-160, TC-161, TC-172,
-TC-173, TC-174, TC-178, TC-182, TC-183, TC-353 and TC-387, and the worker's
-parts of TC-146, TC-147, TC-148, TC-150, TC-170, TC-171, TC-358 and TC-359.
+TC-173, TC-174, TC-178, TC-182, TC-183, TC-353 and TC-387, the worker's
+parts of TC-146, TC-147, TC-148, TC-150, TC-170, TC-171, TC-358 and TC-359,
+and TASK-116's TC-421 (request sizes in the usage log).
 Every request goes to a local test server, with keys made up during the run;
 no provider is called. The worker is not wired to a hook or command before the
 0.3.0 activation.
@@ -11,12 +12,14 @@ import contextlib
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import multiprocessing
 import os
 from pathlib import Path
 import random
 import re
 import secrets
+import statistics
 import sys
 import tempfile
 import threading
@@ -29,7 +32,7 @@ from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import (base, clock, curation_worker, fence_plan, format2, index_io, item_types, locks, model_client,
-                        raw_log, revision_io, run_log, state_types)
+                        model_usage, raw_log, revision_io, run_log, state_types)
 from memory_lib.c2_store import C2Store
 from test_memory_curator_answers import answer, change, quote
 from test_memory_model_stream import block, end, start
@@ -859,6 +862,88 @@ class CurationWorkerTest(unittest.TestCase):
         progress = self.progress()
         self.assertEqual((progress['logs'], progress['conflict_after']), ({LOG: 13}, second['id']))
         self.assertEqual(progress['consolidation'].get('due'), STAMP)
+
+    # TASK-116: each request's size in its usage lines, and the distribution from the usage logs alone
+
+    def test_tc421_usage_lines_hold_each_request_size_and_the_logs_give_the_distribution(self):
+        # A line written before the size fields, in an earlier month's log.
+        earlier = dict(at='2026-10-30T10:00:00.000Z', project='sample', call='curate', model='claude-haiku-5-5',
+                       instructions='curate-2', input=120000, output=900, total_ms=5000, result='ok', cost=.1,
+                       prices='2026-10-25')
+        (self.folder / 'logs' / 'usage-2026-10.jsonl').write_bytes(base.json_bytes(earlier, 'TBL-003', compact=True))
+        self.server.counter = budget.body_rule
+        cached = 1000
+
+        def reply(number, body):
+            # The usage reports each request's tokens by the server's counting rule, the first with a cache read.
+            tokens, cache = budget.body_rule(body), cached if number == 0 else 0
+            usage = {'input_tokens': tokens - cache, 'cache_read_input_tokens': cache, 'output_tokens': 1}
+            return start(usage=usage) + block(text=json.dumps(answer())) + end(output=300)
+        self.server.reply = reply
+        # The request documents as the worker builds them, before redaction, which the estimates read.
+        sources, send = [], model_client.send
+
+        def spy(*args, **kwargs):
+            sources.append(kwargs['source'])
+            return send(*args, **kwargs)
+        with mock.patch.object(model_client, 'send', side_effect=spy):
+            # Whole turns beside the full list.
+            for n in range(3):
+                self.raw.turn(budget.prose(2000, 421 + n), budget.prose(2000, 521 + n))
+            self.write()
+            self.assertEqual(self.curate().reason, 'done')
+            # One turn whose count passes 99,000 goes in parts beside the full list.
+            self.raw.turn(budget.prose(170000, 621), budget.prose(170000, 622))
+            self.write()
+            self.assertEqual(self.curate().reason, 'done')
+            # Whole turns beside a list that passes 40,000 in full and goes in short lines.
+            values = [document_fixture.item('Long item %02d' % n, budget.SOURCE, said=budget.day(n),
+                                            text=budget.prose(3000, 700 + n)) for n in range(30)]
+            self.layer(values)
+            for n in range(2):
+                self.raw.turn(budget.prose(2000, 821 + n), budget.prose(2000, 921 + n))
+            self.write()
+            self.assertEqual(self.curate().reason, 'done')
+        self.assertEqual(len(sources), len(self.server.requests))
+        forms, expected = [], []
+        for (_, body), source in zip(self.server.requests, sources):
+            root = ET.fromstring(body['messages'][0]['content'])
+            turns = list(root.iter('turn'))
+            size = {'turns': len(turns), 'list': root.find('items').get('form'),
+                    'estimate': budget.request_budget.estimate('curate-2', budget.SCHEMA, source)}
+            if turns[0].get('parts') is not None:
+                size['parts'] = int(turns[0].get('parts'))
+            forms.append((size['turns'], size.get('parts'), size['list']))
+            expected.append((budget.body_rule(body), size))
+        parts = forms[1][1]
+        self.assertGreaterEqual(parts, 2)
+        self.assertEqual(forms, [(3, None, 'full')] + [(1, parts, 'full')] * parts + [(2, None, 'short')])
+        rows = [row for row in self.usage() if row['call'] == 'curate']
+        self.assertEqual(rows[0], earlier)
+        self.assertEqual([(row.get('input', 0) + row.get('cache_read', 0), {key: row[key] for key in
+                                                                            ('turns', 'parts', 'list', 'estimate')
+                                                                            if key in row}) for row in rows[1:]],
+                         expected)
+        self.assertEqual(rows[1]['cache_read'], cached)
+        # The distribution from the usage logs alone matches the requests that the server saw.
+        logs = [path.read_bytes() for path in sorted((self.folder / 'logs').glob('usage-*.jsonl'))]
+        found = model_usage.sizes(logs, project='sample')
+        tokens = sorted([120000] + [value for value, _ in expected])
+        self.assertEqual((found['requests'], found['unreadable'], found['unrecorded']), (len(tokens), 0, 1))
+        self.assertEqual((found['median'], found['p95']),
+                         (statistics.median(tokens), tokens[math.ceil(len(tokens) * .95) - 1]))
+        for limit in (60000, 100000):
+            above = [(value, size) for value, size in expected if value > limit]
+            with self.subTest(over=limit):
+                self.assertEqual(found['over'][limit], {
+                    'requests': len(above) + 1, 'share': (len(above) + 1) / len(tokens),
+                    'turns': {'parts': sum('parts' in size for _, size in above),
+                              'one': sum('parts' not in size and size['turns'] == 1 for _, size in above),
+                              'several': sum(size['turns'] > 1 for _, size in above)},
+                    'list': {form: sum(size['list'] == form for _, size in above) for form in ('full', 'short', 'part')},
+                    'above_estimate': sum(value > size['estimate'] for value, size in above), 'unrecorded': 1})
+        self.assertGreater(found['over'][60000]['turns']['parts'], 0)
+        self.assertEqual(found['over'][100000]['requests'], 1)
 
 
     # What a request may read and carry (review of TASK-088)

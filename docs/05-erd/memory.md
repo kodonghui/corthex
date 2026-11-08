@@ -179,7 +179,7 @@ One line per request to a model API, also each retry, and per token count (SPEC-
 
 The memory status sums the tokens of the calls that the provider charges for, so a token count is not counted twice.
 
-A curate line's `turns`, `parts`, `list` and `estimate` describe its request's size without any of its text, so that the C2 evaluation can say why a request was large (TASK-050); TASK-116 writes them, and lines written before have none.
+A curate line's `turns`, `parts`, `list` and `estimate` describe its request's size without any of its text, so that the C2 evaluation can say why a request was large (TASK-050). The curation worker writes them on every attempt's line of a curate request (TASK-116), after `prices` in name order; lines written before have none, and a consolidation line never has them. `estimate` is API-009's working estimate of the request document before redaction, with the instructions and the schema, so the input tokens can pass it where the provider reads the text more densely than the estimate does.
 
 The TASK-078 component snapshots only the two dedicated memory-key variables through one authentication boundary. Presence reports contain no values; invalid header values fail with a fixed error. The original per-attempt snapshot also excludes its secrets from usage metadata. The general environment-value redactor remains broader and unchanged. Provider messages, bodies, exception text and unknown type/code strings never enter the classification result. Unknown types normalize to the existing safe HTTP-class code; classification owns no retry or sleep.
 

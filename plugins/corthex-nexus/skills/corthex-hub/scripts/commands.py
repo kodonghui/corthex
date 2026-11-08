@@ -12,6 +12,10 @@ NETWORK = {"push", "remove", "todo", "comment", "reply", "answered", "decide", "
 WRITES = {"comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record"}
 SESSION_REQUIRED = WRITES | {"claim", "release"}
 PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")
+# 0.3.0: a comment takes any of the 13 stages, and the agent's comment or reply says what it asks of the user.
+STAGE_KEYS = ("01-domain", "02-prd", "03-user-flow", "04-functional-spec", "05-erd", "06-api", "07-sitemap",
+              "08-screen-states", "09-mockup", "10-wbs", "11-development", "12-qa", "13-presentation")
+ASKS = ("answer", "recommended", "checkpoint")
 TRACE = re.compile(r"[A-Z][A-Z0-9]*-[0-9]{1,6}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 ENTRY = re.compile(r"n([cpdek])_[0-9a-hjkmnp-tv-z]{12}\Z")
@@ -131,11 +135,13 @@ def write_request(args, project, home, env, h):
         body.update(item=args.item or "", text=text_value(args, "text", True))
         if args.quote is not None:
             body["quote"] = args.quote
-        if not body["item"] and not body.get("quote"):
-            raise CommandLine("a comment on the picture needs --quote")
+        if args.asks:
+            body["asks"] = args.asks
         name, path = "comment", base + "/comments"
     elif command == "reply":
         body["text"] = text_value(args, "text", True)
+        if args.asks:
+            body["asks"] = args.asks
         name, path = "reply", base + "/comments/" + args.entry + "/replies"
     elif command == "answered":
         name, path = "answered", base + "/comments/" + args.entry + "/answered"
@@ -400,13 +406,15 @@ def configure(top, commands, existing, h):
             parser.add_argument("entry")
         if name in ("comment", "propose"):
             parser.add_argument("--part", default="")
-            parser.add_argument("--stage", required=True, choices=PICTURE_STAGES)
+            parser.add_argument("--stage", required=True, choices=STAGE_KEYS if name == "comment" else PICTURE_STAGES)
             parser.add_argument("--item", action="append" if name == "propose" else "store", required=name == "propose")
             parser.add_argument("--commit")
             if name == "comment":
                 parser.add_argument("--discrepancy")
         if name in ("comment", "reply", "decide"):
             text(parser, "text", required=name != "decide")
+        if name in ("comment", "reply"):
+            parser.add_argument("--asks", choices=ASKS)
         if name == "comment":
             parser.add_argument("--quote")
         if name == "decide":

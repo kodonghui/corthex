@@ -273,6 +273,77 @@ class ModelUsageTest(unittest.TestCase):
             with self.subTest(fields=list(edits)), self.assertRaises((ValueError, UnicodeError)):
                 model_usage.parse(json.dumps(dict(row, **edits)).encode())
 
+    # TASK-116: a curate request's size, and the distribution from the usage logs alone (TC-421)
+
+    def test_tc421_a_curate_line_holds_its_size_after_prices_and_earlier_lines_still_read(self):
+        whole = self.attempt(size={'estimate': 81234, 'list': 'short', 'turns': 3})
+        part = self.attempt(size={'turns': 1, 'parts': 4, 'list': 'full', 'estimate': 90000})
+        earlier = self.attempt()
+        for attempt in (whole, part, earlier):
+            self.assertTrue(attempt.record(self.memory, self.deadline, usage={'input_tokens': 70000}))
+        rows = [model_usage.parse(line) for line in self.path.read_bytes().splitlines()]
+        known = 'at project call model instructions input total_ms result cost prices'.split()
+        self.assertEqual([list(row) for row in rows],
+                         [known + ['estimate', 'list', 'turns'], known + ['estimate', 'list', 'parts', 'turns'], known])
+        self.assertEqual([{key: row[key] for key in model_usage.SIZE if key in row} for row in rows],
+                         [{'turns': 3, 'list': 'short', 'estimate': 81234},
+                          {'turns': 1, 'parts': 4, 'list': 'full', 'estimate': 90000}, {}])
+
+    def test_tc421_a_size_is_whole_valid_and_only_on_a_curate_line(self):
+        size = {'turns': 2, 'list': 'full', 'estimate': 5000}
+        for changes in ({'call': 'consolidate', 'instructions': 'merge-2'}, {'size': dict(size, list='whole')},
+                        {'size': dict(size, list=['full'])}, {'size': dict(size, turns=0)},
+                        {'size': dict(size, turns=True)}, {'size': dict(size, estimate=-1)},
+                        {'size': dict(size, estimate=1.5)}, {'size': dict(size, parts=4)},
+                        {'size': dict(size, turns=1, parts=1)}, {'size': dict(size, text=SECRET)},
+                        {'size': {'turns': 2, 'list': 'full'}}, {'size': {'parts': 2}}, {'size': [('turns', 2)]}):
+            values = dict({'size': size}, **changes)
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.attempt(**values)
+        row = self.attempt(size=size).line()
+        for edits in ({'call': 'consolidate'}, {'turns': None}, {'list': 'whole'}, {'parts': 2}):
+            line = {key: value for key, value in dict(row, **edits).items() if value is not None}
+            with self.subTest(edits=edits), self.assertRaises(ValueError):
+                model_usage.parse(json.dumps(line).encode())
+        line = {key: value for key, value in row.items() if key not in model_usage.SIZE}
+        self.assertEqual(model_usage.parse(json.dumps(line).encode()), line)
+
+    def test_tc421_sizes_give_the_median_p95_shares_and_causes_from_the_logs_alone(self):
+        def line(tokens=None, size=None, project='sample', cache=0, **changes):
+            values = dict(changes)
+            if size is not None:
+                values['size'] = size
+            attempt = self.attempt(project=project, **values)
+            usage = None if tokens is None else {'input_tokens': tokens - cache, 'cache_read_input_tokens': cache}
+            return base.json_bytes(attempt.line(usage=usage), 'TBL-003', compact=True)
+        whole = {'turns': 4, 'list': 'full', 'estimate': 62000}
+        lines = [line(30000, whole), line(61000, dict(whole, estimate=64000)), line(64000, whole, cache=20000),
+                 line(98000, {'turns': 1, 'parts': 3, 'list': 'full', 'estimate': 96000}),
+                 line(99000, {'turns': 1, 'list': 'short', 'estimate': 99500}),
+                 line(100000, {'turns': 2, 'list': 'part', 'estimate': 97000}),
+                 line(101000, {'turns': 1, 'parts': 2, 'list': 'part', 'estimate': 96500}),
+                 line(130000), line(5000), line(None, whole),
+                 line(500000, whole, project='other'), line(400000, call='consolidate', instructions='merge-2'),
+                 line(300000, call='embed-items', instructions=None)]
+        logs = [b''.join(lines[:5]) + b'\n', b'{"at": damaged\n' + b''.join(lines[5:])]
+        found = model_usage.sizes(logs, project='sample')
+        tokens = [5000, 30000, 61000, 64000, 98000, 99000, 100000, 101000, 130000]
+        self.assertEqual((found['requests'], found['unreadable'], found['unrecorded']), (9, 1, 2))
+        self.assertEqual((found['median'], found['p95']), (98000, 130000))
+        self.assertEqual(found['over'][60000], {
+            'requests': 7, 'share': 7 / 9, 'turns': {'parts': 2, 'one': 1, 'several': 3},
+            'list': {'full': 3, 'short': 1, 'part': 2}, 'above_estimate': 4, 'unrecorded': 1})
+        self.assertEqual(found['over'][100000], {
+            'requests': 2, 'share': 2 / 9, 'turns': {'parts': 1, 'one': 0, 'several': 0},
+            'list': {'full': 0, 'short': 0, 'part': 1}, 'above_estimate': 1, 'unrecorded': 1})
+        self.assertEqual(sorted(tokens)[8], found['p95'])
+        everyone = model_usage.sizes(logs)
+        self.assertEqual((everyone['requests'], everyone['median'], everyone['over'][100000]['requests']),
+                         (10, 98500, 3))
+        self.assertEqual(model_usage.sizes([b'', b'\n'])['median'], None)
+        even = model_usage.sizes([line(10) + line(20)])
+        self.assertEqual((even['median'], even['p95'], even['over'][60000]['share']), (15, 20, 0))
+
     def test_concurrent_completion_emits_exactly_one_line(self):
         a = self.attempt(); barrier = threading.Barrier(6); results = []
         def complete():
