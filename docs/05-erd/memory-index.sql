@@ -39,7 +39,7 @@ CREATE INDEX index_items_status ON index_items (status, said);
 -- TBL-021 index_vectors (CTX-003, terms: none) ← SPEC-016, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-145
 -- The embedding of an item: float32 numbers, little-endian, scaled to length 1, as many as
 -- embedding_dims says. An item whose embedding failed has no row, and is found by words only
--- until a later curation, consolidation or sync embeds it.
+-- until a later step 6 of the memory worker embeds it.
 CREATE TABLE index_vectors (
   item   TEXT PRIMARY KEY REFERENCES index_items (item) ON DELETE CASCADE,
   vector BLOB NOT NULL CHECK (length(vector) > 0 AND length(vector) % 4 = 0)
