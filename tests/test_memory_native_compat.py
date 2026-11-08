@@ -119,14 +119,14 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
             report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
             self.assertTrue(report["original_children_unchanged"])
-            self.assertEqual(len(report["candidate_sha256s"]), 117)
+            self.assertEqual(len(report["candidate_sha256s"]), 118)
             for name in ("format2", "fence_plan", "c2_store", "revision_io", "item_types", "item_plan", "item_io", "state_types", "history_io", "history_recovery", "state_plan", "state_io", "history_retention", "migration_plan", "migration_inventory", "maintenance_owner", "model_access", "model_usage", "model_stream", "model_wire", "model_transport", "maintenance_identity", "migration_intent", "model_prompts", "model_request", "model_client", "maintenance_journal", "migration_headers", "migration_header_resume", "migration_initialize", "migration_initialize_resume", "migration_finalize",
                          "migration_final_headers", "migration_finalize_resume", "migration_driver", "migration_command",
                          "index_io", "model_count", "model_embed", "curation_triggers", "curation_rebuild", "request_budget", "run_log",
                          "curation_worker", "consolidation_worker", "state_rewrite", "run_listing",
                          "forget_plan", "forget_command", "raw_fill", "forget_effects", "undo_plan",
                          "undo_command", "undo_effects", "index_worker", "injection_log", "start_summary", "recall",
-                         "prompt_recall"):
+                         "prompt_recall", "conflicts_command"):
                 module = "skills/corthex-memory/scripts/memory_lib/" + name + ".py"
                 self.assertEqual(report["candidate_sha256s"][module],
                                  hashlib.sha256((ROOT/"plugins/corthex-memory"/module).read_bytes()).hexdigest())
