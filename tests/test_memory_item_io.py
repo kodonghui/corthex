@@ -136,6 +136,16 @@ class ItemIOTest(unittest.TestCase):
         notice = item_types.parse_notice((self.project/('notices/pin-'+FIRST+'.json')).read_bytes())
         self.assertEqual(notice, {'at': CHANGED, 'kind': 'pin-dropped', 'item': FIRST})
 
+    def test_a_batch_that_changes_nothing_is_refused_before_any_reservation(self):
+        # A merge answer that only names disagreements publishes conflicts.json alone (TASK-089), so a batch
+        # without item changes is let through to the candidates; with no candidate change either, it is refused.
+        (self.project / 'layer/conflicts.json').write_bytes(b'{"candidates":[]}\n')
+        before = self.progress_path.read_bytes()
+        with self.held(curator=True), self.assertRaisesRegex(ValueError, 'item change required'):
+            self.apply(conflicts={'candidates': []}, run_id='r_0123456789ac')
+        self.assertEqual(self.progress_path.read_bytes(), before)
+        self.assertFalse((self.project / 'layer/item-list.txt').exists())
+
     def test_saved_item_content_cannot_be_overwritten_through_add_or_status_arguments(self):
         before = self.item_path(FIRST).read_bytes(), self.progress_path.read_bytes()
         with self.held():

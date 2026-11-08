@@ -33,11 +33,17 @@ are API-009's:
    running Python's character data), a conjunct that a virama joins, CR LF or
    `[forgotten]`.
 
+Merge and state requests are sized the same way (SPEC-019; TASK-089): a
+group's current items, oldest first, fill a merge-2 request by steps 2 to 5,
+each with the open candidates whose two items it carries, and the last
+request's list is chosen as step 1 chooses a curate request's, beside no
+turns, which keeps it far below 100,000 without a count.
+
 The estimates read the request document before redaction, with the
 instructions and the schema; a count reads the request as sent. Nothing here
 reads a file or sends anything but through the caller's `count` and `rank`.
-Only the curation worker (TASK-088) calls this module, and no hook or command
-reaches the worker before the 0.3.0 activation.
+Only the curation and consolidation workers (TASK-088, TASK-089) call this
+module, and no hook or command reaches them before the 0.3.0 activation.
 """
 from dataclasses import dataclass
 import heapq
@@ -98,6 +104,17 @@ class Request:
 class Plan:
     items: ItemList
     requests: tuple    # one request of whole turns, or the parts of one turn in order
+
+
+@dataclass(frozen=True)
+class MergePart:
+    source: str        # the merge-2 request document, as curator_document builds it
+    items: tuple       # the items it carries, oldest first
+    candidates: tuple  # the open candidates whose two items it carries
+    safe: int
+    working: int
+    counted: object    # the count that let it go, else None
+    counts: int        # count calls made while sizing it
 
 
 def _pair(text):
@@ -605,3 +622,51 @@ def _entries(turn, pieces):
 def _part_source(layer, listed, session, turn, pieces, number, parts):
     value = dict(seq=turn['seq'], part=number, parts=parts, entries=_entries(turn, pieces))
     return _source(layer, listed, [dict(session, turns=[value])])
+
+
+def merge_part(items, candidates, *, group, schema, count):
+    """The next merge-2 request of a group: as many of `items` as fit, oldest first (SPEC-019).
+
+    `items` are the group's current items that this consolidation has not
+    sent yet, oldest first, and `candidates` the open candidates of current
+    items; a request carries those whose two items it carries. Sized by
+    API-009's steps 2 to 5 with `count(source)`, as `plan` sizes whole turns.
+    """
+    if not callable(count):
+        raise TypeError('memory request counting required')
+    if not items:
+        raise ValueError('no items to merge')
+    base = fixed('merge-2', schema)
+    request = _Block('request', (('kind', 'merge'), ('instructions', 'merge-2'), ('group', group)))
+    listed = _Block('items', (('form', None),))
+    rendered = {value['id']: _pair(curator_document._item(value, None)[1]) for value in items}
+
+    def carried(chosen):
+        ids = {value['id'] for value in chosen}
+        return [candidate for candidate in candidates if set(candidate['items']) <= ids]
+
+    def pair(chosen):
+        known = carried(chosen)
+        conflicts = _Block('conflicts', (('omitted', '0'),)).pair([_pair(_conflict(c)) for c in known])
+        return _add(base, request.pair([listed.pair([rendered[value['id']] for value in chosen]), conflicts]))
+
+    def source(chosen):
+        return curator_document.merge(group=group, items=list(chosen), candidates=carried(chosen))
+
+    sized = _size(list(items), lambda c: _working(pair(c)), lambda c: _safe(pair(c)), count, source)
+    if sized is None:
+        raise ValueError('an item too large for a merge request')
+    chosen, _, counted, counts = sized
+    text = source(chosen)
+    return MergePart(text, tuple(chosen), tuple(carried(chosen)), safe(text), working(text), counted, counts)
+
+
+def state_list(layer, schema):
+    """The last request's item list (SPEC-019): as step 1 chooses a curate request's, with the newest last.
+
+    Full when it fits, else short lines, else part: the items that the current
+    state cites, the pinned items, whole candidate bundles and then the
+    newest items. The state-1 request carries no turns, so its list's 40,000
+    keeps it far below 100,000 tokens.
+    """
+    return choose(layer, fixed('state-1', schema), after=None, ranked=lambda: None)

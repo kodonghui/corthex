@@ -143,18 +143,26 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
 
     New candidates are counted zero durably (TBL-010) before the reservation,
     and conflicts.json is published after the items that its candidates name.
-    Returns the published keys, the reservation's progress and the batch's
-    `effects` for its run log (TASK-103), with each object's revisions.
+    A batch without item changes publishes conflicts.json alone, as a merge
+    answer that only names disagreements does (TASK-089); a batch that changes
+    nothing is refused. Returns the published keys, the reservation's progress
+    and the batch's `effects` for its run log (TASK-103), with each object's
+    revisions.
     """
     root = Path(root)
     check, ownership = _checked(memory, root, expected, deadline, curator=run_id is not None)
     items = _items(memory, root, deadline, check)
     pins = _record(memory, root / 'layer/pins.json', item_types.parse_pins, deadline, check)
-    plan = item_plan.plan(items, pins, additions, transitions, at, memory.device)
+    if additions or transitions or conflicts is None:
+        plan = item_plan.plan(items, pins, additions, transitions, at, memory.device)
+    else:
+        plan = {'records': [], 'pins': None, 'list': None, 'notices': [], 'targets': [], 'pinned': []}
     candidates, added, closed = None, [], []
     if conflicts is not None:
         before, candidates, added, closed = _conflicts(memory, root, conflicts, items, plan, deadline, check)
     targets = sorted(set(plan['targets']) | {'candidate:' + candidate for candidate in added + closed})
+    if not targets:
+        raise ValueError('item change required')
     effects = _effects(items, pins, plan, candidates, added, closed)
     item_ids = [item for item, data in plan['records']] + plan['pinned']
 
@@ -182,7 +190,8 @@ def apply(memory, root, expected, additions, transitions, at, deadline, run_id=N
     if candidates is not None:
         # Candidates follow the items they name (SPEC-016).
         writes.append((root / 'layer/conflicts.json', candidates, True, 'conflicts'))
-    writes.append((root / 'layer/item-list.txt', plan['list'], False, 'item-list'))
+    if plan['list'] is not None:
+        writes.append((root / 'layer/item-list.txt', plan['list'], False, 'item-list'))
     writes.extend((root / 'notices' / ('pin-' + item + '.json'), data, False, 'notice:pin-' + item)
                   for item, data in plan['notices'])
     attempted, published = [], []

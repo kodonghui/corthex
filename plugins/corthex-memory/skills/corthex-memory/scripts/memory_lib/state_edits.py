@@ -95,6 +95,33 @@ def _positions(order, old):
     return result
 
 
+def cap(remaining, text, tier):
+    """Cut whole lines until the text of the lines is below 3,000 UTF-8 bytes; the IDs cut, in order.
+
+    `remaining` maps each part to its line IDs in order and loses the lines
+    cut. Lines of tier 0 go first, then 1 and then 2, the last line of each
+    part in turn from next actions back to the goal, as SPEC-021 shortens the
+    start summary from the end of each part.
+    """
+    size = sum(len(text(line).encode('utf-8')) for lines in remaining.values() for line in lines)
+    cut = []
+    for level in (0, 1, 2):
+        while size >= STATE_BYTES:
+            found = False
+            for part in reversed(state_types.PARTS):
+                lines = [line for line in remaining[part] if tier(line) == level]
+                if lines:
+                    found = True
+                    remaining[part].remove(lines[-1])
+                    size -= len(text(lines[-1]).encode('utf-8'))
+                    cut.append(lines[-1])
+                    if size < STATE_BYTES:
+                        break
+            if not found:
+                break
+    return cut
+
+
 def plan(edits, *, state, removed, items, private, sent, saved, at, device, make_id=None):
     """The new state and its operations for checked line edits.
 
@@ -206,27 +233,11 @@ def plan(edits, *, state, removed, items, private, sent, saved, at, device, make
                   not decided(part, physical[line]['cites']))
     gone = set(removing) | set(stale)
     remaining = {part: [line for line in sequences[part] if line not in gone] for part in state_types.PARTS}
-    size = sum(len(current(line)['text'].encode('utf-8')) for lines in remaining.values() for line in lines)
 
     def tier(line):
         return 2 if line in added else 1 if line in changed else 0
 
-    cut = []
-    for level in (0, 1, 2):
-        while size >= STATE_BYTES:
-            found = False
-            for part in reversed(state_types.PARTS):
-                lines = [line for line in remaining[part] if tier(line) == level]
-                if lines:
-                    found = True
-                    remaining[part].remove(lines[-1])
-                    size -= len(current(lines[-1])['text'].encode('utf-8'))
-                    cut.append(lines[-1])
-                    if size < STATE_BYTES:
-                        break
-            if not found:
-                break
-
+    cut = cap(remaining, lambda line: current(line)['text'], tier)
     lines, operations = [], []
     for part in state_types.PARTS:
         order = remaining[part]
@@ -300,6 +311,37 @@ def _due(memory, root, proof, at, deadline):
     return revision_io.update_progress(memory, root, proof, {'consolidation': consolidation}, deadline)
 
 
+def publish(memory, root, expected, proposal, sources, digests, *, at, run, deadline):
+    """Publish a planned state change through TASK-077's publisher, bound to the sources that `_read` gave.
+
+    Returns (the publisher's result, None, None), or (None, the error's name,
+    the progress that the reservation left) when a required earlier version
+    could not be appended before anything was published, so that the state
+    stays as it was. Lost leases, stale proofs and any other failure raise.
+    """
+    check = revision_io.guard(memory, root, deadline, curator=True)
+    bound = tuple(sorted((('state', hashlib.sha256(sources['state.json']).hexdigest()),
+                          ('removed', hashlib.sha256(sources['state-removed.json']).hexdigest()))))
+    operations = hashlib.sha256(item_types._raw(proposal['operations'])).hexdigest()
+
+    def precondition(bound_memory, bound_root, binding):
+        check()
+        facts = {name: stamp[-1] for name, stamp in binding.facts[1]}
+        if (bound_memory is not memory or bound_root != root or binding.original_sources != bound or
+                binding.operations_sha256 != operations or facts != digests):
+            raise fence_plan.Stale()
+        check()
+
+    try:
+        return state_io.apply(memory, root, expected, proposal, at, deadline, run,
+                              state_precondition=precondition), None, None
+    except state_io.PublicationFailed as failure:
+        error = _held(failure)
+        if error is None:
+            raise
+        return None, error, failure.progress
+
+
 def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make_id=None):
     """Apply line edits under the curation and layer leases, after the answer's item changes.
 
@@ -312,7 +354,7 @@ def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make
     """
     root = Path(root)
     format2._id(run, format2._RUN)
-    check = revision_io.guard(memory, root, deadline, curator=True)
+    revision_io.guard(memory, root, deadline, curator=True)
     sources, items, private, digests = _read(root)
     planned = plan(edits, state=state_types.parse_state(sources['state.json']),
                    removed=state_types.parse_removed(sources['state-removed.json']), items=items,
@@ -324,26 +366,10 @@ def apply(memory, root, expected, edits, *, sent, saved, at, run, deadline, make
         if planned.cut_adds:
             outcome = dict(outcome, state='cut', progress=_due(memory, root, expected, at, deadline))
         return outcome
-    bound = tuple(sorted((('state', hashlib.sha256(sources['state.json']).hexdigest()),
-                          ('removed', hashlib.sha256(sources['state-removed.json']).hexdigest()))))
-    operations = hashlib.sha256(item_types._raw(planned.proposal['operations'])).hexdigest()
-
-    def precondition(bound_memory, bound_root, binding):
-        check()
-        facts = {name: stamp[-1] for name, stamp in binding.facts[1]}
-        if (bound_memory is not memory or bound_root != root or binding.original_sources != bound or
-                binding.operations_sha256 != operations or facts != digests):
-            raise fence_plan.Stale()
-        check()
-
-    try:
-        result = state_io.apply(memory, root, expected, planned.proposal, at, deadline, run,
-                                state_precondition=precondition)
-    except state_io.PublicationFailed as failure:
-        error = _held(failure)
-        if error is None:
-            raise
-        return dict(outcome, held=error, progress=failure.progress)
+    result, held, progress = publish(memory, root, expected, planned.proposal, sources, digests, at=at, run=run,
+                                     deadline=deadline)
+    if held is not None:
+        return dict(outcome, held=held, progress=progress)
     progress = result['progress']
     if planned.cut or planned.cut_adds:
         progress = _due(memory, root, fence_plan.snapshot(progress), at, deadline) or progress
