@@ -30,9 +30,10 @@ part ended.
   the record counts the turns; then each advanced log's markers are replaced
   (TBL-008).
 
-The record's `applied` and `dropped` count the answers' item changes, and its
-`state` says what the line edits did. Each `Attempt` also gives the dropped
-changes and line edits by reason, which the record does not keep.
+The record's `applied` and `dropped` count the answers' item changes, with
+`reasons` giving the dropped ones by reason; its `state` says what the line
+edits did, with `edit_reasons` giving the dropped edits by reason. Each
+`Attempt` gives the same counts.
 """
 from collections import Counter
 import contextlib
@@ -452,6 +453,10 @@ def _apply(memory, root, deadline, batch, checked, expected, at):
     fresh = revision_io.read(memory, root, deadline)
     attempt = {'at': at, 'kind': 'curate', 'result': 'ok', 'applied': len(checked.changes),
                'dropped': sum(checked.dropped.values()), 'state': edits['state']}
+    if checked.dropped:
+        attempt['reasons'] = dict(checked.dropped)
+    if edits['dropped']:
+        attempt['edit_reasons'] = dict(edits['dropped'])
     if result is not None or edits['lines']:
         attempt['run'] = run
     logs = dict(fresh['logs'])

@@ -38,7 +38,7 @@ from . import (base, fence_plan, files, format2, history_io, history_recovery, i
                request_inputs, revision_io, state_io, state_types, store)
 
 # Why a line edit is dropped; each dropped edit counts once, under the first check it fails.
-REASONS = ('not-in-request', 'duplicate', 'shape', 'limit', 'cites', 'decision')
+REASONS = format2.EDIT_REASONS
 STATE_BYTES = 3000
 WHY_BYTES = 200
 

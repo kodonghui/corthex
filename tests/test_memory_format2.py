@@ -95,6 +95,39 @@ class Format2Test(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 format2.parse_curation(data(invalid))
 
+    def test_tc116_curate_attempts_keep_their_drops_by_reason(self):
+        value = copy.deepcopy(PROGRESS)
+        attempt = {"at": AT, "kind": "curate", "result": "ok", "applied": 1, "dropped": 3, "state": "kept",
+                   "run": "r_0123456789ab", "edit_reasons": {"cites": 1, "not-in-request": 2},
+                   "reasons": {"quote": 2, "pasted": 1}}
+        value["recent"] = [attempt, {"at": AT, "kind": "curate", "result": "ok", "applied": 0, "dropped": 2}]
+        encoded = format2.curation_bytes(value)
+        self.assertEqual(format2.parse_curation(encoded), value)
+        self.assertEqual(list(json.loads(encoded)["recent"][0]),
+                         ["at", "kind", "result", "applied", "dropped", "reasons", "state", "edit_reasons", "run"])
+        for key, bad in (("reasons", {"quote": 2}), ("reasons", {"quote": 2, "pasted": 1, "shape": 0}),
+                         ("reasons", {"speaker": 3}), ("reasons", {"quote": 2.0, "pasted": 1}),
+                         ("reasons", {"quote": True, "pasted": 2}), ("reasons", {}),
+                         ("reasons", [["quote", 3]]), ("edit_reasons", {"quote": 1}),
+                         ("edit_reasons", {"cites": 0}), ("edit_reasons", {})):
+            invalid = copy.deepcopy(value)
+            invalid["recent"][0][key] = bad
+            with self.subTest(key=key, bad=bad), self.assertRaises(ValueError):
+                format2.parse_curation(data(invalid))
+        untotalled = copy.deepcopy(value)
+        del untotalled["recent"][0]["dropped"]
+        with self.assertRaises(ValueError):
+            format2.parse_curation(data(untotalled))
+        for kind in ("consolidate", "undo"):
+            other = copy.deepcopy(PROGRESS)
+            other["recent"] = [{"at": AT, "kind": kind, "result": "ok", "applied": 1, "dropped": 1}]
+            self.assertEqual(format2.parse_curation(data(other)), other)
+            for key, counts in (("reasons", {"quote": 1}), ("edit_reasons", {"cites": 1})):
+                other["recent"][0][key] = counts
+                with self.subTest(kind=kind, key=key), self.assertRaises(ValueError):
+                    format2.parse_curation(data(other))
+                del other["recent"][0][key]
+
     def test_tc116_duplicate_fields_nonfinite_and_wrong_json_types_fail(self):
         self.assertEqual(format2.parse_store(data(HEADER)), HEADER)
         self.assertEqual(format2.parse_curation(data(PROGRESS)), PROGRESS)

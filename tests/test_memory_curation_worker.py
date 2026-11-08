@@ -560,14 +560,17 @@ class CurationWorkerTest(unittest.TestCase):
         added = {'part': 'decisions', 'after': '', 'text': 'One script serves the hooks.', 'cites': [], 'changes': [1]}
         self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'),
                                       change(quote(said, 'Keep the five hooks in one script'), kind='decision'),
-                                      state={'change': [], 'remove': [], 'add': [added]})]
+                                      state={'change': [], 'add': [added],
+                                             'remove': [{'line': ident('s'), 'why': 'Not carried.'}]})]
         self.assertEqual(self.markers(), [marker])
         (attempt,) = self.curate().attempts
-        self.assertEqual((attempt.dropped, attempt.edits, attempt.held, attempt.requests), ({'quote': 1}, {}, None, 1))
+        self.assertEqual((attempt.dropped, attempt.edits, attempt.held, attempt.requests),
+                         ({'quote': 1}, {'not-in-request': 1}, None, 1))
         progress = self.progress()
         record = progress['recent'][0]
         self.assertEqual(record, {'at': STAMP, 'kind': 'curate', 'result': 'ok', 'applied': 1, 'dropped': 1,
-                                  'state': 'new', 'run': record['run']})
+                                  'reasons': {'quote': 1}, 'state': 'new',
+                                  'edit_reasons': {'not-in-request': 1}, 'run': record['run']})
         self.assertEqual((progress['logs'], progress['applies']), ({LOG: 3}, 1))
         self.assertEqual(self.markers(), [])
         (saved,) = self.items().values()
@@ -590,7 +593,8 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertEqual(attempt.dropped, {'pasted': 1, 'quote': 1, 'limit': 1})
         record = self.progress()['recent'][0]
         self.assertEqual(record, {'at': STAMP, 'kind': 'curate', 'result': 'ok', 'applied': 1, 'dropped': 3,
-                                  'state': 'kept', 'run': record['run']})
+                                  'reasons': {'pasted': 1, 'quote': 1, 'limit': 1}, 'state': 'kept',
+                                  'run': record['run']})
         (saved,) = self.items().values()
         self.assertEqual((saved['title'], saved['kind'], saved['quotes'][0]['speaker']),
                          ('The user decides', 'decision', 'user'))
@@ -615,7 +619,8 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertEqual((waits, more, len(self.server.requests)), ([10, 60, 10, 60], [10, 60], 10))
         self.assertEqual([(a.record['result'], a.record.get('error'), a.requests) for a in records],
                          [('failed', 'bad-answer', 1), ('failed', 'bad-answer', 1), ('ok', None, 1)])
-        self.assertEqual((records[-1].record['applied'], records[-1].dropped), (1, {'not-in-request': 1}))
+        self.assertEqual((records[-1].record['applied'], records[-1].record['reasons'], records[-1].dropped),
+                         (1, {'not-in-request': 1}, {'not-in-request': 1}))
         self.assertEqual([(value['title'], value['kind']) for value in self.items().values()],
                          [('Read in small letters', 'decision')])
         recent = self.progress()['recent']
@@ -708,6 +713,7 @@ class CurationWorkerTest(unittest.TestCase):
                           ('ok', None, 1, 0, 'new'), ('failed', 'max-tokens', None, None, None),
                           ('ok', None, 1, 0, 'kept'), ('stale', None, None, None, None),
                           ('ok', None, 1, 1, 'kept')])
+        self.assertEqual([r.get('reasons') for r in recent], [None] * 9 + [{'quote': 1}])
         self.assertEqual(self.progress()['failures']['count'], 0)
 
     # SPEC-015
@@ -763,7 +769,8 @@ class CurationWorkerTest(unittest.TestCase):
         progress = self.progress()
         self.assertEqual((progress['logs'], progress['applies'], progress['failures']['count']),
                          ({LOG: 3}, parts, 0))
-        self.assertEqual(progress['recent'][0]['applied'], 3)
+        self.assertEqual((progress['recent'][0]['applied'], progress['recent'][0]['reasons']),
+                         (3, {'quote': 1, 'not-current': 1}))
         frames = set()
         for number in range(2, 2 + parts):
             content = self.server.content(number)
