@@ -254,10 +254,14 @@ class ModelCallsTest(unittest.TestCase):
                 self.assertEqual(self.embed(call).attempts, 1)
 
     def test_a_stalled_error_body_keeps_the_openai_status_class(self):
+        # The body stalls until the call has given up. The deadline also covers the call's own interpreter
+        # starting and sending the request, which took more than 0.5 s on a slow runner (Intel macOS, Python 3.8).
+        released = threading.Event(); self.addCleanup(released.set)
         def stall(handler):
-            self.transport.send(handler, b'', status=503, headers={'retry-after': '301'}); time.sleep(1.5)
+            self.transport.send(handler, b'', status=503, headers={'retry-after': '301'}); released.wait(30)
         self.transport.reply = stall
-        result = self.embed('embed-search', deadline=clock.now() + .5)
+        result = self.embed('embed-search', deadline=clock.now() + 3)
+        released.set()
         self.assertEqual((result.failure.code, result.failure.lasting, result.attempts), ('overloaded_error', False, 1))
         self.assertEqual(self.rows()[-1]['error'], 'overloaded_error')
 
