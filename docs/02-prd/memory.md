@@ -2,7 +2,7 @@
 
 [한국어](memory.ko.md)
 
-Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: the maintainer checked the scope on 2026-10-24, without changes (the stage's first checkpoint). On 2026-10-27 the maintainer confirmed D1, D2 and D4 as recommended and chose the new server sync option for D3 below. The default raw retention period is 100 days. When this file and its Korean translation differ, this file is the source. On 2026-11-03 the maintainer approved three C2 additions, extending REQ-037 and REQ-054 and adding REQ-219 to REQ-225.
+Stage 02 of CORTHEX's own project, for the `corthex-memory` plugin. Status: the maintainer checked the scope on 2026-10-24, without changes (the stage's first checkpoint). On 2026-10-27 the maintainer confirmed D1, D2 and D4 as recommended and chose the new server sync option for D3 below. The default raw retention period is 100 days. When this file and its Korean translation differ, this file is the source. On 2026-11-03 the maintainer approved three C2 additions, extending REQ-037 and REQ-054 and adding REQ-219 to REQ-225. On 2026-11-07 the maintainer approved six additions about compaction, which add REQ-226 to REQ-229 to C2.
 
 Inputs: the contexts and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md) (CTX-001 to CTX-005, TERM-001 to TERM-046). Words in this file have the meanings given there.
 
@@ -42,6 +42,7 @@ This release, the M1 plan of the design draft in three steps: C1 capture and the
 | 2026-10-27 | **D4.** As recommended, use two memory-only keys. The Anthropic key is created in the Console organization linked to the maintainer's subscription, whose monthly API credit pays for curation; the separate OpenAI key is for embeddings. | REQ-050, REQ-051, REQ-052 |
 | 2026-10-27 | Set default raw retention to 100 days, keeping its configurable range of 1 to 3,650 days. | REQ-009 |
 | 2026-11-03 | Three additions to C2, from the maintainer's review of recent memory research: the curator changes the current state line by line, and the device keeps each changed or removed line's previous text for the retention period; possible disagreements between current items become conflict candidates that the user settles, never replacements that the curator makes on its own reading; and each curation, consolidation and undo is logged as a run that the user can undo. | REQ-015, REQ-037, REQ-054, REQ-219 to REQ-225 |
+| 2026-11-07 | Six additions to C2, from the maintainer's review of research on compaction: before the host compacts a session, the plugin asks the host's compaction for a handoff brief and gives it the current goal and next actions; after a compaction it checks the summary for the brief's parts by fixed rules, keeps only the names of missing parts and the time, and tells the agent once; the current state keeps the approaches that failed and the condition for done; injected memory shows where to read a source again; a test without a model and one with real calls check that decisions, withdrawals and exact numbers survive compactions; and the C2 evaluation reports the sizes of curate requests. | REQ-022, REQ-226 to REQ-229 |
 
 The maintainer's own words and where they were said are in the maintainer's records, not in this repository.
 
@@ -139,8 +140,14 @@ Priorities: Must, Should, Could. Status: `active`, `built` (in 0.1.0 already), w
 | REQ-223 | When the user asks to dismiss a conflict candidate, the memory skill shall close it and leave both items as they are. | functional | Could | CTX-005 | Decision 2026-11-03 (I-04) | active |
 | REQ-224 | When a curation, consolidation or undo changes a project's memory, the memory plugin shall log the run on the device, with the IDs of what it changed, for the retention period. | functional | Should | CTX-002 | Decision 2026-11-03 (I-05; problem 5) | active |
 | REQ-225 | When the user asks to undo a run and confirms, the memory plugin shall reverse that run's changes as a new run, keep what later runs changed, and say what it kept. | functional | Should | CTX-005 | Decision 2026-11-03 (I-05; problem 5) | active |
+| REQ-226 | While the session's project is enabled, when the host is about to compact the session, the memory plugin shall give the host's compaction an instruction to write a handoff brief, with the project's current goal and next actions. | functional | Should | CTX-003 | Decision 2026-11-07 (P1; problems 1 and 5) | active |
+| REQ-227 | While the session's project is enabled, when the host has compacted the session, the memory plugin shall check the summary for the parts of a handoff brief and name the missing parts once in the agent's context, without storing or sending the summary. | functional | Should | CTX-003 | Decision 2026-11-07 (P3; problem 5) | active |
+| REQ-228 | When new raw turns show an approach that failed or the condition for finishing the work, the curator shall keep it in the current state as a dead end or a done condition. | functional | Should | CTX-002 | Decision 2026-11-07 (P4; problems 1 and 5) | active |
+| REQ-229 | When the memory plugin injects a state line or an item, the memory plugin shall show where its source can be read again, as an entry ID, a commit or a file path, without copying the source's text. | functional | Should | CTX-003 | Decision 2026-11-07 (P5; problem 5) | active |
 
 For REQ-195, consent reaches a temporary device only through the user's own environment setup. REQ-061 extends the constraint already built for 0.1.0 hooks to the sync gateway client; it does not claim the new client is built.
+
+Two of the 2026-11-07 additions add no requirement. The test of what survives compaction (P9) is a QA case without a model and a part of the real-call trials. The sizes of curate requests (P11) are part of TASK-050's report, which asks the maintainer once, with the numbers, whether REQ-022 becomes Must when any request passed 100,000 input tokens.
 
 ## Success measures
 

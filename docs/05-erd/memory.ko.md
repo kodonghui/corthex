@@ -2,9 +2,9 @@
 
 [English](memory.md)
 
-CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-27 확인했습니다. 남겨 둔 Git 동기화 설계는 D3로 대체됐습니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다. 2026-11-03 C2 결정에 따라 TBL-009·010·012·013과 보관·잠금을 넓히고 TBL-119~121을 더했습니다. 형식 2는 C2의 목표이며 이번 명세 PR은 기기 자료를 이관하지 않습니다.
+CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계입니다. 상태: 2026-10-27 확인했습니다. 남겨 둔 Git 동기화 설계는 D3로 대체됐습니다. 관리자는 C1을 만들기 전에 이 파일을 기능 명세와 함께 확인합니다. 확인이 끝나면 이번 출시의 저장 단위를 고정하며, 그 뒤에 호환되지 않는 변경을 하려면 관리자의 결정과 새 형식 버전이 필요합니다. 이 번역과 영어 원문이 다르면 영어 원문이 원본입니다. 2026-11-03 C2 결정에 따라 TBL-009·010·012·013과 보관·잠금을 넓히고 TBL-119~121을 더했습니다. 2026-11-07 압축 결정에 따라 TBL-122를 더하고 TBL-003·004·005·013을 넓혔습니다. 형식 2는 C2의 목표이며 이번 명세 PR은 기기 자료를 이관하지 않습니다.
 
-입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039, SPEC-143\~SPEC-145), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
+입력: [docs/04-functional-spec/memory.ko.md](../04-functional-spec/memory.ko.md)의 기능 명세(SPEC-001\~SPEC-039, SPEC-143\~SPEC-148), 특히 그 [05단계를 위한 메모](../04-functional-spec/memory.ko.md#05단계-기억-폴더); [docs/02-prd/memory.ko.md](../02-prd/memory.ko.md)의 요구사항 가운데 기억 폴더를 가장 많이 정하는 REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063, REQ-064; [docs/01-domain/memory.ko.md](../01-domain/memory.ko.md)의 용어집. 이 파일의 말은 거기서 정한 뜻으로 씁니다. 2026-10-27에 D1·D2·D4와 요구사항 변경 일곱 개를 확인했고, D3는 02단계의 HTTPS 창구와 서버 안으로 정했습니다. 남겨 둔 Git 동기화 상세의 상태는 `superseded (D3, 2026-10-27)`이며 C3 전에 대체 설계가 필요합니다.
 
 > D3 설계 상태: `superseded (D3, 2026-10-27)`. 이곳에 남겨 둔 Git 동기화 제안은 2026-10-27에 확인한 D3 결정으로 대체됐습니다. 구현하거나 실행할 계획이 아닌 과거 자료입니다. HTTPS 창구와 서버 동기화 설계는 C3 전에 따로 작성합니다. 기기의 저장소는 파일과 SQLite 검색 색인을 유지합니다. 이 표시는 여러 단계가 공유하는 행·설정·예시의 동기화 부분에도 적용하며, 그 C1/C2 부분은 확인된 상태입니다.
 
@@ -47,6 +47,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
       ├─ notices/<name>.json          TBL-010 알림
       ├─ notices/conflict-counts.json TBL-010 후보별 영속 횟수 상한
       ├─ injections/<log>.jsonl       TBL-011 넣기 기록, 도구의 세션마다 파일 하나
+      ├─ compaction/<log>.json        TBL-122 압축 확인 기록, 도구의 세션마다 파일 하나
       ├─ index.db                     TBL-019부터 TBL-022까지 검색 색인
       ├─ layer.lock
       └─ layer/                       정리된 층, 동기화가 함께 씀
@@ -70,19 +71,19 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 
 | ID | 저장 단위 | 맥락 | 파일 | 구별하는 값 | 보관 | 동기화 | 근거 | 상태 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TBL-001 | 기억 폴더 정보 | CTX-005 | `store.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039 | active |
-| TBL-002 | 기억 설정 | CTX-005 | `configuration.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037 | active |
+| TBL-001 | 기억 폴더 정보 | CTX-005 | `store.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039, SPEC-146, SPEC-147 | active |
+| TBL-002 | 기억 설정 | CTX-005 | `configuration.json` | 기억 폴더마다 하나 | 모두 지우기까지 | 안 함 | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037, SPEC-146, SPEC-147 | active |
 | TBL-003 | 사용량 기록 | CTX-005 | `logs/usage-<month>.jsonl` | 파일과 그 안의 자리 | 모두 지우기까지 | 안 함 | SPEC-014, SPEC-015, SPEC-016, SPEC-018, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-032, SPEC-033 | active |
-| TBL-004 | 실패 기록 | CTX-005 | `logs/failures-<date>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145 | active |
-| TBL-005 | 훅 소요 시간 | CTX-005 | `logs/hooks-<date>.jsonl` | 파일과 그 안의 자리 | 8일 | 안 함 | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033 | active |
+| TBL-004 | 실패 기록 | CTX-005 | `logs/failures-<date>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145, SPEC-146, SPEC-147 | active |
+| TBL-005 | 훅 소요 시간 | CTX-005 | `logs/hooks-<date>.jsonl` | 파일과 그 안의 자리 | 8일 | 안 함 | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033, SPEC-146, SPEC-147 | active |
 | TBL-006 | 동기화 정보 | CTX-004 | `sync/state.json` | 기억 폴더마다 하나 | 동기화가 켜진 동안 | 안 함 | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | superseded (D3, 2026-10-27) |
-| TBL-007 | 원문 기록 | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, 또는 파일과 `seq` | 줄마다의 시각으로 보관 기간 동안 | 절대 안 함(REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037 | active |
+| TBL-007 | 원문 기록 | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, 또는 파일과 `seq` | 줄마다의 시각으로 보관 기간 동안 | 절대 안 함(REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037, SPEC-148 | active |
 | TBL-008 | 정리 전 턴 표지 | CTX-002 | `projects/<project>/unprocessed/<time>.<log>.<turn>` | 파일 이름 | 그 턴을 처리하거나 지울 때까지 | 안 함 | SPEC-002, SPEC-003, SPEC-009, SPEC-010, SPEC-016, SPEC-022, SPEC-033, SPEC-037 | active |
 | TBL-009 | 정리 진행 기록 | CTX-002 | `projects/<project>/curation.json` | 프로젝트마다 하나 | 프로젝트의 기억이 있는 동안 | 안 함 | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037, SPEC-034, SPEC-035, SPEC-143, SPEC-144, SPEC-145 | active |
 | TBL-010 | 알림 | CTX-003 | `projects/<project>/notices/<name>.json` | 파일 이름 | 시작 요약이 보여 줄 때까지 | 안 함 | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-011 | 넣기 기록 | CTX-003 | `projects/<project>/injections/<log>.jsonl` | 파일과 그 안의 자리 | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | active |
-| TBL-012 | 기억 항목 | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | 잊거나 프로젝트의 기억과 함께 지울 때까지 | 함 | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
-| TBL-013 | 현재 상태 | CTX-002 | `projects/<project>/layer/state.json`과 `state-removed.json` | 줄마다의 `id` | 줄은 빠질 때까지, 빠진 줄의 기록은 계속 | 함 | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-012 | 기억 항목 | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | 잊거나 프로젝트의 기억과 함께 지울 때까지 | 함 | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145, SPEC-146, SPEC-148 | active |
+| TBL-013 | 현재 상태 | CTX-002 | `projects/<project>/layer/state.json`과 `state-removed.json` | 줄마다의 `id` | 줄은 빠질 때까지, 빠진 줄의 기록은 계속 | 함 | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145, SPEC-146, SPEC-148 | active |
 | TBL-014 | 고정 | CTX-003 | `projects/<project>/layer/pins.json` | 기록마다의 `item` | 항목을 잊을 때까지 계속 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-015 | 항목 목록 | CTX-003 | `projects/<project>/layer/item-list.txt` | 줄마다의 항목 ID | 바뀔 때마다 다시 만듦 | 함 | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-016 | 지운 기록 | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | 계속 | 함 | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037, SPEC-021, SPEC-145 | active |
@@ -91,6 +92,7 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | TBL-119 | 줄 기록 | CTX-002 | `projects/<project>/state-history.jsonl` | epoch, generation, line | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-017, SPEC-019, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-120 | 충돌 후보 | CTX-002 | `projects/<project>/layer/conflicts.json` | id | 닫힌 후보도 유지 | C3 설계가 정함 | SPEC-015, SPEC-016, SPEC-019, SPEC-033, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-121 | 실행 기록 | CTX-002 | `projects/<project>/runs/<run>.json` | id | 보관 기간 동안 | 안 함 | SPEC-009, SPEC-033, SPEC-037, SPEC-144, SPEC-145 | active |
+| TBL-122 | 압축 확인 기록 | CTX-003 | `projects/<project>/compaction/<log>.json` | 도구의 세션마다 하나 | 그 세션의 다음 프롬프트까지, 길어야 7일 | 안 함 | SPEC-147, SPEC-037 | active |
 
 검색 색인은 SQLite 파일 `projects/<project>/index.db`입니다. 절대 동기화하지 않으며(REQ-044), 기억 항목에서 언제든 다시 만들 수 있습니다(TERM-029).
 
@@ -170,8 +172,14 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 05단계�
 | `request` | (선택) 글 | 응답 헤더에 있는 공급자의 요청 ID |
 | `cost` | 숫자 | 가격표로 추정한 비용(미국 달러). 토큰 세기는 0 |
 | `prices` | 날짜 | 쓴 가격표의 `taken` 날짜 |
+| `turns` | (선택) 정수 | 정리 요청이 담은 정리 전 턴의 수. 한 턴의 조각은 그 턴 하나를 담음 |
+| `parts` | (선택) 정수 | 혼자서도 너무 큰 턴의 조각이면, 그 턴을 나눈 조각 수 |
+| `list` | (선택) `full`, `short`, `part` 가운데 하나 | 정리 요청에 든 항목 목록의 꼴(API-006) |
+| `estimate` | (선택) 정수 | 정리 요청 입력 토큰의 보통 어림(API-009) |
 
 기억 상태는 공급자가 요금을 매기는 호출의 토큰만 더하므로, 토큰 세기가 두 번 세어지지 않습니다.
+
+정리 줄의 `turns`·`parts`·`list`·`estimate`는 요청의 글 없이 그 크기를 나타내므로, C2 평가가 큰 요청의 까닭을 말할 수 있습니다(TASK-050). TASK-116이 이 필드를 쓰며, 그 전에 쓴 줄에는 없습니다.
 
 TASK-078 컴포넌트는 인증용 단일 경계에서 전용 MEMORY 키 두 변수만 고정해 읽습니다. 존재 표시에는 값이 없고 잘못된 헤더 값은 고정 오류로 거부합니다. 요청별 원래 키 스냅샷의 비밀은 사용량 메타데이터에도 넣지 않습니다. 더 넓은 일반 환경값 가림은 그대로 둡니다. 공급자 메시지·본문·예외 문구 및 알려지지 않은 type/code는 분류 결과에 들어가지 않습니다. 알 수 없는 종류는 기존의 안전한 HTTP 종류 코드로 정규화하며 분류기는 재시도·sleep을 맡지 않습니다.
 
@@ -184,8 +192,8 @@ TASK-078 컴포넌트는 인증용 단일 경계에서 전용 MEMORY 키 두 변
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
 | `at` | 시각 | 일어난 때 |
-| `step` | `record`, `recall`, `summary`, `trigger`, `curate`, `consolidate`, `embed`, `sync`, `retention`, `index`, `restore`, `skill` 가운데 하나 | 실패한 일 |
-| `hook` | (선택) `prompt`, `end-of-turn`, `start`, `end` 가운데 하나 | 실패가 일어난 훅 |
+| `step` | `record`, `recall`, `summary`, `trigger`, `curate`, `consolidate`, `embed`, `sync`, `retention`, `index`, `restore`, `skill`, `compaction` 가운데 하나 | 실패한 일 |
+| `hook` | (선택) `prompt`, `end-of-turn`, `start`, `end`, `pre-compact`, `post-compact` 가운데 하나 | 실패가 일어난 훅 |
 | `host` | (선택) `claude-code`나 `codex` | 도구 |
 | `project` | (선택) 프로젝트 이름 | 프로젝트를 찾았을 때 그 프로젝트 |
 | `error` | 글 | 오류의 종류: `PermissionError` 같은 예외의 클래스 이름, 공급자의 오류 종류, 또는 `lock-busy`, `deadline`, `damaged-line`, `future-entry`, `restored`, `no-project-list` 같은 코드 자체의 종류 |
@@ -201,7 +209,7 @@ TASK-078 컴포넌트는 인증용 단일 경계에서 전용 MEMORY 키 두 변
 | 필드 | 값 | 뜻 |
 | --- | --- | --- |
 | `at` | 시각 | 훅이 시작된 때 |
-| `hook` | `prompt`, `end-of-turn`, `start`, `end` 가운데 하나 | |
+| `hook` | `prompt`, `end-of-turn`, `start`, `end`, `pre-compact`, `post-compact` 가운데 하나 | `pre-compact`: 압축 지시 훅; `post-compact`: 압축 확인 훅(SPEC-146, SPEC-147) |
 | `host` | `claude-code`나 `codex` | |
 | `ms` | 정수 | 훅 안에서 잰, 훅의 시작부터 끝까지의 밀리초 |
 | `outcome` | `ok`, `left-out`, `no-answer`, `lock-busy`, `deadline`, `error` 가운데 하나 | `left-out`: 폴더나 종류를 뺐음; `no-answer`: 최종 답변이 없는 턴 끝, 기억 상태가 셈(SPEC-003); `deadline`: 훅이 마감 시간을 넘겨 남은 단계를 건너뜀(SPEC-008) |
@@ -381,6 +389,8 @@ C2의 `undone`은 이 기기의 되돌리기 상태입니다. C3 설계가 새 �
 | `restored_at` | 선택: 시각 | 그 복원의 시각 |
 
 정리가 끝나면 줄의 글은 모두 합쳐 3,000바이트 아래입니다(SPEC-017). 동기화의 합치기는 더 많이 남길 수 있으며, 다음 정리가 상한 아래로 되돌리고, 그동안은 시작 요약이 줄여서 보여 줍니다(SPEC-021).
+
+2026-11-07부터 글이 `Dead end:`로 시작하는 막힘은 실패한 접근을, 글이 `Done when:`으로 시작하는 다음 행동은 일을 끝내는 조건을 남깁니다(REQ-228). 각 부분의 보통 줄이므로 저장 단위와 그 형식은 바뀌지 않으며, 시작 요약은 이 줄들을 제 이름표로 보여 줍니다(SPEC-021).
 C2의 제거 표지는 사생활 지우기인지(kind privacy), 보통 편집인지(kind edit)를 구분합니다. 보통 제거 ID도 계속 남기되, 검증된 기기 안 되돌리기만 restored_by·restored_at으로 의도적 같은 ID 복원을 표시할 수 있습니다. 잊기·지운 기록의 privacy 표지는 이런 복원을 금지하며 직전 글도 남기지 않습니다. 모든 상태 읽기(시작·요청·통합·되돌리기)는 같은 유효성 보기를 씁니다. 유효한 현재 결정 근거가 없는 줄은 원본 파일의 정리가 실패했어도 보기에 없고, 다음 쓰기는 대기 중 stale 정리도 다시 시도합니다. 동기화의 복원·충돌 순서는 C3 설계가 정합니다.
 
 판독기는 kind가 생략된 옛 표지와 하나만 있는 복원 필드도 보존합니다. privacy는 언제나 복원을 막습니다. edit 표지 하나에 형식이 맞는 복원 필드 둘이 있으면 이미 검증한 복원을 뜻하며 이후 실행 기록의 보관 만료와 독립적입니다. 시각 비교만으로 복원 권한을 만들지 않습니다. kind가 없거나 표지가 겹치면 권한 없는 알 수 없는 제거로 숨기고 보고하며 보통 stale로 낮춰 원문을 새로 보관하거나 복원하지 않습니다. 새 쓰기는 겹친 표지 하나를 임의로 고르지 않습니다. 순수 보기는 읽기 전용 소유자의 완전한 보기에서 현재 항목·명시적인 개인정보 인용 사실을 받으며 원문 기록의 만료만으로 보통 줄을 무효화하지 않습니다.
@@ -521,6 +531,17 @@ Git 저장소가 기억 플러그인의 동기화 저장소임을 표시하는 �
 
 TASK-103의 `run_log`는 이 파일을 위 순서의 필드와 항목 키로 들여 쓴 UTF-8 JSON으로 씁니다. `lines` 항목은 줄·동작·세대·기록 참조와 변경 전후 위치입니다. 기록 참조는 null이거나 이 적용과 줄의 [epoch, 세대, 줄, SHA-256]이고, 위치는 [part, pos, 앞 이웃, 뒤 이웃]이며 이웃이 없으면 빈 문자열, 줄이 없으면 []입니다. 앞에 줄이 없는 것은 추가된 줄뿐이고, 뒤에 줄이 없는 것은 removed·cut·stale·undone 줄뿐입니다. `pins` 항목은 앞뒤 고정 기록(없으면 null)과 두 목록 위치를 `place`로 둡니다. `revisions` ID는 `item:`·`pin:`·`candidate:`·`line:`와 대상 ID이며, 앞 판 번호가 없는 대상은 before가 null이고 한 대상의 판 번호는 적용에서 적용으로 이어집니다. 적용의 changes는 그 세대인 판 번호들의 ID이고, `saved`·`statuses`·`merges`·`lines`·`pins`·`conflicts`의 모든 항목이 그중 하나를 가리키며 그 모두가 가리켜집니다. 여러 적용이 바꾼 줄은 적용마다 항목이 있습니다. 읽기는 모르는 필드, 목록 안의 글, 순서가 어긋난 적용, 다른 epoch·세대·줄을 가리키는 기록 참조를 포함해 그 밖의 파일을 거부하며, 그 실행은 목록에서 빠집니다. 만료는 레이어 임대 아래에서 마지막 적용이 보관 기간을 지난 기록을 백업·임시 사본과 함께 지웁니다. 읽을 수 없는 기록과 원본이 없는 사본은 파일 수정 시각을 따릅니다. 링크를 거쳐서는 아무것도 읽거나 지우지 않아, 링크인 실행 폴더는 만료를 멈추고 링크인 기록이나 사본은 그 실행과 함께 남습니다.
 
+### 압축 확인 기록 (TBL-122)
+
+마지막 압축 요약에 인계 요약의 칸이 빠졌던 도구의 세션마다 파일 하나입니다(SPEC-147). Claude Code가 세션을 압축한 뒤 압축 확인 훅이 쓰고, 도구가 만든 프롬프트가 아니면 그 세션의 다음 프롬프트 훅이 읽어 한 줄을 더한 뒤 지웁니다. 그 세션의 뒤 압축은 이 파일을 바꾸고, 모든 칸을 찾은 확인은 지웁니다. 확인할 때마다 프로젝트의 7일 지난 압축 확인 기록도 지우며, 읽을 수 없는 파일은 지우고 실패 기록에 남깁니다. 이 기기에만 있고, 동기화하지 않으며, 어떤 요청에도 넣지 않습니다. 요약의 말은 하나도 없고 빠진 칸의 이름과 시각만 담습니다.
+
+| 필드 | 값 | 뜻 |
+| --- | --- | --- |
+| `at` | 시각 | 압축 확인을 한 때 |
+| `missing` | `objective`, `facts`, `changes`, `checks`, `dead-ends`, `plan`, `done` 가운데 하나 이상의 목록, 이 순서로 | 요약에 빠진 인계 요약의 칸. 칸마다 그 칸을 부르는 제목과 이름표는 06단계가 적음(`check-1`) |
+
+넣기 기록처럼 그 세션의 원문 기록 잠금 아래에서 쓰고 지우며, 다른 다시 쓰기처럼 새 파일과 옮기기를 거칩니다. 알림처럼 디스크 내려쓰기와 백업은 건너뜁니다. 파일을 잃어도 맥락 한 줄이 빠질 뿐입니다.
+
 ## 쓰기와 잠금
 
 ### 덧붙이기
@@ -571,7 +592,7 @@ Windows에서는 다른 프로세스가 파일을 열고 있는 동안 옮기기
 | 동기화 잠금 | `sync/sync.lock` | 동기화 한 번 | 1분마다 | 10분 뒤 |
 | 정리된 층 잠금 | `projects/<project>/layer.lock` | 그 프로젝트의 적용, 잊기, 지운 기록, 고정, 풀기, 합치기, 후보 닫기, 되돌리기 하나, 보관 기간 처리의 원문 기록이나 넣기 기록 파일 하나 다시 쓰기나 지우기, 또는 그 기억 지우기 | 30초마다 | 2분 뒤 |
 | 알림 횟수 잠금 | `projects/<project>/notices/conflict-counts.lock` | 충돌 횟수 한 번 예약·갱신. 레이어 쓰기는 레이어 뒤에 잡음 | 갱신 안 함 | 10초 |
-| 원문 기록 잠금 | `projects/<project>/raw/<log>.lock` | 표지를 함께 만드는 덧붙이기 하나, 다시 쓰기의 마지막 읽기와 옮기기, 또는 보관 기간 처리의 마지막 읽기와 파일 지우기. 그 세션의 넣기 기록도 이 잠금을 씀 | 새로 적지 않음 | 10초 뒤(SPEC-007) |
+| 원문 기록 잠금 | `projects/<project>/raw/<log>.lock` | 표지를 함께 만드는 덧붙이기 하나, 다시 쓰기의 마지막 읽기와 옮기기, 또는 보관 기간 처리의 마지막 읽기와 파일 지우기. 그 세션의 넣기 기록과 압축 확인 기록도 이 잠금을 씀 | 새로 적지 않음 | 10초 뒤(SPEC-007) |
 | `logs/` 잠금 | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | 덧붙이기 하나 | 새로 적지 않음 | 10초 뒤 |
 
 - 잠금은 배타적 만들기로 만드는 파일이며, 파일이 있는 동안 만들기는 실패합니다. 잠금에는 쥔 프로세스의 ID, 기기 ID, 시각, 무작위 토큰을 적습니다. 쥔 쪽은 수정 시각을 고쳐 잠금을 새로 적고, 그 시각이 표가 허용하는 것보다 오래되면 잠금은 오래된 것입니다. 오래됨은 이 기기의 시계와 잠금의 수정 시각을 견주므로 기억 폴더는 로컬 디스크에 둡니다. 시계가 앞으로 뛰거나 서버 시계가 다른 네트워크 폴더에서는 살아 있는 잠금이 오래돼 보일 수 있으며, 그 쥔 쪽은 다음 확인에서 토큰이 없어진 것을 압니다.
@@ -617,7 +638,8 @@ C2 자료를 하나라도 쓰기 전에 C1이 자동 복원할 수 있는 store.
 
 - 동기화가 켜진 동안 동기화 저장소로: 정리된 층(TBL-012\~TBL-017)과 동기화 저장소 표지(TBL-018). 그 밖에는 없습니다(SPEC-027).
 - Anthropic과 OpenAI로: 기능 명세의 AI 호출이 보내는 것. 모두 지우기 처리를 거친 턴, 현재 상태, 항목 목록, 항목, 프롬프트, 찾기 요청입니다.
-- 절대 나가지 않는 것: 원문 기록 파일(지우기 처리한 턴은 정리 요청 안에서만 나감), 검색 색인, 사용량 기록, 실패 기록, 훅 소요 시간, 넣기 기록, 알림, 정리 전 턴 표지, 정리 진행 기록, 기억 설정, 동기화 정보, 기억 폴더 정보.
+- 도구에게만, 시작 요약·불러오기와 같이: 현재 상태의 목표와 다음 행동 줄을 담은 압축 지시(SPEC-146). 도구의 압축 요약은 플러그인이 저장하지도 보내지도 않습니다(SPEC-147).
+- 절대 나가지 않는 것: 원문 기록 파일(지우기 처리한 턴은 정리 요청 안에서만 나감), 검색 색인, 사용량 기록, 실패 기록, 훅 소요 시간, 넣기 기록, 압축 확인 기록, 알림, 정리 전 턴 표지, 정리 진행 기록, 기억 설정, 동기화 정보, 기억 폴더 정보.
 
 줄 기록·실행 기록·판 번호 표지·충돌 횟수 상한은 기기 밖으로 절대 보내지 않습니다. conflicts.json을 보내거나 합치는 일은 C3 설계가 정합니다.
 
@@ -639,6 +661,7 @@ C2 자료를 하나라도 쓰기 전에 C1이 자동 복원할 수 있는 store.
 | 사용량 기록 | 모두 지우기까지 | SPEC-037 |
 | 지운 기록, 프로젝트 지운 기록, 빠진 현재 상태 줄, 고정 기록 | 계속 | SPEC-028, SPEC-029 |
 | 줄 기록과 실행 기록 | 각 기록·실행 시각부터 보관 기간 | SPEC-009, SPEC-144 |
+| 압축 확인 기록 | 그 세션의 다음 프롬프트까지, 길어야 7일 | SPEC-147 |
 
 정리 프로세스의 변경이 항목의 상한을 넘으면, 확인에 실패한 변경처럼 버리고 정리 진행 기록에서 셉니다(SPEC-016). 상한을 넘은 현재 상태는 SPEC-017이 말하는 대로 줄입니다.
 
@@ -684,12 +707,15 @@ C2 자료를 하나라도 쓰기 전에 C1이 자동 복원할 수 있는 store.
 | SPEC-034 | 항목 고정하기와 풀기 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010, TBL-009 | TBL-014, TBL-010, TBL-009 |
 | SPEC-035 | 항목 잊기 | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016, TBL-009, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020, TBL-009, TBL-119, TBL-120 |
 | SPEC-036 | 프로젝트의 기억 끄기 | TBL-002 | TBL-002 |
-| SPEC-037 | 한 프로젝트의 기억 지우기 | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | TBL-007~TBL-015, 검색 색인, TBL-119~TBL-121을 삭제. 동기화가 꺼졌으면 TBL-016도 삭제. TBL-002를 쓰며 동기화가 켜졌으면 TBL-017을 씀 |
+| SPEC-037 | 한 프로젝트의 기억 지우기 | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | TBL-007~TBL-015, 검색 색인, TBL-119~TBL-122를 삭제. 동기화가 꺼졌으면 TBL-016도 삭제. TBL-002를 쓰며 동기화가 켜졌으면 TBL-017을 씀 |
 | SPEC-038 | 기기의 기억 모두 지우기 | 기억 폴더 | 기억 폴더를 지움 |
 | SPEC-039 | 두 도구가 기억 폴더 하나를 함께 쓰기 | TBL-001 | 없음 |
 | SPEC-143 | 충돌 후보를 보이고 정리하기 | TBL-009, TBL-010, TBL-012, TBL-120 | TBL-009, TBL-010, TBL-120 |
 | SPEC-144 | 실행마다 기록 남기기 | TBL-009, TBL-121 | TBL-009, TBL-121, TBL-004 |
 | SPEC-145 | 실행 되돌리기 | TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-016, TBL-017, TBL-119, TBL-120, TBL-121 | TBL-009, TBL-010, TBL-012, TBL-013, TBL-014, TBL-015, TBL-019, TBL-020, TBL-021, TBL-022, TBL-119, TBL-120, TBL-121, TBL-004 |
+| SPEC-146 | 압축 전에 도구에 인계 요약 지시 주기 | TBL-001, TBL-002, TBL-012, TBL-013 | TBL-004, TBL-005 |
+| SPEC-147 | 압축 뒤 요약 확인하기 | TBL-001, TBL-002, TBL-122 | TBL-122, TBL-004, TBL-005 |
+| SPEC-148 | 근거를 다시 읽을 곳 보여 주기 | TBL-007, TBL-012, TBL-013 | 없음 |
 
 `index_items`(TBL-020)의 줄을 지우면 `index_vectors`와 `index_terms`(TBL-021, TBL-022)의 그 항목 줄도 지워집니다.
 
@@ -785,6 +811,7 @@ erDiagram
 8. 항목 목록은 결정 인용의 UTC 날짜로 새것부터.
 9. 잃은 정리 진행 기록은 인용과 출처로 다시 만듭니다. 턴을 두 번 정리할 수 있으며, 중복은 통합이 합칩니다.
 10. 사람이 보는 곳: 이 단계의 기본인 ERD Editor 대신, 그림이 있는 이 파일과, 표를 데이터베이스로 만든 Notion의 한국어 사본. 검색 색인만 SQL이기 때문입니다.
+11. 2026-11-07부터, 압축 요약에 빠진 칸의 이름만 다음 프롬프트까지 두는 압축 확인 기록. 요약 자체는 저장하지 않습니다(SPEC-147). 그리고 막힘과 다음 행동의 표시한 줄로 남기는 막힌 길과 끝나는 조건. 현재 상태의 부분과 형식은 그대로입니다(REQ-228).
 
 ## 확인할 것
 
