@@ -2,9 +2,9 @@
 
 [한국어](memory.ko.md)
 
-Stage 05 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec before C1 is built; after that check the records are frozen for the release, and a later breaking change needs the maintainer's decision and a new format version. When this file and its Korean translation differ, this file is the source. The 2026-11-03 C2 additions extend TBL-009, TBL-010, TBL-012, TBL-013, retention and locks, and add TBL-119 to TBL-121. Format 2 is the C2 target; this specification change migrates no device data.
+Stage 05 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec before C1 is built; after that check the records are frozen for the release, and a later breaking change needs the maintainer's decision and a new format version. When this file and its Korean translation differ, this file is the source. The 2026-11-03 C2 additions extend TBL-009, TBL-010, TBL-012, TBL-013, retention and locks, and add TBL-119 to TBL-121. The 2026-11-07 additions about compaction add TBL-122 and extend TBL-003, TBL-004, TBL-005 and TBL-013. Format 2 is the C2 target; this specification change migrates no device data.
 
-Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039 and SPEC-143 to SPEC-145), above all its [notes for stage 05](../04-functional-spec/memory.md#stage-05-the-memory-store); the requirements in [docs/02-prd/memory.md](../02-prd/memory.md), of which REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063 and REQ-064 shape the memory store most; and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
+Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039 and SPEC-143 to SPEC-148), above all its [notes for stage 05](../04-functional-spec/memory.md#stage-05-the-memory-store); the requirements in [docs/02-prd/memory.md](../02-prd/memory.md), of which REQ-008, REQ-009, REQ-012, REQ-044, REQ-045, REQ-054, REQ-056, REQ-063 and REQ-064 shape the memory store most; and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
 > D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
@@ -47,6 +47,7 @@ The memory store is `~/.corthex/corthex-memory/`, or the folder that `CORTHEX_ME
       ├─ notices/<name>.json          TBL-010 notices
       ├─ notices/conflict-counts.json TBL-010 durable conflict showing high-water
       ├─ injections/<log>.jsonl       TBL-011 injection log, one file per host session
+      ├─ compaction/<log>.json        TBL-122 compaction check, one file per host session
       ├─ index.db                     TBL-019 to TBL-022 search index
       ├─ layer.lock
       └─ layer/                       the curated layer, which sync shares
@@ -70,19 +71,19 @@ The functional spec's curation record is kept in two parts, so that two sessions
 
 | ID | Record | Context | File | Identified by | Kept | Synced | From | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| TBL-001 | Store record | CTX-005 | `store.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039 | active |
-| TBL-002 | Memory configuration | CTX-005 | `configuration.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037 | active |
+| TBL-001 | Store record | CTX-005 | `store.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-021, SPEC-030, SPEC-033, SPEC-039, SPEC-146, SPEC-147 | active |
+| TBL-002 | Memory configuration | CTX-005 | `configuration.json` | one per memory store | until a purge | no | SPEC-001, SPEC-002, SPEC-003, SPEC-005, SPEC-006, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-014, SPEC-019, SPEC-021, SPEC-022, SPEC-023, SPEC-026, SPEC-027, SPEC-030, SPEC-032, SPEC-033, SPEC-036, SPEC-037, SPEC-146, SPEC-147 | active |
 | TBL-003 | Usage log | CTX-005 | `logs/usage-<month>.jsonl` | its file and place | until a purge | no | SPEC-014, SPEC-015, SPEC-016, SPEC-018, SPEC-019, SPEC-023, SPEC-025, SPEC-027, SPEC-032, SPEC-033 | active |
-| TBL-004 | Failure log | CTX-005 | `logs/failures-<date>.jsonl` | its file and place | the retention period | no | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145 | active |
-| TBL-005 | Hook timings | CTX-005 | `logs/hooks-<date>.jsonl` | its file and place | 8 days | no | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033 | active |
+| TBL-004 | Failure log | CTX-005 | `logs/failures-<date>.jsonl` | its file and place | the retention period | no | SPEC-001, SPEC-004, SPEC-007, SPEC-008, SPEC-009, SPEC-013, SPEC-018, SPEC-023, SPEC-027, SPEC-033, SPEC-017, SPEC-144, SPEC-145, SPEC-146, SPEC-147 | active |
+| TBL-005 | Hook timings | CTX-005 | `logs/hooks-<date>.jsonl` | its file and place | 8 days | no | SPEC-002, SPEC-003, SPEC-005, SPEC-008, SPEC-009, SPEC-021, SPEC-023, SPEC-033, SPEC-146, SPEC-147 | active |
 | TBL-006 | Sync record | CTX-004 | `sync/state.json` | one per memory store | while sync is on | no | SPEC-022, SPEC-026, SPEC-027, SPEC-028, SPEC-033 | superseded (D3, 2026-10-27) |
-| TBL-007 | Raw log | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, and also its file and `seq` | the retention period, by each entry's time | never (REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037 | active |
+| TBL-007 | Raw log | CTX-001 | `projects/<project>/raw/<log>.jsonl` | `id`, and also its file and `seq` | the retention period, by each entry's time | never (REQ-044) | SPEC-002, SPEC-003, SPEC-005, SPEC-007, SPEC-009, SPEC-015, SPEC-016, SPEC-020, SPEC-025, SPEC-029, SPEC-035, SPEC-037, SPEC-148 | active |
 | TBL-008 | Unprocessed turn markers | CTX-002 | `projects/<project>/unprocessed/<time>.<log>.<turn>` | its name | until its turn is processed or deleted | no | SPEC-002, SPEC-003, SPEC-009, SPEC-010, SPEC-016, SPEC-022, SPEC-033, SPEC-037 | active |
 | TBL-009 | Curation record | CTX-002 | `projects/<project>/curation.json` | one per project | as long as the project's memory | no | SPEC-009, SPEC-010, SPEC-012, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-022, SPEC-030, SPEC-033, SPEC-037, SPEC-034, SPEC-035, SPEC-143, SPEC-144, SPEC-145 | active |
 | TBL-010 | Notices | CTX-003 | `projects/<project>/notices/<name>.json` | its name | until a start summary shows it | no | SPEC-016, SPEC-018, SPEC-019, SPEC-021, SPEC-022, SPEC-028, SPEC-034, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-011 | Injection log | CTX-003 | `projects/<project>/injections/<log>.jsonl` | its file and place | the retention period | no | SPEC-009, SPEC-021, SPEC-023, SPEC-037 | active |
-| TBL-012 | Memory items | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | until forgotten, or deleted with the project's memory | yes | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
-| TBL-013 | Current state | CTX-002 | `projects/<project>/layer/state.json` and `state-removed.json` | each line's `id` | a line until it is removed; a removed line's record for good | yes | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
+| TBL-012 | Memory items | CTX-002 | `projects/<project>/layer/items/<item>.json` | `id` | until forgotten, or deleted with the project's memory | yes | SPEC-015, SPEC-016, SPEC-017, SPEC-019, SPEC-020, SPEC-021, SPEC-023, SPEC-024, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-143, SPEC-145, SPEC-146, SPEC-148 | active |
+| TBL-013 | Current state | CTX-002 | `projects/<project>/layer/state.json` and `state-removed.json` | each line's `id` | a line until it is removed; a removed line's record for good | yes | SPEC-015, SPEC-017, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145, SPEC-146, SPEC-148 | active |
 | TBL-014 | Pins | CTX-003 | `projects/<project>/layer/pins.json` | each record's `item` | for good, until the item is forgotten | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-021, SPEC-027, SPEC-028, SPEC-029, SPEC-033, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-015 | Item list | CTX-003 | `projects/<project>/layer/item-list.txt` | each line's item ID | made again after every change | yes | SPEC-015, SPEC-016, SPEC-019, SPEC-025, SPEC-027, SPEC-028, SPEC-029, SPEC-034, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-016 | Tombstones | CTX-004 | `projects/<project>/layer/tombstones/<item>.json` | `item` | for good | yes | SPEC-012, SPEC-027, SPEC-028, SPEC-029, SPEC-035, SPEC-037, SPEC-021, SPEC-145 | active |
@@ -91,6 +92,7 @@ The functional spec's curation record is kept in two parts, so that two sessions
 | TBL-119 | Line history | CTX-002 | `projects/<project>/state-history.jsonl` | epoch, generation, line | the retention period | no | SPEC-009, SPEC-017, SPEC-019, SPEC-035, SPEC-037, SPEC-145 | active |
 | TBL-120 | Conflict candidates | CTX-002 | `projects/<project>/layer/conflicts.json` | id | closed candidates also retained | the C3 design decides | SPEC-015, SPEC-016, SPEC-019, SPEC-033, SPEC-035, SPEC-037, SPEC-143, SPEC-145 | active |
 | TBL-121 | Run log | CTX-002 | `projects/<project>/runs/<run>.json` | id | the retention period | no | SPEC-009, SPEC-033, SPEC-037, SPEC-144, SPEC-145 | active |
+| TBL-122 | Compaction check | CTX-003 | `projects/<project>/compaction/<log>.json` | one per host session | until the session's next prompt, at most 7 days | no | SPEC-147, SPEC-037 | active |
 
 The search index is the SQLite file `projects/<project>/index.db`. It is never synced (REQ-044) and can always be made again from the memory items (TERM-029).
 
@@ -170,8 +172,14 @@ One line per request to a model API, also each retry, and per token count (SPEC-
 | `request` | optional text | The provider's request ID, from its response headers |
 | `cost` | number | The estimated cost in US dollars from the price list; 0 for a token count |
 | `prices` | date | The `taken` date of the price list used |
+| `turns` | optional integer | For a curate request: the unprocessed turns it carries; one part of a turn carries that turn |
+| `parts` | optional integer | For one part of a turn too large alone: how many parts the turn goes in |
+| `list` | optional `full`, `short` or `part` | For a curate request: the form of its item list (API-006) |
+| `estimate` | optional integer | For a curate request: the working estimate of its input tokens (API-009) |
 
 The memory status sums the tokens of the calls that the provider charges for, so a token count is not counted twice.
+
+A curate line's `turns`, `parts`, `list` and `estimate` describe its request's size without any of its text, so that the C2 evaluation can say why a request was large (TASK-050); TASK-116 writes them, and lines written before have none.
 
 The TASK-078 component snapshots only the two dedicated memory-key variables through one authentication boundary. Presence reports contain no values; invalid header values fail with a fixed error. The original per-attempt snapshot also excludes its secrets from usage metadata. The general environment-value redactor remains broader and unchanged. Provider messages, bodies, exception text and unknown type/code strings never enter the classification result. Unknown types normalize to the existing safe HTTP-class code; classification owns no retry or sleep.
 
@@ -184,8 +192,8 @@ One line per failure of recording, recall, curation, consolidation, sync, retent
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `at` | time | When it happened |
-| `step` | `record`, `recall`, `summary`, `trigger`, `curate`, `consolidate`, `embed`, `sync`, `retention`, `index`, `restore` or `skill` | What failed |
-| `hook` | optional: `prompt`, `end-of-turn`, `start` or `end` | The hook it happened in |
+| `step` | `record`, `recall`, `summary`, `trigger`, `curate`, `consolidate`, `embed`, `sync`, `retention`, `index`, `restore`, `skill` or `compaction` | What failed |
+| `hook` | optional: `prompt`, `end-of-turn`, `start`, `end`, `pre-compact` or `post-compact` | The hook it happened in |
 | `host` | optional: `claude-code` or `codex` | The host |
 | `project` | optional project name | The project, when one was found |
 | `error` | text | The kind of error: the exception's class name, such as `PermissionError`; the provider's error type; or one of the code's own, such as `lock-busy`, `deadline`, `damaged-line`, `future-entry`, `restored` or `no-project-list` |
@@ -201,7 +209,7 @@ One line per run of a hook that found an enabled project, appended at the end of
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `at` | time | When the hook started |
-| `hook` | `prompt`, `end-of-turn`, `start` or `end` | |
+| `hook` | `prompt`, `end-of-turn`, `start`, `end`, `pre-compact` or `post-compact` | `pre-compact`: the compaction brief hook; `post-compact`: the compaction check hook (SPEC-146, SPEC-147) |
 | `host` | `claude-code` or `codex` | |
 | `ms` | integer | Milliseconds from the hook's start to its end, measured inside the hook |
 | `outcome` | `ok`, `left-out`, `no-answer`, `lock-busy`, `deadline` or `error` | `left-out`: the folder or the kind was left out; `no-answer`: an end of turn without a final answer, which the memory status counts (SPEC-003); `deadline`: the hook passed its deadline and skipped its other steps (SPEC-008) |
@@ -381,6 +389,8 @@ An insertion or deletion may renumber integer pos values while preserving existi
 | `restored_at` | optional time | That restoration's time |
 
 The text of the lines stays under 3,000 bytes in all after a curation (SPEC-017). A merge can leave more; the next curation brings the state back under the limit, and the start summary shortens it meanwhile (SPEC-021).
+
+From 2026-11-07 a blocker whose text starts with `Dead end:` keeps an approach that failed, and a next action whose text starts with `Done when:` keeps the condition for finishing the work (REQ-228). They are ordinary lines of their parts, so the record and its format do not change; the start summary shows them under their own labels (SPEC-021).
 C2 removal markers distinguish privacy removals (kind privacy) from ordinary edits (kind edit). Retain ordinary removed IDs too, but a verified local undo may mark an intentional same-ID restoration with restored_by/restored_at. Forget/tombstone privacy markers prohibit that restoration and do not archive the removed content. Every state reader (start, request, consolidation and undo) uses the same validity view: a line without required current decision provenance is absent from that view even if physical cleanup failed; later writes retry pending stale cleanup. The C3 design decides sync restoration/conflict precedence.
 
 Readers preserve legacy omitted kinds and individually present restoration fields. Privacy always blocks restoration. A single edit marker with both typed restoration fields represents an already verified restoration, independent of later run-log expiry; timestamps alone never grant that authority. Missing kinds or duplicate markers are non-authoritative unknown removals: hide/report the line, never downgrade it to ordinary stale or archive/restore its source text. New writes do not choose an arbitrary duplicate. The pure view receives current items and explicit privacy-citation facts from its complete read-only owner snapshot; an expired raw entry alone does not invalidate an ordinary line.
@@ -521,6 +531,17 @@ Advance the mandatory TBL-009 run:<id> revision before every apply. Listing and 
 
 TASK-103's `run_log` writes the file as indented UTF-8 JSON, with fields and entry keys in the order above. A `lines` entry is line, op, generation, history and before/after places: history is null or [epoch, generation, line, SHA-256] of this apply and line, and a place is [part, pos, predecessor, successor], with an empty string for no neighbour, or [] where the line is absent. Only an added line is absent before, and only a removed, cut, stale or undone line is absent after. A `pins` entry holds the pin records before and after, null when absent, and their two list indexes as `place`. A `revisions` ID is `item:`, `pin:`, `candidate:` or `line:` and the object's ID; before is null for an object without an earlier revision, and one object's revisions follow one another from apply to apply. An apply's changes are the IDs of its revisions, all of its generation; every entry of `saved`, `statuses`, `merges`, `lines`, `pins` and `conflicts` names one of them, and each is named; a line changed by several applies has an entry for each. The reader refuses any other file, including an unknown field, text in a list, applies out of order and a history reference to another epoch, generation or line, and that run is unlisted. Expiry, under the layer lease, deletes a log whose last apply is past retention together with its backup and temporary copies; an unreadable log, and a copy whose log is gone, go by their file's modification time. Nothing is read or deleted through a link: a linked run folder stops expiry, and a linked log or copy stays with its run.
 
+### Compaction check (TBL-122)
+
+One file per host session whose last compaction summary lacked parts of a handoff brief (SPEC-147). The compaction check hook writes it after Claude Code compacts the session; the session's next prompt hook, unless the host made the prompt, reads it, adds its one line and deletes it. A later compaction of the session replaces it, and a check that finds every part deletes it. Each check also deletes the project's compaction checks older than 7 days, and an unreadable one is deleted and noted in the failure log. It stays on the device, is never synced and goes into no request; it holds no word of the summary, only the names of the missing parts and the time.
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `at` | time | When the compaction check ran |
+| `missing` | list of `objective`, `facts`, `changes`, `checks`, `dead-ends`, `plan` and `done`, at least one, in this order | The parts of a handoff brief that the summary lacks; stage 06 lists the headings and labels that name each part (`check-1`) |
+
+It is written and deleted under the session's raw log lock, like the injection log, and through a new file and a move like every other rewrite. Like a notice, it skips the flush to disk and the backup: a lost file only leaves out one line of context.
+
 ## Writing and locks
 
 ### Appending
@@ -571,7 +592,7 @@ On Windows a move or a deletion fails while another process holds the file open.
 | Sync lock | `sync/sync.lock` | One sync | every minute | 10 minutes |
 | Curated layer lock | `projects/<project>/layer.lock` | One apply, forget, tombstone, pin, unpin, merge, dismiss or undo in the project, retention's rewrite or deletion of one raw log or injection log file, or the deletion of its memory | every 30 seconds | 2 minutes |
 | Notice counter lock | `projects/<project>/notices/conflict-counts.lock` | One durable conflict-counter reservation/update; layer writers acquire it after layer | not refreshed | 10 seconds |
-| Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, the last read and the move of a rewrite, or retention's last read and deletion of a file; also the session's injection log | not refreshed | 10 seconds (SPEC-007) |
+| Raw log lock | `projects/<project>/raw/<log>.lock` | One append with its marker, the last read and the move of a rewrite, or retention's last read and deletion of a file; also the session's injection log and compaction check | not refreshed | 10 seconds (SPEC-007) |
 | Log locks | `logs/usage.lock`, `logs/failures.lock`, `logs/hooks.lock` | One append | not refreshed | 10 seconds |
 
 - A lock is a file made with an exclusive create, which fails while the file is there. It holds the holder's process ID, the device ID, the time and a random token. The holder refreshes it by touching its modified time; the lock is stale once that time is older than the table allows. Staleness compares this device clock with the lock mtime, so keep the memory folder on a local disk: a forward clock jump or a network folder with a different server clock can make a live lease look stale; that holder discovers the missing token on its next check.
@@ -617,7 +638,8 @@ After acquisition, compare a fresh inventory with the originals, allowing only e
 
 - To the sync remote, while sync is on: the curated layer (TBL-012 to TBL-017) and the sync remote marker (TBL-018), nothing else (SPEC-027).
 - To Anthropic and OpenAI: what the AI calls of the functional spec send, all of it redacted: turns, the current state, the item list, items, prompts and search requests.
-- Never: raw log files (their redacted turns go only inside curator requests), the search index, the usage log, the failure log, the hook timings, the injection log, notices, the unprocessed turn markers, the curation record, the memory configuration, the sync record and the store record.
+- To the host only, as with the start summary and recall: the compaction brief, with the goal and next-action lines of the current state (SPEC-146). The plugin never stores or sends the host's compaction summary (SPEC-147).
+- Never: raw log files (their redacted turns go only inside curator requests), the search index, the usage log, the failure log, the hook timings, the injection log, compaction checks, notices, the unprocessed turn markers, the curation record, the memory configuration, the sync record and the store record.
 
 Line history, run logs, revision fences and conflict showing high-water never leave the device. The C3 design decides whether/how conflicts.json is shared and merged.
 
@@ -639,6 +661,7 @@ Line history, run logs, revision fences and conflict showing high-water never le
 | Usage log | until a purge | SPEC-037 |
 | Tombstones, project tombstones, removed current state lines and pin records | for good | SPEC-028, SPEC-029 |
 | Line history and run logs | the retention period, by each record/run time | SPEC-009, SPEC-144 |
+| Compaction checks | until the session's next prompt, at most 7 days | SPEC-147 |
 
 A change from the curator that passes a limit of an item is dropped, like a change that fails a check, and counted in the curation record (SPEC-016). A current state over its limit is shortened as SPEC-017 says.
 
@@ -684,12 +707,15 @@ Besides these records, the hooks and the memory skill read the project list (SPE
 | SPEC-034 | Pin or unpin an item | TBL-012, TBL-013, TBL-014, TBL-015, TBL-010, TBL-009 | TBL-014, TBL-010, TBL-009 |
 | SPEC-035 | Forget an item | TBL-012, TBL-013, TBL-014, TBL-007, TBL-016, TBL-009, TBL-119, TBL-120 | TBL-012, TBL-013, TBL-014, TBL-015, TBL-007, TBL-016, TBL-020, TBL-009, TBL-119, TBL-120 |
 | SPEC-036 | Turn memory off for a project | TBL-002 | TBL-002 |
-| SPEC-037 | Delete one project's memory | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | deletes TBL-007 to TBL-015, the search index and TBL-119 to TBL-121; without sync also deletes TBL-016; writes TBL-002, and with sync on TBL-017 |
+| SPEC-037 | Delete one project's memory | TBL-002, TBL-007, TBL-012, TBL-014, TBL-119, TBL-120, TBL-121 | deletes TBL-007 to TBL-015, the search index and TBL-119 to TBL-122; without sync also deletes TBL-016; writes TBL-002, and with sync on TBL-017 |
 | SPEC-038 | Delete all memory on the device | the memory store | deletes the memory store |
 | SPEC-039 | Share one memory store between both hosts | TBL-001 | none |
 | SPEC-143 | Show and settle conflict candidates | TBL-009, TBL-010, TBL-012, TBL-120 | TBL-009, TBL-010, TBL-120 |
 | SPEC-144 | Log each run | TBL-009, TBL-121 | TBL-009, TBL-121, TBL-004 |
 | SPEC-145 | Undo a run | TBL-009, TBL-012, TBL-013, TBL-014, TBL-015, TBL-016, TBL-017, TBL-119, TBL-120, TBL-121 | TBL-009, TBL-010, TBL-012, TBL-013, TBL-014, TBL-015, TBL-019, TBL-020, TBL-021, TBL-022, TBL-119, TBL-120, TBL-121, TBL-004 |
+| SPEC-146 | Give the host a handoff brief before compaction | TBL-001, TBL-002, TBL-012, TBL-013 | TBL-004, TBL-005 |
+| SPEC-147 | Check the summary after compaction | TBL-001, TBL-002, TBL-122 | TBL-122, TBL-004, TBL-005 |
+| SPEC-148 | Show where to read a source again | TBL-007, TBL-012, TBL-013 | none |
 
 Deleting a row of `index_items` (TBL-020) also deletes its rows in `index_vectors` and `index_terms` (TBL-021, TBL-022).
 
@@ -785,6 +811,7 @@ The functional spec left these to stage 05. Each can change at the checkpoint.
 8. The item list newest first by the deciding quote's date, in UTC.
 9. A lost curation record made again from the quotes and citations, which can curate turns twice; consolidation merges the duplicates.
 10. The human view: this file with its diagram, and a Korean copy in Notion with the tables as databases, instead of ERD Editor, the stage's default, since only the search index is SQL.
+11. From 2026-11-07, a compaction check that keeps only the names of the parts a compaction summary lacks, and only until the next prompt, so that the summary itself is never stored (SPEC-147); and dead ends and done conditions as marked lines of the blockers and next actions, so that the current state's parts and format stay as they are (REQ-228).
 
 ## For the checkpoint
 

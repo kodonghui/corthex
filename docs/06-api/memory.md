@@ -2,9 +2,9 @@
 
 [한국어](memory.ko.md)
 
-Stage 06 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec and the memory store before C1 is built; after that check the interfaces are frozen for the release, and a later breaking change needs the maintainer's decision. When this file and its Korean translation differ, this file is the source. The 2026-11-03 C2 additions cover line edits, conflict candidates, run logging and undo, adding API-151 to API-153. The schema-validator two-constant compatibility exception was approved on 2026-11-04.
+Stage 06 of CORTHEX's own project, for the `corthex-memory` plugin. Status: confirmed on 2026-10-27; the retained Git sync design is superseded by D3. The maintainer checks it together with the functional spec and the memory store before C1 is built; after that check the interfaces are frozen for the release, and a later breaking change needs the maintainer's decision. When this file and its Korean translation differ, this file is the source. The 2026-11-03 C2 additions cover line edits, conflict candidates, run logging and undo, adding API-151 to API-153. The 2026-11-07 additions about compaction add API-155 and API-156. The schema-validator two-constant compatibility exception was approved on 2026-11-04.
 
-Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039 and SPEC-143 to SPEC-145) and the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022 and TBL-119 to TBL-121), above all their notes for stage 06; the requirements in [docs/02-prd/memory.md](../02-prd/memory.md); and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
+Inputs: the functional spec in [docs/04-functional-spec/memory.md](../04-functional-spec/memory.md) (SPEC-001 to SPEC-039 and SPEC-143 to SPEC-148) and the memory store in [docs/05-erd/memory.md](../05-erd/memory.md) (TBL-001 to TBL-022 and TBL-119 to TBL-122), above all their notes for stage 06; the requirements in [docs/02-prd/memory.md](../02-prd/memory.md); and the glossary in [docs/01-domain/memory.md](../01-domain/memory.md), whose words this file keeps. The maintainer confirmed D1, D2, D4 and the seven requirement changes on 2026-10-27; D3 chose the HTTPS gateway and server in stage 02. The retained Git sync details have status `superseded (D3, 2026-10-27)` and need a replacement design before C3.
 
 > D3 design status: `superseded (D3, 2026-10-27)`. The Git sync proposal retained here was replaced by the confirmed D3 decision on 2026-10-27. It is historical material, not an implementation or execution plan. The HTTPS gateway and server sync design will be specified separately before C3. Local files and the SQLite search index remain the device store. This notice also covers sync-only parts of shared rows, configuration and examples; their C1/C2 parts remain confirmed.
 
@@ -33,14 +33,19 @@ Documents read on 2026-10-25:
 - Claude API: [effort](https://platform.claude.com/docs/en/build-with-claude/effort), [structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs), [streaming](https://platform.claude.com/docs/en/build-with-claude/streaming), [errors](https://platform.claude.com/docs/en/api/errors), [token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting), [pricing](https://platform.claude.com/docs/en/about-claude/pricing) and [API version 2026-10-21](https://platform.claude.com/docs/en/api/migration-2026-10-21).
 - OpenAI: [embeddings](https://developers.openai.com/api/docs/guides/embeddings), [text-embedding-3-small](https://developers.openai.com/api/docs/models/text-embedding-3-small) and [error codes](https://developers.openai.com/api/docs/guides/error-codes).
 
+Documents read on 2026-11-08, for the compaction hooks:
+
+- Claude Code [hooks](https://code.claude.com/docs/en/hooks): PreCompact and PostCompact match `manual` (`/compact`) and `auto` (the auto-compact window and idle compaction); PreCompact input has `trigger` and `custom_instructions`, PostCompact input `trigger` and `compact_summary`, the summary that the compaction wrote; when a PreCompact hook exits with 0 and does not block, its standard output becomes instructions for the compaction summary, to be kept under 10,000 characters per hook; exit code 2 or `decision: "block"` blocks a compaction, and a blocked automatic compaction can make the current request fail; PostCompact has no decision control.
+- Codex [hooks](https://developers.openai.com/codex/hooks): PreCompact and PostCompact input has `turn_id` and `trigger` and no summary, and their plain standard output is ignored; Codex records trust against each hook's hash, so new or changed hooks are skipped until the user trusts them.
+
 ## Interfaces
 
-Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at least one interface.
+Every behaviour of the functional spec, SPEC-001 to SPEC-039 and SPEC-143 to SPEC-148, is served by at least one interface.
 
 | ID | Name | Kind | Serves | Status |
 | --- | --- | --- | --- | --- |
-| API-001 | Session start hook | hook | SPEC-001, SPEC-005, SPEC-008, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-019, SPEC-021, SPEC-022, SPEC-024, SPEC-027, SPEC-039 | active |
-| API-002 | Prompt hook | hook | SPEC-001, SPEC-002, SPEC-004, SPEC-006, SPEC-007, SPEC-008, SPEC-023, SPEC-024, SPEC-039 | active |
+| API-001 | Session start hook | hook | SPEC-001, SPEC-005, SPEC-008, SPEC-009, SPEC-010, SPEC-011, SPEC-013, SPEC-019, SPEC-021, SPEC-022, SPEC-024, SPEC-027, SPEC-039, SPEC-148 | active |
+| API-002 | Prompt hook | hook | SPEC-001, SPEC-002, SPEC-004, SPEC-006, SPEC-007, SPEC-008, SPEC-023, SPEC-024, SPEC-039, SPEC-147, SPEC-148 | active |
 | API-003 | End-of-turn hook | hook | SPEC-001, SPEC-003, SPEC-004, SPEC-006, SPEC-007, SPEC-008, SPEC-010, SPEC-011, SPEC-013, SPEC-039 | active |
 | API-004 | Session end hook | hook | SPEC-001, SPEC-005, SPEC-006, SPEC-008, SPEC-010, SPEC-013, SPEC-039 | active |
 | API-005 | Memory worker | background process | SPEC-009, SPEC-010, SPEC-011, SPEC-012, SPEC-013, SPEC-015, SPEC-016, SPEC-017, SPEC-018, SPEC-019, SPEC-020, SPEC-027, SPEC-028, SPEC-029, SPEC-144 | active |
@@ -60,7 +65,7 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | API-019 | `resume` | command | SPEC-033, SPEC-018 | active |
 | API-020 | `list` | command | SPEC-025 | active |
 | API-021 | `search` | command | SPEC-025, SPEC-004 | active |
-| API-022 | `open` | command | SPEC-025, SPEC-020 | active |
+| API-022 | `open` | command | SPEC-025, SPEC-020, SPEC-148 | active |
 | API-023 | `pin` | command | SPEC-034 | active |
 | API-024 | `unpin` | command | SPEC-034 | active |
 | API-025 | `forget` | command | SPEC-035, SPEC-029 | active |
@@ -75,6 +80,8 @@ Every behaviour of the functional spec, SPEC-001 to SPEC-039, is served by at le
 | API-152 | `runs` | command | SPEC-144 | active |
 | API-153 | `undo` | command | SPEC-145, SPEC-012 | active |
 | API-154 | `migrate` | command | SPEC-039 | active |
+| API-155 | Compaction brief hook | hook | SPEC-146, SPEC-001, SPEC-008, SPEC-039 | active |
+| API-156 | Compaction check hook | hook | SPEC-147, SPEC-001, SPEC-008, SPEC-039 | active |
 
 ## Hooks
 
@@ -116,7 +123,35 @@ One script, `scripts/hook.py`, serves the four hooks, with the hook's name as it
 - The commands try `python3`, then `python`, then `py -3`, and `commandWindows` tries `python`, then `py -3`, as in 0.1.0, whose `windows-hook-check` workflow runs them on Windows. A hook always exits with 0, so a later interpreter runs only when an earlier one is missing.
 - The host timeouts only stop a hook that hangs; each hook keeps its own, shorter deadline. Claude Code gives SessionEnd hooks 1.5 seconds in all, and a plugin's `timeout` does not raise that budget (documented); Codex shortens a long SessionEnd timeout (observed: 10 to 3 seconds). The session end hook's 500 ms fits both. In a rare release failure, the session end hook can exceed Claude Code's 1.5 seconds and the host terminates it; only a lease left for takeover after its expiry remains.
 - `additionalContextLimit` is Codex's limit, in tokens, on the context a hook adds. Claude Code moves added context of more than 10,000 characters into a file (documented); the start summary stays under 8,000 bytes and a recall block under 600 tokens, so both stay inline in both hosts.
-- Not used: StopFailure, which only Claude Code has and which does not wait for its hook; a turn that ends in an API error keeps its prompt recorded without an answer. SubagentStop and the other subagent events, since subagent turns are not recorded (SPEC-003). PreCompact and PostCompact, since compaction summaries are not recorded. The tool events, since tool calls are not recorded.
+- Not used: StopFailure, which only Claude Code has and which does not wait for its hook; a turn that ends in an API error keeps its prompt recorded without an answer. SubagentStop and the other subagent events, since subagent turns are not recorded (SPEC-003). PreCompact and PostCompact in release 0.2.0; from release 0.3.0 the compaction hooks below use them, and compaction summaries are still not recorded. The tool events, since tool calls are not recorded.
+
+#### Compaction hooks from release 0.3.0
+
+| Hook | Claude Code event | Codex CLI event | Command | Host timeout | Deadline |
+| --- | --- | --- | --- | --- | --- |
+| Compaction brief hook (API-155) | PreCompact: `manual`, `auto` | PreCompact, where it does nothing | `hook.py pre-compact` | 5 s | 500 ms |
+| Compaction check hook (API-156) | PostCompact: `manual`, `auto` | PostCompact, where it does nothing | `hook.py post-compact` | 5 s | 300 ms |
+
+Release 0.3.0 adds these entries to `hooks/hooks.json`, in the form of the four above; until its activation the installed hooks stay those of release 0.2.0:
+
+```json
+{
+  "hooks": {
+    "PreCompact": [{"matcher": "manual|auto", "hooks": [{"type": "command",
+      "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" pre-compact || python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" pre-compact || py -3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" pre-compact",
+      "commandWindows": "python \"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py\" pre-compact; if ($LASTEXITCODE -ne 0) { py -3 \"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py\" pre-compact }",
+      "timeout": 5}]}],
+    "PostCompact": [{"matcher": "manual|auto", "hooks": [{"type": "command",
+      "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" post-compact || python \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" post-compact || py -3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py\" post-compact",
+      "commandWindows": "python \"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py\" post-compact; if ($LASTEXITCODE -ne 0) { py -3 \"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py\" post-compact }",
+      "timeout": 5}]}]
+  }
+}
+```
+
+- Only Claude Code gives these hooks what they need: it takes a PreCompact hook's standard output, when the hook exits with 0, as instructions for the compaction summary, and gives PostCompact hooks the summary as `compact_summary` (documented). Codex runs both events too, but ignores their plain output and gives no summary (documented), so in Codex both hooks end as soon as they have told the host: they print nothing and write nothing, not even a hook timing line.
+- Codex skips a new or changed hook until the user trusts it (documented). Until then these two do not run in Codex, which changes nothing, since they do nothing there.
+- Neither hook ever blocks a compaction: they never exit with 2 or print `decision`, since a blocked automatic compaction can make the host's request fail (documented).
 
 ### The hook input
 
@@ -133,8 +168,10 @@ Each hook reads its standard input whole, as bytes, and decodes it as strict UTF
 | `stop_hook_active` | end of turn | `true` when another hook made the agent go on; the answer then joins its turn (TBL-007) |
 | `reason` | session end | The host's reason, kept when it matches `^[a-z0-9_-]{1,64}$` |
 | `prompt_id`, `turn_id` | prompt, end of turn | Only to tell the host, below |
+| `trigger` | compaction brief and check | `manual` or `auto`; both are handled alike, and the value is not recorded |
+| `compact_summary` | compaction check | The summary that the host's compaction wrote; read only to look for the parts of a handoff brief (`check-1`), and never stored, logged or sent (SPEC-147). When it is missing or not a string, the outcome is `bad-input` and no compaction check is written |
 
-The hooks never read `transcript_path` (SPEC-003), `model`, `permission_mode`, `effort`, `session_title`, `background_tasks` or `session_crons`.
+The hooks never read `transcript_path` (SPEC-003), `model`, `permission_mode`, `effort`, `session_title`, `background_tasks`, `session_crons` or `custom_instructions`.
 
 Two things the Claude Code documents say that the hooks allow for: Claude Code can run the session start hook while the first prompt's hook runs, since it runs SessionStart hooks in the background and lets the user type, so a start boundary can follow the first prompt in a raw log; and a prompt that the user stops with Esc while the prompt hook runs has been recorded, and is recorded again when the user sends it again.
 
@@ -163,6 +200,8 @@ The session start hook and the prompt hook print at most one JSON object, in ASC
 
 `hookEventName` is `SessionStart` or `UserPromptSubmit`. The prompt hook prints nothing when it injects nothing, and the end-of-turn hook and the session end hook print nothing. Every hook exits with 0. On its error stream a hook prints at most one line, naming the class of an error that ended it. No hook ever prints `decision`, `continue`, `stopReason`, `systemMessage` or anything else that blocks, stops or continues the host's work (SPEC-008).
 
+From release 0.3.0 the compaction brief hook prints plain text instead: Claude Code adds a PreCompact hook's output to the compaction's instructions as it is, and reads output that starts with `{` and ends with `}` as hook JSON (documented). The text is UTF-8 with LF line breaks and starts with the brief's first line, never with `{` ([Compaction brief hook](#compaction-brief-hook-api-155)). The compaction check hook prints nothing.
+
 ### Blocks of injected memory
 
 Injected memory is one block (SPEC-024). Its first line is always:
@@ -180,6 +219,21 @@ Each item is one line:
 Its fields are the item's ID; its kind; who said it, `user decision` for a user decision and otherwise `user` or `agent`, from the deciding quote; the deciding quote's date in the device's local time; and the item's text. Turn Unicode Cc characters and line separators U+2028/U+2029 into spaces, collapse white space and trim it, then cut at a character boundary to fit 300 UTF-8 bytes, including the final `...` when cut. Every item line starts with `- ` and an ID, so nothing in an item's text can start a line or a block of its own; Claude Code also escapes a `<system-reminder>` tag in added context (documented). The first line states a fact rather than giving an order, as the Claude Code documents advise for added context.
 
 The formatter is the last guard for emitted metadata: item IDs and displayed citation IDs must be `i_` followed by 12 lowercase Crockford base32 characters, as in stage 05. Omit an item with an invalid ID, kind or deciding speaker; omit each invalid citation. These omissions do not count as left out for room. Before normalizing item/state text, replace unpaired surrogates with U+FFFD and preserve valid pairs, as in redaction. Formatting/direction characters (Cf) remain unchanged.
+
+#### Where to read a source again
+
+From release 0.3.0 an item line and a current state line can end with where to read their sources again (SPEC-148): ` | reread: ` and one to three pointers, separated by `, `.
+
+- A state line takes first the raw entries it cites, in citation order, then the commits and file paths in the deciding quotes of the items it cites, item by item. An item line takes its deciding quote's entry, then the commits and paths in that quote's words.
+- A word is a run of characters without white space, less the characters `"'()[]{}<>,;` and a final `.`, `:`, `!` or `?`. A commit is a word of 7 to 40 characters of `0-9a-f` with at least one digit and one letter. A path is a word that holds a `/` and no `://`, and whose last name has a `.` and an extension of 1 to 8 letters or digits.
+- Each pointer is at most 80 UTF-8 bytes, holds no control character, `|` or backtick, and is shown once per line, in its first place. Only current items of the project give pointers, and the start summary reads at most 30 item files for them. A pointer names a source and never copies its text: no other word of a quote is shown.
+- Pointers go before lines when room runs out: in the start summary each line's pointers are left out, from the last line of the block back, before any line (SPEC-021); a line that lost its pointers is not counted as left out. Recall does the same (below).
+- The agent opens an entry that a pointer names with `open` (API-022), and reads a commit or a path with its own tools.
+
+```text
+- i_7f3k2m9q4x1v | decision | user decision | 2026-10-24 | Keep raw logs on the device; only the curated layer is synced. | reread: e_5h2j8n3p0r6t, docs/05-erd/memory.md
+- Dead end: Polling the raw lock in a loop hangs on Windows. (i_2b8d0w5n6c3r) | reread: e_8m1k4r7t2w5y, 3f9a0c4, tests/test_memory_locks.py
+```
 
 The memory part of the start summary is the last section of the start summary, after the base:
 
@@ -206,7 +260,7 @@ Parts are separated by one blank line: `## Memory`, notices, the first line, `Pi
 Pass an unshortened base to `build_summary`: `build_context(..., limit=None)` supplies it. The formatter alone applies 0.1.0's shortening once, after fitting memory. A base already ending in the shortening marker is rejected. The default base-only call keeps its byte-identical 0.1.0 output.
 
 - First the notices ([Notices](#notices)), in table order, at most five whole notices whose rows total at most 600 UTF-8 bytes, counting each `- ` and terminating line break. Stop at the first notice that does not fit. The rest are counted in the last line of the notice group, `N more notices are in the memory status.`, even for N = 1. The heading and count line do not count toward 600 bytes. Without notices, the heading `Notices from the memory plugin:` is left out.
-- Then the block: the pinned items, in the order they were pinned, and the current state's lines by part (goal, decisions in force, work in progress, blockers, next actions), then by position and ID. Their labels are `Goal`, `Decision in force`, `Work in progress`, `Blocker`, `Next action`; normalize text to one line as for items, without the item's 300-byte cut, and append the IDs of up to three of the items it cites, in citation order. Only valid `i_` IDs are shown; raw-entry `e_` IDs are excluded. A part without lines is left out. With neither pins nor current state, put `Memory holds nothing for this project yet.` one blank line after the first line.
+- Then the block: the pinned items, in the order they were pinned, and the current state's lines by part (goal, decisions in force, work in progress, blockers, next actions), then by position and ID. Their labels are `Goal`, `Decision in force`, `Work in progress`, `Blocker`, `Next action`, and from release 0.3.0 `Dead end` for a blocker whose text starts with `Dead end:` and `Done when` for a next action whose text starts with `Done when:`, whose shown text then leaves out that marker and the white space after it (REQ-228); normalize text to one line as for items, without the item's 300-byte cut, and append the IDs of up to three of the items it cites, in citation order. Only valid `i_` IDs are shown there; raw-entry `e_` IDs are shown only as pointers ([below](#where-to-read-a-source-again)). A part without lines is left out. With neither pins nor current state, put `Memory holds nothing for this project yet.` one blank line after the first line.
 - The memory part's room is the smaller of 4,000 bytes and what remains below 8,000 bytes after the base and its separator (SPEC-021); a summary with memory is at most 7,999 bytes. Leave out current state lines one at a time: the last next action, then the last blocker, work in progress, decision in force and goal, and round again; then pinned items, the oldest pin first; never the notices. If anything was left out, end after a blank line with `Left out for room: N current state lines and M pinned items.`, counting this line in the room. If all rows went, keep the first line and this count, without the `nothing` line. Only if that still does not fit is the base shortened by 0.1.0's method, with a smaller limit. Base-only output keeps 0.1.0's 8,000-byte limit.
 
 The recall block of the prompt hook is the first line and up to five item lines, with nothing before or after them.
@@ -219,10 +273,12 @@ Each deadline counts from the start of the hook script, after the interpreter ha
 | --- | --- | --- |
 | Recording: waiting for the raw lock or store-record recovery lock | 50 ms after redaction ends; from recording start for a boundary | Each lock gets a first attempt even after expiry. A lock held by another process that cannot be acquired gives no entry and `lock-busy`. After the raw lease is acquired, finish the tail read, append and marker without deadline checks. Recording has no `deadline` outcome (TASK-060). |
 | The session start hook's memory part | 1,000 ms | The memory part is one line: `Memory could not be read in time.` |
-| The prompt hook | 900 ms | Recall stops, and nothing is injected |
+| The prompt hook | 900 ms | Recall stops, and nothing is injected; a compaction check not yet read waits for the next prompt |
 | The prompt's embedding (API-010) | the request ends 800 ms after the hook's start | Nothing is injected |
 | The end-of-turn hook | 300 ms | The trigger check and the worker's start are skipped; the next trigger tries again |
 | The session end hook | 500 ms | As for the end-of-turn hook |
+| The compaction brief hook | 500 ms | It prints nothing, and the compaction goes on without the brief |
+| The compaction check hook | 300 ms | It writes no compaction check, and the next prompt adds no line |
 
 Redaction and recording are attempted even when the whole-hook deadline has passed before those steps are reached; their time counts in the hook timing. Started redaction finishes: a long answer can take the end-of-turn hook past its deadline by up to about 450 ms for 512 KB in the current Linux/Windows Python 3.8/3.12 measurements ([Redaction](#redaction)), but its entry is still written. The whole-hook deadline skips only the table's recall, trigger check and worker start, or shortens start memory to its one-line fallback. The hook script imports only what recording needs and loads network and SQLite modules only for recall. Stage 12 measures whole hooks from outside, the interpreter's start included (REQ-011, REQ-034).
 
@@ -242,7 +298,7 @@ For an opportunistic hook diagnostic, an initial exclusive log-lease creation de
 2. When `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion, the hook prints the base and, only when the session's folder is in a project of the project list, adds `Memory could not be read: CORTHEX_MEMORY_HOME is not an absolute path.` under `## Memory`. It writes nothing and ends; the value is never shown. When the memory store does not exist, the hook prints the base and ends. When the store record is missing or cannot be read and no backup can be restored, or is of a newer format, or the memory configuration is not valid, it prints the base with one line under `## Memory` naming what is wrong ([Notices](#notices)), when the session's folder is in a project of the project list, and ends.
 3. Finds the session's project (SPEC-001). With no enabled project, it prints the base; when the folder is in a project of the project list, it then starts the memory worker for retention (step 8), since retention covers every project (SPEC-009, SPEC-036); and it ends.
 4. Appends a start boundary (SPEC-005), unless the folder or the boundaries are left out (SPEC-006).
-5. Builds the memory part (SPEC-021, SPEC-022), within 1,000 ms.
+5. Builds the memory part (SPEC-021, SPEC-022, SPEC-148), within 1,000 ms.
 6. Prints the base and the memory part, and flushes them.
 7. Deletes the stored notices it showed (TBL-010) and appends an injection log line with `where` `start` and the pinned items it showed (TBL-011).
 8. Starts the memory worker with `--reason start`, unless the project's curation lock is fresh.
@@ -257,11 +313,13 @@ Outcomes: `ok`; `left-out`, when the folder or the boundaries are left out, in w
 3. Redacts the prompt once (SPEC-004). When redaction raises an error, nothing is written or sent, and the failure log notes `redaction`.
 4. Records the prompt (SPEC-002), unless the folder or prompts are left out. A prompt that is empty once trimmed makes no entry.
 5. Recalls (SPEC-023) unless consent or the OpenAI memory key is missing, the recall threshold has no value, the redacted and trimmed prompt is shorter than `recall.skip` characters, the prompt is a command (`/` and a letter), or the search index is missing, being built, or built with another embedding model or vector length. It embeds the prompt (API-010), scores and picks items ([Recall](#recall)) and builds the recall block. Recall runs also where prompts are left out of recording (SPEC-006).
-6. Prints the recall block, if there is one.
-7. Appends an injection log line, also when it injects nothing (TBL-011).
-8. Appends its hook timing line.
+6. From release 0.3.0, reads the session's compaction check (TBL-122), when there is one (SPEC-147).
+7. Prints the compaction check's line, if any, then a blank line and the recall block, if there is one, as one added context. The line is `The last compaction summary has no <parts>; read the handoff record or the transcript before going on.`, the parts named as in [the compaction check](#compaction-check-hook-api-156) and joined by `, ` and a final ` or `. It is printed even when nothing is recalled.
+8. Deletes the compaction check that it printed, under the session's raw log lock.
+9. Appends an injection log line, also when it injects nothing (TBL-011).
+10. Appends its hook timing line.
 
-Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. Recall, including API-010 and SPEC-023, is active under D2 confirmed on 2026-10-27.
+Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. Recall, including API-010 and SPEC-023, is active under D2 confirmed on 2026-10-27. A host-made prompt ends at step 2, so it leaves a compaction check for the next prompt.
 
 ### End-of-turn hook (API-003)
 
@@ -282,10 +340,69 @@ Outcomes: `ok`, `left-out`, `no-answer`, `lock-busy`, `deadline`, `error`. The h
 
 Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. A session can end without this hook running (SPEC-005), so nothing depends on it alone: the next session start curates what is left.
 
+### Compaction brief hook (API-155)
+
+From release 0.3.0, in Claude Code, before the session is compacted (SPEC-146).
+
+1. Reads the input and tells the host. In Codex it ends there.
+2. Finds the session's project; with no enabled project, or without consent, it ends, having printed and written nothing.
+3. Reads the current state through the validity view (TBL-013): its goal lines and its next actions, in the order of the start summary.
+4. Builds the text: `brief-1` below, and when the state has a goal or a next action, its last line followed by the state lines, each as `- Goal: `, `- Next action: ` or `- Done when: ` and its text, normalized to one line as in the start summary, without cited IDs or pointers. The lines go whole, the goals first, while all of them, with their line breaks, stay under 1,500 characters; the next actions that do not fit are left out from the last one back, and then the goals that do not fit. With no state line, the last line of `brief-1` is left out too.
+5. Prints the text, which stays under 10,000 characters, and flushes it.
+6. Appends its hook timing line.
+
+It writes no raw entry, notice, injection log line or compaction check.
+
+Outcomes: `ok`, `deadline`, `error`. After a failure or its deadline it prints nothing, and the compaction goes on as it would without the plugin (SPEC-008).
+
+`brief-1`, the instructions that the hook gives the compaction, from the maintainer's draft of 2026-11-07, with item 6 asking for the done condition on a line of its own so that the check below can find it:
+
+```text
+Write the summary as a handoff brief for the next stretch, not a narrative.
+1. Objective: quote the user's current request word for word, then one line on the required result.
+2. Established facts: exact paths, commands, values and errors. Mark each as observed or unverified.
+3. Changes: each file changed or created, what changed, and whether it was checked.
+4. Checks: the exact checks run and their results, including failures.
+5. Dead ends: approaches that failed and should not be repeated.
+6. Remaining plan: next steps in order and the very next action, then a line that starts with "Done when:" and gives the condition for done.
+Keep the user's own decisions and instructions with their wording and time.
+If output was cut, name a narrow command or file range to read it again.
+Current memory state (do not restate; correct it only if the conversation contradicts it):
+```
+
+### Compaction check hook (API-156)
+
+From release 0.3.0, in Claude Code, after the session is compacted (SPEC-147).
+
+1. Reads the input and tells the host. In Codex it ends there.
+2. Finds the session's project; with no enabled project, or without consent, it ends, having written nothing.
+3. Looks in `compact_summary` for the seven parts of a handoff brief, by the rules of `check-1` below, without a model.
+4. Under the session's raw log lock: when parts are missing, writes the session's compaction check (TBL-122), the names of the missing parts and the time, replacing an earlier one; when none is missing, deletes the session's compaction check if there is one.
+5. Deletes the project's compaction checks of other sessions that are more than 7 days old, by their `at`, or by their file's time when they cannot be read, each under its session's raw log lock with one attempt; a busy one waits for a later check.
+6. Appends its hook timing line.
+
+It prints nothing, and no word of the summary goes into a file, a log line or a request.
+
+Outcomes: `ok`, `lock-busy`, `deadline`, `error`.
+
+`check-1`: each line of the summary, split at LF, CR LF or CR, is read in this form: in NFC and lower case; with every `#`, `*`, `_`, `` ` ``, `>` and `+` taken out; with each `-` and each run of white space made one space, and trimmed; and without a leading list number, up to three digits or one letter followed by `.` or `)` and a space. A part is there when such a line starts with one of its names, followed by the end of the line or by a character that is not a letter or a digit:
+
+| Part | Shown as | Names |
+| --- | --- | --- |
+| `objective` | objective | `objective`, `goal`, `current request`, `user request`, `task`, `목표`, `목적`, `현재 요청`, `사용자 요청` |
+| `facts` | established facts | `established facts`, `facts`, `findings`, `확인된 사실`, `사실`, `알아낸 것` |
+| `changes` | changes | `changes`, `changes made`, `files changed`, `changed files`, `바꾼 것`, `바꾼 파일`, `변경`, `변경 사항` |
+| `checks` | checks | `checks`, `checks run`, `tests`, `test results`, `verification`, `검사`, `검사 결과`, `테스트` |
+| `dead-ends` | dead ends | `dead ends`, `dead end`, `failed approaches`, `what failed`, `막힌 길`, `막다른 길`, `실패한 시도`, `실패한 접근` |
+| `plan` | remaining plan | `remaining plan`, `plan`, `next steps`, `remaining steps`, `남은 계획`, `계획`, `다음 단계`, `남은 일` |
+| `done` | done condition | `done when`, `done condition`, `condition for done`, `definition of done`, `끝나는 조건`, `완료 조건`, `완료 기준` |
+
+The names of a later version are another version, `check-2`, which the trial may add; the record keeps part names, not the names that matched.
+
 ### Codex trust and Windows
 
 - Codex runs a plugin's hooks only after the user trusts them in `/hooks` (observed with 0.1.0). Release 0.2.0 adds three hooks and changes the command of the fourth, so Codex users are likely to trust the hooks again after updating; until they do, nothing is recorded in Codex. The memory status shows when each hook last ran in each host, so a hook that never runs can be seen. Stage 12 checks what Codex asks after an update.
-- Windows: the commands above, as in 0.1.0. The output is ASCII-only JSON, so the console's code page cannot break it. Input outside ASCII under Codex on Windows has not been seen yet (Codex issue 23784); strict decoding turns such input into `bad-input`, never into a wrong entry.
+- Windows: the commands above, as in 0.1.0. The output is ASCII-only JSON, so the console's code page cannot break it. The compaction brief of release 0.3.0 is the one output that is not: its state lines can hold any text, so `windows-hook-check` checks that text outside ASCII reaches Claude Code intact through Git Bash and through PowerShell (TASK-113). Input outside ASCII under Codex on Windows has not been seen yet (Codex issue 23784); strict decoding turns such input into `bad-input`, never into a wrong entry.
 
 ## Memory worker (API-005)
 
@@ -481,7 +598,7 @@ An undo confirmation preview (outcome=confirm, including confirm-stale) requires
 | `resume` | API-019 | | yes, showing the failures | Clears the fault guard's stop (SPEC-033), and starts the memory worker when turns wait |
 | `list` | API-020 | `[--kind K] [--limit N]` | no | The item list (TBL-015), newest first, at most N lines, 200 by default |
 | `search` | API-021 | `<words> [--kind K] [--limit N] [--words-only]` | no | Searches the project's items (SPEC-025), 20 by default |
-| `open` | API-022 | `<item>... [--around N]` | no | Shows items with their quotes and provenance; with `--around`, up to N characters, 2,000 at most, of the raw log before and after each quote that this device holds |
+| `open` | API-022 | `<item or entry>... [--around N]` | no | Shows items with their quotes and provenance; with `--around`, up to N characters, 2,000 at most, of the raw log before and after each quote that this device holds. From release 0.3.0 an entry ID shows that raw log entry, when this device's raw log holds it (SPEC-148) |
 | `pin` | API-023 | `<item>` | no | Pins a current item (SPEC-034) |
 | `unpin` | API-024 | `<item>` | no | Unpins it (SPEC-034) |
 | `forget` | API-025 | `<item> [--with <item>]...` | yes | Forgets the item, and with `--with` the other items that quote the same raw text (SPEC-035) |
@@ -505,7 +622,7 @@ What each command's `data` holds, in brief; the result schema has every field, a
 - `status`: `store` (format, device, release, folder with the home folder as `~`, and whether it can be written), `configuration` (valid, or the first field that fails), `consent` (the version needed and the one given), `keys` (`present`, `missing` or `rejected`), `temporary`, `test_servers`, `projects` (each with its last curation, unprocessed turns and the oldest's time, stop, last consolidation, items by status and pins), `usage` (this month by model, and the models without a price), `failures` (the recent ones), `hooks` (for each hook in each host over 7 days: runs, median, 95th percentile, runs by outcome, and when it last ran), `sync`, `waits` (what waits for consent or a key) and `unreadable` (the parts whose files cannot be read).
 - `list`: `project`, `items` (item, kind, speaker, date and title), `more` (the number of lines left out).
 - `search`: `project`, `by` (`words`, or `both` for words and meaning), `reason` when it searched by words only (`asked`, `no-consent`, `no-key`, `index-not-ready` or `embedding-failed`), `results` (item, kind, status, speaker, date, title).
-- `open`: `project`, `items`, each with its kind, status, the item that superseded it or the items it merges, title, text, time saved, and its quotes with their entry, raw log, device, speaker, time and words, `held` (`here` when this device's raw log holds the entry, `deleted` when this device wrote it and it is gone, `elsewhere` when another device wrote it), and with `--around` the text `before` and `after` the quote. With `item-not-found`: `missing`, the arguments that name no item, and `matches`, the closest lines of the item list.
+- `open`: `project`, `items`, each with its kind, status, the item that superseded it or the items it merges, title, text, time saved, and its quotes with their entry, raw log, device, speaker, time and words, `held` (`here` when this device's raw log holds the entry, `deleted` when this device wrote it and it is gone, `elsewhere` when another device wrote it), and with `--around` the text `before` and `after` the quote. From release 0.3.0 also `entries`, one for each entry ID among the arguments that this device's raw logs of the project hold: the entry, its raw log, speaker, time and `text`, its first 2,000 characters with forgotten ranges as `[forgotten]`, and `whole`, `false` when the text was cut; TASK-112 adds `entries` to the result schema with the command. With `item-not-found`: `missing`, the arguments that name no item and no entry of this device, and `matches`, the closest lines of the item list.
 - `pin` and `unpin`: `project`, `item`, `pins`; with `item-not-found`, `matches`; with `item-not-current`, `current`, the item that superseded it.
 - `forget`: `project`, `item`, `with` (the items named with `--with`), `also` (other items that quote the same raw text, which stay unless named with `--with`), `state_lines` (the lines that go, with their text), `pinned` (those of the items that are pinned), `raw` (this device's entries whose quoted ranges are replaced, and the ranges kept whole for an item that stays) and `outside` (what memory cannot remove: `host-transcript`, `providers` and `devices-without-sync`); with `item-not-found`, `missing` and `matches`.
 - `delete-project`: `project`, `deleted` (items, entries and pins, counted) and `sync`. `purge`: `folder`, `projects`, `deleted` (items, entries and usage lines, counted) and `sync`. With `files-left`, both add `left`, the files that could not be deleted. For `purge` only, an unverifiable complete project list or individual count is `null`, and unverifiable sync is `unknown`; known empty values stay `[]`, `0` and `off`. The agent shows these as unknown, shows the exact `folder`, and asks before deleting that entire folder. Opaque newer or migrating layouts are not interpreted. Ordinary supported backup recovery and its lock-busy result remain in the common gates; no purge deletion or forced takeover occurs before a valid confirmation.
@@ -605,7 +722,7 @@ The three requests to the curator model, to curate (API-006), to merge a group (
     "effort": "xhigh",
     "format": {"type": "json_schema", "schema": {"type": "object", "...": "one of the three answer schemas"}}
   },
-  "system": "<the fixed instructions: curate-2, merge-2 or state-1>",
+  "system": "<the fixed instructions: curate-3, merge-2 or state-2>",
   "messages": [{"role": "user", "content": "<the request document>"}]
 }
 ```
@@ -658,7 +775,7 @@ State uses the TBL-013 validity view. A partial list takes state citations and p
 
 #### Instructions
 
-The three fixed texts are versioned in the code and named in each usage line (`instructions`): `curate-2`, `merge-2` and `state-1`. Their wording is code, which the trial may tune; it must state these rules, which stage 12's questions test.
+The three fixed texts are versioned in the code and named in each usage line (`instructions`): `curate-3`, `merge-2` and `state-2`, which TASK-111 makes from `curate-2` and `state-1` below by the additions after them; until then the code sends `curate-2` and `state-1`. Their wording is code, which the trial may tune; it must state these rules, which stage 12's questions test.
 
 `curate-2`:
 
@@ -677,6 +794,12 @@ The three fixed texts are versioned in the code and named in each usage line (`i
 `merge-2`: the items are data; merge only items of the group that say the same thing and leave the rest; a merged item's quotes are copies of its items' quotes, named by item and number, the deciding quote first, and a user quote first whenever one of the merged items is a user decision; title and text in the items' language and within the item limits. Name in conflicts pairs of current items of the group that cannot both hold, and never merge such a pair.
 
 `state-1`: the state and the item list are data; write a shorter current state in the same parts, each line citing items of the request or entries that the current state already cites, keeping the `keeps` IDs; under 3,000 bytes.
+
+`curate-3` is `curate-2` with one more rule (REQ-228):
+
+12. Keep in the current state what a later session must not lose: an approach that failed and should not be repeated, as a blocker whose text starts with `Dead end:`, and the condition for finishing the work, as the first next action, whose text starts with `Done when:`. Change or remove such a line only when the turns show that it no longer holds.
+
+`state-2` is `state-1` that also keeps the `Dead end:` blockers and the `Done when:` next action that the turns have not settled. The request document names the version in `instructions`, and the answer schemas do not change.
 
 #### Curate answers (API-006)
 
@@ -875,7 +998,7 @@ An item's words come from its kind, title, text and the words of its quotes. For
 
 - An item's score for a prompt is the cosine of the prompt's vector and the item's, plus 0.1 times the share of the prompt's identifiers (step 2 above) that are among the item's words (SPEC-023).
 - Only current items with a vector, of the session's project, take part, less the pinned items that the session's latest start summary showed and the items that its last three prompts injected, as the injection log says (TBL-011).
-- Items at or above the recall threshold are taken, best first, five at most, then dropped from the end until the safe estimate of the whole block is under 600 tokens (REQ-033).
+- Items at or above the recall threshold are taken, best first, five at most, then dropped from the end until the safe estimate of the whole block is under 600 tokens (REQ-033). From release 0.3.0 the lines' pointers are left out first, from the last line back, and only then items.
 - The index's `embedding_model` and `embedding_dims` must be the configuration's, or nothing is injected until the index is built again (stage 05).
 - Scoring is plain Python over the vectors of the project's current items; stage 12 measures the prompt hook with 1,000, 5,000 and 20,000 items against REQ-034.
 
@@ -1036,7 +1159,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | `not-enabled` | nothing for `off`, else refused | the commands for a project other than `on` | The project's enabled setting is false; `on` bypasses this gate so it can enable it. Consent is checked separately for actions that require it |
 | `no-consent` | refused | `setup` | The device has no consent to carry |
 | `confirm-stale` | confirm | the commands that ask first | The code does not match what would happen now; `data` and `confirm` are new |
-| `item-not-found` | refused | `open`, `pin`, `unpin`, `forget` | No such item; `data.matches` holds the closest lines of the item list |
+| `item-not-found` | refused | `open`, `pin`, `unpin`, `forget` | No such item, or for `open` no such entry in this device's raw logs; `data.matches` holds the closest lines of the item list |
 | `item-not-current` | refused | `pin` | The item is superseded or withdrawn; `data.current` names the item that superseded it, if any |
 | `pin-no-room` | refused | `pin` | The start summary would not fit; `data.pins` lists the pins |
 | `folder-outside` | refused | `leave-out` | The folder is outside the project; `data.outside` names it |
@@ -1059,7 +1182,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 
 None. Format 1 is the first format of the memory store and of the sync remote, and release 0.1.0 has no memory. For users, release 0.2.0 still changes what the plugin does: it adds three hooks, which Codex users may need to trust again; once memory is turned on, it records conversation text; and it calls the Anthropic and OpenAI APIs and Git, so the manifests' description, which says that the plugin makes no network calls, changes in C1. The base of the start summary stays as in 0.1.0.
 
-C2 implements curate-2 line edits, merge-2 conflicts and store format 2; state-1 remains unchanged. The shared result schema keeps existing C1 results valid through optional new fields, with the packaged copy and validator hash/command constants synchronized. Actual C2 command dispatch is added in its implementation tasks.
+C2 implements curate-2 line edits, merge-2 conflicts and store format 2; state-1 remains unchanged. From the 2026-11-07 additions, release 0.3.0 also adds the PreCompact and PostCompact hooks, which Codex users may be asked to trust although they do nothing in Codex; four optional fields of a curate usage line (TBL-003); and `entries` in the result of `open`. Nothing that C1 wrote changes. The shared result schema keeps existing C1 results valid through optional new fields, with the packaged copy and validator hash/command constants synchronized. Actual C2 command dispatch is added in its implementation tasks.
 
 ## Changes to earlier stages
 
@@ -1074,6 +1197,8 @@ C2 implements curate-2 line edits, merge-2 conflicts and store format 2; state-1
 - New rules, for the checkpoint: prompts that the host makes are not recorded (SPEC-002), a decision quoted from pasted text is dropped (SPEC-016), and an invalid memory configuration turns memory off (TBL-002).
 
 The 2026-11-03 C2 additions connect TERM-135 to TERM-138, REQ-219 to REQ-225, FL-117, SPEC-143 to SPEC-145, and TBL-119 to TBL-121 with the format-2 revision/recovery contracts. Stages 10 and 12 bind command outcomes and the new criteria to tasks and not-run cases.
+
+The 2026-11-07 additions about compaction connect REQ-226 to REQ-229, SPEC-146 to SPEC-148 and TBL-122 to API-155 and API-156, and extend the deadline table, the blocks of injected memory, the prompt hook, `open` and the curator's instructions.
 
 ## Choices this stage made
 
@@ -1090,6 +1215,7 @@ The functional spec and the memory store left these to stage 06. Each can change
 9. Host-made prompts left out of recording, and decisions quoted from pasted text dropped.
 10. A sync remote that holds one commit without a parent, replaced by a push with a lease.
 11. Search that joins words and meaning by their ranks, and recall by the cosine with a small bonus for identifiers.
+12. From 2026-11-07: compaction hooks in Claude Code only, since Codex gives them neither a way to add instructions nor the summary; plain text for the brief; a check by fixed names rather than a model, so that the summary goes nowhere; and pointers that name a source without copying it.
 
 ## For the checkpoint
 
@@ -1113,7 +1239,7 @@ The maintainer checks this file together with the functional spec and the memory
 From the release steps of the functional spec:
 
 - C1, recording and the start summary: API-001; API-002 and API-003 without recall and triggers; API-004; the memory worker (API-005) for retention and cleanup only; API-016, API-017, API-018, API-027, API-028, API-029 and API-032.
-- C2, curation and recall: recall in API-002, the triggers in API-003 and API-004, curation and consolidation in API-005, API-006 to API-012, API-019 to API-025, API-026 under the approved REQ-194, and API-031.
+- C2, curation and recall: recall in API-002, the triggers in API-003 and API-004, curation and consolidation in API-005, API-006 to API-012, API-019 to API-025, API-026 under the approved REQ-194, and API-031; from the 2026-11-07 additions, API-155, API-156, the compaction check's line in API-002, the pointers and `open` of entries.
 - C3, sync: API-013, API-014, API-015 and API-030.
 
 ### Stage 12: QA
@@ -1125,6 +1251,7 @@ From the release steps of the functional spec:
 - Against the real APIs, with the user's keys and few calls: that the three answer schemas are accepted, that a refusal and a cut answer are logged with their codes, and the usage lines' tokens against each provider's console.
 - Before C2, on the trial's sample: the recall threshold, both token estimates in English and in Korean against the token counting endpoint, medium, high and xhigh effort, and 512 against 1,536 numbers per vector.
 - The prompt hook with 1,000, 5,000 and 20,000 items (REQ-034).
+- The compaction hooks in Claude Code with `/compact` and an automatic compaction, on Linux, macOS and Windows through Git Bash and PowerShell, and in Codex, where they do nothing.
 - A host that keeps the memory keys from hooks (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`): the notice.
 - The examples in [memory-examples.json](memory-examples.json) as fixtures of the tests.
 
