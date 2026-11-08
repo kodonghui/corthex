@@ -1,0 +1,247 @@
+"""API-005 step 6: keep a project's search index and embed its current items (TASK-082).
+
+The memory worker calls `keep` as its step 6, under the project's curation
+lease. For an enabled project with consent it takes the layer lease to build
+the index again when it is missing, unreadable or obsolete (TASK-081), or else
+to make its rows match the canonical items: an item whose row is missing or
+differs is written again, and the rows of items that are gone or private are
+deleted. This also repairs what a stopped writer
+left, such as the row of an item that a stopped undo made current again
+(TASK-108).
+
+With the OpenAI memory key it then embeds every current item without a vector
+(API-011): the item's kind, text and the words of its quotes, joined by line
+breaks, which `model_embed` redacts and cuts, in requests of at most 100 texts
+and 200,000 bytes. The requests go without the layer lease; before each one the
+step takes it to read the curation record's fence again, and when a forget, an
+undo or a tombstone has moved it, it reads the remaining items again, so an
+item forgotten before a request is never in it. A vector is written under the
+layer lease only while its item is still current, unchanged and not private,
+and the index still has the embedding model and vector length that made it. A
+failed request is noted in the failure log with its code, and its items stay
+without a vector, found by words, until a later step 6; a lasting failure ends
+the step. Nothing calls this module before the 0.3.0 activation.
+"""
+import contextlib
+from dataclasses import dataclass
+import os
+import sqlite3
+
+from . import (base, clock, configuration, curation_worker, fence_plan, index_io, item_io, item_types, locks,
+               model_access, model_client, model_embed, revision_io, worker_support)
+
+RESERVE = curation_worker.RESERVE   # no request starts in the run's last seconds
+_BREAKS = curation_worker._BREAKS + (sqlite3.Error,)
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """Why step 6 ended (done, configuration, consent, disabled, deleted, key, failed, stale, busy,
+    deadline, lost-lock or error) and what it did."""
+    reason: str
+    rebuilt: object  # why the index was built again (index_io.ensure), or None
+    written: tuple   # the items whose rows were written again
+    removed: tuple   # the items whose rows were deleted
+    embedded: tuple  # the items that got a vector
+    requests: int    # the embedding requests sent, each with its own attempts
+    failed: tuple    # the failed requests' codes, in order
+
+
+def text(item):
+    """What an item's embedding is made from: its kind, text and the words of its quotes (TC-141)."""
+    return '\n'.join([item['kind'], item['text']] + [quote['words'] for quote in item['quotes']])
+
+
+@contextlib.contextmanager
+def _layer(memory, root, deadline, step):
+    with memory.lease(root / 'layer.lock', 'layer', deadline, step,
+                      acquire_deadline=min(deadline, clock.now() + curation_worker.LAYER_WAIT)) as lease:
+        yield lease
+
+
+def _gate(memory, project, deadline):
+    """Step 6's conditions: (None, the configuration), or (why the step ends, None)."""
+    try:
+        settings = memory.configuration(memory.note, deadline=min(
+            deadline, clock.now() + worker_support.OPERATION_SECONDS))
+    except configuration.ConfigurationInvalid:
+        return 'configuration', None
+    if not settings.consented():
+        return 'consent', None
+    if not settings.enabled(project):
+        return 'disabled', None
+    return None, settings
+
+
+def _proof(memory, root, deadline):
+    """Under the layer lease: the fence proof, and the check that it and both leases still hold."""
+    expected = fence_plan.snapshot(revision_io.read(memory, root, deadline))
+    check, _ = item_io._checked(memory, root, expected, deadline, curator=True)
+    return expected, check
+
+
+def _opened(memory, root, model, dims):
+    """The index to read and write, or None when it is missing or no longer made with model and dims."""
+    connection = index_io.open_index(memory, root)
+    if connection is None:
+        return None
+    if index_io.state(connection, model=model, dims=dims) is not None:
+        connection.close()
+        return None
+    return connection
+
+
+def _rows(memory, root, deadline, model, dims, at):
+    """Under the layer lease: the index built again or its rows made to match the items.
+
+    Every check that a lease or the fence still holds runs before and after the
+    reading and before each write; reading the items itself checks only the
+    deadline, since no other writer changes them while this lease is held.
+    """
+    with _layer(memory, root, deadline, 'index'):
+        expected, check = _proof(memory, root, deadline)
+        rebuilt = index_io.ensure(memory, root, expected, deadline, model=model, dims=dims, when=at)
+        items = item_io._items(memory, root, deadline, lambda: memory.check(deadline))
+        check()
+        connection = _opened(memory, root, model, dims)
+        if connection is None:
+            raise index_io.IndexUnavailable()
+        try:
+            written, removed = ((), ()) if rebuilt is not None else index_io.sync(connection, items)
+            check()
+            _, vectors = index_io.rows(connection)
+        finally:
+            connection.close()
+        check()
+    pending = [item for item in items if item['status'] == 'current' and item['id'] not in vectors]
+    return rebuilt, tuple(written), tuple(removed), pending, expected
+
+
+def _still(memory, root, deadline, items):
+    """Under the layer lease: those of the items that are still current, unchanged and not private."""
+    kept = []
+    for item in items:
+        path = root / 'layer/items' / (item['id'] + '.json')
+        if item_io._private(memory, root, item['id']) or memory.fence.check(path) is None:
+            continue
+        value = item_io._record(memory, path, item_types.parse_item, deadline, lambda: memory.check(deadline))
+        if value['id'] == item['id'] and value['status'] == 'current' and text(value) == text(item):
+            kept.append(item)
+    return kept
+
+
+def _fresh(memory, root, deadline, items, expected):
+    """Before a request, under the layer lease: the items still to embed, and the fence proof.
+
+    When a forget, an undo or a tombstone has moved the fence since `expected`,
+    every remaining item is read again.
+    """
+    with _layer(memory, root, deadline, 'embed'):
+        proof, check = _proof(memory, root, deadline)
+        if proof != expected:
+            items = _still(memory, root, deadline, items)
+        check()
+    return items, proof
+
+
+def _store(memory, root, deadline, model, dims, batch, vectors):
+    """Under the layer lease: the vectors of the batch's items that may still have one; the items written.
+
+    An index that is gone, or was built again with another model or vector
+    length meanwhile, takes none of them: the step is then stale.
+    """
+    with _layer(memory, root, deadline, 'embed'):
+        _, check = _proof(memory, root, deadline)
+        kept = {item['id'] for item in _still(memory, root, deadline, batch)}
+        check()
+        connection = _opened(memory, root, model, dims)
+        if connection is None:
+            raise fence_plan.Stale()
+        try:
+            check()
+            written = index_io.put_vectors(connection, [(item['id'], vector) for item, vector in zip(batch, vectors)
+                                                        if item['id'] in kept])
+        finally:
+            connection.close()
+        check()
+    return tuple(written)
+
+
+def keep(memory, project, owner, deadline, *, when=None):
+    """Keep the project's index and embed its current items, under the caller's tracked curation lease.
+
+    `memory` is the format-2 store binding, `owner` the project's curation
+    lease that the caller took through `memory.lease` and releases, and
+    `deadline` the run's absolute monotonic end. `when` fixes the time that a
+    rebuild records, for tests. Returns why the step ended and what it did.
+    """
+    root = memory.folder / 'projects' / base.project_folder_name(project)
+    done = {'rebuilt': None, 'written': (), 'removed': (), 'embedded': (), 'requests': 0, 'failed': ()}
+    step = 'index'
+
+    def end(reason):
+        return Outcome(reason, **done)
+
+    def check():
+        memory.check(deadline, (owner,))
+
+    try:
+        curation_worker._owned(memory, root, owner)
+        check()
+        reason, settings = _gate(memory, project, deadline)
+        if reason is not None:
+            return end(reason)
+        if curation_worker._deleted(memory, root):
+            return end('deleted')
+        model, dims = settings.values['models']['embedding'], settings.values['models']['dims']
+        done['rebuilt'], done['written'], done['removed'], pending, expected = _rows(
+            memory, root, deadline, model, dims, base.utc_time(when))
+        step = 'embed'
+        if not pending:
+            return end('done')
+        try:
+            credentials = model_access.Credentials.read()
+            if credentials.headers('openai') is None:
+                return end('key')
+        except ValueError:
+            return end('key')
+        prepared = model_embed.prepare([text(item) for item in pending], credentials=credentials,
+                                       environment=dict(os.environ))
+        remaining = list(zip(pending, prepared))
+        while remaining:
+            curation_worker._left(deadline)
+            kept, expected = _fresh(memory, root, deadline, [item for item, _ in remaining], expected)
+            kept = {item['id'] for item in kept}
+            remaining = [pair for pair in remaining if pair[0]['id'] in kept]
+            if not remaining:
+                break
+            _, stop = model_embed.batches([sent for _, sent in remaining])[0]
+            batch, remaining = [item for item, _ in remaining[:stop]], remaining[stop:]
+            result = model_embed.embed(memory, project=project, call='embed-items',
+                                       texts=[text(item) for item in batch], config=settings.document,
+                                       check=check, deadline=deadline - RESERVE)
+            done['requests'] += 1
+            failure = result.failure
+            if failure is not None:
+                done['failed'] += (failure.code,)
+                memory.note(failure.code, step='embed')
+                if failure.lasting:
+                    return end('failed')
+                if failure.code == 'timeout' and clock.now() >= deadline - RESERVE:
+                    raise locks.LockBusy()  # the run's own time ran out, not the request's
+                continue
+            done['embedded'] += _store(memory, root, deadline, model, dims, batch, result.vectors)
+        return end('done')
+    except locks.LostLock:
+        memory.note(locks.LostLock(), step=step)
+        return end('lost-lock')
+    except fence_plan.Stale:
+        # The project was deleted, or its index replaced, while the step held no lease.
+        return end('stale')
+    except locks.LockBusy:
+        return end('deadline' if clock.now() >= deadline - RESERVE else 'busy')
+    except model_client.MissingKey:
+        return end('key')
+    except _BREAKS as error:
+        memory.note(error, step=step)
+        return end('error')

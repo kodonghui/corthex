@@ -3,9 +3,10 @@
 The index is derived data in projects/<project>/index.db. It is never migrated
 or synced: a file SQLite cannot read, or one of another version, schema, word
 splitting, embedding model or vector length, is deleted and built again from the
-canonical items under the project's layer lease. Vectors (TBL-021) belong to
-TASK-082; an item without one is found by words only. No hook or command calls
-this module yet.
+canonical items under the project's layer lease. `sync` makes the rows match
+the items again, and `put_vectors` writes the embeddings (TBL-021) that the
+memory worker's step 6 makes (TASK-082); an item without one is found by words
+only. No hook or command calls this module yet.
 """
 from collections import Counter
 import math
@@ -166,14 +167,20 @@ def state(connection, *, model, dims):
     return None if 'built' in meta else 'building'
 
 
+def _row(item):
+    """An item's index_items fields after its ID, and how often each of its words occurs."""
+    found = item_words(item)
+    deciding = item['quotes'][0]
+    return (item['kind'], item['status'], deciding['speaker'], deciding['said'], len(found)), dict(Counter(found))
+
+
 def put(connection, items):
     """Write the word rows of items, keeping the vector of an item already indexed."""
-    rows = []
-    for item in items:
-        found = item_words(item)
-        deciding = item['quotes'][0]
-        rows.append((item['id'], (item['kind'], item['status'], deciding['speaker'], deciding['said'], len(found)),
-                     sorted(Counter(found).items())))
+    _write(connection, [(item['id'],) + _row(item) for item in items])
+
+
+def _write(connection, rows, stale=(), gone=()):
+    """In one transaction: write rows, delete the vectors of `stale` and every row of `gone`."""
     connection.execute('BEGIN IMMEDIATE')
     try:
         for item, fields, counts in rows:
@@ -182,11 +189,64 @@ def put(connection, items):
                 connection.execute('INSERT INTO index_items VALUES (?, ?, ?, ?, ?, ?)', (item,) + fields)
             connection.execute('DELETE FROM index_terms WHERE item = ?', (item,))
             connection.executemany('INSERT INTO index_terms VALUES (?, ?, ?)',
-                                   [(term, item, count) for term, count in counts])
+                                   [(term, item, count) for term, count in sorted(counts.items())])
+        connection.executemany('DELETE FROM index_vectors WHERE item = ?', [(item,) for item in stale])
+        connection.executemany('DELETE FROM index_items WHERE item = ?', [(item,) for item in gone])
         connection.execute('COMMIT')
     except BaseException:
         _rollback(connection)
         raise
+
+
+def rows(connection):
+    """What the index holds, read at once: ({item: (fields, counts)}, the items that have a vector)."""
+    connection.execute('BEGIN')
+    try:
+        found = {row[0]: (tuple(row[1:]), {}) for row in connection.execute(
+            'SELECT item, kind, status, speaker, said, terms FROM index_items')}
+        for item, term, count in connection.execute('SELECT item, term, count FROM index_terms'):
+            if item in found:
+                found[item][1][term] = count
+        vectors = {item for (item,) in connection.execute('SELECT item FROM index_vectors')}
+    finally:
+        if connection.in_transaction:
+            connection.execute('COMMIT')
+    return found, vectors
+
+
+def sync(connection, items):
+    """Make the rows match the canonical items: (the items written again, the items whose rows went).
+
+    An item whose row is missing or differs is written again, losing its vector
+    when its words changed; the rows of every item not given are deleted, and
+    the write-ahead log emptied as after a forget.
+    """
+    found, _ = rows(connection)
+    wanted = {item['id']: _row(item) for item in items}
+    changed = [(item,) + value for item, value in sorted(wanted.items()) if found.get(item) != value]
+    stale = [item for item, _, counts in changed if item in found and found[item][1] != counts]
+    gone = sorted(set(found) - set(wanted))
+    if changed or gone:
+        _write(connection, changed, stale, gone)
+    if gone:
+        connection.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    return [item for item, _, _ in changed], gone
+
+
+def put_vectors(connection, vectors):
+    """Write [(item, vector)] for the items that the index holds, in one transaction; the items written."""
+    written = []
+    connection.execute('BEGIN IMMEDIATE')
+    try:
+        for item, vector in vectors:
+            if connection.execute('INSERT OR REPLACE INTO index_vectors SELECT item, ? FROM index_items '
+                                  'WHERE item = ?', (vector, item)).rowcount:
+                written.append(item)
+        connection.execute('COMMIT')
+    except BaseException:
+        _rollback(connection)
+        raise
+    return written
 
 
 def _rollback(connection):

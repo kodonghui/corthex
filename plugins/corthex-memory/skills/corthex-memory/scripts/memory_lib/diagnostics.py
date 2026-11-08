@@ -23,6 +23,11 @@ OUTCOMES = {"ok", "left-out", "no-answer", "lock-busy", "deadline", "error"}
 CODES = {"bad-input", "unknown-host", "no-project-list", "project-clash", "lock-busy",
          "deadline", "damaged-line", "future-entry", "restored", "redaction", "worker-start",
          "configuration-invalid"}
+# The model calls' codes and the providers' error types (stage 06), which TBL-004 also allows.
+MODEL = {"refusal", "max-tokens", "empty-answer", "bad-answer", "bad-vector", "timeout", "network",
+         "insufficient_quota", "invalid_request_error", "authentication_error", "billing_error",
+         "permission_error", "not_found_error", "conflict_error", "request_too_large", "rate_limit_error",
+         "api_error", "timeout_error", "overloaded_error"}
 EXCEPTIONS = {value: name for name, value in vars(builtins).items()
               if isinstance(value, type) and issubclass(value, Exception) and value.__name__ == name}
 PROJECT = re.compile(r"[a-z0-9][a-z0-9-]{0,59}\Z")
@@ -35,7 +40,7 @@ def error_kind(error):
             return error
         if error in ("LockBusy", "LostLock"):
             return {"LockBusy": "lock-busy", "LostLock": "lost-lock"}[error]
-        return error if error in CODES or error in EXCEPTIONS.values() else None
+        return error if error in CODES or error in MODEL or error in EXCEPTIONS.values() else None
     if isinstance(error, configuration.ConfigurationInvalid):
         return "configuration-invalid"
     if isinstance(error, locks.LockBusy):

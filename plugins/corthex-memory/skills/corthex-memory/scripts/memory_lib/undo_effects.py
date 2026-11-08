@@ -28,8 +28,8 @@ kind `undo` that names the run it reverses, and it works in this order:
    restored with its ID; and last the restored lines' markers marked restored.
 5. The item list as it ends, one notice for each pin that the undo moves
    (SPEC-034) and the search index rows of the items that became current. The
-   index's files go when its rows cannot be written, so that the next curation
-   builds it again.
+   index's files go when its rows cannot be written, so that step 6 of the
+   memory worker builds it again (TASK-082).
 6. The new run's log (TBL-121), with each change's before and after, the
    history records that it appended and what it kept and why, and its attempt
    in the curation record. A log that cannot be written leaves the inverse in
