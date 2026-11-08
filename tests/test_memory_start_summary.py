@@ -518,7 +518,8 @@ class StartSummaryTest(unittest.TestCase):
 
     def test_injection_lines_are_checked_strictly(self):
         item, entry = ident('i'), ident('e')
-        good = dict(at=AT, session=SESSION, where='prompt', prompt=entry, items=[item], scores=[0.5])
+        good = dict(at=AT, session=SESSION, where='prompt', prompt=entry, outcome='injected', items=[item],
+                    scores=[0.5])
         self.assertEqual(injection_log.parse_line(injection_log.line_bytes(good)), good)
         for change in (dict(where='start'), dict(scores=[0.5, 0.4]), dict(scores=[float('nan')]),
                        dict(scores=[True]), dict(items=[item, item], scores=[1, 1]), dict(prompt=item),

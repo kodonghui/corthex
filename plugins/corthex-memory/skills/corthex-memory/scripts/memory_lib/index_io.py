@@ -142,11 +142,13 @@ def connect(path, create=False, timeout=1.0):
     return connection
 
 
-def state(connection, *, model, dims):
+def state(connection, *, model, dims, pages=True):
     """None when the index can be used, otherwise why it must be built again.
 
     SQLite's quick check reads every page, so a damaged table that the schema
     and index_meta do not show is found here rather than by a later search.
+    Recall, within the prompt hook's time, leaves it out with `pages=False`; a
+    damaged page then fails the read that meets it.
     """
     try:
         if connection.execute('PRAGMA user_version').fetchone()[0] != VERSION:
@@ -154,7 +156,7 @@ def state(connection, *, model, dims):
         if _schema(connection) != schema():
             return 'schema'
         meta = dict(connection.execute('SELECT name, value FROM index_meta').fetchall())
-        if connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+        if pages and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
             return 'malformed'
     except sqlite3.DatabaseError:
         return 'malformed'
@@ -315,14 +317,17 @@ def _regular(memory, path):
     return info
 
 
-def open_index(memory, root):
-    """Open the project's index to read and write, or None when it is missing."""
+def open_index(memory, root, timeout=1.0):
+    """Open the project's index to read and write, or None when it is missing.
+
+    `timeout` bounds SQLite's wait for a lock that another connection holds.
+    """
     path = Path(root) / 'index.db'
     for name in ('index.db',) + tuple('index.db' + side for side in _SIDES):
         _regular(memory, Path(root) / name)
     if _regular(memory, path) is None:
         return None
-    return connect(path)
+    return connect(path, timeout=timeout)
 
 
 def rebuild(memory, root, expected, deadline, *, model, dims, when):
