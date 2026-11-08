@@ -75,7 +75,7 @@ def processed(memory, root, deadline):
     """
     root = Path(root)
     quoted = {}
-    for value in request_inputs.layer(root).items.values():
+    for value in request_inputs.layer(root, lambda path: memory.fence.read(path, deadline)).items.values():
         for quote in value['quotes']:
             quoted.setdefault(quote['log'], set()).add(quote['entry'])
     state = state_types.parse_state(memory.fence.read(root / 'layer' / 'state.json', deadline))

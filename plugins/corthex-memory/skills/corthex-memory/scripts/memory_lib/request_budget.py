@@ -12,7 +12,9 @@ are API-009's:
    then the items that rank highest by words for the batch's turns, or the
    newest items when the index cannot be read. Nothing joins that would pass
    40,000. Any form but `full` makes consolidation due at once.
-2. Whole turns join, oldest first, while the working estimate stays under 97,000.
+2. Whole turns join, oldest first across all sessions, while the working
+   estimate stays under 97,000. A session's turns go in one block, in seq
+   order, and the blocks go in the order of their first turn.
 3. A request whose safe estimate is 60,000 or less goes without counting.
 4. Any other is counted. A count of 99,000 or less goes; a higher one loses its
    newest turns until its working estimate is lower by the excess and a tenth
@@ -38,6 +40,7 @@ Only the curation worker (TASK-088) calls this module, and no hook or command
 reaches the worker before the 0.3.0 activation.
 """
 from dataclasses import dataclass
+import heapq
 import json
 import re
 import sqlite3
@@ -494,8 +497,10 @@ def _request(source, turns, part, counted, counts, spans=None):
 def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions='curate-2'):
     """Size the next curate request of a batch.
 
-    `sessions` are curator_document sessions whose turns are unprocessed, in
-    time order; `count(source)` gives API-009's count of a request document, or
+    `sessions` are curator_document sessions whose turns are unprocessed;
+    their turns are taken oldest first across all of them by their first
+    entry's time, each session's in seq order and, at the same time, in the
+    order of `sessions`. `count(source)` gives API-009's count of a request document, or
     None when counting fails; `rank(text)` gives item IDs best first by the
     search index, and may raise when the index cannot be read.
     """
@@ -503,7 +508,8 @@ def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions=
         raise ValueError('invalid curate request instructions')
     if not callable(count) or rank is not None and not callable(rank):
         raise TypeError('memory request counting required')
-    units = [(session, turn) for session in sessions for turn in session['turns']]
+    units = list(heapq.merge(*([(session, turn) for turn in session['turns']] for session in sessions),
+                             key=lambda unit: min(entry['at'] for entry in unit[1]['entries'])))
     if not units:
         raise ValueError('no unprocessed turns')
     base = fixed(instructions, schema)
@@ -516,12 +522,11 @@ def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions=
     position = {id(turn): index for index, (_, turn) in enumerate(units)}
 
     def grouped(chosen):
-        sessions_found = []
+        # One block per session, in the order of its first chosen turn; dicts keep that order.
+        found = {}
         for session, turn in chosen:
-            if not sessions_found or sessions_found[-1][0] is not session:
-                sessions_found.append((session, []))
-            sessions_found[-1][1].append(turn)
-        return sessions_found
+            found.setdefault(id(session), (session, []))[1].append(turn)
+        return list(found.values())
 
     def whole_pair(chosen):
         return frame.pair(_turns_pair([(session, [rendered[position[id(turn)]] for turn in turns])

@@ -19,9 +19,16 @@ part ended.
   Three in a row from the same turn stop curation for the project (SPEC-018).
   A successful attempt sets the count to zero.
 - A fence that changed after the request was built, as a forget, an undo or a
-  tombstone changes it, makes the attempt stale: nothing applies, nothing
-  counts as a failure, and the next attempt builds the request again from the
-  raw log as it now is (SPEC-012). Three stale attempts in a row end the run.
+  tombstone changes it, makes the attempt stale, whether its requests
+  succeeded or failed: nothing applies, nothing counts as a failure, and the
+  next attempt builds the request again from the raw log as it now is
+  (SPEC-012). Three stale attempts in a row end the run.
+- Every file of a request is read through the store's path fence, so that a
+  link or junction in the project folder ends the run (`lost-lock`) before
+  anything is sent.
+- A project tombstone (TBL-017) ends the run before anything is read or sent
+  (`deleted`). Only sync makes one, and C2 has no sync to apply it; until a
+  release applies its cutoff, no request may carry what it deleted.
 - A lost curation lease applies nothing more and ends the run; so does the
   run's deadline, whose last 60 seconds no request starts in.
 - The raw logs of a batch are flushed to disk before any quote of them applies
@@ -73,7 +80,8 @@ class Attempt:
 
 @dataclass(frozen=True)
 class Outcome:
-    # done, failed, stopped, stale, consent, disabled, key, configuration, lost-lock, busy, deadline or error
+    # done, failed, stopped, stale, deleted, consent, disabled, key, configuration, lost-lock, busy, deadline
+    # or error
     reason: str
     attempts: tuple   # this run's attempts, oldest first
 
@@ -152,11 +160,19 @@ def _progress(memory, root, deadline, when):
         return curation_rebuild.rebuild(memory, root, deadline, when)
 
 
-def _sessions(memory, root, progress):
-    """(sessions with unprocessed turns, oldest first; their raw logs' stored entries)."""
+def _deleted(memory, root):
+    """Whether the project has a tombstone (TBL-017), or a copy of one, in its curated layer."""
+    folder = root / 'layer'
+    if memory.fence.check(folder) is None:
+        return False
+    return any(name == 'deleted.json' or name.startswith('deleted.json.') for name in os.listdir(str(folder)))
+
+
+def _sessions(memory, root, progress, read):
+    """(sessions with unprocessed turns, by their first turn; their raw logs' stored entries)."""
     stored, sessions = {}, []
     for log in curation_rebuild._logs(memory, root):
-        entries = request_inputs.entries(root, log)
+        entries = request_inputs.entries(root, log, read)
         session = curator_document.session(log, entries, progress['logs'].get(log, 0))
         if session['turns']:
             stored[log] = entries
@@ -485,18 +501,25 @@ def _markers(memory, root, counts, deadline):
 
 
 def _attempt(memory, project, root, owner, deadline, settings, when):
-    """One attempt: None when no turn is unprocessed, 'stopped' when the fault guard has stopped the project."""
+    """One attempt: None when no turn is unprocessed, 'stopped' when the fault guard has stopped the
+    project, 'deleted' when the project has a tombstone."""
+
+    def read(path):
+        return memory.fence.read(path, deadline)
+
     with _layer(memory, root, deadline):
+        if _deleted(memory, root):
+            return 'deleted'
         progress = _progress(memory, root, deadline, when)
         if 'stopped' in progress:
             return 'stopped'
-        sessions, stored = _sessions(memory, root, progress)
+        sessions, stored = _sessions(memory, root, progress, read)
         if not sessions:
             return None
         first = (sessions[0]['log'], sessions[0]['turns'][0]['seq'])
         at = base.utc_time(when)
         try:
-            layer = request_inputs.layer(root)
+            layer = request_inputs.layer(root, read)
         except _LEASES:
             raise
         except _BREAKS as error:
@@ -514,30 +537,38 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
         memory.note(error, step='curate')
         code = _code(error)
     turns, sent = (batch[0].turns, batch[0].sent_requests) if batch else ((), 0)
+
+    def stale():
+        return Attempt(_stale(memory, root, deadline, at), first, turns, sent, {}, {}, None, False)
+
+    def failed(code):
+        """A failure; or a stale attempt when the fence moved after the request was built (SPEC-012)."""
+        if not fence_plan.matches(revision_io.read(memory, root, deadline), expected):
+            return stale()
+        record, stopped = _failure(memory, root, deadline, first, code, at)
+        return Attempt(record, first, turns, sent, {}, {}, None, stopped)
+
     with _layer(memory, root, deadline):
         if code is not None:
-            record, stopped = _failure(memory, root, deadline, first, code, at)
-            return Attempt(record, first, turns, sent, {}, {}, None, stopped)
+            return failed(code)
         try:
             record, edits, held, counts = _apply(memory, root, deadline, batch[0], checked, expected, at)
         except _LEASES:
             raise
         except fence_plan.Stale:
-            return Attempt(_stale(memory, root, deadline, at), first, turns, sent, {}, {}, None, False)
+            return stale()
         except (item_io.WriteFailed, state_io.PublicationFailed) as error:
             chain = _chain(error)
             for cause in chain:
                 if isinstance(cause, _LEASES):
                     raise cause
             if any(isinstance(cause, fence_plan.Stale) for cause in chain):
-                return Attempt(_stale(memory, root, deadline, at), first, turns, sent, {}, {}, None, False)
+                return stale()
             memory.note(chain[-1], step='curate')
-            record, stopped = _failure(memory, root, deadline, first, _code(chain[-1]), at)
-            return Attempt(record, first, turns, sent, {}, {}, None, stopped)
+            return failed(_code(chain[-1]))
         except _BREAKS as error:
             memory.note(error, step='curate')
-            record, stopped = _failure(memory, root, deadline, first, _code(error), at)
-            return Attempt(record, first, turns, sent, {}, {}, None, stopped)
+            return failed(_code(error))
         _markers(memory, root, counts, deadline)
     return Attempt(record, first, turns, sent, dict(checked.dropped), edits, held, False)
 
@@ -578,8 +609,8 @@ def curate(memory, project, owner, deadline, *, when=None):
             return end('error')
         if attempt is None:
             return end('done')
-        if attempt == 'stopped':
-            return end('stopped')
+        if attempt in ('stopped', 'deleted'):
+            return end(attempt)
         attempts.append(attempt)
         if attempt.stopped:
             return end('stopped')

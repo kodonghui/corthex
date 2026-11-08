@@ -9,7 +9,10 @@ rewritten the raw log, except a range kept whole for an item that stays.
 Line history, run logs, the curation record and its fences, notices, the
 injection log and the search index stay unread, so no request can carry them.
 The caller holds the curation and layer leases while it reads (TASK-088); an
-apply checks the fences again before any change.
+apply checks the fences again before any change. `read(path)` reads each file:
+the worker passes the store's path fence, so that a link or junction in the
+project folder stops the read before anything is sent; the default reads the
+file as it is, for tests.
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,47 +32,51 @@ class Layer:
     places: dict       # every candidate's rotation place (time, ID) by ID, open or closed (SPEC-015)
 
 
-def _named(folder):
+def _bytes(path):
+    return Path(path).read_bytes()
+
+
+def _named(folder, read=_bytes):
     """Records named <item ID>.json; any other name is refused, never skipped."""
     found = []
     for path in sorted(folder.iterdir(), key=lambda p: p.name):
         item = path.name[:-5] if path.name.endswith('.json') else ''
         if not item_types.ITEM.fullmatch(item) or not path.is_file():
             raise ValueError('unexpected curated layer file')
-        found.append((item, path.read_bytes()))
+        found.append((item, read(path)))
     return found
 
 
-def layer(root):
+def layer(root, read=_bytes):
     root = Path(root)
     folder = root/'layer'
     items, private, forgotten = {}, set(), set()
-    for item, data in _named(folder/'tombstones'):
+    for item, data in _named(folder/'tombstones', read):
         private.update(history_recovery._tombstone(data, item, root.name))
         forgotten.add(item)
-    for item, data in _named(folder/'items'):
+    for item, data in _named(folder/'items', read):
         if item in forgotten:
             continue
         value = item_types.parse_item(data)
         if value['id'] != item:
             raise ValueError('item file name differs from its ID')
         items[item] = value
-    view = state_types.validity_view(state_types.parse_state((folder/'state.json').read_bytes()),
-                                     state_types.parse_removed((folder/'state-removed.json').read_bytes()),
+    view = state_types.validity_view(state_types.parse_state(read(folder/'state.json')),
+                                     state_types.parse_removed(read(folder/'state-removed.json')),
                                      items, private)
     current = sorted((value for value in items.values() if value['status'] == 'current'), key=lambda v: v['id'])
     current.sort(key=lambda v: v['quotes'][0]['said'][:10], reverse=True)
-    pins = item_types.parse_pins((folder/'pins.json').read_bytes())['pins']
+    pins = item_types.parse_pins(read(folder/'pins.json'))['pins']
     pinned = tuple(pin['item'] for pin in pins if pin['on'] and pin['item'] in items and
                    items[pin['item']]['status'] == 'current')
-    conflicts = conflict_types.parse_conflicts((folder/'conflicts.json').read_bytes())
+    conflicts = conflict_types.parse_conflicts(read(folder/'conflicts.json'))
     candidates = conflict_types.open_candidates(conflicts)
     candidates = tuple(c for c in candidates if all(items.get(i, {}).get('status') == 'current' for i in c['items']))
     places = {c['id']: (c['at'], c['id']) for c in conflicts['candidates']}
     return Layer(tuple(view['lines']), tuple(view['hidden']), items, tuple(current), pinned, candidates, places)
 
 
-def _pending(root, log):
+def _pending(root, log, read=_bytes):
     """Entry ID -> ranges of the log that tombstones name and no item that stays quotes.
 
     A forget publishes its tombstones before it rewrites the raw log, and a
@@ -79,7 +86,7 @@ def _pending(root, log):
     """
     folder = Path(root)/'layer'
     named, forgotten = {}, set()
-    for item, data in _named(folder/'tombstones'):
+    for item, data in _named(folder/'tombstones', read):
         history_recovery._tombstone(data, item, Path(root).name)
         forgotten.add(item)
         for quote in item_types._document(data)['quotes']:
@@ -87,7 +94,7 @@ def _pending(root, log):
                 named.setdefault(quote['entry'], []).append((int(quote['start']), int(quote['end'])))
     kept = {}
     if named:
-        for item, data in _named(folder/'items'):
+        for item, data in _named(folder/'items', read):
             if item in forgotten:
                 continue
             for quote in item_types.parse_item(data)['quotes']:
@@ -98,7 +105,7 @@ def _pending(root, log):
             for entry, ranges in named.items()}
 
 
-def entries(root, log):
+def entries(root, log, read=_bytes):
     """The named raw log's entries in seq order, damaged and unfinished lines left out.
 
     Each entry's `forgotten` also holds the ranges that pending tombstones name
@@ -106,8 +113,8 @@ def entries(root, log):
     answer can touch them. The quote check of an answer reads these entries.
     """
     format2._id(log, diagnostics.LOG)
-    data = (Path(root)/'raw'/(log + '.jsonl')).read_bytes()
-    pending, found = _pending(root, log), []
+    data = read(Path(root)/'raw'/(log + '.jsonl'))
+    pending, found = _pending(root, log, read), []
     for line in data.split(b'\n')[:-1]:
         try:
             entry = raw_rewrite._entry(line, log)
