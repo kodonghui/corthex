@@ -1,7 +1,7 @@
 """The forget preview (API-025; SPEC-035; TASK-097), from one snapshot of a project.
 
 Pure functions; `forget_command` reads the snapshot under the project's layer
-lease, and the confirmed forget's effects arrive with TASK-098. The preview
+lease, and `forget_effects` applies a confirmed forget (TASK-098). The preview
 names what goes with the forgotten items:
 
 - `also`: every other item that stays and quotes text overlapping one of their
@@ -18,9 +18,11 @@ names what goes with the forgotten items:
 - `pinned` and `settled_conflicts`: their pins, and the open candidates that
   name one of them.
 - `history_records`: line-history records (TBL-119) that go, because they cite
-  a forgotten item or an entry that one quotes, or that keep a nonempty reason,
-  which the forget clears; each record once, by its epoch, generation and line,
-  across the copies read.
+  a forgotten item, an entry that one quotes or an ID that an earlier tombstone
+  names, or that keep a nonempty reason, which the forget clears; each record
+  once, by its epoch, generation and line, across the copies read.
+
+After the forget, `done` says what went in the same words.
 """
 import difflib
 from dataclasses import dataclass
@@ -132,12 +134,15 @@ def closest(lines, arguments, limit=MATCHES):
     return sorted(lines, key=lambda line: -score(line))[:limit] if folded else []
 
 
-def preview(project, item, extra, selected, staying, *, lines, pins, candidates, tombstones, held, copies):
+def preview(project, item, extra, selected, staying, *, lines, pins, candidates, tombstones, held, copies,
+            earlier=frozenset()):
     """The plan of a forget, whose data the confirmation binds.
 
     `selected` holds the forgotten items' records, the item first, each once;
     `staying` every other item that no tombstone names. `copies` holds the
-    line-history copies read, or is None when the primary cannot be read.
+    line-history copies read, or is None when the primary cannot be read;
+    `earlier` holds the IDs that the tombstones already present name, whose
+    history records the forget removes too.
     """
     ids = tuple(value['id'] for value in selected)
     cited = targets(selected)
@@ -146,7 +151,7 @@ def preview(project, item, extra, selected, staying, *, lines, pins, candidates,
             'raw': raw(selected, staying, tombstones, held), 'outside': list(OUTSIDE),
             'settled_conflicts': settled(ids, candidates)}
     if copies is not None:
-        data['history_records'] = history(copies, cited)
+        data['history_records'] = history(copies, cited | frozenset(earlier))
     return Plan(ids, cited, data)
 
 
@@ -161,30 +166,70 @@ def _names(ids, most=3):
     return shown[0] if len(shown) == 1 else ', '.join(shown[:-1]) + ' and ' + shown[-1]
 
 
+def _subject(plan):
+    data = plan.data
+    if len(plan.selected) == 1:
+        return data['item']
+    return '%s and %s' % (data['item'], _plural(len(plan.selected) - 1, 'other item'))
+
+
+def _list(words):
+    return ', '.join(words[:-1]) + ' and ' + words[-1] if len(words) > 1 else words[0]
+
+
+def _filled(data):
+    return sum(1 for entry in data['raw'] if entry['forgotten'])
+
+
+def _settled(data):
+    count = len(data['settled_conflicts'])
+    return '%s %s settled.' % (_plural(count, 'open conflict candidate'), 'is' if count == 1 else 'are')
+
+
+def done(plan, history_records):
+    """What the agent tells the user after the forget, with the history records that it removed or cleared."""
+    data, many = plan.data, len(plan.selected) > 1
+    went = ['their search index rows' if many else 'its search index rows']
+    if data['state_lines']:
+        went.append(_plural(len(data['state_lines']), 'current state line'))
+    if data['pinned']:
+        went.append(_plural(len(data['pinned']), 'pin'))
+    words = ['Forgot %s, with %s.' % (_subject(plan), _list(went))]
+    if _filled(data):
+        words.append('The quoted words in %s on this device are filled.' % _plural(
+            _filled(data), 'raw log entry', 'raw log entries'))
+    if data['also']:
+        words.append('Words that %s also quote%s stay whole.' % (
+            _names(data['also']), 's' if len(data['also']) == 1 else ''))
+    if data['settled_conflicts']:
+        words.append(_settled(data))
+    if history_records:
+        words.append('%s removed or cleared of %s reason.' % (
+            _plural(history_records, 'line-history record') + (' was' if history_records == 1 else ' were'),
+            'its' if history_records == 1 else 'their'))
+    words.append('Copies in the host transcript, at the model providers and on devices without sync stay.')
+    return ' '.join(words)
+
+
 def say(plan):
     """What the agent tells the user before the yes: one short sentence for each kind of effect."""
     data, many = plan.data, len(plan.selected) > 1
-    subject = data['item'] if not many else '%s and %s' % (
-        data['item'], _plural(len(plan.selected) - 1, 'other item'))
     goes = ['them and their search index rows' if many else 'it and its search index rows']
     if data['state_lines']:
         goes.append(_plural(len(data['state_lines']), 'current state line'))
     if data['pinned']:
         goes.append(_plural(len(data['pinned']), 'pin'))
-    words = ['Forgetting %s removes %s.' % (subject, ', '.join(goes[:-1]) + ' and ' + goes[-1]
-                                             if len(goes) > 1 else goes[0])]
-    filled = sum(1 for entry in data['raw'] if entry['forgotten'])
-    if filled:
-        words.append('It fills the quoted words in %s on this device.' % _plural(filled, 'raw log entry',
-                                                                                  'raw log entries'))
+    words = ['Forgetting %s removes %s.' % (_subject(plan), _list(goes))]
+    if _filled(data):
+        words.append('It fills the quoted words in %s on this device.' % _plural(
+            _filled(data), 'raw log entry', 'raw log entries'))
     if data['also']:
         words.append('Words that %s also quote%s stay whole; name %s with --with to forget %s too.' % (
             _names(data['also']), 's' if len(data['also']) == 1 else '',
             'that item' if len(data['also']) == 1 else 'those items',
             'it' if len(data['also']) == 1 else 'them'))
     if data['settled_conflicts']:
-        words.append('%s settled.' % (_plural(len(data['settled_conflicts']), 'open conflict candidate') +
-                                      (' is' if len(data['settled_conflicts']) == 1 else ' are')))
+        words.append(_settled(data))
     if 'history_records' not in data:
         words.append('The line history cannot be read now, so this forget cannot yet count or verify its '
                      'line-history cleanup.')

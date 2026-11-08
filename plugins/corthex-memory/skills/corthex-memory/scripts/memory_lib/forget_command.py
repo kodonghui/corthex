@@ -1,4 +1,4 @@
-"""The forget command (API-025; SPEC-035; TASK-097): its preview and confirmation.
+"""The forget command (API-025; SPEC-035; TASK-097, TASK-098): its preview, confirmation and effects.
 
 The command runner does not hand `forget` to this handler before the 0.3.0
 activation, so an installed plugin keeps C1 behaviour; until then the tests
@@ -6,14 +6,17 @@ call it as the runner will, after its gates, with the format-2 store binding.
 Under the project's layer lease, waiting for it as long as the other commands
 wait for theirs, it reads the items, tombstones, current state, pins,
 candidates, line history and the raw logs that the forgotten items quote, each
-through the store's path fence, and changes nothing. Without a code it returns
-the preview (`forget_plan`). With a code it checks the code against the preview
-that it has just read under the same lease, so a missing item or any change to
-what the preview shows refuses the forget before anything is deleted; the
-confirmed effects arrive with TASK-098.
+through the store's path fence. Without a code it returns the preview
+(`forget_plan`) and changes nothing. With a code it checks the code against the
+preview that it has just read under the same lease, so a missing item or any
+change to what the preview shows refuses the forget before anything is
+deleted; a code that matches applies the forget under the same lease
+(`forget_effects`). Starting the memory worker with `--reason skill` afterwards
+belongs to the runner's wiring of the 0.3.0 activation.
 """
-from . import base, clock, commands, conflict_types, curation_worker, files, forget_plan, history_io
-from . import history_recovery, item_types, locks, raw_rewrite, request_inputs, run_listing, state_types
+from . import base, clock, commands, conflict_types, curation_worker, files, forget_effects, forget_plan
+from . import history_io, history_recovery, item_types, locks, raw_rewrite, request_inputs, run_listing
+from . import state_types
 
 # The commands' shared lock wait, within one bound for the whole read.
 WAIT, SECONDS = 10.0, 60.0
@@ -79,23 +82,27 @@ def _history(memory, root, deadline, read):
 
 
 def _plan(memory, root, deadline, read, layer, project, item, extra, names):
+    """The plan, the forgotten items' records and the IDs that the tombstones already present name."""
     selected = [layer.items[name] for name in names]
     staying = [value for key, value in sorted(layer.items.items()) if key not in names]
-    tombstones = []
+    tombstones, earlier = [], set()
     for name, data in request_inputs._named(root / 'layer/tombstones', read):
-        history_recovery._tombstone(data, name, root.name)
+        earlier.update(history_recovery._tombstone(data, name, root.name))
         tombstones.append(item_types._document(data))
     pins = item_types.parse_pins(read(root / 'layer/pins.json'))['pins']
     candidates = conflict_types.open_candidates(
         conflict_types.parse_conflicts(read(root / 'layer/conflicts.json')))
-    return forget_plan.preview(project, item, extra, selected, staying, lines=layer.lines, pins=pins,
+    plan = forget_plan.preview(project, item, extra, selected, staying, lines=layer.lines, pins=pins,
                                candidates=candidates, tombstones=tombstones, held=_held(root, selected, read),
-                               copies=_history(memory, root, deadline, read))
+                               copies=_history(memory, root, deadline, read), earlier=earlier)
+    return plan, selected, frozenset(earlier)
 
 
-def _apply(memory, root, plan, deadline):
+def _apply(memory, root, plan, selected, earlier, deadline):
     """The confirmed forget's effects, under the lease that read the plan (TASK-098)."""
-    raise NotImplementedError('the forget effects arrive with TASK-098')
+    history_records = forget_effects.apply(memory, root, plan, selected, earlier, deadline, WAIT)
+    data = dict(plan.data, history_records=history_records)
+    return commands.result('forget', data, forget_plan.done(plan, history_records))
 
 
 def forget(context):
@@ -122,8 +129,9 @@ def forget(context):
             if missing:
                 lines = [run_listing.list_line(value) for value in layer.current]
                 return _not_found(project, item, extra, missing, forget_plan.closest(lines, missing))
-            plan = _plan(memory, root, deadline, read, layer, project, item, extra, names)
+            plan, selected, earlier = _plan(memory, root, deadline, read, layer, project, item, extra, names)
             memory.check(deadline, memory.held)
-            return context.confirm(plan.data, forget_plan.say(plan), lambda: _apply(memory, root, plan, deadline))
+            return context.confirm(plan.data, forget_plan.say(plan),
+                                   lambda: _apply(memory, root, plan, selected, earlier, deadline))
     except locks.LockBusy:
         return commands.common_result('forget', 'lock-busy')

@@ -1,10 +1,10 @@
 """TASK-098: the forget's raw fill (TBL-007; SPEC-035; SPEC-007) and TC-238's direct evidence.
 
 `raw_fill.fill` fills a forgotten item's quoted ranges in one raw log under the
-project's layer lease. The confirmed forget calls it with TASK-098's effects;
-these tests call it as that forget will, holding the layer lease. TC-238 runs
-the actual prompt hook every 10 ms in one process while another fills ranges
-and this one runs retention on the same raw log.
+project's layer lease. The confirmed forget calls it for each raw log among its
+effects (`forget_effects`); these tests call it as the forget does, holding the
+layer lease. TC-238 runs the actual prompt hook every 10 ms in one process while
+another fills ranges and this one runs retention on the same raw log.
 """
 import contextlib
 from datetime import timedelta

@@ -2,10 +2,11 @@
 
 TC-239, TC-240 and the TASK-097 part of TC-393. The runner does not hand
 `forget` to the handler before the 0.3.0 activation, so these tests call it as
-the runner will, after its gates, with the format-2 store binding. The
-confirmed effects arrive with TASK-098; here a stand-in records what the
-handler would pass them. A curation in TC-240 runs against the local test
-server of the curation worker's tests; no provider is called.
+the runner will, after its gates, with the format-2 store binding. Where the
+confirmed effects (TASK-098, `test_memory_forget_effects`) do not matter, a
+stand-in records what the handler passes them. A curation in TC-240 runs
+against the local test server of the curation worker's tests; no provider is
+called.
 """
 import contextlib
 import subprocess
@@ -45,7 +46,9 @@ def candidate(number, first, second):
     return dict(id=ident('c', number), items=[first, second], at=AT, run=RUN, by='curate', status='open')
 
 
-class ForgetTest(unittest.TestCase):
+class ForgetStore:
+    """A format-2 project with one recorded turn, and the forget command run as the runner will run it."""
+
     def setUp(self):
         self.fixture = worker_fixture.CurationWorkerTest()
         self.fixture.setUp()
@@ -101,13 +104,15 @@ class ForgetTest(unittest.TestCase):
         """A stand-in for TASK-098's effects that records each call and whether the layer lease was held."""
         calls = []
 
-        def apply(memory, root, plan, deadline):
+        def apply(memory, root, plan, selected, earlier, deadline):
             leases = [lease.path for lease in memory.held]
             calls.append((plan, leases))
             return commands.result('forget', plan.data, 'Forgotten.')
         with mock.patch.object(forget_command, '_apply', side_effect=apply):
             yield calls
 
+
+class ForgetTest(ForgetStore, unittest.TestCase):
     # TC-239
 
     def shared_store(self):
@@ -288,15 +293,6 @@ class ForgetTest(unittest.TestCase):
         with self.effects() as calls:
             refused = self.command(value['id'], code=code)
         self.assertEqual((refused['code'], refused['data']['missing'], calls), ('item-not-found', [value['id']], []))
-
-    def test_without_the_effects_a_confirmed_forget_raises_and_changes_nothing(self):
-        value = self.item(1, self.span('four hooks'))
-        self.fixture.layer(items=[value])
-        code = self.command(value['id'])['confirm']
-        before = self.tree()
-        with self.assertRaises(NotImplementedError):
-            self.command(value['id'], code=code)
-        self.assertEqual(self.tree(), before)
 
     # TC-393 (TASK-097's part): the history the forget scrubs
 
