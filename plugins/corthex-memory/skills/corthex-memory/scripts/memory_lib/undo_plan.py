@@ -481,11 +481,11 @@ class _Planner:
         """SHA-256 of the canonical snapshot that the confirmation binds (TASK-106).
 
         It holds the run, its file's hash and the fence's epoch, every object
-        that the run changed and every object that its inverse depends on, each
-        with its revision and the metadata that the plan reads (status, pin,
-        candidate, place, a digest of the line and its removal and privacy
-        markers), and each line-history record that the plan needs with its
-        availability. Unrelated progress, notices, usage and history appends
+        that the run changed, kept ones too, and every object that its inverse
+        depends on, each with its revision and the metadata that the plan reads
+        (status, pin, candidate, place, a digest of the line and its removal and
+        privacy markers), and each line-history record that the plan needs with
+        its availability. Unrelated progress, notices, usage and history appends
         are not in it.
         """
         keys = set(self.last)
@@ -496,14 +496,18 @@ class _Planner:
         for key, record in self.targets.items():
             if key.startswith('line:') and record is not None:
                 keys.update('item:' + item for item in record.value['cites'] if item.startswith('i_'))
+        # The items that the run's pins and candidates name, and the candidates for the same pairs: a pin that is
+        # on afterwards and a reopened candidate need their items current, and no other open candidate for the pair.
+        keys.update('item:' + key[len('pin:'):] for key in self.last if key.startswith('pin:'))
+        pairs = [set(self.candidate_records[key[len('candidate:'):]]['items']) for key in self.last
+                 if key.startswith('candidate:') and key[len('candidate:'):] in self.candidate_records]
+        keys.update('item:' + name for pair in pairs for name in pair)
         layouts = (state_plan._placements(list(self.s.lines)), state_plan._placements(
             [dict(id=name, part=part, pos=pos) for name, (part, pos, _) in self._layout(reversed_).items()]))
         for layout in layouts:
             for key in self.last:
                 if key.startswith('line:') and key[len('line:'):] in layout:
                     keys.update('line:' + name for name in layout[key[len('line:'):]][2:] if name)
-        pairs = [set(self.candidate_records[key[len('candidate:'):]]['items']) for key in reversed_
-                 if key.startswith('candidate:') and key[len('candidate:'):] in self.candidate_records]
         keys.update('candidate:' + value['id'] for value in self.s.candidates
                     if items.intersection(value['items']) or set(value['items']) in pairs or value['id'] in settles)
         objects = [[key, self.revisions.get(key), self._meta(key)] for key in sorted(keys)]
