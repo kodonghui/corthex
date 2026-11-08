@@ -17,10 +17,15 @@ _EPOCH = re.compile(r"[0-9a-fA-F]{32}\Z")
 _OBJECT = re.compile(r"(?:item:i_|line:s_|pin:i_|candidate:c_|run:r_)" + _DIGITS + r"\Z")
 _CURATION_ORDER = "logs applies recent failures consolidation stopped rebuilt fence conflict_after".split()
 _ATTEMPT_ORDER = "at kind result error applied dropped reasons state edit_reasons run".split()
-# Why a curate attempt dropped an item change (TASK-085) or a line edit (TASK-087): each counts once, under
-# the first check it fails. The record keeps the counts by reason; curator_answers and state_edits use these.
+# Why a curate attempt dropped an item change (TASK-085) or a line edit (TASK-087), and why a consolidate
+# attempt dropped a merge or a line of the last state answer (TASK-089, TASK-090): each counts once, under the
+# first check it fails. The record keeps the counts by reason; curator_answers, state_edits and state_rewrite
+# use these.
 CHANGE_REASONS = ("shape", "limit", "not-in-request", "not-current", "quote", "pasted")
 EDIT_REASONS = ("not-in-request", "duplicate", "shape", "limit", "cites", "decision")
+MERGE_REASONS = ("shape", "limit", "not-in-request", "not-current", "quote", "speaker")
+_REASONS = {("curate", "reasons"): CHANGE_REASONS, ("curate", "edit_reasons"): EDIT_REASONS,
+            ("consolidate", "reasons"): MERGE_REASONS, ("consolidate", "edit_reasons"): EDIT_REASONS}
 
 
 def _document(data):
@@ -40,11 +45,16 @@ def _id(value, pattern):
         raise ValueError("invalid format-2 ID")
 
 
-def _reasons(attempt, counts, reasons, total):
-    """A curate attempt's drops by reason: known reasons with positive counts; item changes sum to `dropped`."""
-    if (attempt["kind"] != "curate" or not isinstance(counts, dict) or not counts or
+def _reasons(attempt, key, counts):
+    """An attempt's drops by reason: known reasons with positive counts; `reasons` sum to `dropped`.
+
+    A curate attempt counts item changes and line edits, a consolidate attempt
+    merges and the last state answer's lines; an undo keeps neither.
+    """
+    reasons = _REASONS.get((attempt["kind"], key))
+    if (reasons is None or not isinstance(counts, dict) or not counts or
             any(reason not in reasons or type(count) is not int or count < 1 for reason, count in counts.items())
-            or total and sum(counts.values()) != attempt.get("dropped")):
+            or key == "reasons" and sum(counts.values()) != attempt.get("dropped")):
         raise ValueError("invalid format-2 attempt reasons")
 
 
@@ -118,9 +128,9 @@ def parse_curation(data):
         curation._choice(attempt["kind"], {"curate", "consolidate", "undo"})
         if "run" in attempt:
             _id(attempt.pop("run"), _RUN)
-        for key, reasons in (("reasons", CHANGE_REASONS), ("edit_reasons", EDIT_REASONS)):
+        for key in ("reasons", "edit_reasons"):
             if key in attempt:
-                _reasons(attempt, attempt.pop(key), reasons, key == "reasons")
+                _reasons(attempt, key, attempt.pop(key))
         if attempt["kind"] == "undo":
             attempt["kind"] = "curate"
     curation.parse(json.dumps(legacy, ensure_ascii=False, allow_nan=False).encode("utf-8"))

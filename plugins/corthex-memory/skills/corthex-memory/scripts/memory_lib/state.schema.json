@@ -1,0 +1,35 @@
+{
+  "description": "An answer to a request to shorten the current state: the whole current state, shorter.",
+  "type": "object",
+  "properties": {
+    "state": {"$ref": "#/$defs/state"}
+  },
+  "required": ["state"],
+  "additionalProperties": false,
+  "$defs": {
+    "state": {
+      "description": "The whole current state, or five empty parts to keep it as it is.",
+      "type": "object",
+      "properties": {
+        "goal": {"type": "array", "items": {"$ref": "#/$defs/line"}},
+        "decisions": {"description": "Decisions in force.", "type": "array", "items": {"$ref": "#/$defs/line"}},
+        "progress": {"description": "Work in progress.", "type": "array", "items": {"$ref": "#/$defs/line"}},
+        "blockers": {"type": "array", "items": {"$ref": "#/$defs/line"}},
+        "next": {"description": "Next actions.", "type": "array", "items": {"$ref": "#/$defs/line"}}
+      },
+      "required": ["goal", "decisions", "progress", "blockers", "next"],
+      "additionalProperties": false
+    },
+    "line": {
+      "type": "object",
+      "properties": {
+        "keeps": {"description": "The ID of the request's line that this line keeps or rewords, or empty for a new line.", "type": "string", "pattern": "^(s_[0-9a-hjkmnp-tv-z]{12})?$"},
+        "text": {"description": "One sentence.", "type": "string"},
+        "cites": {"description": "The items and entries the line rests on.", "type": "array", "items": {"type": "string", "pattern": "^[ei]_[0-9a-hjkmnp-tv-z]{12}$"}},
+        "changes": {"description": "The numbers of this answer's changes that the line rests on, counted from 1.", "type": "array", "items": {"type": "integer"}}
+      },
+      "required": ["keeps", "text", "cites", "changes"],
+      "additionalProperties": false
+    }
+  }
+}

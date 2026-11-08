@@ -728,6 +728,57 @@ class RequestBudgetTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             request_budget.plan(current, sessions, schema=SCHEMA, count=counter, after='i_0000')
 
+    # Merge requests (SPEC-019; TASK-089)
+
+    def test_a_merge_request_takes_the_oldest_items_and_the_candidates_of_its_pairs(self):
+        schema = curator_answers.merge_schema()
+        base = request_budget.fixed('merge-2', schema)
+        values = [item('Fact <%d> & "said"' % n, SOURCE, kind='fact', said=day(n)) for n in range(4)]
+        carried = candidate(values[0], values[1])
+        outside = candidate(values[2], item('Not sent', SOURCE, kind='fact'))
+        measured, real = [], request_budget._size
+
+        def spy(queue, measure_working, measure_safe, count, document, shrink=None):
+            for size in range(1, len(queue) + 1):
+                built = request_budget._add(base, request_budget._pair(document(queue[:size])))
+                measured.append(((measure_working(queue[:size]), measure_safe(queue[:size])),
+                                 (request_budget._working(built), request_budget._safe(built))))
+            return real(queue, measure_working, measure_safe, count, document, shrink)
+        counter = Counter()
+        with mock.patch.object(request_budget, '_size', side_effect=spy):
+            part = request_budget.merge_part(values, [carried, outside], group='fact', schema=schema, count=counter)
+        # The composed estimates are the built document's.
+        self.assertEqual([composed for composed, _ in measured], [built for _, built in measured])
+        self.assertEqual((part.items, part.candidates, part.counted, part.counts, counter.calls),
+                         (tuple(values), (carried,), None, 0, []))
+        self.assertEqual(part.source, curator_document.merge(group='fact', items=values, candidates=[carried]))
+        self.assertEqual((part.safe, part.working),
+                         (request_budget.safe(part.source), request_budget.working(part.source)))
+        with self.assertRaises(TypeError):
+            request_budget.merge_part(values, [], group='fact', schema=schema, count=None)
+        with self.assertRaises(ValueError):
+            request_budget.merge_part([], [], group='fact', schema=schema, count=counter)
+        with self.assertRaises(ValueError):
+            request_budget.merge_part(values + [item('A lesson', SOURCE, kind='lesson')], [], group='fact',
+                                      schema=schema, count=counter)
+
+    def test_a_large_group_goes_in_counted_parts_oldest_first(self):
+        schema = curator_answers.merge_schema()
+        fixed_text = model_prompts.PROMPTS['merge-2'] + json.dumps(schema, ensure_ascii=False)
+        values = [item('Fact %03d' % n, SOURCE, kind='fact', said=day(n), text=prose(3990, n) + '.')
+                  for n in range(100)]
+        calls = []
+
+        def count(source):
+            calls.append(rule(fixed_text + source))
+            return calls[-1]
+        part = request_budget.merge_part(values, [], group='fact', schema=schema, count=count)
+        self.assertTrue(2 <= len(part.items) < len(values))
+        self.assertEqual(part.items, tuple(values[:len(part.items)]))
+        self.assertEqual((part.counted, part.counts), (calls[-1], len(calls)))
+        self.assertLessEqual(part.counted, 99000)
+        self.assertGreater(part.safe, 60000)
+
 
 class CountedRequestTest(unittest.TestCase):
     """Counts from a local test server through model_count, which logs each one."""
