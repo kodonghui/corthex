@@ -300,10 +300,11 @@ One file per notice that the start summary shows once (SPEC-022): `curation-fail
 | Field | Value | Meaning |
 | --- | --- | --- |
 | `at` | time | |
-| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved`, `pin-dropped`, `conflict` |
+| `kind` | `curation-failed`, `consolidation-failed`, `rebuilt`, `pin-moved`, `pin-dropped`, `pin-restored`, `pin-removed`, `conflict` |
 | `error` | optional text | The kind of error, for a failure |
-| `item` | optional item ID | The item whose pin moved or was dropped (SPEC-034) |
+| `item` | optional item ID | The item whose pin moved, was dropped or was removed by an undo, or that an undo gave its pin back (SPEC-034) |
 | `to` | optional item ID | The item that the pin moved to |
+| `run` | optional run ID | The undo run that gave the pin back or removed it (SPEC-034, SPEC-145) |
 | `candidate`, `shown` | optional candidate ID and count 0 to 3 | Conflict notice target and count; conflict-counts.json owns the durable high-water. |
 
 C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID. Its bytes are `{"counts": {"<candidate>": <count>}}` with the IDs in order, and it has no backup: a missing, damaged or unreadable file, or a candidate that it does not name, counts as shown three times. Durably initialize zero before first publishing a candidate; after the third showing remove its individual notice but retain the high-water for the ID's lifetime. Reopening, cleanup or backup recovery never resets zero. Missing/unverifiable counters conservatively exhaust existing candidates, reporting the failure/status while conflicts still lists them. After deciding a line fits, Start takes the independent conflict-counts lease, rereads, and shows it only after an atomic durable reservation. Lease/deadline/write failure omits the line without incrementing. A stop after reservation but before output may consume one showing. Concurrent starts together cannot exceed three. Unlike ordinary notices, this high-water cannot lose fsync or be reduced by restoring an old backup. The start hook never writes the curated layer.

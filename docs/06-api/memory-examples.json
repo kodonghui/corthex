@@ -1368,7 +1368,7 @@
         "command": "undo",
         "outcome": "refused",
         "code": "run-not-found",
-        "say": "No retained run matches that ID.",
+        "say": "No complete run of this project within the retention period has this ID, so nothing was undone; data.runs holds the recent runs.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
@@ -1379,7 +1379,7 @@
         "command": "undo",
         "outcome": "nothing",
         "code": "ok",
-        "say": "Later changes are kept. There is nothing safe to undo.",
+        "say": "Every change of this run is kept, so there is nothing safe to undo; data.kept says why.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
@@ -1387,7 +1387,7 @@
             {
               "by": "",
               "why": "later-unlogged-change",
-              "target": "i_7f3k2m9q4x1v"
+              "target": "item:i_7f3k2m9q4x1v"
             }
           ]
         }
@@ -1396,7 +1396,7 @@
         "command": "undo",
         "outcome": "confirm",
         "code": "ok",
-        "say": "Review the changes before undoing this run.",
+        "say": "Undoing this run, as a new run, makes 1 saved item undone.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
@@ -1421,14 +1421,23 @@
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
-          "undo": "r_6b9e2h5k8n1r"
+          "undo": "r_6b9e2h5k8n1r",
+          "changes": {
+            "saved": 1,
+            "statuses": 0,
+            "merges": 0,
+            "lines": 0,
+            "pins": 0,
+            "conflicts": 0
+          },
+          "kept": []
         }
       },
       "undo-confirm-stale": {
         "command": "undo",
         "outcome": "confirm",
         "code": "confirm-stale",
-        "say": "The undo preview changed. Review it again.",
+        "say": "The confirmation is stale. Review the current proposal and confirm again.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
@@ -1661,7 +1670,7 @@
         "command": "undo",
         "outcome": "confirm",
         "code": "ok",
-        "say": "Review the changes before undoing this run.",
+        "say": "Undoing this run, as a new run, makes 1 saved item undone.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",
@@ -1681,7 +1690,7 @@
         "command": "undo",
         "outcome": "confirm",
         "code": "ok",
-        "say": "Review the changes before undoing this run.",
+        "say": "Undoing this run, as a new run, makes 1 saved item undone.",
         "data": {
           "project": "corthex",
           "run": "r_3k8m2q7v9x1b",

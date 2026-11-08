@@ -102,15 +102,23 @@ def recent(memory, root, deadline, *, days, limit, when=None):
         except files._RESTORABLE + (files.RestoreNeeded,) as error:
             memory.note(error, step='skill')
             return None
-        read = _reader(memory, deadline)
-        logs = run_log.listed(root, progress, memory.device, when=base.utc_time(when), days=days, reader=read)
-        lines = []
-        for log in logs[:limit]:
-            memory.check(deadline, memory.held)
-            lines.append({'run': log['id'], 'kind': log['kind'], 'at': log['at'], 'ended': log['ended'],
-                          'counts': counts(log), 'saved': _titles(memory, root, log, read),
-                          'undoable': undoable(log, progress)})
-        return lines, len(logs)
+        return listing(memory, root, deadline, progress, _reader(memory, deadline), days=days, limit=limit, when=when)
+
+
+def listing(memory, root, deadline, progress, read, *, days, limit, when=None):
+    """(run lines newest first, how many runs are listed), read under the project's layer lease that the caller holds.
+
+    The undo command (TASK-105) lists the recent runs this way when it finds
+    no run to undo.
+    """
+    logs = run_log.listed(root, progress, memory.device, when=base.utc_time(when), days=days, reader=read)
+    found = []
+    for log in logs[:limit]:
+        memory.check(deadline, memory.held)
+        found.append({'run': log['id'], 'kind': log['kind'], 'at': log['at'], 'ended': log['ended'],
+                      'counts': counts(log), 'saved': _titles(memory, root, log, read),
+                      'undoable': undoable(log, progress)})
+    return found, len(logs)
 
 
 def runs(context, *, when=None):
