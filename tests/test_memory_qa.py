@@ -270,6 +270,8 @@ class TestPlanTest(unittest.TestCase):
             len({token for token in tokens if re.fullmatch(r"SPEC-\d{3}#\d+", token)}), sum(self.criteria.values()),
             len({outcome(token) for token in tokens if outcome(token)}), len(rows),
             len(tokens & set(self.nonfunctional)), len(self.nonfunctional)])
+        named = re.search(r"non-functional requirements \(([^)]*)\)", text).group(1).split(", ")
+        self.assertEqual(named, sorted(tokens & set(self.nonfunctional)))
         walked = {token for case in passing if "agent" in case["runs"] for token in case["tokens"] if token in self.flows}
         self.assertEqual(re.search(r"walked (\d+) of (\d+) flows", text).groups(), (str(len(walked)), str(len(self.flows))))
         counts = Counter(case["step"] for case in self.cases.values())
