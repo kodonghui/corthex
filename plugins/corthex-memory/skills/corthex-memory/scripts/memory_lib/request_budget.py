@@ -151,6 +151,11 @@ def fixed(instructions, schema):
     return _pair(model_prompts.PROMPTS[instructions] + json.dumps(schema, ensure_ascii=False))
 
 
+def estimate(instructions, schema, source):
+    """A request's working estimate with the instructions and the schema, as step 2 measures it (TBL-003)."""
+    return _working(_add(fixed(instructions, schema), _pair(source)))
+
+
 class _Block:
     """The counts of curator_document._block's text from its children's counts."""
 

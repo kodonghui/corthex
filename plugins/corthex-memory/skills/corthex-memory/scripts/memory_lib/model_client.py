@@ -39,11 +39,12 @@ def _account(attempt, memory, **row):
     except Exception:return False
 
 
-def send(memory, *, project, instructions, source, schema, config, check, deadline=None):
+def send(memory, *, project, instructions, source, schema, config, check, deadline=None, size=None):
     """Use dedicated credentials; return actual sent context, counters and limits.
 
     No enabled-project, consent, source/provenance, initialization or application
     authority is inferred from a valid response. This is an internal sending port.
+    `size` is a curate request's size fields (TBL-003), written on each attempt's line.
     """
     if not callable(check):raise TypeError('original memory client check required')
     begun = clock.now()
@@ -56,6 +57,7 @@ def send(memory, *, project, instructions, source, schema, config, check, deadli
     settings = configuration.prepare(config, temporary=False).values
     if instructions not in model_request._KINDS:raise ValueError('invalid memory instructions')
     call = 'curate' if instructions == 'curate-2' else 'consolidate'
+    size = model_usage._size(call, copy.deepcopy(size))
     endpoint_name = 'CORTHEX_MEMORY_ANTHROPIC_BASE_URL'
     original_endpoint = os.environ.get(endpoint_name)
     count, logged, sent, answer = 0, [0], '', model_transport._failed('timeout')
@@ -70,7 +72,7 @@ def send(memory, *, project, instructions, source, schema, config, check, deadli
         _verify(check)
         if clock.now() >= deadline:break
         attempt = model_usage.Attempt.start(project=project, call=call, model=settings['models']['curator'],
-            prices=settings['prices'], credentials=credentials, instructions=instructions)
+            prices=settings['prices'], credentials=credentials, instructions=instructions, size=size)
         def cancelled(usage, first_ms, request_id):
             # No invented provider error and no extension of the network deadline.
             logged[0] += _account(attempt,memory,usage=usage,

@@ -49,7 +49,9 @@ part ended.
 The record's `applied` and `dropped` count the answers' item changes, with
 `reasons` giving the dropped ones by reason; its `state` says what the line
 edits did, with `edit_reasons` giving the dropped edits by reason. Each
-`Attempt` gives the same counts.
+`Attempt` gives the same counts. Each request's usage lines hold its size
+without any of its text: its turns, its parts when it carries one part of a
+turn, its item list's form and its working estimate (TBL-003; TASK-116).
 """
 from collections import Counter
 import contextlib
@@ -332,6 +334,15 @@ def _ranker(memory, root, values):
     return rank
 
 
+def _size(planned, request, schema):
+    """A request's size for its usage lines (TBL-003; TASK-116), without any of its text."""
+    size = {'turns': len(request.turns), 'list': planned.items.form,
+            'estimate': request_budget.estimate(INSTRUCTIONS, schema, request.source)}
+    if request.part is not None:
+        size['parts'] = request.part[1]
+    return size
+
+
 def _ask(memory, project, root, owner, deadline, settings, found, batch):
     """Plan and send a batch's requests without the layer lease; its checked answers.
 
@@ -355,7 +366,8 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
     for request in planned.requests:
         _left(deadline)
         result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
-                                   schema=schema, config=document, check=check, deadline=deadline - RESERVE)
+                                   schema=schema, config=document, check=check, deadline=deadline - RESERVE,
+                                   size=_size(planned, request, schema))
         batch[0].sent_requests += 1
         failure = result.response.failure
         if failure is not None:
