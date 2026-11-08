@@ -16,6 +16,11 @@ _CANDIDATE = re.compile(r"c_" + _DIGITS + r"\Z")
 _EPOCH = re.compile(r"[0-9a-fA-F]{32}\Z")
 _OBJECT = re.compile(r"(?:item:i_|line:s_|pin:i_|candidate:c_|run:r_)" + _DIGITS + r"\Z")
 _CURATION_ORDER = "logs applies recent failures consolidation stopped rebuilt fence conflict_after".split()
+_ATTEMPT_ORDER = "at kind result error applied dropped reasons state edit_reasons run".split()
+# Why a curate attempt dropped an item change (TASK-085) or a line edit (TASK-087): each counts once, under
+# the first check it fails. The record keeps the counts by reason; curator_answers and state_edits use these.
+CHANGE_REASONS = ("shape", "limit", "not-in-request", "not-current", "quote", "pasted")
+EDIT_REASONS = ("not-in-request", "duplicate", "shape", "limit", "cites", "decision")
 
 
 def _document(data):
@@ -33,6 +38,14 @@ def _time(value):
 def _id(value, pattern):
     if not isinstance(value, str) or not pattern.fullmatch(value):
         raise ValueError("invalid format-2 ID")
+
+
+def _reasons(attempt, counts, reasons, total):
+    """A curate attempt's drops by reason: known reasons with positive counts; item changes sum to `dropped`."""
+    if (attempt["kind"] != "curate" or not isinstance(counts, dict) or not counts or
+            any(reason not in reasons or type(count) is not int or count < 1 for reason, count in counts.items())
+            or total and sum(counts.values()) != attempt.get("dropped")):
+        raise ValueError("invalid format-2 attempt reasons")
 
 
 def parse_store(data, allow_migrating=False):
@@ -101,10 +114,13 @@ def parse_curation(data):
     legacy.pop("fence")
     legacy.pop("conflict_after", None)
     for attempt in legacy["recent"]:
-        curation._shape(attempt, "at kind result", "error applied dropped state run")
+        curation._shape(attempt, "at kind result", "error applied dropped state run reasons edit_reasons")
         curation._choice(attempt["kind"], {"curate", "consolidate", "undo"})
         if "run" in attempt:
             _id(attempt.pop("run"), _RUN)
+        for key, reasons in (("reasons", CHANGE_REASONS), ("edit_reasons", EDIT_REASONS)):
+            if key in attempt:
+                _reasons(attempt, attempt.pop(key), reasons, key == "reasons")
         if attempt["kind"] == "undo":
             attempt["kind"] = "curate"
     curation.parse(json.dumps(legacy, ensure_ascii=False, allow_nan=False).encode("utf-8"))
@@ -117,6 +133,8 @@ def _bytes(value, table, parser, **options):
     ordered = base._ordered(validated, table)
     if table == "TBL-009":
         ordered = {key: ordered[key] for key in _CURATION_ORDER if key in ordered}
+        ordered["recent"] = [{key: attempt[key] for key in _ATTEMPT_ORDER if key in attempt}
+                             for attempt in ordered["recent"]]
     return (json.dumps(ordered, ensure_ascii=False, allow_nan=False, indent=2) + "\n").encode("utf-8")
 
 

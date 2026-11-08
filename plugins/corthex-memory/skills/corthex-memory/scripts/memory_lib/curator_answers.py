@@ -19,7 +19,7 @@ from . import command_result, format2, item_types, model_stream, quote_check, st
 
 SCHEMA = Path(__file__).with_name('curate.schema.json')
 # Why a change is dropped; each dropped change counts once, under the first check it fails.
-REASONS = ('shape', 'limit', 'not-in-request', 'not-current', 'quote', 'pasted')
+REASONS = format2.CHANGE_REASONS
 QUOTES = 20
 ITEM_BYTES = 64 * 1024
 _OPEN = re.compile(r'[ \t]*<pasted_content id="([^"]*)">[ \t]*\Z')
