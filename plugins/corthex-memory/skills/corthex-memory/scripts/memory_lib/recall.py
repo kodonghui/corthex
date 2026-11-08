@@ -75,13 +75,8 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
     point = _point(vector, dims)
     root = memory.folder / 'projects' / base.project_folder_name(project)
     try:
-        memory.check(deadline)
-        folder = root / 'layer'
-        if memory.fence.check(folder) is None or _deleted(folder):
-            return Recall('no-index')
-        connection = _open(memory, root, model, dims, deadline)
+        connection = _index(memory, root, model, dims, deadline)
         if connection is None:
-            memory.check(deadline)
             return Recall('no-index')
         try:
             rows, hits, identifiers = _read(connection, prompt)
@@ -89,7 +84,7 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
             connection.close()
         excluded = _excluded(memory, root, host, session, deadline)
         scored = _scores(rows, hits, identifiers, point, dims, excluded, deadline)
-        candidates = _candidates(memory, folder, scored, deadline, zone)
+        candidates = _candidates(memory, root / 'layer', scored, deadline, zone)
         lines = [(item, score, line) for item, score, line in candidates if score >= threshold]
         while lines and request_budget.safe(_block(lines)) >= TOKENS:
             lines.pop()
@@ -106,6 +101,42 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
         return Recall('below', candidates=shown)
     return Recall('injected', _block(lines), tuple(item for item, _, _ in lines),
                   tuple(score for _, score, _ in lines), shown)
+
+
+def ready(memory, project, deadline, *, settings=None):
+    """Whether recall has an index to use: None, or `no-index` or `late` (API-002 step 5).
+
+    The prompt hook asks before it embeds the prompt, so that nothing is sent
+    for a project without a curated layer or a usable index, or whose memory
+    is being deleted. It reads as `rank` does and writes nothing.
+    """
+    settings = memory.config if settings is None else settings
+    model, dims = settings.values['models']['embedding'], settings.values['models']['dims']
+    root = memory.folder / 'projects' / base.project_folder_name(project)
+    try:
+        connection = _index(memory, root, model, dims, deadline)
+    except locks.LockBusy:
+        return 'late'
+    except sqlite3.OperationalError:
+        if clock.now() < deadline:
+            raise
+        return 'late'
+    if connection is None:
+        return 'no-index'
+    connection.close()
+    return None
+
+
+def _index(memory, root, model, dims, deadline):
+    """The project's index, open, when it has a curated layer, is not being deleted and its index fits, else None."""
+    memory.check(deadline)
+    folder = root / 'layer'
+    if memory.fence.check(folder) is None or _deleted(folder):
+        return None
+    connection = _open(memory, root, model, dims, deadline)
+    if connection is None:
+        memory.check(deadline)
+    return connection
 
 
 def _point(vector, dims):
