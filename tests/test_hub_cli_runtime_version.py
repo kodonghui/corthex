@@ -23,11 +23,11 @@ class RuntimeVersionPinTest(unittest.TestCase):
     def test_actual_version_hashes_are_retained_with_the_old_protocol_anchor(self):
         _, rows = fixture.verify_runtime(self.root)
         changed = {row['file'] for row in rows if row['reviewedNormalization']}
-        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py'})
+        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py'})
         manifest = json.loads((ROOT / 'plugins/corthex-nexus/plugin.json').read_text(encoding='utf-8'))
-        self.assertEqual(manifest['version'], '0.2.2')
-        self.assertIn('VERSION = "0.2.2"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
-        self.assertIn('version="0.2.2", timeout=30', (self.scripts / 'transport.py').read_text(encoding='utf-8'))
+        self.assertEqual(manifest['version'], '0.3.0')
+        self.assertIn('VERSION = "0.3.0"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
+        self.assertIn('version="0.3.0", timeout=30', (self.scripts / 'transport.py').read_text(encoding='utf-8'))
 
     def test_a_wire_schema_change_is_still_refused(self):
         path = self.scripts / 'hub.py'
@@ -39,7 +39,7 @@ class RuntimeVersionPinTest(unittest.TestCase):
 
     def test_an_unreviewed_version_field_is_still_refused(self):
         path = self.scripts / 'transport.py'
-        path.write_text(path.read_text(encoding='utf-8').replace('version="0.2.2"', 'version="0.2.3"', 1), encoding='utf-8')
+        path.write_text(path.read_text(encoding='utf-8').replace('version="0.3.0"', 'version="0.3.1"', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)
 
@@ -48,5 +48,13 @@ class RuntimeVersionPinTest(unittest.TestCase):
         source = path.read_text(encoding='utf-8')
         self.assertIn('if not kept(x)]', source)
         path.write_text(source.replace('in (" ", "(")', 'in (" ", "(", "-")', 1), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'runtime differs'):
+            fixture.verify_runtime(self.root)
+
+    def test_another_comment_change_is_still_refused(self):
+        path = self.scripts / 'commands.py'
+        source = path.read_text(encoding='utf-8')
+        self.assertIn('ASKS = ("answer", "recommended", "checkpoint")', source)
+        path.write_text(source.replace('"checkpoint")', '"checkpoint", "maybe")', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)
