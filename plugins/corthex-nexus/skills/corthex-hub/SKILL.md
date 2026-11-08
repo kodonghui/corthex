@@ -5,7 +5,7 @@ license: Apache-2.0
 compatibility: Needs Python 3.8 or later and uses installed Git. Local snapshot, build and status work offline; explicit server commands use only the configured NEXUS address and allowed projects.
 metadata:
   author: kodonghui
-  version: "0.2.2"
+  version: "0.3.0"
 ---
 
 # CORTHEX hub
@@ -69,8 +69,8 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 | Command | Purpose |
 | --- | --- |
 | `todo PROJECT [--session LABEL]` | Read ordered agent work and waiting/taken counts; a missing space is empty |
-| `comment PROJECT --stage STAGE --text TEXT [--item ID]` | Comment on an item; a whole-picture comment needs `--quote` |
-| `reply PROJECT COMMENT --text TEXT` | Reply to a comment |
+| `comment PROJECT --stage STAGE --text TEXT [--item ID]` | Comment on an item of any of the 13 stages, or on the stage as a whole without `--item`; optional `--quote`, `--asks` |
+| `reply PROJECT COMMENT --text TEXT` | Reply to a comment; optional `--asks` |
 | `answered PROJECT COMMENT` | Mark it answered |
 | `decide PROJECT COMMENT --link HTTPS_URL [--text TEXT]` | Report where the user's decision was recorded |
 | `propose PROJECT --stage STAGE --item ID --reason TEXT --change TEXT` | Propose a change; optional repeated items, `--adds`, `--source-file` and one comment/discrepancy target |
@@ -80,6 +80,8 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 | `show PROJECT ENTRY` | Read a comment, proposal, reflection or checkpoint in full |
 | `claim PROJECT ENTRY`, `release PROJECT ENTRY` | Claim/end a session's agent work; claims are never queued |
 | `outbox [PROJECT ...] [--send]` | List metadata without text, or retry pending writes |
+
+When your comment or reply leaves a question for the user, `--asks` says what it asks, so that the user's page offers the right answer: `answer` for an answer in words, `recommended` when the text holds a recommendation that the user can take as recommended, and `checkpoint` when it asks the user to pass the stage's checkpoint as recommended. The user's next entry clears it. A NEXUS server from before the redesign takes comments only on the pictured stages (`01-domain`, `05-erd`, `07-sitemap`), with `--quote` when `--item` is left out, and no `--asks`; it refuses the rest as `invalid_request`, so comment there without them.
 
 Writes and claims require `--session` or `CORTHEX_NEXUS_SESSION`. Choose a label without personal data. Check source and explicit user work before taking agent work. A proposal is a suggestion, an accepted proposal is authorization to prepare the described change, and a passed checkpoint must come from the user; the agent never passes one.
 

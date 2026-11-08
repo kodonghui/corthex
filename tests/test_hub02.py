@@ -907,13 +907,55 @@ class CommandOutcomesTest(HubCase):
             ["reply", "acme-shop", PROPOSAL, "--text", "Text", "--session", SESSION],
             ["decide", "acme-shop", COMMENT, "--link", "https://example.com/person%40example.com", "--session", SESSION],
             ["reflect", "acme-shop", EDIT, "reflected", "--session", SESSION],
-            ["comment", "acme-shop", "--stage", "01-domain", "--text", "Text", "--session", SESSION],
+            ["comment", "acme-shop", "--stage", "01-domain", "--item", "not-a-trace-id", "--text", "Text", "--session", SESSION],
         ]
         for words in invalid:
             with self.subTest(words=words[0]):
                 client = FakeClient()
                 with self.assertRaises(CMD.CommandLine):
                     self.execute(words, client)
+                self.assertEqual(client.calls, [])
+        self.assertEqual(BOX.Outbox(self.home, "acme-shop").files(), [])
+
+    def test_comment_takes_any_stage_and_says_what_the_agent_asks(self):
+        # 0.3.0: a comment on any of the 13 stages, on the stage as a whole without
+        # --item and without --quote, and --asks on the agent's comment or reply.
+        self.assertEqual(CMD.STAGE_KEYS, hub.STAGE_KEYS)
+        cases = [
+            (["comment", "acme-shop", "--stage", "04-functional-spec", "--text", "Whole stage", "--asks", "checkpoint"],
+             "/comments", {"stage": "04-functional-spec", "item": "", "text": "Whole stage", "asks": "checkpoint"}),
+            (["comment", "acme-shop", "--stage", "02-prd", "--item", "REQ-001", "--text", "On an item"],
+             "/comments", {"stage": "02-prd", "item": "REQ-001", "text": "On an item"}),
+            (["comment", "acme-shop", "--stage", "05-erd", "--item", "TBL-001", "--text", "Asks", "--asks", "answer"],
+             "/comments", {"stage": "05-erd", "item": "TBL-001", "asks": "answer"}),
+            (["reply", "acme-shop", COMMENT, "--text", "Recommend B", "--asks", "recommended"],
+             "/comments/" + COMMENT + "/replies", {"text": "Recommend B", "asks": "recommended"}),
+            (["reply", "acme-shop", COMMENT, "--text", "Done"], "/comments/" + COMMENT + "/replies", {"text": "Done"}),
+        ]
+        for words, suffix, expected in cases:
+            with self.subTest(words=words):
+                _, rows, client = self.execute(words + ["--session", SESSION])
+                self.assertEqual(rows[0]["outcome"], "done")
+                method, path, body, _, _ = client.calls[-1]
+                self.assertEqual((method, path), ("POST", "/api/spaces/acme-shop" + suffix))
+                for key, value in expected.items():
+                    self.assertEqual(body[key], value)
+                self.assertNotIn("quote", body)
+                if "asks" not in expected:
+                    self.assertNotIn("asks", body)
+        refused = [
+            ["comment", "acme-shop", "--stage", "02-prd", "--text", "Text", "--asks", "maybe"],
+            ["comment", "acme-shop", "--stage", "99-x", "--text", "Text"],
+            ["propose", "acme-shop", "--stage", "02-prd", "--item", "REQ-001", "--reason", "Reason", "--change", "Change"],
+            ["answered", "acme-shop", COMMENT, "--asks", "answer"],
+            ["decide", "acme-shop", COMMENT, "--link", "https://example.com/decision", "--asks", "answer"],
+        ]
+        for words in refused:
+            with self.subTest(words=words):
+                client = FakeClient()
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+                    self.execute(words + ["--session", SESSION], client)
+                self.assertEqual(caught.exception.code, 2)
                 self.assertEqual(client.calls, [])
         self.assertEqual(BOX.Outbox(self.home, "acme-shop").files(), [])
 

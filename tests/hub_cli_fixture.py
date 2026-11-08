@@ -29,10 +29,35 @@ WRITE_RE = re.compile(r'"(nw_[0-9a-hjkmnp-tv-z]{12})"\Z')
 PRIVATE_MARKER = "qa-sensitive@example.com"
 # Reviewed release changes after the accepted pin, each mapped back to the audited bytes.
 # 0.2.2 changes the version fields and lets a project ask_before entry keep an inherited
-# entry it repeats with a qualifier, as "deletions (data)" keeps "deletions"; nothing else.
+# entry it repeats with a qualifier, as "deletions (data)" keeps "deletions". 0.3.0 changes
+# the version fields again, lets `comment` take any of the 13 stages, with an empty item for
+# the stage as a whole and no quote needed, and gives `comment` and `reply` `--asks`; nothing else.
 REVIEWED = {
-    "hub.py": ((b'VERSION = "0.2.2"\n', b'VERSION = "0.2.0"\n'),),
-    "transport.py": ((b'version="0.2.2", timeout=30', b'version="0.2.0", timeout=30'),),
+    "hub.py": ((b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),),
+    "transport.py": ((b'version="0.3.0", timeout=30', b'version="0.2.0", timeout=30'),),
+    "commands.py": (
+        (b'PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")\n'
+         b'# 0.3.0: a comment takes any of the 13 stages, and the agent\'s comment or reply says what it asks of the user.\n'
+         b'STAGE_KEYS = ("01-domain", "02-prd", "03-user-flow", "04-functional-spec", "05-erd", "06-api", "07-sitemap",\n'
+         b'              "08-screen-states", "09-mockup", "10-wbs", "11-development", "12-qa", "13-presentation")\n'
+         b'ASKS = ("answer", "recommended", "checkpoint")\n',
+         b'PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")\n'),
+        (b'        if args.asks:\n'
+         b'            body["asks"] = args.asks\n'
+         b'        name, path = "comment", base + "/comments"\n',
+         b'        if not body["item"] and not body.get("quote"):\n'
+         b'            raise CommandLine("a comment on the picture needs --quote")\n'
+         b'        name, path = "comment", base + "/comments"\n'),
+        (b'        body["text"] = text_value(args, "text", True)\n'
+         b'        if args.asks:\n'
+         b'            body["asks"] = args.asks\n'
+         b'        name, path = "reply"',
+         b'        body["text"] = text_value(args, "text", True)\n'
+         b'        name, path = "reply"'),
+        (b'choices=STAGE_KEYS if name == "comment" else PICTURE_STAGES)', b'choices=PICTURE_STAGES)'),
+        (b'        if name in ("comment", "reply"):\n'
+         b'            parser.add_argument("--asks", choices=ASKS)\n', b''),
+    ),
     "snapshot02.py": ((
         b'    listed = [x.casefold() for x in entries]\n'
         b'\n'
