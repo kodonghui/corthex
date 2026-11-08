@@ -165,8 +165,13 @@ def reserve(memory, root, expected, targets, deadline, run_id=None, *, primary_o
     return reservation
 
 
-def update_progress(memory, root, expected, changes, deadline):
-    """Merge intended progress fields into fresh metadata, preserving its fence."""
+def update_progress(memory, root, expected, changes, deadline, removed=()):
+    """Merge intended progress fields into fresh metadata, preserving its fence.
+
+    `removed` names fields to take out, as a resume takes out the fault
+    guard's stop (TASK-096). A field cannot be both changed and removed, and
+    the record must stay valid without it (TBL-009), or nothing is written.
+    """
     root = Path(root)
     check = guard(memory, root, deadline, curator=True)
     fresh = read(memory, root, deadline)
@@ -174,8 +179,12 @@ def update_progress(memory, root, expected, changes, deadline):
         raise fence_plan.Stale()
     if not isinstance(changes, dict) or 'fence' in changes:
         raise ValueError('progress merge must preserve the fence')
+    if not isinstance(removed, (tuple, list)) or set(removed) & set(changes):
+        raise ValueError('removed progress fields are a list of names that the merge does not change')
     value = copy.deepcopy(fresh)
     value.update(copy.deepcopy(changes))
+    for key in removed:
+        value.pop(key, None)
     data = format2.curation_bytes(value)
     if value['applies'] < fresh['applies']:
         raise ValueError('applies must not go backwards')
