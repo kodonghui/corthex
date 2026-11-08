@@ -5,30 +5,35 @@ lease. For an enabled project with consent it takes the layer lease to build
 the index again when it is missing, unreadable or obsolete (TASK-081), or else
 to make its rows match the canonical items: an item whose row is missing or
 differs is written again, and the rows of items that are gone or private are
-deleted. This also repairs what a stopped writer
-left, such as the row of an item that a stopped undo made current again
-(TASK-108).
+deleted, their words emptied from the write-ahead log as a forget empties them,
+or, when a reader keeps the log, with the index's files, which are then built
+again; an index whose files cannot go either is marked unfinished, so that the
+next step 6 builds it again. This also repairs what a stopped writer left, such
+as the row of an item that a stopped undo made current again (TASK-108) or the
+rows that a stopped forget left.
 
 With the OpenAI memory key it then embeds every current item without a vector
 (API-011): the item's kind, text and the words of its quotes, joined by line
 breaks, which `model_embed` redacts and cuts, in requests of at most 100 texts
-and 200,000 bytes. The requests go without the layer lease; before each one the
-step takes it to read the curation record's fence again, and when a forget, an
-undo or a tombstone has moved it, it reads the remaining items again, so an
-item forgotten before a request is never in it. A vector is written under the
-layer lease only while its item is still current, unchanged and not private,
-and the index still has the embedding model and vector length that made it. A
-failed request is noted in the failure log with its code, and its items stay
-without a vector, found by words, until a later step 6; a lasting failure ends
-the step. Nothing calls this module before the 0.3.0 activation.
+and 200,000 bytes. The requests go without the layer lease; before each one,
+and before each further attempt of one, the step takes it to read the curation
+record's fence again, and when a forget, an undo or a tombstone has moved it,
+it reads the items again. A request one of whose items is then gone, changed or
+private is not tried again, so an item forgotten before an attempt is never in
+it. A vector is written under the layer lease only while its item is still
+current, unchanged and not private, and the index still has the embedding model
+and vector length that made it. A failed request is noted in the failure log
+with its code, and its items stay without a vector, found by words, until a
+later step 6; a lasting failure ends the step. Nothing calls this module before
+the 0.3.0 activation.
 """
 import contextlib
 from dataclasses import dataclass
 import os
 import sqlite3
 
-from . import (base, clock, configuration, curation_worker, fence_plan, index_io, item_io, item_types, locks,
-               model_access, model_client, model_embed, revision_io, worker_support)
+from . import (base, clock, configuration, curation_worker, fence_plan, forget_effects, index_io, item_io,
+               item_types, locks, model_access, model_client, model_embed, revision_io, worker_support)
 
 RESERVE = curation_worker.RESERVE   # no request starts in the run's last seconds
 _BREAKS = curation_worker._BREAKS + (sqlite3.Error,)
@@ -103,12 +108,33 @@ def _rows(memory, root, deadline, model, dims, at):
         rebuilt = index_io.ensure(memory, root, expected, deadline, model=model, dims=dims, when=at)
         items = item_io._items(memory, root, deadline, lambda: memory.check(deadline))
         check()
+        written, removed = (), ()
+        if rebuilt is None:
+            connection = _opened(memory, root, model, dims)
+            if connection is None:
+                raise index_io.IndexUnavailable()
+            try:
+                written, removed = index_io.sync(connection, items)
+            finally:
+                connection.close()
+            check()
+        # The rows that went leave no word in the files: the log is emptied as a forget empties it, or, when a
+        # reader keeps it, the index's files go and the index is built again (TC-140).
+        if removed:
+            try:
+                how = forget_effects._index(memory, root, removed, deadline, check)
+            except (OSError, forget_effects.Unverified):
+                # Its files could not go either, as when Windows keeps a file that a reader holds open: the
+                # index is marked unfinished, so that readers leave it and the next step 6 builds it again.
+                check()
+                index_io.unfinish(memory, root)
+                raise
+            if how == 'files':
+                rebuilt = index_io.ensure(memory, root, expected, deadline, model=model, dims=dims, when=at)
         connection = _opened(memory, root, model, dims)
         if connection is None:
             raise index_io.IndexUnavailable()
         try:
-            written, removed = ((), ()) if rebuilt is not None else index_io.sync(connection, items)
-            check()
             _, vectors = index_io.rows(connection)
         finally:
             connection.close()
@@ -142,6 +168,22 @@ def _fresh(memory, root, deadline, items, expected):
             items = _still(memory, root, deadline, items)
         check()
     return items, proof
+
+
+def _again(memory, root, deadline, batch, expected):
+    """Asked before each further attempt of a request: whether every item of its batch may still be sent.
+
+    It compares the fence as `_fresh` does, against the proof that its last
+    comparison read, so that the batch is read again only when the fence has
+    moved since; a request one of whose items is gone, changed or private is
+    not tried again, and its items wait for a later step 6 (TC-140).
+    """
+    proof = [expected]
+
+    def still():
+        kept, proof[0] = _fresh(memory, root, deadline, batch, proof[0])
+        return len(kept) == len(batch)
+    return still
 
 
 def _store(memory, root, deadline, model, dims, batch, vectors):
@@ -219,7 +261,8 @@ def keep(memory, project, owner, deadline, *, when=None):
             batch, remaining = [item for item, _ in remaining[:stop]], remaining[stop:]
             result = model_embed.embed(memory, project=project, call='embed-items',
                                        texts=[text(item) for item in batch], config=settings.document,
-                                       check=check, deadline=deadline - RESERVE)
+                                       check=check, deadline=deadline - RESERVE,
+                                       still=_again(memory, root, deadline, batch, expected))
             done['requests'] += 1
             failure = result.failure
             if failure is not None:

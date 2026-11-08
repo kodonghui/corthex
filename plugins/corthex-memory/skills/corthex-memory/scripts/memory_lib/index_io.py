@@ -218,8 +218,8 @@ def sync(connection, items):
     """Make the rows match the canonical items: (the items written again, the items whose rows went).
 
     An item whose row is missing or differs is written again, losing its vector
-    when its words changed; the rows of every item not given are deleted, and
-    the write-ahead log emptied as after a forget.
+    when its words changed; the rows of every item not given are deleted. The
+    caller then empties the write-ahead log of their words, as a forget does.
     """
     found, _ = rows(connection)
     wanted = {item['id']: _row(item) for item in items}
@@ -228,8 +228,6 @@ def sync(connection, items):
     gone = sorted(set(found) - set(wanted))
     if changed or gone:
         _write(connection, changed, stale, gone)
-    if gone:
-        connection.execute('PRAGMA wal_checkpoint(TRUNCATE)')
     return [item for item, _, _ in changed], gone
 
 
@@ -272,6 +270,25 @@ def delete(connection, items, forget=False):
         return True
     busy, _, _ = connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
     return busy == 0
+
+
+def unfinish(memory, root):
+    """Take the index's `built` mark away, so that readers leave it and step 6 builds it again.
+
+    The caller holds the layer lease. Returns whether the mark went; when it
+    cannot, the caller's own error says why.
+    """
+    try:
+        connection = open_index(memory, root)
+        if connection is None:
+            return False
+        try:
+            connection.execute("DELETE FROM index_meta WHERE name = 'built'")
+        finally:
+            connection.close()
+    except (sqlite3.Error, IndexUnavailable):
+        return False
+    return True
 
 
 def search(connection, text, limit=None):

@@ -18,8 +18,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, diagnostics, fence_plan, index_io, index_worker, model_access, model_embed,
-                        revision_io)
+from memory_lib import (clock, diagnostics, fence_plan, forget_effects, index_io, index_worker, model_access,
+                        model_embed, revision_io)
 import test_memory_curation_worker as worker_fixture
 
 STAMP, WHEN = worker_fixture.STAMP, worker_fixture.WHEN
@@ -349,6 +349,113 @@ class IndexWorkerTest(unittest.TestCase):
         self.assertEqual(second, [index_worker.text(item) for item in ordered[100:] if item is not forgotten])
         self.assertNotIn(forgotten['text'], json.dumps(self.server.requests))
         self.assertEqual(set(self.vectors()), {item['id'] for item in items} - {forgotten['id']})
+
+    def test_tc140_an_item_forgotten_between_two_attempts_of_a_request_is_not_sent_again(self):
+        items = sorted(self.made(3), key=lambda item: item['id'])
+        self.layer(items)
+        forgotten = items[1]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.advance(other, forgotten)
+        with self.quick() as waits:
+            outcome = self.keep()
+        # The request is not tried again: it fails with its bad vector, and its items wait for a later step 6.
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('done', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+        self.assertEqual(self.failures(), [('embed', 'bad-vector')])
+        later = self.keep()
+        self.assertEqual((later.removed, later.embedded), ((forgotten['id'],), (items[0]['id'], items[2]['id'])))
+        self.assertEqual(self.inputs()[1], [index_worker.text(items[0]), index_worker.text(items[2])])
+        self.assertNotIn(forgotten['text'], json.dumps(self.server.requests[1:]))
+
+    def test_a_request_is_tried_again_when_the_fence_moved_and_its_items_did_not_change(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.bad = {0, 1}
+        self.server.before[0] = self.server.before[1] = lambda: self.advance(other)
+        with self.quick() as waits:
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('done', 1, (), tuple(item['id'] for item in items)))
+        self.assertEqual(waits, [10, 60])
+        first, second, third = self.inputs()
+        self.assertEqual((second, third), (first, first))
+
+    def test_tc140_rows_that_a_stopped_forget_left_take_the_index_with_them_when_a_reader_keeps_its_log(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        with mock.patch.dict(os.environ, {'CORTHEX_MEMORY_OPENAI_API_KEY': ''}):
+            self.assertEqual(self.keep().reason, 'key')
+        # A reader holds the index open while step 6 writes the vectors, so they stay in the write-ahead log,
+        # and then keeps the log in a read transaction.
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        self.assertEqual(len(self.keep().embedded), 2)
+        self.assertGreater((self.root / 'index.db-wal').stat().st_size, 0)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_vectors').fetchone()[0], 2)
+        # While no row goes, the reader changes nothing.
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1):
+            kept = self.keep()
+        self.assertEqual((kept.reason, kept.rebuilt, kept.removed, kept.requests), ('done', None, (), 0))
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1):
+            later = self.keep()
+        if os.name == 'nt':
+            # Windows keeps a file that a reader holds open, so the step reports no success, as a forget does,
+            # and leaves the index unfinished for the next step 6, which builds it again once the reader is gone.
+            self.assertEqual((later.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+            self.assertNotIn('built', dict(self.tables()['index_meta']))
+            reader.close()
+            later = self.keep()
+            self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                             ('done', 'building', (), (items[1]['id'],)))
+        else:
+            self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                             ('done', 'missing', (forgotten['id'],), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_an_index_whose_files_cannot_go_after_rows_went_is_left_unfinished_and_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        unlink = forget_effects.files._unlink
+
+        def held(path, check=None):
+            if path.name.startswith('index.db'):
+                raise PermissionError(13, 'held open', str(path))
+            return unlink(path, check)
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1), \
+                mock.patch.object(forget_effects.files, '_unlink', held):
+            failed = self.keep()
+        self.assertEqual((failed.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+        self.assertEqual(sorted(dict(self.tables()['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        reader.close()
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def assertNoWordsOf(self, forgotten):
+        """Neither the index file nor its write-ahead log keeps the item's own word, and no table its ID."""
+        word = re.search(r'marker\d+', forgotten['text']).group().encode('utf-8')
+        for name in ('index.db', 'index.db-wal'):
+            path = self.root / name
+            self.assertNotIn(word, path.read_bytes() if path.exists() else b'', name)
+        for table, rows in self.tables().items():
+            self.assertFalse([row for row in rows if forgotten['id'] in row], table)
 
     def test_an_index_built_again_with_other_settings_during_a_request_takes_no_vector(self):
         items = self.made(2)
