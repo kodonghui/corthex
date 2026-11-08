@@ -348,8 +348,8 @@ class InterfacesTest(unittest.TestCase):
 
     def test_every_behaviour_is_served(self):
         rows = table(section(self.doc, "## Interfaces"))
-        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in list(range(1, 33)) + [151, 152, 153, 154]])
-        expected_specs = {"SPEC-%03d" % n for n in list(range(1, 40)) + [143, 144, 145]}
+        self.assertEqual([row[0] for row in rows], ["API-%03d" % n for n in list(range(1, 33)) + [151, 152, 153, 154, 155, 156]])
+        expected_specs = {"SPEC-%03d" % n for n in list(range(1, 40)) + [143, 144, 145, 146, 147, 148]}
         served = set()
         for row in rows:
             with self.subTest(interface=row[0]):
@@ -420,6 +420,31 @@ class InterfacesTest(unittest.TestCase):
                 self.assertEqual(group.get("matcher", ""), "|".join(ticked(claude)))
         limits = {event: group[0]["hooks"][0].get("additionalContextLimit") for event, group in config["hooks"].items()}
         self.assertEqual(limits, {"SessionStart": 8000, "UserPromptSubmit": 2000, "Stop": None, "SessionEnd": None})
+
+    def test_the_compaction_hooks_follow_their_table(self):
+        # Release 0.3.0 adds these entries; the 0.2.0 block above stays as released.
+        config = json.loads(code_block(self.doc, "Release 0.3.0 adds these entries to `hooks/hooks.json`", "json"))
+        rows = table(section(self.doc, "#### Compaction hooks from release 0.3.0"))
+        self.assertEqual([row[2].split(",")[0] for row in rows], ["PreCompact", "PostCompact"])
+        self.assertEqual(list(config["hooks"]), [row[1].split(":")[0] for row in rows])
+        for name, claude, codex, command, timeout, deadline in rows:
+            argument = ticked(command)[0].split(" ")[1]
+            event = claude.split(":")[0]
+            with self.subTest(event=event):
+                (group,) = config["hooks"][event]
+                (handler,) = group["hooks"]
+                script = '"${CLAUDE_PLUGIN_ROOT}/scripts/hook.py" ' + argument
+                self.assertEqual(handler["command"], " || ".join(python + " " + script for python in ("python3", "python", "py -3")))
+                windows = '"$env:CLAUDE_PLUGIN_ROOT/scripts/hook.py" ' + argument
+                self.assertEqual(handler["commandWindows"], "python %s; if ($LASTEXITCODE -ne 0) { py -3 %s }" % (windows, windows))
+                self.assertEqual(handler["timeout"], int(timeout.split(" ")[0]))
+                self.assertEqual(group["matcher"], "|".join(ticked(claude)))
+                self.assertNotIn("additionalContextLimit", handler)
+                self.assertIn(re.search(r"API-\d{3}", name).group(), {"API-155", "API-156"})
+        self.assertEqual({row[5] for row in rows}, {"500 ms", "300 ms"})
+        deadlines = table(section(self.doc, "### Deadlines"))
+        self.assertIn(["The compaction brief hook", "500 ms"], [row[:2] for row in deadlines])
+        self.assertIn(["The compaction check hook", "300 ms"], [row[:2] for row in deadlines])
 
 
 if __name__ == "__main__":
