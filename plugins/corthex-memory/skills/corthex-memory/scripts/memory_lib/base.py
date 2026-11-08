@@ -36,6 +36,7 @@ FIELDS = {
     "TBL-009.failures": "count log turn",
     "TBL-009.consolidation": "last due failures",
     "TBL-009.stopped": "at by errors",
+    "TBL-011": "at session where prompt items scores",
 }
 MAPS = {"TBL-002.projects", "TBL-002.prices.models", "TBL-009.logs"}
 RESERVED = {"con", "prn", "aux", "nul"} | {

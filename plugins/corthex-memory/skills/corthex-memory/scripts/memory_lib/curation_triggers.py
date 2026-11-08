@@ -18,8 +18,8 @@ HOOKS = ('end-of-turn', 'end')
 Markers = namedtuple('Markers', 'count oldest')
 
 
-def scan(memory, root):
-    """Unprocessed turns and the oldest time, from the markers' names alone.
+def turns(memory, root):
+    """Each unprocessed turn, as (log, seq), with its oldest time, from the markers' names alone.
 
     Several markers of one turn count once, at their oldest time; a name that
     is not a marker or holds an impossible time is left out, as the memory
@@ -27,10 +27,10 @@ def scan(memory, root):
     """
     folder = root / 'unprocessed'
     if memory.fence.check(folder) is None:
-        return Markers(0, None)
-    turns = {}
-    with os.scandir(str(folder)) as found:
-        for entry in found:
+        return {}
+    found = {}
+    with os.scandir(str(folder)) as entries:
+        for entry in entries:
             match = retention.MARKER.fullmatch(entry.name)
             if match is None or not entry.is_file(follow_symlinks=False):
                 continue
@@ -39,8 +39,14 @@ def scan(memory, root):
             except ValueError:
                 continue
             key = (match.group(2), int(match.group(3)))
-            turns[key] = min(at, turns.get(key, at))
-    return Markers(len(turns), min(turns.values()) if turns else None)
+            found[key] = min(at, found.get(key, at))
+    return found
+
+
+def scan(memory, root):
+    """Unprocessed turns and the oldest time, as `turns` finds them."""
+    found = turns(memory, root)
+    return Markers(len(found), min(found.values()) if found else None)
 
 
 def met(hook, markers, now, triggers, temporary):
