@@ -157,7 +157,7 @@ Notion records use one records database per project. Decisions and action items 
 
 - the working principles in short form, which `tests/test_memory.py` keeps equal to the list in the entry skill;
 - the profile from `~/.corthex/profile.json`, with its approval categories replaced when the current project supplies a valid `ask_before` list (including an empty list). Without one, it gives the defaults, including the default `ask_before` list. If the file exists but cannot be read, it says so, tells the agent not to replace the file, and gives the defaults;
-- the project: the nearest `.corthex/project.json` up to the repository root, or else the project in `~/.corthex/projects.json` whose path or repository holds the current folder. For each stage it gives the human view, the truth and the source. Other projects on the machine are listed by name.
+- the project: the nearest `.corthex/project.json` up to the repository root, or else the project in `~/.corthex/projects.json` whose path or repository holds the current folder. For each stage it gives the human view, the truth and the source. When that project has no `.corthex/project.json`, it names the project and says that its stage settings are unknown, as the memory part speaks of the same project. Other projects on the machine are listed by name.
 
 The base context builder reads those local files and makes no network calls. The C1 hook runtime records eligible redacted entries and safe metadata under the memory store, described below. A missing store is not created by a hook; a failed context step adds nothing and the session still starts.
 

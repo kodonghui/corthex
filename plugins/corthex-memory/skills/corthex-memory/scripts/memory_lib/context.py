@@ -58,6 +58,12 @@ NO_PROJECT = (
     "No CORTHEX project for this folder. If the work is project work, the `corthex` skill "
     "can register it."
 )
+# A folder of a project in ~/.corthex/projects.json whose .corthex/project.json is missing:
+# the memory part of the start summary speaks of that project, so the base names it too.
+NO_SETTINGS = (
+    "This folder belongs to %s, a project in ~/.corthex/projects.json that has no .corthex/project.json, "
+    "so its stage settings are unknown. The `corthex` skill can write that file."
+)
 SHORTENED = "\n\n[Shortened to fit the hook output limit. Read the files named above for the rest.]"
 
 
@@ -340,24 +346,28 @@ def project_lines(path, project, alias):
 def project_context(folder, home):
     projects, registry_problem = registered_projects(home)
     path = find_project_file(folder)
-    alias = None
+    alias, registered = None, None
     if path is None:
         entry, alias = match_registered(folder, projects)
         root = resolve(entry.get("path")) if entry else None
         candidate = root / ".corthex" / "project.json" if root else None
         path = candidate if candidate and is_file(candidate) else None
+        if entry is not None and path is None and not (candidate is not None and exists(candidate)):
+            registered = entry
     project, problem = read_json(path) if path else (None, MISSING)
     lines = ["## Project", ""]
     if project is not None:
         lines.extend(project_lines(path, project, alias))
     elif problem != MISSING:
         lines.append(BAD_FILE % (path, problem))
+    elif registered is not None:
+        lines.append(NO_SETTINGS % clean(registered.get("name"), 60))
     else:
         lines.append(NO_PROJECT)
     if registry_problem not in (None, MISSING):
         bad = BAD_FILE % ("~/.corthex/projects.json", registry_problem)
         lines.extend(["", bad + " Until then the other projects on this machine are unknown."])
-    current = project.get("name") if project else None
+    current = project.get("name") if project else clean(registered.get("name")) if registered else None
     others = [clean(p.get("name"), 60) for p in projects if clean(p.get("name")) != current]
     if others:
         lines.extend(["", "Other projects on this machine: %s." % ", ".join(others[:LIST_LIMIT])])

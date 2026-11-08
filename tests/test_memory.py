@@ -359,6 +359,25 @@ class SessionStartTest(unittest.TestCase):
         self.assertIn("- This folder is the project's `design` repository.", text)
         self.assertIn("Other projects on this machine: blog.", text)
 
+    def test_registered_project_without_its_settings_file(self):
+        # The memory part speaks of the project of the project list, so the base names it too (TASK-091).
+        design = self.work / "shop-design"
+        (design / ".git").mkdir(parents=True)
+        self.write(self.home / ".corthex" / "projects.json", {"projects": [
+            {"name": "shop", "path": str(self.repo), "repos": {"design": str(design)}},
+            {"name": "blog", "path": str(self.work / "blog")},
+        ]})
+        for folder in (self.repo, self.repo / "src", design):
+            with self.subTest(folder=folder.name):
+                text = self.context(folder)
+                self.assertIn(session_start.NO_SETTINGS % "shop", text)
+                self.assertNotIn(session_start.NO_PROJECT, text)
+                self.assertIn("Other projects on this machine: blog.", text)
+        (self.repo / ".corthex" / "project.json").mkdir(parents=True)
+        text = self.context()
+        self.assertIn(session_start.NO_PROJECT, text)
+        self.assertNotIn("This folder belongs to", text)
+
     def test_registered_projects_outside_any_project(self):
         self.write(self.home / ".corthex" / "projects.json", {"projects": [{"name": "shop"}, {"name": "blog"}, {"path": "x"}]})
         text = self.context()
