@@ -76,10 +76,10 @@ CORTHEX 자신의 프로젝트에서 `corthex-memory` 플러그인의 06단계�
 | API-030 | `sync` | 명령 | SPEC-026, SPEC-027 | superseded (D3, 2026-10-27) |
 | API-031 | `setup` | 명령 | SPEC-011 | active |
 | API-032 | `repair` | 명령 | SPEC-033, SPEC-039 | active |
-| API-151 | `conflicts` | command | SPEC-143 | active |
-| API-152 | `runs` | command | SPEC-144 | active |
-| API-153 | `undo` | command | SPEC-145, SPEC-012 | active |
-| API-154 | `migrate` | command | SPEC-039 | active |
+| API-151 | `conflicts` | 명령 | SPEC-143 | active |
+| API-152 | `runs` | 명령 | SPEC-144 | active |
+| API-153 | `undo` | 명령 | SPEC-145, SPEC-012 | active |
+| API-154 | `migrate` | 명령 | SPEC-039 | active |
 | API-155 | 압축 지시 훅 | 훅 | SPEC-146, SPEC-001, SPEC-008, SPEC-039 | active |
 | API-156 | 압축 확인 훅 | 훅 | SPEC-147, SPEC-001, SPEC-008, SPEC-039 | active |
 
@@ -571,6 +571,8 @@ Windows처럼 `python3`가 없는 곳에서는 그 대신 `python`이나 `py -3`
 
 C2 결과 정의: data-conflicts는 project·open과 선택 candidate/dismissed, data-runs는 project·runs와 선택 limit, data-undo는 project·run과 미리보기 changes·kept·reasons, 적용한 undo ID 또는 최근 runs를 담습니다. 후보는 두 항목의 제목·종류·화자·날짜를 표시하고, 실행은 ID·종류·시각·변경 수·최대3개 저장 항목 제목·undoable을 표시합니다. kept는 target의 대상 ID·알면 뒤 실행(by)·정해진 이유를 담습니다. 미리보기 이유는 기기의 줄 기록에서 읽고 200바이트 이내이며 실행 로그에 복제하지 않습니다. status의 open_conflicts·last_run, items.undone과 forget의 history_records·settled_conflicts는 C1 결과도 유효하게 남도록 공유 스키마에서는 선택이고 C2가 알 때 표시합니다.
 
+`runs` 처리기는 `run_listing.runs(context)`입니다(TASK-104). 실행기는 0.3.0 활성화에서 `runs`와 `--limit N`을 받으며, 그 전에는 `usage`로 답합니다. 처리기는 아무것도 바꾸지 않습니다. 다른 명령이 자기 잠금을 기다리는 만큼 프로젝트의 레이어 임대를 기다리고(`lock-busy`), 그 임대 아래에서 정리 기록의 표지, 실행 기록, 실행이 저장한 항목의 기록을 모두 기억 폴더의 경로 울타리를 거쳐 읽습니다. 기록이 온전하고 자기 이름과 맞으며 이 기기가 표지의 epoch에서 썼고 마지막 적용이 표지의 `run:<id>` 판 번호이며 보관 기간 안에 끝난 실행만 목록에 오릅니다. 링크로 닿는 기록은 빠집니다. 상한은 1~200, 기본 10이며 `data.limit`에 담깁니다. `counts`는 여러 적용이 바꾼 대상도 한 번씩 셉니다. `saved`는 기록이 남은 첫 저장 항목 세 개를 실행의 순서대로 항목 목록 줄(TBL-015)로 담으며, 잊은 항목과 지운 프로젝트의 항목은 뺍니다. `undoable`은 실행이 바꾼 대상 하나라도 실행이 마지막으로 준 판 번호를 아직 가질 때 참입니다. 되돌리기 미리보기(TASK-105)는 그 대상도 기록이나 뒤에 의존하는 변경 때문에 지킬 수 있습니다. 그런 실행이 없을 때와 정리 기록을 읽을 수 없을 때 결과는 빈 목록의 `nothing`이며, 뒤의 경우는 그렇다고 말하고 실패 기록에 오류를 적습니다.
+
 충돌 알림의 제목, conflicts/runs의 항목 제목, undo의 줄 기록 이유는 대화에서 온 신뢰하지 않는 참고 자료입니다. 항목과 같은 한 줄 정리·탈출을 적용하고 인용한 값으로 보여 주며 호스트 지시로 다루지 않습니다. 기존 참고 자료 머리말 앞에 오는 충돌 알림도 고정 문구로 참고 값임을 밝힙니다.
 
 ### 확인
@@ -611,9 +613,9 @@ undo의 확인 미리보기(outcome=confirm, confirm-stale 포함)는 data.bindi
 | `sync` | API-030 | `on <address> [--branch B]`, `off`, `now` | `on` | 동기화를 켜거나 끄거나, 끝날 때까지 기다리며 지금 동기화합니다(SPEC-026, SPEC-027) |
 | `setup` | API-031 | `--at <folder>` | 아니요 | 그 폴더에 프로젝트가 있는 임시 기기를 위한 설정 스크립트를 내보냅니다(SPEC-011) |
 | `repair` | API-032 | | 예 | 기억 폴더 정보가 없거나 읽을 수 없고 되살릴 백업도 없을 때, 새 기기 ID를 담은 새 기억 폴더 정보를 씁니다(TBL-001) |
-| `conflicts` | API-151 | `[--dismiss <candidate>]` | no | 열린 후보를 보거나 항목은 그대로 두고 후보를 닫음(SPEC-143) |
-| `runs` | API-152 | `[--limit N]` | no | 최근 실행을 새것부터 기본10개. ID·종류·시각·변경 수·저장 항목 제목 최대3개·되돌릴 수 있는지(SPEC-144) |
-| `undo` | API-153 | `<run>` | yes, showing what it changes and what later changes stay | 확인한 실행을 새 실행으로 반대로 적용(SPEC-145) |
+| `conflicts` | API-151 | `[--dismiss <candidate>]` | 아니요 | 열린 후보를 보거나 항목은 그대로 두고 후보를 닫음(SPEC-143) |
+| `runs` | API-152 | `[--limit N]` | 아니요 | 최근 실행을 새것부터 기본10개. ID·종류·시각·변경 수·저장 항목 제목 최대3개·되돌릴 수 있는지(SPEC-144) |
+| `undo` | API-153 | `<run>` | 예, 바꾸는 것과 남는 뒤의 변경을 보여 주며 | 확인한 실행을 새 실행으로 반대로 적용(SPEC-145) |
 | `migrate` | API-154 | | 예, 먼저 양쪽 호스트를 올리고 다른 세션을 닫도록 요청 | 문서화한 유지보수 구간에서 이 기기의 형식1 기억 저장소를 형식2로 옮기거나 멈춘 이관을 마침(SPEC-039) |
 
 명령마다 `data`에 담는 것을 짧게 적습니다. 모든 필드는 결과 스키마에 있고, 대부분의 결과에 대한 예시는 [memory-examples.json](memory-examples.json)에 있습니다:
