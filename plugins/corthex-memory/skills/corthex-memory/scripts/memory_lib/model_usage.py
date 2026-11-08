@@ -1,4 +1,8 @@
-"""One-shot per-attempt TBL-003 accounting, without model transport or retries."""
+"""One-shot per-attempt TBL-003 accounting, without model transport or retries.
+
+`sizes` reads the curate requests' input tokens from usage logs alone, for
+the C2 evaluation's report (TASK-050, TASK-116).
+"""
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, localcontext
@@ -7,6 +11,7 @@ import math
 import os
 import re
 import stat
+import statistics
 import threading
 
 from . import base, clock, configuration, curation, files, history_recovery, locks, model_access, store
@@ -15,6 +20,12 @@ _CALLS = frozenset('curate consolidate embed-prompt embed-items embed-search cou
 _MODEL = re.compile(r'[a-z0-9][a-z0-9.-]{0,63}\Z')
 _REQUEST = re.compile(r'[A-Za-z0-9_-]{1,200}\Z')
 _INSTRUCTIONS = frozenset(('curate-1', 'curate-2', 'merge-1', 'merge-2', 'state-1'))
+# A curate request's size, without any of its text (TASK-116): the turns it carries, how many parts its one
+# turn goes in when that turn is too large alone, its item list's form (API-006) and its working estimate.
+SIZE = ('turns', 'parts', 'list', 'estimate')
+_LISTS = frozenset(('full', 'short', 'part'))
+# The report's thresholds: requests up to 60,000 by the safe estimate go uncounted, and REQ-022's limit.
+OVER = (60000, 100000)
 
 
 def _count(value):
@@ -23,10 +34,25 @@ def _count(value):
     return value
 
 
+def _size(call, size):
+    """A curate request's size fields, checked, in SIZE order: none, or turns, list and estimate, with parts
+    only for one part of one turn."""
+    if not size:
+        return {}
+    if (call != 'curate' or not isinstance(size, dict) or not set(size) <= set(SIZE) or
+            not {'turns', 'list', 'estimate'} <= set(size)):
+        raise ValueError('invalid memory request size')
+    curation._choice(size['list'], _LISTS)
+    _count(size['estimate'])
+    if _count(size['turns']) < 1 or 'parts' in size and (_count(size['parts']) < 2 or size['turns'] != 1):
+        raise ValueError('invalid memory request size')
+    return {key: size[key] for key in SIZE if key in size}
+
+
 def parse(data):
     value = store.json_document(data)
     curation._shape(value, 'at project call model total_ms result cost prices',
-                    'instructions input output cache_write cache_read first_ms error request')
+                    'instructions input output cache_write cache_read first_ms error request ' + ' '.join(SIZE))
     curation._time(value['at'])
     if not isinstance(value['project'], str) or not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,59}', value['project']):
         raise ValueError('invalid memory usage project')
@@ -43,6 +69,7 @@ def parse(data):
         curation._choice(value['error'], model_access._KINDS)
     if 'instructions' in value:
         curation._choice(value['instructions'], _INSTRUCTIONS)
+    _size(value['call'], {key: value[key] for key in SIZE if key in value})
     if 'request' in value and (not isinstance(value['request'], str) or not _REQUEST.fullmatch(value['request'])):
         raise ValueError('invalid memory request ID')
     if not configuration.number(value['cost']) or not math.isfinite(value['cost']) or value['cost'] < 0:
@@ -96,15 +123,18 @@ class Attempt:
     _pid: int = field(repr=False)
     _used: list = field(repr=False, compare=False)
     _mutex: object = field(default_factory=threading.Lock, repr=False, compare=False)
+    size: tuple = ()
 
     @classmethod
-    def start(cls, *, project, call, model, prices, credentials, instructions=None, when=None):
+    def start(cls, *, project, call, model, prices, credentials, instructions=None, size=None, when=None):
+        """`size` is a curate request's turns, parts, list and estimate (TBL-003), written on its line."""
         if not isinstance(credentials, model_access.Credentials):
             raise ValueError('original memory credentials required')
+        size = tuple(_size(call, size).items())
         catalogue = configuration.prepare({'prices': prices}, temporary=False).values['prices']
         encoded = json.dumps(catalogue, ensure_ascii=False, allow_nan=False).encode('utf-8')
         value = cls(base.utc_time(when), project, call, model, instructions, encoded,
-                    credentials, clock.now(), os.getpid(), [False])
+                    credentials, clock.now(), os.getpid(), [False], size=size)
         value.line()
         return value
 
@@ -124,6 +154,7 @@ class Attempt:
                    cost=_cost(self.call, self.model, tokens, prices), prices=prices['taken'])
         if self.instructions is not None:
             row['instructions'] = self.instructions
+        row.update(self.size)
         if failure is not None:
             row['error'] = failure.code
         if first_ms is not None:
@@ -266,3 +297,55 @@ def _append(memory, row, deadline):
             return True
         finally:
             os.close(fd)
+
+
+def _carries(row):
+    """What a curate line's size fields show that its request carries: one part of a turn, one whole turn or
+    several."""
+    if 'parts' in row:
+        return 'parts'
+    return 'one' if row['turns'] == 1 else 'several'
+
+
+def sizes(logs, *, project=None):
+    """The curate requests' input tokens from usage logs alone (TASK-050, TASK-116).
+
+    `logs` are the bytes of usage log files. Each curate line that reports
+    input tokens is one request, a retry too, and its tokens are its input,
+    cache-write and cache-read tokens, as REQ-022 and the price list count
+    them. The answer has the median, the nearest-rank 95th percentile and,
+    for each threshold in OVER, the requests above it and their share, how
+    their size fields show them (one part of a turn too large alone, one whole
+    turn or several, and the item list's form), how many passed their working
+    estimate and how many have no size fields, as lines written before
+    TASK-116 have none. A line that cannot be read is counted and left out.
+    """
+    found, unreadable = [], 0
+    for data in logs:
+        for line in data.splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = parse(line)
+            except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
+                unreadable += 1
+                continue
+            if row['call'] == 'curate' and 'input' in row and project in (None, row['project']):
+                found.append((sum(row.get(key, 0) for key in ('input', 'cache_write', 'cache_read')), row))
+    tokens = sorted(value for value, _ in found)
+    total = len(tokens)
+    result = {'requests': total, 'unreadable': unreadable,
+              'unrecorded': sum('turns' not in row for _, row in found),
+              'median': statistics.median(tokens) if tokens else None,
+              'p95': tokens[-(-total * 95 // 100) - 1] if tokens else None, 'over': {}}
+    for limit in OVER:
+        rows = [(value, row) for value, row in found if value > limit]
+        recorded = [(value, row) for value, row in rows if 'turns' in row]
+        result['over'][limit] = {
+            'requests': len(rows), 'share': len(rows) / total if total else None,
+            'turns': {shape: sum(_carries(row) == shape for _, row in recorded)
+                      for shape in ('parts', 'one', 'several')},
+            'list': {form: sum(row['list'] == form for _, row in recorded) for form in ('full', 'short', 'part')},
+            'above_estimate': sum(value > row['estimate'] for value, row in recorded),
+            'unrecorded': len(rows) - len(recorded)}
+    return result
