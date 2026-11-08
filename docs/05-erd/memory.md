@@ -312,7 +312,7 @@ C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID
 
 ### Injection log (TBL-011)
 
-One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. Appended by the session's hooks under the lock of the session's raw log file. Lines are deleted by their own time once past the retention period. No text of items or prompts.
+One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. Appended by the session's hooks under the lock of the session's raw log file; each line gets one attempt at the lock and recording's wait, and a lock that stays busy skips the line, as it skips a recorded entry. Lines are deleted by their own time once past the retention period. No text of items or prompts.
 
 | Field | Value | Meaning |
 | --- | --- | --- |

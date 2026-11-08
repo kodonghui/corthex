@@ -306,6 +306,8 @@ For an opportunistic hook diagnostic, an initial exclusive log-lease creation de
 
 Outcomes: `ok`; `left-out`, when the folder or the boundaries are left out, in which case the memory part is still shown; `deadline`; `error`. A hook that found no enabled project writes no hook timing line (TBL-005).
 
+The direct boundary of steps 5 and 7 is `start_summary` (TASK-091). `compose(memory, project, base, deadline, *, settings=None, environment=None, now=None, zone=None)` builds step 5 for an enabled project of a format-2 store and returns the start summary with its outcome (`ok`, `deadline` or `error`), the pinned items shown, the stored notices shown and the conflict candidate whose showing it reserved. It reads the curated layer without the layer lease, as stage 05 lets a reader, and of the item files only the pinned items, the items that decision lines cite and the two items of a conflict candidate. A project without a layer, or whose memory was deleted (TBL-017), shows nothing from it, and a missing layer file counts as empty. Pins show only current items without a tombstone, a tombstone's backup counting as the tombstone, in the order they were pinned. The retention notice counts the unprocessed turns whose oldest marker reaches the retention period within 7 days, and its date is the first of those ends in the device's local time, or today for a turn already past it. The conflict line names the oldest eligible candidate whose two items are still current, with the number of open candidates; only once it fits among the notices does `compose` reserve its showing under the notice-counter lease (TBL-010), waiting at most a quarter of a second, and a reservation that fails leaves the line out and counts nothing. A deadline that passes makes the memory part `Memory could not be read in time.`, and any other failure the line about an internal error, with the error for the failure log; neither deletes a notice or writes the injection log. `after(memory, project, part, host, session, *, when=None)` is step 7: it deletes each stored notice shown while it still holds the bytes shown, so that a notice written again since stays for the next start, and appends the start's line to the session's injection log (TBL-011). It returns its failures for the failure log, and each leaves its notice for the next start. The notices about sync come with sync in C3. No hook calls `start_summary` before the 0.3.0 activation, so the installed start hook keeps C1 behaviour.
+
 ### Prompt hook (API-002)
 
 1. Reads the input and tells the host. Finds the session's project; with no enabled project it ends, having printed and written nothing.
@@ -1071,9 +1073,9 @@ A notice is one line of the start summary (SPEC-022). The stored ones (TBL-010) 
 | Pin moved | once | `The pinned item <item> was superseded, so the pin moved to <to>.` |
 | Pin dropped | once | `The pinned item <item> was withdrawn, so its pin was dropped.` |
 | Conflict candidates | while an open candidate has been shown fewer than three times | Memory items <a> ("<title a>") and <b> ("<title b>") may disagree; neither replaces the other until the user says which holds (<n> open; the memory skill's conflicts command lists them). Titles are cut at 40 bytes. |
-| Pin restored by undo | an undo moves a pin back or removes it | The pin returned to <item>, or was removed, by undo <run>; the next summary says so once (SPEC-034). |
+| Pin restored by undo | once, after an undo moves a pin back or removes it (SPEC-034) | `The pin returned to <item> by undo <run>.` For a pin that the undo removed: `The pin of <item> was removed by undo <run>.` |
 
-`<error>` is a code of the [error lists](#error-codes), never an error's text.
+`<error>` is a code of the [error lists](#error-codes), never an error's text; a stored `<error>` that is not one of those codes shows as `RuntimeError`. A stored notice that cannot be read, whose kind does not fit its file's name or that lacks what its line names is not shown and stays as it is.
 
 ## Kinds of cases
 

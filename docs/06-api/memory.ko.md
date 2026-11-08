@@ -306,6 +306,8 @@ Linux·Windows의 Python 3.12.16·3.8.20 제품 기록을 24개 글·부하 조�
 
 결과: `ok`; 폴더나 세션 경계를 빼 두었을 때의 `left-out`(이때도 기억 부분은 보여 줌); `deadline`; `error`. 켠 프로젝트를 찾지 못한 훅은 훅 소요 시간 줄을 쓰지 않습니다(TBL-005).
 
+5단계와 7단계의 직접 경계는 `start_summary`입니다(TASK-091). `compose(memory, project, base, deadline, *, settings=None, environment=None, now=None, zone=None)`는 형식 2 저장소의 켠 프로젝트에 5단계를 만들어, 시작 요약과 그 결과(`ok`, `deadline`, `error`), 보여 준 고정 항목, 보여 준 저장된 알림, 보인 횟수를 예약한 충돌 후보를 돌려줍니다. 05단계가 읽는 쪽에 허락하듯 층 임대 없이 정리된 층을 읽고, 항목 파일은 고정 항목, 결정 줄이 인용한 항목, 충돌 후보의 두 항목만 읽습니다. 층이 없거나 기억을 지운 프로젝트(TBL-017)는 층에서 아무것도 보여 주지 않고, 없는 층 파일은 빈 것으로 칩니다. 고정은 지운 기록이 없는 현재 항목만 고정한 순서대로 보여 주며, 지운 기록의 백업도 지운 기록으로 칩니다. 보관 기간 알림은 가장 오래된 표지가 7일 안에 보관 기간에 이르는 처리되지 않은 턴을 세고, 그 날짜는 그런 끝 가운데 가장 이른 날을 기기의 현지 시각으로 적으며, 이미 지난 턴이 있으면 오늘입니다. 충돌 줄은 두 항목이 아직 현재인 가장 오래된 대상 후보와 열린 후보의 수를 적습니다. 그 줄이 알림 안에 들어갈 때에만 `compose`가 알림 횟수 잠금 아래에서 보인 횟수를 예약하며(TBL-010) 최대 0.25초 기다리고, 예약이 실패하면 그 줄을 빼고 아무것도 세지 않습니다. 기한이 지나면 기억 부분은 `Memory could not be read in time.`이 되고, 그 밖의 실패는 내부 오류 줄과 실패 기록에 남길 오류가 됩니다. 둘 다 알림을 지우거나 넣기 기록을 쓰지 않습니다. `after(memory, project, part, host, session, *, when=None)`는 7단계입니다. 보여 준 저장된 알림을 보여 준 바이트를 그대로 지니는 동안에만 지우므로 그사이 다시 쓴 알림은 다음 시작까지 남고, 세션의 넣기 기록(TBL-011)에 시작 줄을 덧붙입니다. 실패는 실패 기록에 남기도록 돌려주며, 실패한 알림은 다음 시작까지 남습니다. 동기화 알림은 C3의 동기화와 함께 옵니다. 0.3.0 활성화 전에는 어떤 훅도 `start_summary`를 부르지 않으므로 설치된 시작 훅은 C1처럼 동작합니다.
+
 ### 프롬프트 훅 (API-002)
 
 1. 입력을 읽고 도구를 가려냅니다. 세션의 프로젝트를 찾으며, 켠 프로젝트가 없으면 아무것도 내보내거나 쓰지 않고 끝냅니다.
@@ -1071,9 +1073,9 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | 고정 옮김 | 한 번 | `The pinned item <item> was superseded, so the pin moved to <to>.` |
 | 고정 없앰 | 한 번 | `The pinned item <item> was withdrawn, so its pin was dropped.` |
 | 충돌 후보 | 열린 후보의 보인 횟수가 세 번 미만 | Memory items <a> ("<title a>") and <b> ("<title b>") may disagree; neither replaces the other until the user says which holds (<n> open; the memory skill's conflicts command lists them). Titles are cut at 40 bytes. |
-| 되돌리기로 고정 이동 | 되돌리기로 고정이 돌아가거나 사라짐 | The pin returned to <item>, or was removed, by undo <run>; the next summary says so once (SPEC-034). |
+| 되돌리기로 고정 이동 | 되돌리기로 고정이 돌아가거나 사라진 뒤 한 번(SPEC-034) | `The pin returned to <item> by undo <run>.` 되돌리기가 고정을 없앴으면 `The pin of <item> was removed by undo <run>.` |
 
-`<error>`는 [오류 코드 목록](#오류-코드)의 코드이며, 오류의 글이 절대 아닙니다.
+`<error>`는 [오류 코드 목록](#오류-코드)의 코드이며, 오류의 글이 절대 아닙니다. 저장된 `<error>`가 그 코드가 아니면 `RuntimeError`로 보입니다. 읽을 수 없거나 종류가 파일 이름과 맞지 않거나 줄에 적을 것이 없는 저장된 알림은 보이지 않고 그대로 남습니다.
 
 ## 경우의 수
 
