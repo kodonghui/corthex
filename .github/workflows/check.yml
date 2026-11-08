@@ -15,9 +15,10 @@ permissions:
 
 jobs:
   tests:
-    # Each lane runs as two jobs that take alternate tests (.github/test-shard.py):
-    # the whole suite had reached the hour limit on the Python 3.8 Windows lane.
-    name: tests (${{ matrix.lane.os }}, ${{ matrix.lane.python }}, half ${{ matrix.half }})
+    # Each lane runs as three jobs that take every third test (.github/test-shard.py):
+    # the whole suite had reached the hour limit on the Python 3.8 Windows lane, and
+    # halves of it came within ten minutes of it on slow Windows and Intel macOS runners.
+    name: tests (${{ matrix.lane.os }}, ${{ matrix.lane.python }}, share ${{ matrix.share }} of 3)
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -30,7 +31,7 @@ jobs:
           # The older x64 build runs natively; keep the newest on Apple Silicon.
           - {os: macos-15-intel, python: "3.8"}
           - {os: macos-latest, python: "3.15"}
-        half: [1, 2]
+        share: [1, 2, 3]
     runs-on: ${{ matrix.lane.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -48,7 +49,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - if: runner.os == 'Windows'
         run: choco install ffmpeg --no-progress -y
-      - run: python .github/test-shard.py ${{ matrix.half }}/2
+      - run: python .github/test-shard.py ${{ matrix.share }}/3
 
   hub-compatibility:
     timeout-minutes: 15
