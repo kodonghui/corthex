@@ -620,6 +620,29 @@ class RequestBudgetTest(unittest.TestCase):
         return getattr(request_budget, kind)(FIXED + curator_document.curate(lines=[], items=[], form='full',
                                                                             sessions=sessions))
 
+    def test_turns_go_oldest_first_across_sessions_in_one_block_each(self):
+        current = self.layer()
+
+        def timed(log, turns):
+            """A session of prompts alone, [(text, minute)]."""
+            entries = [entry(1, 'start', event='start', at=minute(0))]
+            for seq, (text, at) in enumerate(turns, start=2):
+                entries.append(entry(seq, 'prompt', text, turn=seq, at=minute(at)))
+            return curator_document.session(log, entries)
+
+        big = [prose(130000, 4000 + n) for n in range(3)]
+        sessions = [timed(LOG, [(big[0], 1), (big[2], 30)]), timed(OTHER, [(big[1], 20)])]
+        request, = request_budget.plan(current, sessions, schema=SCHEMA, count=Counter(50000)).requests
+        self.assertEqual(list(request.turns), [(LOG, 2), (OTHER, 2)])
+        RequestBudgetTest.assert_whole(self, request, sessions)
+        # Within a request each session is one block, its turns in seq order, by its first turn.
+        sessions = [timed(LOG, [('a', 1), ('c', 30)]), timed(OTHER, [('b', 20)])]
+        request, = request_budget.plan(current, sessions, schema=SCHEMA, count=Counter(50000)).requests
+        self.assertEqual(list(request.turns), [(LOG, 2), (OTHER, 2), (LOG, 3)])
+        blocks = [(node.get('log'), [turn.get('seq') for turn in node.iter('turn')])
+                  for node in ET.fromstring(request.source).iter('session')]
+        self.assertEqual(blocks, [(LOG, ['2', '3']), (OTHER, ['2'])])
+
     def test_turns_fill_while_the_working_estimate_stays_under_97000(self):
         current = self.layer()
         texts = [(prose(30000, 600 + n), prose(30000, 700 + n)) for n in range(6)]

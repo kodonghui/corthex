@@ -291,6 +291,11 @@ class CurationWorkerTest(unittest.TestCase):
         return [json.loads(line) for path in sorted((self.folder / 'logs').glob('usage-*.jsonl'))
                 for line in path.read_bytes().splitlines()]
 
+    def failures(self):
+        return [(value['step'], value['error']) for value in (
+            json.loads(line) for path in sorted((self.folder / 'logs').glob('failures-*.jsonl'))
+            for line in path.read_bytes().splitlines())]
+
     def runs(self):
         return sorted(path.name for path in (self.root / 'runs').iterdir())
 
@@ -854,6 +859,149 @@ class CurationWorkerTest(unittest.TestCase):
         progress = self.progress()
         self.assertEqual((progress['logs'], progress['conflict_after']), ({LOG: 13}, second['id']))
         self.assertEqual(progress['consolidation'].get('due'), STAMP)
+
+
+    # What a request may read and carry (review of TASK-088)
+
+    def test_turns_go_oldest_first_across_sessions(self):
+        other = Raw(SESSION + '-other')
+        text = budget.prose(70000, 88)
+        early, _ = self.raw.turn('Early. ' + text, 'Noted.', at='2026-11-04T09:00:00.000Z')
+        middle, _ = other.turn('Middle. ' + text, 'Noted.', at='2026-11-04T10:00:00.000Z')
+        late, _ = self.raw.turn('Late. ' + text, 'Noted.', at='2026-11-04T11:00:00.000Z')
+        self.write()
+        (self.root / 'raw' / (other.name + '.jsonl')).write_bytes(other.data())
+        self.server.answers = [answer()]
+        outcome = self.curate()
+        self.assertEqual(outcome.reason, 'done')
+        # Two turns fit a request: the oldest two of all, not the first session's two.
+        self.assertEqual(self.sent(), [[(LOG, early['turn'], None), (other.name, middle['turn'], None)],
+                                       [(LOG, late['turn'], None)]])
+        self.assertEqual(self.progress()['logs'], {LOG: 5, other.name: 3})
+
+    def test_a_link_in_the_project_folder_ends_the_run_before_anything_is_sent(self):
+        said, _ = self.one_turn()
+        value = self.saved(said, HOOKS)
+        self.layer(items=[value])
+        outside = self.folder.parent / 'outside'
+        outside.mkdir()
+        self.server.answers = [answer()]
+        cases = (('raw log', self.root / 'raw' / (LOG + '.jsonl')),
+                 ('item', self.root / 'layer/items' / (value['id'] + '.json')),
+                 ('state', self.root / 'layer/state.json'))
+        for name, path in cases:
+            with self.subTest(file=name):
+                target = outside / path.name
+                target.write_bytes(path.read_bytes())
+                path.unlink()
+                try:
+                    path.symlink_to(target)
+                except OSError:
+                    path.write_bytes(target.read_bytes())
+                    self.skipTest('file symlinks require host permission')
+                try:
+                    self.assertEqual(self.curate(), curation_worker.Outcome('lost-lock', ()))
+                    self.assertEqual((self.server.requests, self.server.counts), ([], []))
+                finally:
+                    path.unlink()
+                    path.write_bytes(target.read_bytes())
+        self.assertEqual(self.curate().reason, 'done')
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_a_project_tombstone_ends_the_run_before_anything_is_read_or_sent(self):
+        said, _ = self.one_turn()
+        stored = self.snapshot()
+        tombstone = item_types._raw({'project': 'sample', 'at': STAMP, 'device': DEVICE}) + b'\n'
+        for name in ('deleted.json', 'deleted.json.bak', 'deleted.json.tmp'):
+            with self.subTest(name=name):
+                path = self.root / 'layer' / name
+                path.write_bytes(tombstone)
+                self.assertEqual(self.curate(), curation_worker.Outcome('deleted', ()))
+                path.unlink()
+        self.assertEqual((self.server.requests, self.server.counts, self.snapshot()), ([], [], stored))
+        self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'))]
+        self.assertEqual(self.curate().reason, 'done')
+
+    def test_a_request_that_fails_after_a_forget_is_stale_not_a_failure(self):
+        said, _ = self.one_turn()
+        other = C2Store(self.folder, expected_device=DEVICE)
+        for number in range(2):
+            self.server.before[number] = lambda: self.advance(other)
+        bad = start() + block(text='{"changes": 3}') + end()
+        self.server.answers = [REFUSAL, bad, answer(change(quote(said, HOOKS), kind='decision'))]
+        outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]),
+                         ('done', ['stale', 'stale', 'ok']))
+        progress = self.progress()
+        self.assertEqual(('failures' in progress, self.notice()), (False, None))
+        self.assertEqual((progress['logs'], len(self.items())), ({LOG: 3}, 1))
+        # Without a forget meanwhile, the same refusal counts.
+        self.one_turn('Name the script hook.py.', 'The script is hook.py now.')
+        self.server.answers.append(REFUSAL)
+        outcome = self.curate()
+        self.assertEqual((outcome.reason, outcome.attempts[0].record['error']), ('failed', 'refusal'))
+        self.assertEqual(self.progress()['failures']['count'], 1)
+
+    def decision_and_line(self):
+        said, _ = self.one_turn()
+        added = {'part': 'decisions', 'after': '', 'text': 'One script serves the hooks.', 'cites': [],
+                 'changes': [1]}
+        self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'),
+                                      state={'change': [], 'add': [added], 'remove': []})]
+
+    def test_line_edits_that_fail_after_the_item_changes_keep_the_state_and_count_the_turns(self):
+        self.decision_and_line()
+        with mock.patch.object(curation_worker.state_edits, 'apply', side_effect=OSError('one-shot')):
+            outcome = self.curate()
+        (attempt,) = outcome.attempts
+        self.assertEqual((outcome.reason, attempt.held, len(self.server.requests)), ('done', 'OSError', 1))
+        progress = self.progress()
+        record = progress['recent'][0]
+        self.assertEqual(record, {'at': STAMP, 'kind': 'curate', 'result': 'ok', 'applied': 1, 'dropped': 0,
+                                  'state': 'kept', 'run': record['run']})
+        # The decision is saved once, the state is as it was, and the turns count (SPEC-017).
+        self.assertEqual((progress['logs'], progress['applies'], len(self.items()), self.lines()),
+                         ({LOG: 3}, 1, 1, []))
+        self.assertEqual((self.notice(), self.failures()), (None, [('curate', 'OSError')]))
+
+    def test_a_failure_after_the_line_edits_moved_the_fence_is_a_failure_not_stale(self):
+        self.decision_and_line()
+        real = curation_worker.state_edits.apply
+
+        def published_then_failed(*args, **kwargs):
+            real(*args, **kwargs)
+            raise OSError('after the state was published')
+        with mock.patch.object(curation_worker.state_edits, 'apply', side_effect=published_then_failed):
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts], len(self.server.requests)),
+                         ('failed', ['failed'], 1))
+        progress = self.progress()
+        self.assertEqual((progress['logs'], progress['failures']['count'], self.notice()['error']), ({}, 1, 'OSError'))
+        # What was published stays, and the next run curates the turns again (TBL-009).
+        self.assertEqual((len(self.items()), len(self.lines())), (1, 1))
+
+    def test_a_check_that_fails_is_stale_before_the_attempt_publishes_and_a_failure_after(self):
+        said, _ = self.one_turn()
+        self.server.answers = [answer(change(quote(said, HOOKS), kind='decision'))] * 2
+        real, calls = curation_worker.curate_apply.apply, []
+
+        def stale_once(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                raise fence_plan.Stale()
+            return real(*args, **kwargs)
+        with mock.patch.object(curation_worker.curate_apply, 'apply', side_effect=stale_once):
+            outcome = self.curate()
+        self.assertEqual(([a.record['result'] for a in outcome.attempts], len(self.server.requests), len(self.items())),
+                         (['stale', 'ok'], 2, 1))
+        named, _ = self.one_turn('Name the script hook.py.', 'The script is hook.py now.')
+        self.server.answers = self.server.answers[:2] + [answer(change(quote(named, 'Name the script hook.py'),
+                                                                       kind='decision'))]
+        with mock.patch.object(curation_worker.run_log, 'write', side_effect=fence_plan.Stale()):
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts], len(self.server.requests)),
+                         ('failed', ['failed'], 3))
+        self.assertEqual((len(self.items()), self.progress()['failures']['count']), (2, 1))
 
 
 if __name__ == '__main__':
