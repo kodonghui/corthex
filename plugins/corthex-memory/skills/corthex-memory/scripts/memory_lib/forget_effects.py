@@ -20,13 +20,19 @@ It works in this order, and reads each effect back before the next one:
    checkpointed and truncated, or the index's files when the index cannot be
    opened or a reader keeps the log, so that the next curation builds it again;
    its pin record; the open conflict candidates that name it, settled; and the
-   item list, written again.
+   item list, written again, without the copies of it that stopped writes
+   left, which can hold the item's title.
 4. Each state line that cites a forgotten item, an entry that one quotes or an
    ID that an earlier tombstone names, whether the view showed it or hid it,
    with one privacy marker in its place among the removed lines (TBL-013),
-   which no undo crosses. The line history archives nothing of them.
+   which no undo crosses. The line history archives nothing of them. The
+   state's backup and temporary copies that stopped writes left go too, also
+   when no current line cites one of those IDs, because they can still hold
+   such a line.
 5. The quoted ranges that the preview listed for this device's raw logs, filled
-   with U+FFFD (`raw_fill`).
+   with U+FFFD (`raw_fill`), and no backup or temporary copy of those logs
+   left. A log whose file is missing is restored from its backup first, as the
+   next append would restore it, and is then filled.
 6. The line history (TBL-119): each record that cites an ID that a tombstone
    names goes, and every other record's reason is cleared, in the primary and
    in its backup; the temporary copies that a stopped rewrite left go. When the
@@ -137,6 +143,23 @@ def _index(memory, root, selected, deadline, check):
     return 'files'
 
 
+def _leftovers(memory, folder, name, deadline, check):
+    """Remove a record's backup and the temporary copies that stopped writes left, then check that none stays.
+
+    The caller holds the layer lease, which every writer of the record holds,
+    and has read the record itself, so each such copy is what a stopped write
+    left, and it can hold text that the forget removes.
+    """
+    pattern = re.compile(re.escape(name) + r'(?:\.bak|(?:\.bak)?\.[a-z0-9_]{8}\.tmp)\Z')
+    names, _ = history_recovery._names(memory, folder, deadline, check)
+    for found in names:
+        if pattern.fullmatch(found):
+            path = folder / found
+            files._unlink(path, lambda path=path: files._access(check, memory.fence.check, path))
+    names, _ = history_recovery._names(memory, folder, deadline, check)
+    _verify(not any(pattern.fullmatch(found) for found in names))
+
+
 def _layer_records(memory, root, selected, at, proof, deadline, check):
     """Remove the items' pin records, settle the open candidates that name them and write the item list again.
 
@@ -162,6 +185,7 @@ def _layer_records(memory, root, selected, at, proof, deadline, check):
     item_io.rebuild_list(memory, root, proof, deadline)
     listed = files._retry(lambda: memory.fence.read(root / 'layer/item-list.txt', deadline), deadline)
     _verify(not any(row.split(b'\t', 1)[0].decode('ascii', 'replace') in selected for row in listed.splitlines()))
+    _leftovers(memory, root / 'layer', 'item-list.txt', deadline, check)
 
 
 def _state(memory, root, lines, at, deadline, check):
@@ -191,7 +215,7 @@ def _state(memory, root, lines, at, deadline, check):
 
 
 def _raw(memory, root, raw, deadline, wait, check):
-    """Fill each log's listed ranges, then read the log back."""
+    """Fill each log's listed ranges, then read the log back and check that no copy of it is left."""
     logs = {}
     for entry in raw:
         if entry['forgotten']:
@@ -199,7 +223,9 @@ def _raw(memory, root, raw, deadline, wait, check):
     for log in sorted(logs):
         check()
         raw_fill.fill(memory, root, log, logs[log], deadline, wait)
-        data = files._retry(lambda: memory.fence.read(root / 'raw' / (log + '.jsonl'), deadline), deadline)
+        path = root / 'raw' / (log + '.jsonl')
+        _verify(not raw_fill._leftovers(path))
+        data = files._retry(lambda: memory.fence.read(path, deadline), deadline)
         found = {}
         for line in data.split(b'\n')[:-1]:
             try:
@@ -327,5 +353,8 @@ def apply(memory, root, plan, items, earlier, deadline, wait, at=None):
     _index(memory, root, selected, deadline, check)
     _layer_records(memory, root, selected, at, fence_plan.snapshot(reservation.progress), deadline, check)
     _state(memory, root, lines, at, deadline, check)
+    # The state's primary was read above, so its backup is what a stopped write left; it and the temporary copies
+    # can still hold a line that cited a forgotten ID, also when no current line does.
+    _leftovers(memory, root / 'layer', 'state.json', deadline, check)
     _raw(memory, root, plan.data['raw'], deadline, wait, check)
     return _history(memory, root, banned, deadline, check)
