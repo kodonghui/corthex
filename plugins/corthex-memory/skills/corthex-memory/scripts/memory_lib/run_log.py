@@ -338,12 +338,20 @@ def write(memory, root, log, check):
     return True
 
 
-def read(root, run):
-    """The run's log, or None when it is missing, damaged or incomplete."""
+def read(root, run, reader=None):
+    """The run's log, or None when it is missing, damaged, incomplete, another run's or reached through a link.
+
+    `reader` reads a path's bytes, as a store binding's path fence does; by
+    default the file is read directly.
+    """
+    target = path(root, run)
     try:
-        return parse(path(root, run).read_bytes())
+        value = parse(target.read_bytes() if reader is None else reader(target))
+    except worker_support.UnsafePath:
+        return None
     except (OSError, ValueError, UnicodeError, TypeError, KeyError):
         return None
+    return value if value['id'] == run else None
 
 
 def eligible(log, progress, device):
@@ -364,7 +372,7 @@ def _cutoff(when, days):
     return moment.strftime('%Y-%m-%dT%H:%M:%S.') + '%03dZ' % (moment.microsecond // 1000), moment
 
 
-def listed(root, progress, device, *, when, days):
+def listed(root, progress, device, *, when, days, reader=None):
     """The runs that can be selected, newest first: whole, current and not past retention."""
     cutoff = _cutoff(when, days)[0]
     found = []
@@ -372,7 +380,7 @@ def listed(root, progress, device, *, when, days):
         run = name[:-5] if name.endswith('.json') else ''
         if not format2._RUN.fullmatch(run):
             continue
-        log = read(root, run)
+        log = read(root, run, reader)
         if eligible(log, progress, device) and log['ended'] >= cutoff:
             found.append(log)
     return sorted(found, key=lambda log: (log['ended'], log['id']), reverse=True)
