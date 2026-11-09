@@ -493,7 +493,7 @@ Healthy-primary-only history retention owns its fixed cutoff and preserves each 
 
 ### Conflict candidates (TBL-120)
 
-`conflicts.json` is `{"candidates": [...]}`. It holds item IDs, never text, and retains closed candidates. An unordered pair of current items has at most one open candidate. The C3 design decides sync and merge rules.
+`conflicts.json` is `{"candidates": [...]}`. It holds item IDs, never text, and retains closed candidates. An unordered pair of current items has at most one open candidate, and none once the person has dismissed one (SPEC-143). The C3 design decides sync and merge rules.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
