@@ -70,7 +70,7 @@ def credentials(key=transport_fixture.KEY):
     return model_access.Credentials.read({'CORTHEX_MEMORY_ANTHROPIC_API_KEY': key})
 
 
-def checked(document, instructions='curate-2', key=transport_fixture.KEY, environment=None):
+def checked(document, instructions='curate-3', key=transport_fixture.KEY, environment=None):
     """The document as model_request sends it, parsed again."""
     sent = model_request.document(document, instructions=instructions, environment=environment or {},
                                   credentials=credentials(key))
@@ -153,7 +153,7 @@ class CuratorDocumentTest(unittest.TestCase):
         known = candidate(first, second)
         document = curator_document.shorten(lines=lines, items=[first, second, third], form='part',
                                             candidates=[known], omitted=3)
-        _, root = checked(document, 'state-1')
+        _, root = checked(document, 'state-2')
         self.assertEqual([child.tag for child in root], ['state', 'items', 'conflicts'])
         self.assertEqual([(v.get('part'), v.text) for v in root.find('state')],
                          [('goal', 'Earlier goal'), ('decisions', 'Decided <here>'), ('next', 'Next & then')])
@@ -327,7 +327,7 @@ class RequestInputsTest(unittest.TestCase):
     def record(self, entries):
         self.write('raw/' + LOG + '.jsonl', b''.join(item_types._raw(v) + b'\n' for v in entries) + b'{"unfinished')
 
-    def send(self, document, instructions='curate-2'):
+    def send(self, document, instructions='curate-3'):
         result = model_client.send(self.usage.memory, project='sample', instructions=instructions, source=document,
                                    schema=SCHEMA, config={}, check=lambda: None)
         self.assertIsNone(result.response.failure)
@@ -448,7 +448,7 @@ class RequestInputsTest(unittest.TestCase):
                   self.send(curator_document.merge(group='decision', items=[first, second],
                                                    candidates=layer.candidates), 'merge-2')[2],
                   self.send(curator_document.shorten(lines=layer.lines, items=layer.current, form='short',
-                                                     candidates=layer.candidates), 'state-1')[2]]
+                                                     candidates=layer.candidates), 'state-2')[2]]
         sent = json.dumps(bodies, ensure_ascii=False)
         for name, mark in sorted(marks.items()) + [('epoch', epoch), ('applies', '7654321'),
                                                     ('generation', '8765432'), ('revision', '9876543'),

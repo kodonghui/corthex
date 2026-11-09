@@ -12,7 +12,7 @@ curation and layer leases.
   merge left behind, when its change could not be written, is recited too.
   A replacement by curation is never followed: the curator changes those
   lines itself (SPEC-017).
-- The last request's answer (state-1) gives the whole current state, in the
+- The last request's answer (API-008) gives the whole current state, in the
   same five parts. A line that names a line of the request in `keeps` keeps
   that line's ID, and its time when its text and citations stay; an empty
   `keeps` adds a line. A line cites items of the request, or entries that the
@@ -111,7 +111,7 @@ def recite(*, state, removed, items, private, at, device):
 
 
 def rewrite(answer, *, state, removed, items, private, lines, listed, at, device, make_id=None):
-    """The new state and its operations for a state-1 answer's `state` (API-008).
+    """The new state and its operations for a state answer's `state` (API-008).
 
     `answer` is the answer's `state` as decoded; `lines` the IDs of the
     request's state lines and `listed` the IDs of the items its list carried.

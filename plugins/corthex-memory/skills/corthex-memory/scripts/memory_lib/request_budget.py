@@ -34,7 +34,7 @@ are API-009's:
    `[forgotten]`.
 
 Merge and state requests are sized the same way (SPEC-019; TASK-089): a
-group's current items, oldest first, fill a merge-2 request by steps 2 to 5,
+group's current items, oldest first, fill a merge request by steps 2 to 5,
 each with the open candidates whose two items it carries, and the last
 request's list is chosen as step 1 chooses a curate request's, beside no
 turns, which keeps it far below 100,000 without a count.
@@ -108,7 +108,7 @@ class Plan:
 
 @dataclass(frozen=True)
 class MergePart:
-    source: str        # the merge-2 request document, as curator_document builds it
+    source: str        # the merge request document, as curator_document builds it
     items: tuple       # the items it carries, oldest first
     candidates: tuple  # the open candidates whose two items it carries
     safe: int
@@ -187,7 +187,7 @@ class _Frame:
     """A request without its turns: the state, the item list and the candidates."""
 
     def __init__(self, base, lines, listed, conflicts):
-        request = _Block('request', (('kind', 'curate'), ('instructions', 'curate-2')))
+        request = _Block('request', (('kind', 'curate'), ('instructions', model_prompts.CURATE)))
         self.children = [_pair(curator_document._state(lines)), listed, conflicts]
         self.base, self.request = base, request
 
@@ -250,7 +250,7 @@ def choose(layer, base, *, after=None, ranked=lambda: None):
     rendered = {item: _pair(curator_document._item(value, 'part')[1]) for item, value in current.items()}
     items_block = _Block('items', (('form', 'part'),))
     state = _pair(curator_document._state(layer.lines))
-    request = _Block('request', (('kind', 'curate'), ('instructions', 'curate-2')))
+    request = _Block('request', (('kind', 'curate'), ('instructions', model_prompts.CURATE)))
     chosen, carried, sums = [], [], {'items': (0, 0), 'conflicts': (0, 0)}
 
     def offer(items, candidate=None):
@@ -516,7 +516,7 @@ def _request(source, turns, part, counted, counts, spans=None):
     return Request(source, tuple(turns), part, safe(source), working(source), counted, counts, spans)
 
 
-def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions='curate-2'):
+def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions=model_prompts.CURATE):
     """Size the next curate request of a batch.
 
     `sessions` are curator_document sessions whose turns are unprocessed;
@@ -526,7 +526,7 @@ def plan(layer, sessions, *, schema, count, after=None, rank=None, instructions=
     None when counting fails; `rank(text)` gives item IDs best first by the
     search index, and may raise when the index cannot be read.
     """
-    if instructions != 'curate-2':
+    if instructions != model_prompts.CURATE:
         raise ValueError('invalid curate request instructions')
     if not callable(count) or rank is not None and not callable(rank):
         raise TypeError('memory request counting required')
@@ -630,7 +630,7 @@ def _part_source(layer, listed, session, turn, pieces, number, parts):
 
 
 def merge_part(items, candidates, *, group, schema, count):
-    """The next merge-2 request of a group: as many of `items` as fit, oldest first (SPEC-019).
+    """The next merge request of a group: as many of `items` as fit, oldest first (SPEC-019).
 
     `items` are the group's current items that this consolidation has not
     sent yet, oldest first, and `candidates` the open candidates of current
@@ -641,8 +641,8 @@ def merge_part(items, candidates, *, group, schema, count):
         raise TypeError('memory request counting required')
     if not items:
         raise ValueError('no items to merge')
-    base = fixed('merge-2', schema)
-    request = _Block('request', (('kind', 'merge'), ('instructions', 'merge-2'), ('group', group)))
+    base = fixed(model_prompts.MERGE, schema)
+    request = _Block('request', (('kind', 'merge'), ('instructions', model_prompts.MERGE), ('group', group)))
     listed = _Block('items', (('form', None),))
     rendered = {value['id']: _pair(curator_document._item(value, None)[1]) for value in items}
 
@@ -671,7 +671,7 @@ def state_list(layer, schema):
 
     Full when it fits, else short lines, else part: the items that the current
     state cites, the pinned items, whole candidate bundles and then the
-    newest items. The state-1 request carries no turns, so its list's 40,000
+    newest items. The state request carries no turns, so its list's 40,000
     keeps it far below 100,000 tokens.
     """
-    return choose(layer, fixed('state-1', schema), after=None, ranked=lambda: None)
+    return choose(layer, fixed(model_prompts.STATE, schema), after=None, ranked=lambda: None)

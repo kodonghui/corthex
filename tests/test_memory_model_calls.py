@@ -84,7 +84,7 @@ class ModelCallsTest(unittest.TestCase):
                                  **options)
 
     def count(self, **options):
-        arguments = dict(project='sample', instructions='curate-2', source=DOCUMENT, schema=SCHEMA, config={},
+        arguments = dict(project='sample', instructions='curate-3', source=DOCUMENT, schema=SCHEMA, config={},
                          check=lambda: None)
         arguments.update(options)
         return model_count.count(self.usage.memory, **arguments)
@@ -103,7 +103,7 @@ class ModelCallsTest(unittest.TestCase):
         result = self.count()
         self.assertEqual((result.tokens, result.failure, result.logged), (61234, None, 1))
         (path, headers, body), = self.transport.requests
-        sent, _ = model_request.build(config={}, instructions='curate-2', source=DOCUMENT, schema=SCHEMA,
+        sent, _ = model_request.build(config={}, instructions='curate-3', source=DOCUMENT, schema=SCHEMA,
                                       credentials=model_access.Credentials.read(), environment=dict(os.environ))
         expected = dict(sent['body']); del expected['max_tokens'], expected['stream']
         self.assertEqual((path, body), ('/v1/messages/count_tokens', expected))
@@ -113,7 +113,7 @@ class ModelCallsTest(unittest.TestCase):
         self.assertNotIn('authorization', headers)
         row, = self.rows()
         self.assertEqual((row['call'], row['model'], row['input'], row['cost'], row['result'], row['instructions'],
-                          row['request']), ('count-tokens', 'claude-haiku-5-5', 61234, 0, 'ok', 'curate-2',
+                          row['request']), ('count-tokens', 'claude-haiku-5-5', 61234, 0, 'ok', 'curate-3',
                                             'req_fixture'))
         self.assertNotIn('output', row)
 
@@ -319,7 +319,7 @@ class ModelCallsTest(unittest.TestCase):
         waits = []
 
         def send():
-            return model_client.send(self.usage.memory, project='sample', instructions='curate-2', source=DOCUMENT,
+            return model_client.send(self.usage.memory, project='sample', instructions='curate-3', source=DOCUMENT,
                                      schema=SCHEMA, config={}, check=lambda: None)
         with mock.patch.object(model_client, '_wait', side_effect=lambda pause, *args: waits.append(pause) or True):
             lost = send()
@@ -380,9 +380,9 @@ class ModelCallsTest(unittest.TestCase):
                      lambda handler: self.transport.send(handler, start(usage={'input_tokens': 40000}) + block() +
                                                          end(output=3000)))
         with mock.patch.object(model_client, '_wait', return_value=True):
-            for instructions, call in (('curate-2', 'curate'), ('merge-2', 'consolidate')):
+            for instructions, call in (('curate-3', 'curate'), ('merge-2', 'consolidate')):
                 self.transport.requests.clear()
-                source = DOCUMENT if instructions == 'curate-2' else (
+                source = DOCUMENT if instructions == 'curate-3' else (
                     '<request kind="merge" instructions="merge-2"><items><item id="i_sample" kind="decision">'
                     'Keep the choice.</item></items></request>')
                 self.assertEqual(model_client.send(self.usage.memory, project='sample', instructions=instructions,

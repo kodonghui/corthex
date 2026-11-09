@@ -273,6 +273,19 @@ class ModelUsageTest(unittest.TestCase):
             with self.subTest(fields=list(edits)), self.assertRaises((ValueError, UnicodeError)):
                 model_usage.parse(json.dumps(dict(row, **edits)).encode())
 
+    def test_tc123_a_line_names_a_version_that_the_code_sent_or_sends(self):
+        # TASK-111: the versions that the code sends now, and the earlier ones that lines written before them name.
+        from memory_lib import model_prompts
+        self.assertLessEqual(set(model_prompts.PROMPTS), model_usage._INSTRUCTIONS)
+        row = self.attempt().line()
+        for name in ('curate-1', 'curate-2', 'curate-3', 'merge-1', 'merge-2', 'state-1', 'state-2'):
+            with self.subTest(name=name):
+                parsed = model_usage.parse(json.dumps(dict(row, instructions=name)).encode())
+                self.assertEqual(parsed['instructions'], name)
+        for name in ('curate-4', 'state-0', 'Curate-3', 'curate'):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                model_usage.parse(json.dumps(dict(row, instructions=name)).encode())
+
     # TASK-116: a curate request's size, and the distribution from the usage logs alone (TC-421)
 
     def test_tc421_a_curate_line_holds_its_size_after_prices_and_earlier_lines_still_read(self):

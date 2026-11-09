@@ -127,6 +127,31 @@ class StartMemoryTest(unittest.TestCase):
                          "- Blocker: blocked now\n- Next action: next line")
         self.assertEqual(rows, before)
 
+    def test_tc403_a_dead_end_and_the_done_condition_show_under_their_own_labels(self):
+        # TASK-111 (REQ-228): only a blocker that starts with "Dead end:" and a next action that starts with
+        # "Done when:", as the curator writes them; the marker and the white space after it are left out.
+        cites = [item(n)["id"] for n in (1, 2)]
+        rows = [state(1, "blockers", "Dead end:\t Polling the raw lock hangs on Windows.", 1, cites[:1]),
+                state(2, "blockers", "Windows sharing.", 2),
+                state(3, "blockers", "dead end: written in small letters.", 3),
+                state(4, "blockers", "Dead end:", 4, cites[1:]),
+                state(5, "next", "Done when: the hook check passes.", 1, cites),
+                state(6, "next", "Write the tests; Done when: is in the text.", 2),
+                state(7, "progress", "Dead end: in another part.", 1),
+                state(8, "goal", "Done when: in another part.", 1),
+                state(9, "progress", "", 2)]
+        result = summary.build_summary("Base", state=rows)
+        actual = result.text.split("Current state:\n", 1)[1]
+        self.assertEqual(actual, "- Goal: Done when: in another part.\n"
+                         "- Work in progress: Dead end: in another part.\n"
+                         "- Work in progress:\n"
+                         "- Dead end: Polling the raw lock hangs on Windows. (i_000000000001)\n"
+                         "- Blocker: Windows sharing.\n"
+                         "- Blocker: dead end: written in small letters.\n"
+                         "- Dead end: (i_000000000002)\n"
+                         "- Done when: the hook check passes. (i_000000000001, i_000000000002)\n"
+                         "- Next action: Write the tests; Done when: is in the text.")
+
     def test_state_is_not_cut_to_the_item_text_limit(self):
         result = summary.build_summary("Base", state=[state(text="가" * 200)])
         self.assertIn("가" * 200, result.text)

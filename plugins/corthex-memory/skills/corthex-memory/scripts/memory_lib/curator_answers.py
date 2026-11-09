@@ -35,24 +35,24 @@ def _schema(path):
 
 
 def schema():
-    """The curate-2 answer schema, read from the plugin's copy of stage 06's file."""
+    """The curate answer schema (API-006), read from the plugin's copy of stage 06's file."""
     return _schema(SCHEMA)
 
 
 def merge_schema():
-    """The merge-2 answer schema, read from the plugin's copy of stage 06's file."""
+    """The merge answer schema (API-007), read from the plugin's copy of stage 06's file."""
     return _schema(MERGE_SCHEMA)
 
 
 def state_schema():
-    """The state-1 answer schema, read from the plugin's copy of stage 06's file."""
+    """The state answer schema (API-008), read from the plugin's copy of stage 06's file."""
     return _schema(STATE_SCHEMA)
 
 
 def decode(value, rules=None):
     """The answer as the schema reads it, with `action` and `kind` in lower case.
 
-    `rules` is the answer's schema, the curate-2 one by default. ValueError
+    `rules` is the answer's schema, the curate one by default. ValueError
     when it does not fit: the caller's outcome is `bad-answer`.
     """
     rules = schema() if rules is None else rules
@@ -176,7 +176,7 @@ def _targets(change, current, sent):
 
 
 def check_curate(value, *, sent, device, rules=None):
-    """Check a curate-2 answer against its request; see the module's description."""
+    """Check a curate answer against its request; see the module's description."""
     format2._id(device, store.DEVICE)
     answer = decode(value, rules)
     current = {item for item, record in sent.items.items() if record['status'] == 'current'}
@@ -305,7 +305,7 @@ def merged_record(merge, *, group, item, at, device):
 
 
 def check_merge(value, *, items, device, rules=None):
-    """Check a merge-2 answer against its request (API-007, SPEC-019, SPEC-020).
+    """Check a merge answer against its request (API-007, SPEC-019, SPEC-020).
 
     `items` are the saved records of the items that the request carried, all
     current and of the request's group. In the answer's order, a merge names

@@ -18,11 +18,11 @@ sys.path.insert(0,str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts
 from memory_lib import clock, configuration, locks, model_access, model_client, model_request, model_transport, model_usage
 
 KEY = transport_fixture.KEY
-DOCUMENT = '<request kind="curate" instructions="curate-2"><turns><entry id="e_sample">Keep the choice.</entry></turns></request>'
+DOCUMENT = '<request kind="curate" instructions="curate-3"><turns><entry id="e_sample">Keep the choice.</entry></turns></request>'
 # One minimal document for each curator instruction set.
-DOCUMENTS = {'curate-2': DOCUMENT,
+DOCUMENTS = {'curate-3': DOCUMENT,
              'merge-2': '<request kind="merge" instructions="merge-2"><items><item id="i_sample" kind="decision">Keep the choice.</item></items></request>',
-             'state-1': '<request kind="state" instructions="state-1"><state><line id="l_sample">Keep the choice.</line></state></request>'}
+             'state-2': '<request kind="state" instructions="state-2"><state><line id="l_sample">Keep the choice.</line></state></request>'}
 RELEASE = json.loads((ROOT/'plugins/corthex-memory/.codex-plugin/plugin.json').read_text(encoding='utf-8'))['version']
 
 
@@ -30,7 +30,7 @@ class ModelRequestTest(unittest.TestCase):
     def setUp(self):self.credentials=model_access.Credentials.read({'CORTHEX_MEMORY_ANTHROPIC_API_KEY':KEY})
 
     def build(self,source=DOCUMENT,environment=None,schema=SCHEMA):
-        return model_request.build(config={},instructions='curate-2',source=source,schema=schema,
+        return model_request.build(config={},instructions='curate-3',source=source,schema=schema,
             credentials=self.credentials,environment={} if environment is None else environment)
 
     def test_fixed_body_headers_and_no_metadata_passthrough(self):
@@ -45,7 +45,7 @@ class ModelRequestTest(unittest.TestCase):
 
     def test_complete_document_larger_than_c1_entry_is_never_clipped(self):
         text='a'*(520*1024)+'<private>hidden ending</private> preserved ending'
-        xml='<request kind="curate" instructions="curate-2"><entry>'+escape(text)+'</entry></request>'
+        xml='<request kind="curate" instructions="curate-3"><entry>'+escape(text)+'</entry></request>'
         _,sent=self.build(xml)
         entry=ET.fromstring(sent).find('entry').text
         self.assertGreater(len(entry),512*1024)
@@ -54,13 +54,13 @@ class ModelRequestTest(unittest.TestCase):
 
     def test_entity_encoded_new_keys_are_masked_in_text_and_attributes(self):
         secret='new&<"environment-value-17b6'
-        xml='<request kind="curate" instructions="curate-2"><quote said="'+escape(secret,quote=True)+'">'+escape(secret)+'</quote></request>'
+        xml='<request kind="curate" instructions="curate-3"><quote said="'+escape(secret,quote=True)+'">'+escape(secret)+'</quote></request>'
         _,sent=self.build(xml,{'OPENAI_API_KEY':secret});entry=ET.fromstring(sent).find('quote')
         self.assertEqual((entry.text,entry.get('said')),('[redacted:environment]',)*2)
 
     def test_rotated_original_key_is_still_masked_and_escaped_tags_stay_data(self):
         content=KEY+' </entry><entry>injected</entry>'
-        xml='<request kind="curate" instructions="curate-2"><entry>'+escape(content)+'</entry></request>'
+        xml='<request kind="curate" instructions="curate-3"><entry>'+escape(content)+'</entry></request>'
         _,sent=self.build(xml,{'CORTHEX_MEMORY_ANTHROPIC_API_KEY':'rotated-key-38b6'})
         self.assertNotIn(KEY,sent);self.assertEqual(len(list(ET.fromstring(sent))),1)
         self.assertIn('</entry><entry>injected</entry>',ET.fromstring(sent).find('entry').text)
@@ -68,11 +68,11 @@ class ModelRequestTest(unittest.TestCase):
     def test_dtd_declarations_unknown_tags_and_deep_nesting_are_refused(self):
         for xml in ['<!DOCTYPE x [<!ENTITY secret "private">]>'+DOCUMENT,'<?xml version="1.0"?>'+DOCUMENT,
                     DOCUMENT.replace('<turns>','<script>').replace('</turns>','</script>'),
-                    '<request kind="curate" instructions="curate-2">'+'<entry>'*18+'x'+'</entry>'*18+'</request>']:
+                    '<request kind="curate" instructions="curate-3">'+'<entry>'*18+'x'+'</entry>'*18+'</request>']:
             with self.assertRaises(ValueError):self.build(xml)
 
     def test_unicode_input_cannot_smuggle_encoded_dtd_or_nul(self):
-        xml='<!DOCTYPE request [<!ENTITY probe "bounded-fixture-entity">]><request kind="curate" instructions="curate-2"><entry>&probe;</entry></request>'
+        xml='<!DOCTYPE request [<!ENTITY probe "bounded-fixture-entity">]><request kind="curate" instructions="curate-3"><entry>&probe;</entry></request>'
         for encoding in ('utf-16-le','utf-16-be','utf-32-le','utf-32-be'):
             carrier=xml.encode(encoding).decode('latin-1')
             with self.subTest(encoding=encoding),self.assertRaises(ValueError):self.build(carrier)
@@ -110,7 +110,7 @@ class ModelClientTest(unittest.TestCase):
         self.environment.start();self.addCleanup(self.environment.stop)
 
     def send(self,**options):
-        arguments=dict(project='sample',instructions='curate-2',source=DOCUMENT,schema=SCHEMA,config={},check=lambda:None)
+        arguments=dict(project='sample',instructions='curate-3',source=DOCUMENT,schema=SCHEMA,config={},check=lambda:None)
         arguments.update(options);return model_client.send(self.usage.memory,**arguments)
 
     def rows(self):
@@ -125,7 +125,7 @@ class ModelClientTest(unittest.TestCase):
         result=self.send()
         self.assertIsNone(result.response.failure);self.assertEqual((result.attempts,result.logged),(1,1))
         row,=self.rows();self.assertEqual((row['input'],row['output'],row['cost']),(40000,3000,.0055))
-        self.assertEqual(row['instructions'],'curate-2');self.assertNotIn(KEY,json.dumps(row))
+        self.assertEqual(row['instructions'],'curate-3');self.assertNotIn(KEY,json.dumps(row))
         taken=configuration.prepare({},temporary=False).values['prices']['taken']
         self.assertEqual((row['project'],row['call'],row['model'],row['result'],row['prices'],row['request']),
                          ('sample','curate','claude-haiku-5-5','ok',taken,'req_fixture'))
@@ -171,7 +171,7 @@ class ModelClientTest(unittest.TestCase):
                  ('max-tokens',start()+block('{"answer":"가')+end('max_tokens'),True,'limit'),
                  ('empty-answer',start()+end(),False,'failed'))
         for instructions,source in DOCUMENTS.items():
-            call='curate' if instructions=='curate-2' else 'consolidate'
+            call='curate' if instructions=='curate-3' else 'consolidate'
             for code,wire,lasting,usage in endings:
                 before,requests,waits=len(self.rows()),len(self.transport.requests),[]
                 self.transport.reply=lambda h,w=wire:self.transport.send(h,w)

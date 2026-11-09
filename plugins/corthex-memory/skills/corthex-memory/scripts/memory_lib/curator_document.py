@@ -10,7 +10,7 @@ with the keys configured when it is sent.
 """
 import re
 
-from . import configuration, conflict_types, curation, diagnostics, format2, item_types, state_types
+from . import configuration, conflict_types, curation, diagnostics, format2, item_types, model_prompts, state_types
 
 FORMS = ('full', 'short', 'part')
 FORGOTTEN = '[forgotten]'
@@ -209,28 +209,28 @@ def _request(attributes, children):
 
 
 def curate(*, lines, items, form, sessions, candidates=(), omitted=0):
-    """The curate-2 request: state, item list, known candidates and turns."""
+    """The curate request (curate-3): state, item list, known candidates and turns."""
     if form not in FORMS:
         raise ValueError('invalid request item form')
     carried, listed = _items(items, form)
-    return _request((('kind', 'curate'), ('instructions', 'curate-2')),
+    return _request((('kind', 'curate'), ('instructions', model_prompts.CURATE)),
                     [_state(lines), listed, _conflicts(candidates, omitted, carried), _turns(sessions)])
 
 
 def merge(*, group, items, candidates=(), omitted=0):
-    """The merge-2 request: one kind's current items with their quotes."""
+    """The merge request (merge-2): one kind's current items with their quotes."""
     curation._choice(group, item_types.KINDS)
     if any(not isinstance(value, dict) or value.get('kind') != group for value in items):
         raise ValueError('merge group holds another kind')
     carried, listed = _items(items, None)
-    return _request((('kind', 'merge'), ('instructions', 'merge-2'), ('group', group)),
+    return _request((('kind', 'merge'), ('instructions', model_prompts.MERGE), ('group', group)),
                     [listed, _conflicts(candidates, omitted, carried)])
 
 
 def shorten(*, lines, items, form, candidates=(), omitted=0):
-    """The state-1 request: the current state and the item list."""
+    """The request to shorten the state (state-2): the current state and the item list."""
     if form not in FORMS:
         raise ValueError('invalid request item form')
     carried, listed = _items(items, form)
-    return _request((('kind', 'state'), ('instructions', 'state-1')),
+    return _request((('kind', 'state'), ('instructions', model_prompts.STATE)),
                     [_state(lines), listed, _conflicts(candidates, omitted, carried)])

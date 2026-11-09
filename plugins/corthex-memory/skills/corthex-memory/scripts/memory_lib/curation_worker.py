@@ -70,10 +70,10 @@ import stat
 
 from . import (base, clock, configuration, curate_apply, curation_rebuild, curator_answers, curator_document,
                diagnostics, fence_plan, files, index_io, item_io, item_types, locks, model_access, model_client,
-               model_count, request_budget, request_inputs, revision_io, run_log, state_edits, state_io,
-               worker_support)
+               model_count, model_prompts, request_budget, request_inputs, revision_io, run_log, state_edits,
+               state_io, worker_support)
 
-INSTRUCTIONS = 'curate-2'
+INSTRUCTIONS = model_prompts.CURATE
 FAILURES = 3        # failed attempts in a row from one first turn stop curation (SPEC-018)
 STALE = 3           # stale attempts in a row end the run; the next trigger goes on
 RECENT = 10         # attempts that the record keeps, newest first (TBL-009)

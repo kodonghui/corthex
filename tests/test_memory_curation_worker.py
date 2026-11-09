@@ -32,7 +32,7 @@ from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import (base, clock, curation_worker, fence_plan, format2, index_io, item_types, locks, model_client,
-                        model_usage, raw_log, revision_io, run_log, state_types)
+                        model_prompts, model_usage, raw_log, revision_io, run_log, state_types)
 from memory_lib.c2_store import C2Store
 from test_memory_curator_answers import answer, change, quote
 from test_memory_model_stream import block, end, start
@@ -837,6 +837,56 @@ class CurationWorkerTest(unittest.TestCase):
                                           'state': 'kept'})
         self.assertEqual((self.runs(), self.progress()['logs'], self.progress()['applies']), ([], {LOG: 3}, 1))
 
+    # TASK-111: dead ends and the done condition (REQ-228)
+
+    def test_tc401_a_dead_end_and_the_done_condition_are_cited_lines_that_the_next_request_carries(self):
+        said, answered = self.one_turn('Polling the raw lock hangs on Windows. We are done when the hook check passes.',
+                                       'I stopped polling the raw lock.')
+        dead = {'part': 'blockers', 'after': '', 'text': 'Dead end: Polling the raw lock in a loop hangs on Windows.',
+                'cites': [said['id']], 'changes': []}
+        done = {'part': 'next', 'after': '', 'text': 'Done when: the hook check passes on Windows.',
+                'cites': [answered['id']], 'changes': []}
+        self.server.answers = [answer(state={'change': [], 'add': [dead, done], 'remove': []})]
+        (attempt,) = self.curate().attempts
+        self.assertEqual((attempt.record['result'], attempt.record['state'], attempt.edits), ('ok', 'new', {}))
+        stored = self.lines()
+        self.assertEqual([(value['part'], value['text'], value['cites']) for value in stored],
+                         [('blockers', dead['text'], [said['id']]), ('next', done['text'], [answered['id']])])
+
+        # A later turn: its request carries both lines as the state, and the instructions keep them (rule 12).
+        self.one_turn('Name the script hook.py.', 'The script is hook.py now.')
+        self.server.answers.append(answer())
+        self.assertEqual(self.curate().reason, 'done')
+        later = ET.fromstring(self.server.content(1))
+        self.assertEqual([(value.get('id'), value.get('part'), value.get('cites'), value.text)
+                          for value in later.find('state')],
+                         [(value['id'], value['part'], value['cites'][0], value['text']) for value in stored])
+        self.assertEqual(self.lines(), stored)
+
+        # An answer that does not fit the schema fails as bad-answer and applies nothing.
+        self.one_turn('Tag the release.', 'Tagged.')
+        before = self.snapshot()
+        self.server.answers.extend([stream({'state': 'none'})] * 3)
+        with self.quick():
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [value.record.get('error') for value in outcome.attempts]),
+                         ('failed', ['bad-answer']))
+        after = self.snapshot()
+        self.assertEqual({name: data for name, data in after.items() if name.startswith('layer/')},
+                         {name: data for name, data in before.items() if name.startswith('layer/')})
+        self.assertEqual(self.progress()['logs'], {LOG: 5})
+
+        # Every request names curate-3 and sends its instructions, and so does every usage line.
+        self.assertEqual({(ET.fromstring(body['messages'][0]['content']).get('instructions'), body['system'])
+                          for _, body in self.server.requests},
+                         {('curate-3', model_prompts.PROMPTS['curate-3'])})
+        rule, = [line for line in model_prompts.PROMPTS['curate-3'].split('\n') if line.startswith('12. ')]
+        # The start summary looks for the markers in English, and a line keeps its marker while it holds.
+        for words in ('`Dead end:`', '`Done when:`', 'in English', 'rule 8', 'keep its marker'):
+            self.assertIn(words, rule)
+        self.assertEqual({(row['call'], row['instructions']) for row in self.usage()}, {('curate', 'curate-3')})
+        self.assertEqual(len(self.usage()), 5)
+
     def test_tc353_a_request_carries_an_open_candidate_and_both_of_its_items(self):
         said, _ = self.one_turn()
         first, second = self.saved(said, 'Keep the four hooks'), self.saved(said, 'in one script')
@@ -1108,7 +1158,7 @@ class CurationWorkerTest(unittest.TestCase):
             root = ET.fromstring(body['messages'][0]['content'])
             turns = list(root.iter('turn'))
             size = {'turns': len(turns), 'list': root.find('items').get('form'),
-                    'estimate': budget.request_budget.estimate('curate-2', budget.SCHEMA, source)}
+                    'estimate': budget.request_budget.estimate('curate-3', budget.SCHEMA, source)}
             if turns[0].get('parts') is not None:
                 size['parts'] = int(turns[0].get('parts'))
             forms.append((size['turns'], size.get('parts'), size['list']))

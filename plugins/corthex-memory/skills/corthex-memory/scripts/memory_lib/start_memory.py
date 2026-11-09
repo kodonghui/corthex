@@ -28,6 +28,8 @@ NOTICE_ORDER = ("unreadable", "stopped", "consent", "key", "retention", "sync-st
                 "rebuilt", "pin-moved", "pin-dropped", "conflict", "pin-restored", "pin-removed")
 PARTS = ("goal", "decisions", "progress", "blockers", "next")
 LABELS = dict(zip(PARTS, ("Goal", "Decision in force", "Work in progress", "Blocker", "Next action")))
+# A blocker whose text starts with "Dead end:" and a next action whose text starts with "Done when:" (TASK-111).
+MARKERS = {"blockers": "Dead end", "next": "Done when"}
 
 
 @dataclass(frozen=True)
@@ -115,9 +117,15 @@ def item_id(value):
 
 
 def state_line(line):
+    """A current state line under its part's label; a dead end or the done condition (REQ-228) shows under its own
+    label, without the marker that its text starts with and the white space after it."""
     cites = [value for value in line["cites"] if item_id(value)][:3]
     suffix = " (%s)" % ", ".join(cites) if cites else ""
-    return "- %s: %s%s" % (LABELS[line["part"]], one_line(line["text"]), suffix)
+    label, text = LABELS[line["part"]], one_line(line["text"])
+    marker = MARKERS.get(line["part"])
+    if marker is not None and text.startswith(marker + ":"):
+        label, text = marker, text[len(marker) + 1:].lstrip()
+    return "- %s:%s%s" % (label, " " + text if text else "", suffix)
 
 
 def pinned(pins, current):

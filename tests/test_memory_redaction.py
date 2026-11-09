@@ -478,9 +478,9 @@ def sent_text(text):
     import xml.etree.ElementTree as ET
     from memory_lib import model_access, model_request
     credentials = model_access.Credentials.read({redaction.MEMORY_KEYS[0]: "fixture-" + random_text(32)})
-    document = ('<request kind="curate" instructions="curate-2"><turns><entry id="e_sample">' + escape(text) +
+    document = ('<request kind="curate" instructions="curate-3"><turns><entry id="e_sample">' + escape(text) +
                 '</entry></turns></request>')
-    sent = model_request.document(document, instructions="curate-2", environment={}, credentials=credentials)
+    sent = model_request.document(document, instructions="curate-3", environment={}, credentials=credentials)
     return ET.fromstring(sent).find(".//entry").text or ""
 
 

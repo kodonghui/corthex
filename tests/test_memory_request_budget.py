@@ -27,8 +27,8 @@ from memory_lib import (curator_answers, curator_document, index_io, item_types,
                         model_prompts, model_request, raw_log, request_budget, request_inputs, state_types)
 
 SCHEMA = curator_answers.schema()
-FIXED = model_prompts.PROMPTS['curate-2'] + json.dumps(SCHEMA, ensure_ascii=False)
-BASE = request_budget.fixed('curate-2', SCHEMA)
+FIXED = model_prompts.PROMPTS['curate-3'] + json.dumps(SCHEMA, ensure_ascii=False)
+BASE = request_budget.fixed('curate-3', SCHEMA)
 KEY = transport_fixture.KEY
 CREDENTIALS = model_access.Credentials.read({'CORTHEX_MEMORY_ANTHROPIC_API_KEY': KEY})
 OTHER = raw_log.log_name(HOST, 'fixture-session-084')
@@ -52,7 +52,7 @@ def rule(text):
 
 def sent(source):
     """The body that a request document is counted and sent with."""
-    return model_request.build(config={}, instructions='curate-2', source=source, schema=SCHEMA,
+    return model_request.build(config={}, instructions='curate-3', source=source, schema=SCHEMA,
                                credentials=CREDENTIALS, environment={})[0]['body']
 
 
@@ -579,13 +579,13 @@ class RequestBudgetTest(unittest.TestCase):
         self.assertEqual((len(request.turns), request.counted, request.counts), (15, calls[-1][1], 2))
         self.assertLessEqual(request.counted, 99000)
 
-        # One turn of 160,000 characters: it no longer goes whole and uncounted after one count of 173,058.
+        # One turn of 160,000 characters: it no longer goes whole and uncounted after one count of 173,721.
         text = prose(160000, 7)
         big = session([(text, None)])
         calls.clear()
         result = request_budget.plan(self.layer(), [big], schema=SCHEMA, count=count)
         self.assertEqual([request.part for request in result.requests], [(1, 2), (2, 2)])
-        self.assertEqual(calls[0], (1, 173058))
+        self.assertEqual(calls[0], (1, 173721))
         first, second = result.requests
         self.assertEqual((first.counted, first.counts), (calls[-1][1], 2))
         self.assertLessEqual(first.counted, 99000)
@@ -810,7 +810,7 @@ class CountedRequestTest(unittest.TestCase):
         self.transport.send(handler, raw.encode('utf-8'), status=status, mime='application/json')
 
     def count(self, source):
-        return model_count.count(self.usage.memory, project='sample', instructions='curate-2', source=source,
+        return model_count.count(self.usage.memory, project='sample', instructions='curate-3', source=source,
                                  schema=SCHEMA, config={}, check=lambda: None).tokens
 
     def rows(self):
@@ -861,7 +861,7 @@ class CountedRequestTest(unittest.TestCase):
 
         rows = self.rows()
         self.assertEqual(len(rows), len(self.transport.requests))
-        self.assertTrue(all((row['call'], row['cost'], row['instructions']) == ('count-tokens', 0, 'curate-2')
+        self.assertTrue(all((row['call'], row['cost'], row['instructions']) == ('count-tokens', 0, 'curate-3')
                             for row in rows))
         self.assertEqual([(row['result'], row.get('error')) for row in rows].count(('failed', 'api_error')), 1)
 

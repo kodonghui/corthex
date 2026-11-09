@@ -11,7 +11,7 @@ AGENT = 'corthex-memory/0.2.1'
 _BASES = {'anthropic': ('CORTHEX_MEMORY_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
           'openai': ('CORTHEX_MEMORY_OPENAI_BASE_URL', 'https://api.openai.com')}
 _TAGS = frozenset('request state line items item title text conflicts conflict turns session turn entry quote'.split())
-_KINDS = {'curate-2': 'curate', 'merge-2': 'merge', 'state-1': 'state'}
+_KINDS = {model_prompts.CURATE: 'curate', model_prompts.MERGE: 'merge', model_prompts.STATE: 'state'}
 _ATTRS = dict(request={'kind','instructions','group'},state=set(),line={'id','part','cites'},
     items={'form'},item={'id','kind','speaker','date'},title=set(),text=set(),
     conflicts={'omitted'},conflict={'id','items','since'},turns=set(),
