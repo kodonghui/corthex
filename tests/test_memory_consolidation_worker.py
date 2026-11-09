@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import sys
+import types
 import unittest
 from unittest import mock
 import xml.etree.ElementTree as ET
@@ -17,9 +18,9 @@ import xml.etree.ElementTree as ET
 from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (clock, consolidation_worker, curator_answers, curator_document, fence_plan, format2,
-                        history_io, item_io, item_types, locks, request_budget, revision_io, run_log, state_rewrite,
-                        state_types)
+from memory_lib import (clock, commands, conflicts_command, consolidation_worker, curator_answers, curator_document,
+                        fence_plan, format2, history_io, item_io, item_types, locks, request_budget, revision_io,
+                        run_log, state_rewrite, state_types)
 from memory_lib.c2_store import C2Store
 import test_memory_curation_worker as fixture
 from test_memory_curator_answers import answer as curate_answer
@@ -273,6 +274,17 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.answering({'decision': merges(conflicts=[(send, keep)])})
         self.assertEqual(self.consolidate(when=WHEN + timedelta(days=8)).reason, 'done')
         self.assertEqual(len(self.candidates()), 1)
+        self.assertNotIn('run', self.progress()['recent'][0])
+        # Nor once the person has dismissed it with the conflicts command: they found no disagreement (SPEC-143).
+        (opened,) = self.candidates()
+        context = commands.Context('conflicts', {'folder': str(self.root), 'dismiss': opened['id']}, None,
+                                   self.memory)
+        context.project = types.SimpleNamespace(name='sample')
+        context.record = {'device': DEVICE}
+        self.assertEqual(conflicts_command.conflicts(context)['data']['dismissed'], opened['id'])
+        self.answering({'decision': merges(conflicts=[(keep, send)])})
+        self.assertEqual(self.consolidate(when=WHEN + timedelta(days=16)).reason, 'done')
+        self.assertEqual([candidate['status'] for candidate in self.candidates()], ['dismissed'])
         self.assertNotIn('run', self.progress()['recent'][0])
 
     def test_a_merge_settles_the_candidates_of_its_items_and_moves_their_pin(self):

@@ -32,10 +32,27 @@ def start_path(output, event):
     return output / ("start-" + hashlib.sha256(event["session_id"].encode("utf-8")).hexdigest() + ".json")
 
 
-def write_start(path, value):
+def write_start(path, value, seconds=2):
     pending = path.with_suffix("." + uuid.uuid4().hex + ".tmp")
-    pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
-    pending.replace(path)
+    try:
+        pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
+        # On Windows the prompt hook's read of the file refuses the replace for a moment (Access is denied).
+        deadline = time.monotonic() + seconds
+        while True:
+            try:
+                pending.replace(path)
+                return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.025)
+    finally:
+        # A write or replace that failed removes its temporary file when it can; a removal that fails too is
+        # ignored, leaving that file, so that the first error is raised.
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def wait_start_completed(output, event, generation, timeout=6):

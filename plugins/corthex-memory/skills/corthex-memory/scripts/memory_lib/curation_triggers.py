@@ -65,18 +65,23 @@ def met(hook, markers, now, triggers, temporary):
     return markers.count >= turns or (now - markers.oldest).total_seconds() > triggers['minutes'] * 60
 
 
-def _progress(memory, root, deadline):
-    """The primary record, else its backup, read without a lease; None when neither parses.
+def read_progress(memory, root, deadline):
+    """(the primary record, True), else (its backup, False), read without a lease; (None, False) when neither parses.
 
     Only the worker restores a backup or makes the record again, under its leases.
     """
     path = root / 'curation.json'
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            return format2.parse_curation(files.fence_read(memory, candidate, deadline))
+            return format2.parse_curation(files.fence_read(memory, candidate, deadline)), candidate == path
         except files._RESTORABLE:
             continue
-    return None
+    return None, False
+
+
+def _progress(memory, root, deadline):
+    """The primary record, else its backup, read without a lease; None when neither parses."""
+    return read_progress(memory, root, deadline)[0]
 
 
 

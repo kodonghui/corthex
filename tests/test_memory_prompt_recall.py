@@ -326,7 +326,9 @@ class PromptRecallTest(unittest.TestCase):
             started = clock.now()
             result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.3,
                                           settings=self.settings(), zone=UTC)
-            self.assertLess(clock.now() - started, 1.0)
+            # Recall waits about as long as its deadline, not the sqlite3 module's five seconds. SQLite's sleeps run
+            # long on a busy machine: macOS runners took 1.01 to 1.22 seconds here.
+            self.assertLess(clock.now() - started, 3.0)
         finally:
             writer.close()
         self.assertEqual(result, prompt_recall.Result('late', error='deadline'))

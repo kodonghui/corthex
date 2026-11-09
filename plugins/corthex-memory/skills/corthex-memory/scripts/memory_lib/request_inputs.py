@@ -70,14 +70,37 @@ def layer(root, read=_bytes):
     pinned = tuple(pin['item'] for pin in pins if pin['on'] and pin['item'] in items and
                    items[pin['item']]['status'] == 'current')
     conflicts = conflict_types.parse_conflicts(read(folder/'conflicts.json'))
-    candidates = conflict_types.open_candidates(conflicts)
-    candidates = tuple(c for c in candidates if all(items.get(i, {}).get('status') == 'current' for i in c['items']))
+    candidates = tuple(conflict_types.open_current(conflicts, lambda i: items.get(i, {}).get('status') == 'current'))
     places = {c['id']: (c['at'], c['id']) for c in conflicts['candidates']}
     return Layer(tuple(view['lines']), tuple(view['hidden']), items, tuple(current), pinned, candidates, places)
 
 
+def ranges(stones, log, staying):
+    """Entry ID -> ranges of the log that the tombstones name and no quote of an item that stays overlaps.
+
+    `stones` are the tombstones' documents. `staying()` gives the records of
+    the items that stay and is called only when a tombstone names a range of
+    the log; the raw log's rewrite keeps a range that overlaps their quotes
+    whole.
+    """
+    named = {}
+    for stone in stones:
+        for quote in stone['quotes']:
+            if quote['log'] == log and quote['start'] < quote['end']:
+                named.setdefault(quote['entry'], []).append((int(quote['start']), int(quote['end'])))
+    kept = {}
+    if named:
+        for value in staying():
+            for quote in value['quotes']:
+                if quote['log'] == log and quote['entry'] in named:
+                    kept.setdefault(quote['entry'], []).append((quote['start'], quote['end']))
+    return {entry: [(start, end) for start, end in found
+                    if not any(low < end and start < high for low, high in kept.get(entry, ()))]
+            for entry, found in named.items()}
+
+
 def _pending(root, log, read=_bytes):
-    """Entry ID -> ranges of the log that tombstones name and no item that stays quotes.
+    """Entry ID -> ranges of the log that tombstones name and no item that stays quotes (`ranges`).
 
     A forget publishes its tombstones before it rewrites the raw log, and a
     stopped forget leaves the rewrite for later (TBL-007, TBL-016). Until then
@@ -85,36 +108,29 @@ def _pending(root, log, read=_bytes):
     overlaps a quote of an item that stays, which the rewrite keeps whole.
     """
     folder = Path(root)/'layer'
-    named, forgotten = {}, set()
+    stones, forgotten = [], set()
     for item, data in _named(folder/'tombstones', read):
         history_recovery._tombstone(data, item, Path(root).name)
         forgotten.add(item)
-        for quote in item_types._document(data)['quotes']:
-            if quote['log'] == log and quote['start'] < quote['end']:
-                named.setdefault(quote['entry'], []).append((int(quote['start']), int(quote['end'])))
-    kept = {}
-    if named:
-        for item, data in _named(folder/'items', read):
-            if item in forgotten:
-                continue
-            for quote in item_types.parse_item(data)['quotes']:
-                if quote['log'] == log and quote['entry'] in named:
-                    kept.setdefault(quote['entry'], []).append((quote['start'], quote['end']))
-    return {entry: [(start, end) for start, end in ranges
-                    if not any(low < end and start < high for low, high in kept.get(entry, ()))]
-            for entry, ranges in named.items()}
+        stones.append(item_types._document(data))
+    return ranges(stones, log, lambda: [item_types.parse_item(data) for item, data in _named(folder/'items', read)
+                                        if item not in forgotten])
 
 
-def entries(root, log, read=_bytes):
+def entries(root, log, read=_bytes, pending=None):
     """The named raw log's entries in seq order, damaged and unfinished lines left out.
 
     Each entry's `forgotten` also holds the ranges that pending tombstones name
     (`_pending`), so the request shows them as [forgotten] and no quote of the
     answer can touch them. The quote check of an answer reads these entries.
+    `pending` gives those ranges when the caller has read them: `open` reads
+    them once for all logs, around what an interrupted write left
+    (item_commands).
     """
     format2._id(log, diagnostics.LOG)
     data = read(Path(root)/'raw'/(log + '.jsonl'))
-    pending, found = _pending(root, log, read), []
+    pending = _pending(root, log, read) if pending is None else pending
+    found = []
     for line in data.split(b'\n')[:-1]:
         try:
             entry = raw_rewrite._entry(line, log)

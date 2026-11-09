@@ -284,6 +284,12 @@ class CurateApplyTest(unittest.TestCase):
                                                make_id=lambda prefix: next(made))
         self.assertEqual([c['status'] for c in reopened['candidates']], ['settled', 'open'])
         self.assertEqual(len(fresh), 1)
+        # A pair whose candidate the person dismissed is not recorded again, in either order (SPEC-143).
+        dismissed = copy.deepcopy(reopened)
+        dismissed['candidates'][1].update(status='dismissed', closed=LAST)
+        kept_closed, none = conflict_plan.record(dismissed, [back, both], items, at=LAST, run=NEXT, by='consolidate',
+                                                 make_id=lambda prefix: next(made))
+        self.assertEqual((kept_closed, none), (dismissed, []))
         # Equal times put the lower ID first.
         tied = dict(saved('fact', said, 'items'), saved=LATER)
         pair = sorted((newer['id'], tied['id']))

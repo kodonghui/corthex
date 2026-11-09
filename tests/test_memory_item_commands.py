@@ -6,6 +6,7 @@ them to no handler before the 0.3.0 activation, which a test checks, so these
 are the handlers' own results, called as the runner will call them.
 """
 import contextlib
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import subprocess
@@ -17,12 +18,12 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import clock, commands, files, forget_plan, item_commands, item_types, raw_log, run_listing
-from memory_lib import worker_support
+from memory_lib import history_recovery, worker_support
 import test_memory_commands as commands_fixture
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
-AT, DEVICE, HOOKS = worker_fixture.AT, worker_fixture.DEVICE, worker_fixture.HOOKS
+AT, DEVICE, HOOKS, WHEN = worker_fixture.AT, worker_fixture.DEVICE, worker_fixture.HOOKS, worker_fixture.WHEN
 OTHER = 'd_zyxwvtsrqpnm'
 ident = worker_fixture.ident
 EXAMPLES = json.loads((ROOT / 'docs/06-api/memory-examples.json').read_text(encoding='utf-8'))['result']['valid']
@@ -49,6 +50,7 @@ class ItemCommandsTest(unittest.TestCase):
         context = commands.Context(command, dict(arguments, folder=str(self.root)), None, self.memory)
         context.project = types.SimpleNamespace(name=project)
         context.record = {'device': DEVICE}
+        context.configuration = self.memory.configuration(deadline=clock.now() + 10)
         return context
 
     def list(self, **arguments):
@@ -56,11 +58,11 @@ class ItemCommandsTest(unittest.TestCase):
         commands.validate_result(value, 'list')
         return value
 
-    def open(self, *names, around=None, project='sample'):
+    def open(self, *names, around=None, project='sample', when=WHEN):
         arguments = {'item': list(names)}
         if around is not None:
             arguments['around'] = around
-        value = item_commands.open_items(self.context('open', arguments, project))
+        value = item_commands.open_items(self.context('open', arguments, project), when=when)
         commands.validate_result(value, 'open')
         return value
 
@@ -294,6 +296,30 @@ class ItemCommandsTest(unittest.TestCase):
         log.unlink()
         self.assertEqual(self.open(value['id'], around=100)['data']['items'][0]['quotes'][0]['held'], 'deleted')
 
+    def test_only_this_device_s_entries_within_the_retention_period_are_read_around_a_quote(self):
+        value = self.saved(self.said, HOOKS)
+        # Another device's quote naming an entry that this device's log holds: its text is not read.
+        value['quotes'].append(dict(value['quotes'][0], device=OTHER))
+        self.layer([value])
+        self.configure(retention={'days': 7})
+        said = datetime.strptime(self.said['at'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+        last = said + timedelta(days=7)
+        quotes = self.open(value['id'], around=100, when=last)['data']['items'][0]['quotes']
+        self.assertEqual([quote['held'] for quote in quotes], ['here', 'elsewhere'])
+        start = value['quotes'][0]['start']
+        self.assertEqual(quotes[0]['before'], self.said['text'][max(0, start - 100):start])
+        self.assertNotIn('before', quotes[1])
+        # Once the entry is past the retention period it is deleted for `open`, as retention deletes it next (SPEC-025).
+        late = last + timedelta(seconds=1)
+        found = self.open(value['id'], around=100, when=late)
+        quotes = found['data']['items'][0]['quotes']
+        self.assertEqual([quote['held'] for quote in quotes], ['deleted', 'elsewhere'])
+        for quote in quotes:
+            self.assertNotIn('before', quote)
+        self.assertEqual(found['say'], "1 item, with its quotes; this device does not hold the quoted entries, "
+                                       "so nothing around them is shown.")
+        self.assertEqual(self.open(value['id'], when=late)['data']['items'][0]['quotes'][0]['held'], 'deleted')
+
     def test_forgotten_ranges_around_a_quote_show_as_one_mark_that_is_never_cut(self):
         words, secret, pending = 'the hooks stay in one script', 'a private remark', 'another private remark'
         text = 'Before ' + secret + ' then ' + words + ' and ' + pending + ' after.'
@@ -317,6 +343,85 @@ class ItemCommandsTest(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(self.open(value['id'], around=2000)))
         self.assertNotIn(pending, json.dumps(self.open(value['id'], around=2000)))
         self.assertIn(pending, said['text'])
+
+    def test_a_tombstone_backup_or_a_temporary_copy_neither_fails_open_nor_shows_its_range(self):
+        words, pending = 'the hooks stay in one script', 'a private remark'
+        text = 'Before ' + words + ' and ' + pending + ' after.'
+        said, _ = self.raw.turn(text, 'Done.')
+        self.write()
+        value, gone = self.saved(said, words), self.saved(said, pending)
+        self.layer([value])
+        # A rewrite of the tombstone stopped with only its backup, and other writes left temporary copies of a
+        # tombstone and of an item, whose backup is beside its file.
+        self.tombstone(gone, backup=True)
+        (self.root / 'layer/tombstones' / (gone['id'] + '.json.k2j4x9.tmp')).write_bytes(b'{')
+        path = self.root / 'layer/items' / (value['id'] + '.json')
+        path.with_name(path.name + '.bak').write_bytes(path.read_bytes())
+        path.with_name(path.name + '.7fq2m1.tmp').write_bytes(b'{')
+        before = self.snapshot()
+        found = self.open(value['id'])
+        self.assertEqual((found['outcome'], found['code'], found['data']['items'][0]['quotes'][0]['held']),
+                         ('done', 'ok', 'here'))
+        quote = self.open(value['id'], around=2000)['data']['items'][0]['quotes'][0]
+        self.assertEqual((quote['before'], quote['after']), ('Before ', ' and [forgotten] after.'))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_open_reads_each_tombstone_once_for_quotes_in_several_logs(self):
+        other = worker_fixture.Raw('other-session-040')
+        first, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        second, _ = other.turn('Keep the logs on this device and drop the other remark.', 'Done.')
+        self.write()
+        (self.root / 'raw' / (other.name + '.jsonl')).write_bytes(other.data())
+        value, gone = self.saved(first, 'Keep the hooks in one script'), self.saved(first, 'the old remark')
+        theirs = 'Keep the logs on this device'
+        value['quotes'].append(dict(value['quotes'][0], entry=second['id'], log=other.name, start=0, end=len(theirs),
+                                    words=theirs, said=second['at']))
+        start = second['text'].index('the other remark')
+        other_gone = dict(gone, id=ident('i'), quotes=[dict(gone['quotes'][0], entry=second['id'], log=other.name,
+                                                            start=start, end=start + len('the other remark'))])
+        self.layer([value])
+        self.tombstone(gone)
+        self.tombstone(other_gone)
+        with mock.patch.object(history_recovery, '_tombstone', wraps=history_recovery._tombstone) as read:
+            quotes = self.open(value['id'], around=2000)['data']['items'][0]['quotes']
+        self.assertEqual([(quote['held'], quote['after']) for quote in quotes],
+                         [('here', ' and drop [forgotten].'), ('here', ' and drop [forgotten].')])
+        self.assertEqual(read.call_count, 2)
+
+    def test_only_around_reads_the_tombstones_and_open_reads_the_items_at_most_once(self):
+        # The ranges that pending tombstones name show only in the words around a quote, and the items that stay,
+        # which those ranges need, also give the closest lines for an argument that names no item.
+        said, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        self.write()
+        value, gone = self.saved(said, 'Keep the hooks in one script'), self.saved(said, 'the old remark')
+        self.layer([value])
+        self.tombstone(gone)
+        missing = ident('i')
+        with mock.patch.object(item_commands, '_tombstones', wraps=item_commands._tombstones) as stones, \
+                mock.patch.object(item_commands, '_items', wraps=item_commands._items) as items:
+            found = self.open(value['id'])
+            self.assertEqual(found['data']['items'][0]['quotes'][0]['held'], 'here')
+            self.assertEqual((stones.call_count, items.call_count), (0, 0))
+            refused = self.open(value['id'], missing, around=2000)
+            self.assertEqual((refused['code'], refused['data']['missing']), ('item-not-found', [missing]))
+            self.assertEqual(refused['data']['items'][0]['quotes'][0]['after'], ' and drop [forgotten].')
+            self.assertEqual((stones.call_count, items.call_count), (1, 1))
+
+    def test_a_tombstone_that_cannot_be_read_fails_only_around(self):
+        # Without --around, open sees only the names in the tombstones' folder, as list does.
+        said, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        self.write()
+        value, gone = self.saved(said, 'Keep the hooks in one script'), self.saved(said, 'the old remark')
+        self.layer([value])
+        (self.root / 'layer/tombstones' / (gone['id'] + '.json')).write_bytes(b'{')
+        before = self.snapshot()
+        found = self.open(value['id'])
+        self.assertEqual((found['code'], found['data']['items'][0]['quotes'][0]['held']), ('ok', 'here'))
+        refused = self.open(gone['id'])
+        self.assertEqual((refused['code'], refused['data']['missing']), ('item-not-found', [gone['id']]))
+        with self.assertRaises(ValueError):
+            self.open(value['id'], around=10)
+        self.assertEqual(self.snapshot(), before)
 
     def test_adjacent_and_overlapping_forgotten_ranges_make_one_mark(self):
         entry = {'text': 'abcdefghijklmnop', 'forgotten': [[4, 6], [2, 4], [5, 8]]}

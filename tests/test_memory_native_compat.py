@@ -178,6 +178,48 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             finally:
                 if start.poll() is None: start.kill(); start.communicate()
 
+    def test_the_start_file_is_replaced_again_while_windows_refuses_the_replace(self):
+        # A prompt child that reads the start file makes Windows refuse its replace for a moment (Access is denied).
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            replace, refused = Path.replace, []
+
+            def busy(source, target):
+                if len(refused) < 3:
+                    refused.append(Path(target).name)
+                    raise PermissionError(13, "Access is denied")
+                return replace(source, target)
+            with patch.object(Path, "replace", busy):
+                self.lifecycle.write_start(folder / "start.json", {"session": "native-fixture"})
+            self.assertEqual(refused, ["start.json"] * 3)
+            self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
+            self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
+            # A refusal that outlasts the wait still fails the check, and leaves no temporary file behind.
+            with patch.object(Path, "replace", side_effect=PermissionError(13, "Access is denied")):
+                with self.assertRaises(PermissionError):
+                    self.lifecycle.write_start(folder / "start.json", {"session": "other"}, seconds=.1)
+            self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
+            self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
+            # A removal that fails too leaves the replace's error to be raised.
+            with patch.object(Path, "replace", side_effect=PermissionError(13, "Access is denied")), \
+                    patch.object(Path, "unlink", side_effect=PermissionError(32, "The file is in use")):
+                with self.assertRaises(PermissionError) as raised:
+                    self.lifecycle.write_start(folder / "start.json", {"session": "other"}, seconds=.1)
+            self.assertEqual(raised.exception.errno, 13)
+            left = list(folder.glob("start.*.tmp"))
+            self.assertEqual(len(left), 1)
+            left[0].unlink()
+            # A write that fails part of the way leaves no temporary file either.
+            write = Path.write_text
+
+            def full(target, text, **options):
+                write(target, text[:5], **options)
+                raise OSError(28, "No space left on device")
+            with patch.object(Path, "write_text", full):
+                with self.assertRaises(OSError):
+                    self.lifecycle.write_start(folder / "start.json", {"session": "other"})
+            self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
+
     def test_resume_rejects_a_previous_completed_start_for_the_same_native_session(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary).resolve()/"prompt-gates"

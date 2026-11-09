@@ -21,10 +21,13 @@ loses `stopped`, and the count of failed attempts from one first turn and the
 count of failed consolidations in a row go back to zero, as a success sets
 them, so that the fault guard counts three new failures before it stops the
 project again (SPEC-018). Every other field of the record, its fence included,
-stays as it is, and no item, line, pin, candidate, notice or run changes. A
-new turn or another change to what the preview shows, or two ten-minute
-periods, make the code stale (`confirm-stale`), with the new data and a new
-code.
+stays as it is, and no item, line, pin, candidate, notice or run changes. The
+code covers the project, the stop and the failed attempts that it shows, not
+the unprocessed turns, as the maintainer decided on 2026-11-09: the person's
+own answer is recorded as a new turn, so a new turn leaves the code current,
+and the result counts the turns that wait then. Another stop or other failed
+attempts, or two ten-minute periods, make the code stale (`confirm-stale`),
+with the new data and a new code.
 
 Once the leases are released, when turns wait, it starts the memory worker
 with `--reason skill` (API-005), unless a fresh curation lease shows that a
@@ -44,8 +47,11 @@ from . import worker_launch
 # The commands' shared lock wait, within one bound for the whole command.
 WAIT, SECONDS = 10.0, 60.0
 SAY = {
-    'stopped': 'Curation of %s stopped after three failed %s in a row (%s).',
-    'ask': ' Resuming clears the stop, and the next trigger curates the project.',
+    'stopped': 'Curation of %s stopped after three failed %s in a row (%s)',
+    # The code leaves the count out, so a turn recorded before the answer, such as the answer itself, starts the
+    # worker even when none waited at the preview.
+    'ask': (' Resuming clears the stop and, if turns wait by then, starts the memory worker for them; otherwise '
+            'the next trigger curates the project.'),
     'ask-turns': ' Resuming clears the stop and starts the memory worker for the %s.',
     'resumed': 'Curation of %s resumed; the next trigger curates the project.',
     'started': 'Curation of %s resumed, and the memory worker started for the %s.',
@@ -91,9 +97,13 @@ def _turns(count):
     return '%d unprocessed turn%s' % (count, '' if count == 1 else 's')
 
 
+def stopped_said(project, stopped):
+    """The stop (SPEC-018) as the status and resume name it: what failed three times in a row, and the errors."""
+    return SAY['stopped'] % (project, WHAT[stopped['by']], ', '.join(stopped['errors']) or 'RuntimeError')
+
+
 def _ask(project, progress, unprocessed):
-    stopped = progress['stopped']
-    say = SAY['stopped'] % (project, WHAT[stopped['by']], ', '.join(stopped['errors']) or 'RuntimeError')
+    say = stopped_said(project, progress['stopped']) + '.'
     return say + (SAY['ask-turns'] % _turns(unprocessed) if unprocessed else SAY['ask'])
 
 
@@ -132,7 +142,9 @@ def resume(context):
                 revision_io.update_progress(memory, root, fence_plan.snapshot(progress), cleared(progress),
                                             deadline, removed=('stopped',))
                 applied.append(True)
-            answer = context.confirm(data, _ask(project, progress, data['unprocessed']), apply)
+            # The code leaves out the unprocessed turns, which the person's own answer adds to.
+            bound = {'project': project, 'stopped': progress['stopped'], 'failures': data['failures']}
+            answer = context.confirm(data, _ask(project, progress, data['unprocessed']), apply, bound=bound)
             if not applied:
                 return answer
     except locks.LockBusy:
