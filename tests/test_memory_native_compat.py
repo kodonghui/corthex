@@ -194,11 +194,12 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             self.assertEqual(refused, ["start.json"] * 3)
             self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
             self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
-            # A refusal that outlasts the wait still fails the check.
+            # A refusal that outlasts the wait still fails the check, and leaves no temporary file behind.
             with patch.object(Path, "replace", side_effect=PermissionError(13, "Access is denied")):
                 with self.assertRaises(PermissionError):
                     self.lifecycle.write_start(folder / "start.json", {"session": "other"}, seconds=.1)
             self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
+            self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
 
     def test_resume_rejects_a_previous_completed_start_for_the_same_native_session(self):
         with tempfile.TemporaryDirectory() as temporary:

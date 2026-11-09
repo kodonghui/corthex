@@ -37,14 +37,18 @@ def write_start(path, value, seconds=2):
     pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
     # On Windows the prompt hook's read of the file refuses the replace for a moment (Access is denied).
     deadline = time.monotonic() + seconds
-    while True:
-        try:
-            pending.replace(path)
-            return
-        except PermissionError:
-            if time.monotonic() >= deadline:
-                raise
-            time.sleep(.025)
+    try:
+        while True:
+            try:
+                pending.replace(path)
+                return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.025)
+    finally:
+        # A replace that never succeeded leaves no temporary file in the folder that later steps read.
+        pending.unlink(missing_ok=True)
 
 
 def wait_start_completed(output, event, generation, timeout=6):
