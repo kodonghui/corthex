@@ -11,9 +11,10 @@ with a request that ends 800 ms after the hook's start and adds a usage line,
 and ranks the project's items within the hook's own deadline (TASK-093). An
 index that a rebuild or a deletion takes away while the request is out gives
 `no-index` after it. An embedding that comes too late, or a deadline that
-passes while it ranks, makes the outcome `late`; a failed request or answer, a
-vector of the wrong length and any other error make it `failed`. Either way
-nothing is injected and the result carries what the hook's failure log notes.
+passes while it ranks, makes the outcome `late`, with `timeout` only for a
+request that started and timed out; a failed request or answer, a vector of
+the wrong length and any other error make it `failed`. Either way nothing is
+injected and the result carries what the hook's failure log notes.
 Recording comes before recall (step 4) and recall writes only the usage log,
 so the prompt goes on whatever recall does (REQ-035).
 
@@ -80,6 +81,10 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
             return Result(missing)
         answer = model_embed.embed(memory, project=project, call='embed-prompt', texts=[prompt],
                                    config=settings.document, check=lambda: memory.check(deadline), deadline=sent_by)
+        if answer.failure is not None and not answer.attempts:
+            # The embedding's time ran out before its request could start, as it does after a look at the index that
+            # SQLite's wait for a lock made longer than asked: nothing was sent, so no request timed out.
+            return Result('late', error='deadline')
         if answer.failure is not None:
             code = answer.failure.code
             return Result('late' if code == 'timeout' else 'failed', error=code)
