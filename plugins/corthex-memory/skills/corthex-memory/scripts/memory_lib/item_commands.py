@@ -16,23 +16,25 @@ behind them.
 
 `open` shows the named items of every status, each with its kind, status, the
 item that superseded it or the items it merges, title, text, time saved and
-quotes. A quote is `here` when this device's raw log of the project holds its
-entry, `deleted` when this device wrote the entry and it is gone, and
-`elsewhere` when another device wrote it. With `--around N` a quote held here
-also has up to N characters of its entry's text before it and after it, 2,000
-at most, with each range that a forget or a pending tombstone names shown as
-[forgotten], as curator requests show it; a mark is never cut. An argument that
-names no item of the project, or names one that a tombstone names, is
-`item-not-found`, with the arguments in `missing`, the closest lines of the item
-list in `matches` and the items that the other arguments name. An entry ID is
-missing too until TASK-112 opens entries.
+quotes. A quote is `elsewhere` when another device wrote its entry, whose
+text this device does not read; `here` when this device's raw log of the
+project holds the entry within the retention period, as SPEC-025 lets the
+skill read around a quote; and `deleted` when the entry is gone or past that
+period, which retention deletes at its next run. With `--around N` a quote
+held here also has up to N characters of its entry's text before it and after
+it, 2,000 at most, with each range that a forget or a pending tombstone names
+shown as [forgotten], as curator requests show it; a mark is never cut. An
+argument that names no item of the project, or names one that a tombstone
+names, is `item-not-found`, with the arguments in `missing`, the closest lines
+of the item list in `matches` and the items that the other arguments name. An
+entry ID is missing too until TASK-112 opens entries.
 
 A project without a folder, or whose memory is being deleted, has no items. An
 item record that cannot be read, or that a link reaches, raises, which the
 runner reports as `internal`, as it does for forget and undo.
 """
 from . import base, clock, commands, curation_worker, curator_document, files, forget_plan, item_io, item_types
-from . import locks, request_inputs, run_listing
+from . import locks, request_inputs, run_listing, run_log
 
 # The commands' shared lock wait, within one bound for the whole read.
 WAIT, SECONDS = 10.0, 60.0
@@ -155,11 +157,15 @@ def around(entry, quote, size):
             _take(_pieces(text, ranges, end, len(text)), size, False))
 
 
-def _quote(quote, entries, device, size):
+def _quote(quote, entries, device, cutoff, size):
     line = {name: quote[name] for name in ('entry', 'log', 'device', 'speaker', 'said', 'words')}
+    if quote['device'] != device:
+        line['held'] = 'elsewhere'
+        return line
     entry = entries(quote['log']).get(quote['entry'])
-    if entry is None:
-        line['held'] = 'deleted' if quote['device'] == device else 'elsewhere'
+    # An entry past the retention period is gone for the skill, as retention deletes it at its next run.
+    if entry is None or entry['at'] < cutoff:
+        line['held'] = 'deleted'
         return line
     line['held'] = 'here'
     if size is not None:
@@ -167,14 +173,17 @@ def _quote(quote, entries, device, size):
     return line
 
 
-def opened(value, entries, device, size=None):
-    """An item as `open` shows it (open-item), its quotes with where their entries are held."""
+def opened(value, entries, device, cutoff, size=None):
+    """An item as `open` shows it (open-item), its quotes with where their entries are held.
+
+    `cutoff` is the time that the retention period starts from, as a TBL-004 time.
+    """
     line = {'item': value['id'], 'kind': value['kind'], 'status': value['status']}
     for name in ('superseded_by', 'merges'):
         if name in value:
             line[name] = value[name]
     line.update(title=value['title'], text=value['text'], saved=value['saved'],
-                quotes=[_quote(quote, entries, device, size) for quote in value['quotes']])
+                quotes=[_quote(quote, entries, device, cutoff, size) for quote in value['quotes']])
     return line
 
 
@@ -208,8 +217,11 @@ def _open_say(items, size):
     return say + ' and the words around the %d that this device holds.' % here
 
 
-def open_items(context):
-    """API-022 after the runner's gates, with the format-2 store binding as `context.memory`."""
+def open_items(context, *, when=None):
+    """API-022 after the runner's gates, with the format-2 store binding as `context.memory`.
+
+    `when` fixes the time that the retention period counts from, for tests.
+    """
     project = context.project.name
     names, size = context.arguments.get('item'), context.arguments.get('around')
     if (not isinstance(names, list) or not names or
@@ -217,11 +229,12 @@ def open_items(context):
             size is not None and (type(size) is not int or not 0 <= size <= AROUND)):
         return commands.common_result('open', 'usage')
     names = list(dict.fromkeys(names))  # each name once, in the order first named
+    cutoff = run_log._cutoff(base.utc_time(when), context.configuration.values['retention']['days'])[0]
 
     def read(memory, root, deadline, check):
         values = {name: _item(memory, root, name, deadline, check) for name in names}
         entries = _entries(root, run_listing._reader(memory, deadline))
-        shown = [opened(value, entries, memory.device, size) for value in values.values() if value is not None]
+        shown = [opened(value, entries, memory.device, cutoff, size) for value in values.values() if value is not None]
         missing = [name for name, value in values.items() if value is None]
         lines = [run_listing.list_line(value) for value in listed(_items(memory, root, deadline, check))] \
             if missing else []

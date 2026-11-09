@@ -6,6 +6,7 @@ them to no handler before the 0.3.0 activation, which a test checks, so these
 are the handlers' own results, called as the runner will call them.
 """
 import contextlib
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import subprocess
@@ -22,7 +23,7 @@ import test_memory_commands as commands_fixture
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
-AT, DEVICE, HOOKS = worker_fixture.AT, worker_fixture.DEVICE, worker_fixture.HOOKS
+AT, DEVICE, HOOKS, WHEN = worker_fixture.AT, worker_fixture.DEVICE, worker_fixture.HOOKS, worker_fixture.WHEN
 OTHER = 'd_zyxwvtsrqpnm'
 ident = worker_fixture.ident
 EXAMPLES = json.loads((ROOT / 'docs/06-api/memory-examples.json').read_text(encoding='utf-8'))['result']['valid']
@@ -49,6 +50,7 @@ class ItemCommandsTest(unittest.TestCase):
         context = commands.Context(command, dict(arguments, folder=str(self.root)), None, self.memory)
         context.project = types.SimpleNamespace(name=project)
         context.record = {'device': DEVICE}
+        context.configuration = self.memory.configuration(deadline=clock.now() + 10)
         return context
 
     def list(self, **arguments):
@@ -56,11 +58,11 @@ class ItemCommandsTest(unittest.TestCase):
         commands.validate_result(value, 'list')
         return value
 
-    def open(self, *names, around=None, project='sample'):
+    def open(self, *names, around=None, project='sample', when=WHEN):
         arguments = {'item': list(names)}
         if around is not None:
             arguments['around'] = around
-        value = item_commands.open_items(self.context('open', arguments, project))
+        value = item_commands.open_items(self.context('open', arguments, project), when=when)
         commands.validate_result(value, 'open')
         return value
 
@@ -293,6 +295,30 @@ class ItemCommandsTest(unittest.TestCase):
                                        "so nothing around it is shown.")
         log.unlink()
         self.assertEqual(self.open(value['id'], around=100)['data']['items'][0]['quotes'][0]['held'], 'deleted')
+
+    def test_only_this_device_s_entries_within_the_retention_period_are_read_around_a_quote(self):
+        value = self.saved(self.said, HOOKS)
+        # Another device's quote naming an entry that this device's log holds: its text is not read.
+        value['quotes'].append(dict(value['quotes'][0], device=OTHER))
+        self.layer([value])
+        self.configure(retention={'days': 7})
+        said = datetime.strptime(self.said['at'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+        last = said + timedelta(days=7)
+        quotes = self.open(value['id'], around=100, when=last)['data']['items'][0]['quotes']
+        self.assertEqual([quote['held'] for quote in quotes], ['here', 'elsewhere'])
+        start = value['quotes'][0]['start']
+        self.assertEqual(quotes[0]['before'], self.said['text'][max(0, start - 100):start])
+        self.assertNotIn('before', quotes[1])
+        # Once the entry is past the retention period it is deleted for `open`, as retention deletes it next (SPEC-025).
+        late = last + timedelta(seconds=1)
+        found = self.open(value['id'], around=100, when=late)
+        quotes = found['data']['items'][0]['quotes']
+        self.assertEqual([quote['held'] for quote in quotes], ['deleted', 'elsewhere'])
+        for quote in quotes:
+            self.assertNotIn('before', quote)
+        self.assertEqual(found['say'], "1 item, with its quotes; this device does not hold the quoted entries, "
+                                       "so nothing around them is shown.")
+        self.assertEqual(self.open(value['id'], when=late)['data']['items'][0]['quotes'][0]['held'], 'deleted')
 
     def test_forgotten_ranges_around_a_quote_show_as_one_mark_that_is_never_cut(self):
         words, secret, pending = 'the hooks stay in one script', 'a private remark', 'another private remark'
