@@ -568,6 +568,51 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertFalse([number for number in range(len(self.server.requests))
                           if 'locker' in self.server.content(number)])
 
+    def test_a_project_turned_off_while_a_part_waits_sends_no_later_part(self):
+        self.long_turn()
+        self.server.before[0] = lambda: self.configure(enabled=False)
+        self.server.answers = [answer()]
+        outcome = self.curate()
+        # The run's conditions are read again before each request: once the project is off, nothing more is sent,
+        # and the attempt is stale rather than a failure.
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.requests), outcome.attempts[0].requests), (1, 1))
+        self.assertRegex(self.server.content(0), r' part="1" parts="\d+"')
+        self.assertEqual((self.items(), self.progress()['logs']), ({}, {}))
+        self.assertEqual(self.progress()['recent'], [{'at': STAMP, 'kind': 'curate', 'result': 'stale'}])
+
+    def test_consent_withdrawn_before_a_retry_sends_it_no_more(self):
+        said, _ = self.one_turn()
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.server.answers = [failing(529, 'overloaded_error'), answer(change(quote(said, HOOKS), kind='decision'))]
+        with self.quick() as waits:
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits), (1, [10]))
+        self.assertEqual([(row['call'], row['result']) for row in self.usage()], [('curate', 'failed')])
+        self.assertEqual((self.items(), self.progress()['logs']), ({}, {}))
+        self.assertNotIn('failures', self.progress())
+        self.assertIsNone(self.notice())
+
+    def test_a_project_turned_off_while_a_request_is_counted_counts_and_sends_nothing_more(self):
+        self.one_turn()
+        for n in range(12):
+            self.raw.turn(budget.prose(9000, 300 + n), budget.prose(9000, 400 + n))
+        self.write()
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.configure(enabled=False)
+                # Over 99,000, so that the request loses turns and would be counted again.
+                return 120000
+            return budget.body_rule(body)
+        self.server.counter = counter
+        self.server.answers = [answer()]
+        outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.counts), self.server.requests, outcome.attempts[0].requests), (1, [], 0))
+        self.assertEqual(self.progress()['logs'], {})
+
     def test_tc119_an_applies_count_changed_while_a_request_waits_drops_its_results(self):
         said, _ = self.one_turn()
 

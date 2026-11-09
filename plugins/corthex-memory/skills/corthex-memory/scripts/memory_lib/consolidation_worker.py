@@ -36,8 +36,10 @@ can change the layer meanwhile, and taken again to apply.
 - A fence that a forget, an undo or a tombstone moved after a request was
   built makes it stale: nothing of it applies, nothing counts as a failure,
   and the request is built again from the layer as it now is; three stale
-  requests in a row end the run. The fence is compared when the layer lease
-  is taken again to apply; after that only this run moves it.
+  requests in a row end the run. The fence is compared before each token
+  count, the request and each further attempt of it, and again when the
+  layer lease is taken again to apply; after that only this run moves it.
+  The run's conditions are read again at the same points, as curation's are.
 - A project tombstone (TBL-017), a lost curation lease, a layer lease held
   elsewhere past 150 seconds and the run's last 60 seconds end the run as
   curation's do. A run that ends before the last answer applied leaves what
@@ -216,8 +218,9 @@ def _stale(memory, root, deadline, run, at):
 def _send(memory, project, owner, deadline, settings, instructions, source, schema, run, still):
     """Send one request without the layer lease; its answer, decoded from JSON.
 
-    `still` compares the fence before the request and each further attempt of it; once a forget, an undo or a
-    tombstone has moved it, nothing more is sent and `_Moved` makes the request stale.
+    `still` reads the run's conditions again and compares the fence before the request and each further attempt
+    of it; once the project is off, consent or the key is gone, or a forget, an undo or a tombstone has moved the
+    fence, nothing more is sent and `_Moved` makes the request stale, as it does a request that failed meanwhile.
     """
     def check():
         memory.check(deadline, (owner,))
@@ -232,6 +235,8 @@ def _send(memory, project, owner, deadline, settings, instructions, source, sche
     if failure is not None:
         if failure.code == 'timeout' and clock.now() >= deadline - curation_worker.RESERVE:
             raise locks.LockBusy()  # the run's own time ran out, not the request's
+        if not still():
+            raise _Moved()
         raise _Failed(failure.code)
     try:
         return json.loads(result.response.text)
@@ -384,7 +389,8 @@ def _merge(memory, project, root, owner, deadline, settings, when, group, run):
     schema = curator_answers.merge_schema()
 
     def still():
-        return _unmoved(memory, root, deadline, expected)
+        return curation_worker._gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline,
+                                                                                        expected)
     try:
         part = request_budget.merge_part(pending, layer.candidates, group=group, schema=schema,
                                          count=_counter(memory, project, owner, deadline, settings, 'merge-2', schema,
@@ -459,7 +465,8 @@ def _shorten(memory, project, root, owner, deadline, settings, when, run):
     code, answer, listed, moved = None, None, None, False
 
     def still():
-        return _unmoved(memory, root, deadline, expected)
+        return curation_worker._gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline,
+                                                                                        expected)
     try:
         listed = request_budget.state_list(layer, schema)
         source = curator_document.shorten(lines=list(layer.lines), items=list(listed.items), form=listed.form,

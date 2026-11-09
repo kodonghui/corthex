@@ -826,6 +826,60 @@ class ConsolidationWorkerTest(unittest.TestCase):
                          [(line['id'], 'changed', 'consolidation')])
         self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
 
+    def test_consent_withdrawn_before_a_merge_request_is_tried_again_sends_it_no_more(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        # The run's conditions are read again before each further attempt: the failed request is not tried again,
+        # and it is stale rather than a failure.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests, outcome.applied), (1, [10], 1, False))
+        self.assertEqual((self.items(), self.progress()['consolidation']),
+                         ({value['id']: value for value in values}, {'failures': 0}))
+        self.assertIsNone(self.notice())
+
+    def test_a_project_turned_off_while_a_merge_request_is_counted_counts_and_sends_nothing_more(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER),
+                  self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')]
+        self.layer(values)
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.configure(enabled=False)
+                # Just over 99,000, so that the part loses only its newest item and would be counted again.
+                return 99050
+            return 1000
+        self.server.counter = counter
+        self.answering()
+        with mock.patch.object(request_budget, 'UNCOUNTED', 0):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.counts), self.server.requests, outcome.requests), (1, [], 0))
+        self.assertEqual(self.items(), {value['id']: value for value in values})
+
+    def test_a_project_turned_off_while_the_last_request_waits_sends_no_retry(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.server.before[0] = lambda: self.configure(enabled=False)
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        shortening = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else shortening(
+            number, body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests, outcome.applied), (1, [10], 1, False))
+        self.assertEqual((self.state(), self.progress()['consolidation']), ({line['id']: line}, {'failures': 0}))
+
     def test_three_stale_requests_end_the_run_and_consolidation_stays_due(self):
         values = [self.item('decision', 'Keep raw logs on the device'),
                   self.item('decision', 'Raw logs stay here', saved=LATER)]
