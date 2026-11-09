@@ -18,7 +18,7 @@ from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import (clock, consolidation_worker, curator_answers, curator_document, fence_plan, format2,
-                        history_io, item_io, item_types, request_budget, revision_io, run_log, state_rewrite,
+                        history_io, item_io, item_types, locks, request_budget, revision_io, run_log, state_rewrite,
                         state_types)
 from memory_lib.c2_store import C2Store
 import test_memory_curation_worker as fixture
@@ -721,6 +721,95 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual(self.progress()['recent'][1], {'at': STAMP, 'kind': 'consolidate', 'result': 'stale'})
         self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
 
+    def test_tc193_a_merge_request_that_fails_after_a_forget_is_not_tried_again(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        self.server.before[0] = lambda: self.advance(other, third)
+        self.answering({'decision': merges(merge([first, second], [(first, 1), (second, 1)], title='Built again'))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        # The failed request is not tried again with the forgotten item: the next one is built again without it.
+        self.assertEqual(self.sent(), [('merge', 'decision', [first['id'], second['id'], third['id']]),
+                                       ('merge', 'decision', [first['id'], second['id']])])
+        self.assertEqual((waits, outcome.requests), ([10], 2))
+        (new,) = self.new_items(first, second)
+        self.assertEqual(new['title'], 'Built again')
+        self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
+
+    def test_tc193_a_forget_while_a_merge_request_is_counted_sends_nothing_built_before_it(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.advance(other, first)
+                # Just over 99,000, so that the part loses only its newest item and would be counted again.
+                return 99050
+            return 1000
+        self.server.counter = counter
+        self.answering({'decision': merges(merge([second, third], [(second, 1), (third, 1)], title='Built again'))})
+        with mock.patch.object(request_budget, 'UNCOUNTED', 0):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        counted = [body['messages'][0]['content'] for body in self.server.counts]
+        self.assertIn(first['id'], counted[0])
+        self.assertTrue(len(counted) > 1 and not any(first['id'] in text for text in counted[1:]))
+        self.assertEqual(self.sent(), [('merge', 'decision', [second['id'], third['id']])])
+        (new,) = self.new_items(second, third)
+        self.assertEqual(new['title'], 'Built again')
+
+    def test_tc193_a_forget_after_a_merge_request_is_built_sends_nothing_of_it(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        planned, forgot = request_budget.merge_part, []
+
+        def plan(*args, **kwargs):
+            part = planned(*args, **kwargs)
+            if not forgot:
+                forgot.append(third['id'])
+                self.advance(other, third)
+            return part
+        self.answering({'decision': merges(merge([first, second], [(first, 1), (second, 1)], title='Built again'))})
+        with mock.patch.object(request_budget, 'merge_part', side_effect=plan):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual((self.sent(), outcome.requests), ([('merge', 'decision', [first['id'], second['id']])], 1))
+        (new,) = self.new_items(first, second)
+        self.assertEqual(new['title'], 'Built again')
+
+    def test_tc193_a_fence_moved_after_the_last_request_is_built_sends_nothing_of_it(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        built, moved = curator_document.shorten, []
+
+        def shorten(**kwargs):
+            source = built(**kwargs)
+            if not moved:
+                moved.append(True)
+                self.advance(other)
+            return source
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        with mock.patch.object(curator_document, 'shorten', side_effect=shorten):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual(([kind for kind, _, _ in self.sent()], outcome.requests), (['state'], 1))
+        self.assertEqual(self.state(), {line['id']: dict(line, text='Raw logs stay on the device.', at=STAMP)})
+
     def test_tc193_a_fence_moved_while_the_last_request_waits_makes_it_stale(self):
         value = self.item('decision', 'Keep raw logs on the device')
         line = row('decisions', 0, 'Raw logs stay here.', [value])
@@ -736,6 +825,171 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual([(r['line'], r['op'], r['why']) for r in self.history()],
                          [(line['id'], 'changed', 'consolidation')])
         self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
+
+    def test_consent_withdrawn_before_a_merge_request_is_tried_again_sends_it_no_more(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        # The run's conditions are read again before each further attempt: the failed request is not tried again,
+        # and it is stale rather than a failure.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests, outcome.applied), (1, [10], 1, False))
+        self.assertEqual((self.items(), self.progress()['consolidation']),
+                         ({value['id']: value for value in values}, {'failures': 0}))
+        self.assertIsNone(self.notice())
+
+    def test_a_project_turned_off_while_a_merge_request_is_counted_counts_and_sends_nothing_more(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER),
+                  self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')]
+        self.layer(values)
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.configure(enabled=False)
+                # Just over 99,000, so that the part loses only its newest item and would be counted again.
+                return 99050
+            return 1000
+        self.server.counter = counter
+        self.answering()
+        with mock.patch.object(request_budget, 'UNCOUNTED', 0):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.counts), self.server.requests, outcome.requests), (1, [], 0))
+        self.assertEqual(self.items(), {value['id']: value for value in values})
+
+    def test_a_project_turned_off_while_the_last_request_waits_sends_no_retry(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.server.before[0] = lambda: self.configure(enabled=False)
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        shortening = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else shortening(
+            number, body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests, outcome.applied), (1, [10], 1, False))
+        self.assertEqual((self.state(), self.progress()['consolidation']), ({line['id']: line}, {'failures': 0}))
+
+    def waiting(self, act, sent=False):
+        """Run `act` when the run compares the fence, or with `sent` only once a request has gone, as if while it
+        waited for the layer lease."""
+        unmoved = consolidation_worker._unmoved
+
+        def compared(*args):
+            if not sent or self.server.requests:
+                act()
+            return unmoved(*args)
+        return mock.patch.object(consolidation_worker, '_unmoved', side_effect=compared)
+
+    @staticmethod
+    def busy():
+        raise locks.LockBusy()
+
+    def test_a_project_turned_off_while_a_merge_request_waits_for_the_layer_lease_sends_nothing(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        with self.waiting(lambda: self.configure(enabled=False)):
+            outcome = self.consolidate()
+        # The conditions are read again after the wait for the layer lease, right before the request.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((self.server.requests, outcome.requests), ([], 0))
+        self.assertEqual(self.items(), {value['id']: value for value in values})
+
+    def test_a_project_turned_off_while_the_last_request_waits_for_the_layer_lease_sends_nothing(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        with self.waiting(lambda: self.configure(enabled=False)):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((self.server.requests, outcome.requests), ([], 0))
+        self.assertEqual(self.state(), {line['id']: line})
+
+    def test_consent_withdrawn_before_a_merge_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits, self.waiting(self.busy, sent=True):
+            outcome = self.consolidate()
+        # Read before that wait as well, so the run ends as `consent`, not `busy`.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+
+    def failing_first(self, values):
+        """The first merge request of `values` fails as overloaded; the next one merges them."""
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+
+    def test_a_merge_retry_that_the_conditions_stopped_is_stale_though_they_hold_again_right_after(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.failing_first(values)
+        gate, gone = consolidation_worker.curation_worker._gate, []
+
+        def read(*args):
+            # The conditions read as gone once, at the first reading once a request has gone.
+            if self.server.requests and not gone:
+                gone.append(True)
+                return 'consent', None
+            return gate(*args)
+        with self.quick() as waits, mock.patch.object(consolidation_worker.curation_worker, '_gate',
+                                                      side_effect=read):
+            outcome = self.consolidate()
+        # The no that kept the retry back makes the request stale, not failed, though the next reading says yes.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (2, [10], 2))
+        self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
+        self.assertIsNone(self.notice())
+
+    def test_a_merge_request_whose_check_before_a_retry_fails_counts_as_sent(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.failing_first(values)
+
+        def unreadable():
+            raise ValueError('unreadable')
+        with self.quick() as waits, self.waiting(unreadable, sent=True):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('failed', ['failed']))
+        self.assertEqual(outcome.attempts[0]['error'], 'ValueError')
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+
+    def test_a_project_turned_off_before_the_last_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.server.before[0] = lambda: self.configure(enabled=False)
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        shortening = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else shortening(
+            number, body)
+        with self.quick() as waits, self.waiting(self.busy, sent=True):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+        self.assertEqual(self.state(), {line['id']: line})
 
     def test_three_stale_requests_end_the_run_and_consolidation_stays_due(self):
         values = [self.item('decision', 'Keep raw logs on the device'),

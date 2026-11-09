@@ -39,14 +39,18 @@ def _account(attempt, memory, **row):
     except Exception:return False
 
 
-def send(memory, *, project, instructions, source, schema, config, check, deadline=None, size=None):
+def send(memory, *, project, instructions, source, schema, config, check, deadline=None, size=None, still=None):
     """Use dedicated credentials; return actual sent context, counters and limits.
 
     No enabled-project, consent, source/provenance, initialization or application
     authority is inferred from a valid response. This is an internal sending port.
     `size` is a curate request's size fields (TBL-003), written on each attempt's line.
+    `still`, when given, is asked before each attempt after the first whether the
+    request may still be sent; when it says no, the request is not tried again and
+    keeps its last failure.
     """
     if not callable(check):raise TypeError('original memory client check required')
+    if still is not None and not callable(still):raise TypeError('invalid memory client recheck')
     begun = clock.now()
     if deadline is not None:store.MemoryStore._deadline(deadline)
     deadline = begun+1800 if deadline is None else min(deadline,begun+1800)
@@ -63,6 +67,7 @@ def send(memory, *, project, instructions, source, schema, config, check, deadli
     count, logged, sent, answer = 0, [0], '', model_transport._failed('timeout')
     while count < 3:
         _verify(check)
+        if count and still is not None and not still():break
         if clock.now() >= deadline:break
         environment = dict(os.environ)
         if original_endpoint is None:environment.pop(endpoint_name,None)
