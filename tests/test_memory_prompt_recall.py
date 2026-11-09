@@ -19,7 +19,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, locks, model_embed, prompt_recall, raw_log, recall, start_memory
+from memory_lib import clock, locks, model_embed, model_transport, prompt_recall, raw_log, recall, start_memory
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
@@ -139,12 +139,38 @@ class PromptRecallTest(unittest.TestCase):
 
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
-        self.server.before[0] = lambda: time.sleep(2)
-        before = self.raw_files()
-        started = clock.now()
-        result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.9,
-                                      settings=self.settings(), zone=UTC)
-        elapsed = clock.now() - started
+        settings, before = self.settings(), self.raw_files()
+        ready, once, marks = recall.ready, model_transport.once, {}
+
+        def looked(*arguments, **options):
+            marks['look'] = clock.now()
+            try:
+                return ready(*arguments, **options)
+            finally:
+                marks['looked'] = clock.now()
+
+        def sent(*arguments, **options):
+            marks['sent'] = clock.now()
+            return once(*arguments, **options)
+        # The request has to start within the embedding's 800 ms. On busy macOS runners the steps before it took all
+        # of that time in two of three runs (2026-11-09): recall is then late with `deadline` and sends nothing, as
+        # it should, and the case is tried again, saying where the time went.
+        for _ in range(3):
+            marks.clear()
+            self.server.before[len(self.server.requests)] = lambda: time.sleep(2)
+            started = clock.now()
+            with mock.patch.object(recall, 'ready', side_effect=looked), \
+                    mock.patch.object(model_transport, 'once', side_effect=sent):
+                result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.9,
+                                              settings=settings, zone=UTC)
+            elapsed = clock.now() - started
+            if 'sent' in marks:
+                break
+            self.assertEqual((result, self.server.requests, self.usage()),
+                             (prompt_recall.Result('late', error='deadline'), [], []))
+            print('\nTC-207: no request within 800 ms; the index look ran from %.3f s to %.3f s, recall ended at %.3f s'
+                  % (tuple(marks.get(name, clock.now()) - started for name in ('look', 'looked')) + (elapsed,)),
+                  file=sys.stderr)
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'))
         self.assertLess(elapsed, 1.0)
