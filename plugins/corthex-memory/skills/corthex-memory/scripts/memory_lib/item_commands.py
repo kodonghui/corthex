@@ -216,9 +216,9 @@ def open_items(context):
             any(type(name) is not str or not 1 <= len(name) <= ARGUMENT for name in names) or
             size is not None and (type(size) is not int or not 0 <= size <= AROUND)):
         return commands.common_result('open', 'usage')
+    names = list(dict.fromkeys(names))  # each name once, in the order first named
 
     def read(memory, root, deadline, check):
-        # Each name once, in the order first named.
         values = {name: _item(memory, root, name, deadline, check) for name in names}
         entries = _entries(root, run_listing._reader(memory, deadline))
         shown = [opened(value, entries, memory.device, size) for value in values.values() if value is not None]
@@ -227,7 +227,7 @@ def open_items(context):
             if missing else []
         return shown, missing, lines
     try:
-        shown, missing, lines = _read(context, read) or ([], list(dict.fromkeys(names)), [])
+        shown, missing, lines = _read(context, read) or ([], names, [])
     except locks.LockBusy:
         return commands.common_result('open', 'lock-busy')
     data = {'project': project, 'items': shown}

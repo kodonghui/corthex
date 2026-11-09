@@ -13,6 +13,7 @@ import secrets
 import sqlite3
 import struct
 import sys
+import time
 import types
 import unittest
 from unittest import mock
@@ -373,6 +374,39 @@ class SearchCommandTest(unittest.TestCase):
         self.assertEqual(found['data']['by'], 'both')
         self.assertEqual(len(looked), 1)
         self.assertLessEqual(looked[0], search_command.WAIT)
+
+    def test_a_look_at_the_index_that_ends_after_its_wait_searches_by_words_and_sends_nothing(self):
+        values, _ = self.four()
+        expected = self.ranked('raw logs device')
+
+        def late(*args):
+            # SQLite's wait for another connection's lock ends just after the look's time, and the index is then
+            # not ready, as while step 6 builds it again: the look's last check finds its time gone.
+            time.sleep(0.3)
+            return None
+        with mock.patch.object(search_command, 'WAIT', 0.2), mock.patch.object(recall, '_read', side_effect=late):
+            found = self.search('raw logs device')
+        self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
+        self.assertEqual([line['item'] for line in found['data']['results']], expected)
+        self.assertEqual((self.server.requests, self.usage()), ([], []))
+
+    def test_an_index_that_loses_the_wanted_vectors_after_the_look_searches_by_words(self):
+        values, _ = self.four()
+        decision = values[3]['id']
+        # The look before each request finds vectors; the read under the lease finds none that the search wants.
+        cases = (("the kind's vectors", 'decision', "DELETE FROM index_vectors WHERE item = '%s'" % decision,
+                  [decision]),
+                 ('every vector', None, 'DELETE FROM index_vectors', self.ranked('raw logs device')))
+        for number, (name, kind, statement, expected) in enumerate(cases, 1):
+            with self.subTest(name):
+                def lost(index, body, statement=statement):
+                    self.meta(statement)
+                    return self.embeddings(index, body)
+                self.server.reply = lost
+                found = self.search('raw logs device', kind=kind)
+                self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
+                self.assertEqual([line['item'] for line in found['data']['results']], expected)
+                self.assertEqual(len(self.server.requests), number)
 
     def test_an_index_that_sqlite_cannot_read_searches_by_words_and_sends_nothing(self):
         values, _ = self.four()
