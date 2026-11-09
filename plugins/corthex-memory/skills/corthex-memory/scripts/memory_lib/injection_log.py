@@ -34,10 +34,12 @@ def parse_line(data):
         raise ValueError('invalid injection session')
     curation._choice(value['where'], set(WHERE))
     items = value['items']
-    if not isinstance(items, list) or len(items) > ITEMS or len(set(items)) != len(items):
+    if not isinstance(items, list) or len(items) > ITEMS:
         raise ValueError('invalid injected items')
     for item in items:
         format2._id(item, item_types.ITEM)
+    if len(set(items)) != len(items):
+        raise ValueError('invalid injected items')
     if value['where'] == 'start':
         if any(name in value for name in ('prompt', 'outcome', 'scores', 'candidates')):
             raise ValueError('a start line has no prompt, outcome, scores or candidates')
