@@ -461,6 +461,17 @@ class StartSummaryTest(unittest.TestCase):
                          self.root / 'layer/state.json', self.root / 'layer/pins.json',
                          self.root / 'layer/items' / (item['id'] + '.json')} <= set(refused), refused)
 
+        # A file still being replaced when the deadline passes gives the line about the deadline, not an error.
+        def replacing(path, deadline):
+            if path.name == 'state.json':
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(start_summary.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=replacing):
+            part = start_summary.compose(self.memory, 'sample', BASE, clock.now() + 0.5, settings=settings,
+                                         environment=dict(self.environment), now=WHEN, zone=UTC)
+        self.assertEqual(part.outcome, 'deadline')
+
     def test_a_deadline_that_passes_while_the_unprocessed_turns_are_listed_ends_the_memory_part(self):
         self.layer()
         self.marker(WHEN - timedelta(days=92), 2)
@@ -557,27 +568,30 @@ class StartSummaryTest(unittest.TestCase):
         self.layer([newer, older], candidates=[value])
         counts = self.root / 'notices' / conflict_counts.NAME
         counts.write_bytes(conflict_counts.counts_bytes({value['id']: 0}))
-        built, build, check = [], start_memory.build_summary, self.memory.check
+        build, now, late, pin = start_memory.build_summary, clock.now, [], self.memory.pin
 
-        def building(*args, **kwargs):
-            built.append(args)
-            return build(*args, **kwargs)
-
-        def late(deadline, leases=()):
-            if built:
-                raise locks.LockBusy()   # the deadline has passed since the summary was built
-            return check(deadline, leases)
-
-        def start():
-            built.clear()
-            with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
-                    mock.patch.object(self.memory, 'check', side_effect=late):
-                return self.start()
+        def start(replaced=False):
+            def building(*args, **kwargs):
+                late.append(True)   # from here on the clock reads a minute later: the deadline has passed
+                if replaced:
+                    self.memory.pin = 'another store'
+                return build(*args, **kwargs)
+            late.clear()
+            try:
+                with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
+                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)):
+                    return self.start()
+            finally:
+                self.memory.pin = pin
         part = start()
         # The reservation used up a showing, so the summary goes out with its line.
         self.assertEqual((part.outcome, part.reserved, self.counts()), ('ok', value['id'], {value['id']: 1}))
         self.assertEqual(self.notices(part)[0][:12], 'Memory items')
-        # Without a reservation, the same lateness leaves the line about the deadline.
+        # The store is still checked: one replaced meanwhile gives the line about an internal error.
+        part = start(replaced=True)
+        self.assertEqual((part.outcome, type(part.error), self.counts()),
+                         ('error', locks.LostLock, {value['id']: 2}))
+        # Without a reservation, the same lateness gives the line about the deadline.
         counts.write_bytes(conflict_counts.counts_bytes({value['id']: 3}))
         self.assertEqual(start().outcome, 'deadline')
 

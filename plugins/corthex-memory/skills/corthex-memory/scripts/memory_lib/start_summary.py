@@ -47,6 +47,7 @@ TITLE_BYTES = 40
 RESERVE_SECONDS = 0.25  # the conflict reservation: its wait for the notice-counter lease and its write
 STEP_SECONDS = 1.0   # step 7's reads and deletions, after the summary is printed
 TIMEOUT = Notice('unreadable', 'Memory could not be read in time.')
+_read = curation_triggers._read  # reads without a lease: again on a Windows sharing violation, until the deadline
 INTERNAL = start_memory.unreadable('an internal memory error occurred')
 STOPPED = ('Curation is stopped for this project after three failed attempts in a row (%s). '
            'The memory status can resume it.')
@@ -121,8 +122,9 @@ def compose(memory, project, base_text, deadline, *, settings=None, environment=
                 else:
                     reserved = candidate
         summary = start_memory.build_summary(base_text, notices, pins, lines, zone=zone)
-        if reserved is None:
-            memory.check(deadline)  # a reserved showing is used up, so its line goes out even when late
+        # A reserved showing is used up, so it goes out even when the deadline passed while the summary was
+        # built; the store is still checked.
+        memory.check(deadline if reserved is None else max(deadline, clock.now() + RESERVE_SECONDS))
         shown = start_memory.fitting(notices)[0]
         kept = tuple((path, data) for notice, path, data in stored if any(notice is value for value in shown))
         return Part(summary.text, 'ok', summary.pins, kept, reserved)
@@ -157,7 +159,6 @@ def after(memory, project, part, host, session, *, when=None):
                         memory.check(deadline, memory.held)
                         memory.fence.check(path)
                     try:
-                        check()
                         if _read(memory, path, deadline) != data:
                             continue
                         files._unlink(path, check)
@@ -343,11 +344,6 @@ def _tombstones(memory, folder, project, deadline):
             break
         private.add(item)
     return private, set(names)
-
-
-def _read(memory, path, deadline):
-    """A file's bytes through the store's fence, read again while another process replaces it on Windows."""
-    return files._retry(lambda: memory.fence.read(path, deadline), deadline)
 
 
 def _title(text):

@@ -46,9 +46,9 @@ def turns(memory, root, deadline=None):
     return found
 
 
-def scan(memory, root):
+def scan(memory, root, deadline=None):
     """Unprocessed turns and the oldest time, as `turns` finds them."""
-    found = turns(memory, root)
+    found = turns(memory, root, deadline)
     return Markers(len(found), min(found.values()) if found else None)
 
 
@@ -73,10 +73,25 @@ def _progress(memory, root, deadline):
     path = root / 'curation.json'
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            return format2.parse_curation(files._retry(lambda: memory.fence.read(candidate, deadline), deadline))
+            return format2.parse_curation(_read(memory, candidate, deadline))
         except files._RESTORABLE:
             continue
     return None
+
+
+def _read(memory, path, deadline):
+    """A file's bytes through the store's fence, without a lease.
+
+    A file that another process is replacing on Windows is read again, and a
+    deadline that passes meanwhile is `LockBusy`, as when the read itself
+    finds it passed.
+    """
+    try:
+        return files._retry(lambda: memory.fence.read(path, deadline), deadline)
+    except PermissionError:
+        if clock.now() >= deadline:
+            raise locks.LockBusy() from None
+        raise
 
 
 def decide(memory, configuration, project, hook, deadline, *, now=None, environment=None):
@@ -96,7 +111,7 @@ def decide(memory, configuration, project, hook, deadline, *, now=None, environm
     if model_access.Credentials.read(environment).presence()['anthropic'] != 'present':
         return 'key'
     root = memory.folder / 'projects' / base.project_folder_name(project)
-    markers = scan(memory, root)
+    markers = scan(memory, root, deadline)
     now = datetime.now(timezone.utc) if now is None else now
     values = configuration.values
     if not met(hook, markers, now, values['triggers'], values['temporary']):
@@ -125,7 +140,7 @@ def start(memory, configuration, project, hook, deadline, logger, *, host=None, 
     try:
         reason = decide(memory, configuration, project, hook, deadline, now=now, environment=environment)
     except locks.LockBusy:
-        return 'deadline'  # The record's read found the deadline passed.
+        return 'deadline'  # The listing of the markers or the record's read found the deadline passed.
     if reason != 'start':
         return reason
     if clock.now() >= deadline:
