@@ -263,6 +263,22 @@ class ModelClientTest(unittest.TestCase):
         with mock.patch.object(model_transport,'once',return_value=self.response('api_error',75)) as once:
             self.assertEqual(self.send(deadline=clock.now()+30).attempts,1);self.assertEqual(once.call_count,1)
 
+    def test_a_request_is_tried_again_only_while_its_caller_says_it_may_still_go(self):
+        asked,answers=[],[True,False]
+        def still():asked.append(once.call_count);return answers[len(asked)-1]
+        with mock.patch.object(model_transport,'once',return_value=self.response('api_error')) as once, \
+                mock.patch.object(model_client,'_wait',return_value=True):
+            result=self.send(still=still)
+            self.assertEqual((result.response.failure.code,result.attempts,result.logged,asked),('api_error',2,2,[1,2]))
+            # A caller that never says no changes nothing, and one answer asks nothing.
+            self.assertEqual(self.send(still=lambda:True).attempts,3)
+            once.return_value=self.response()
+            self.assertEqual(self.send(still=mock.Mock(side_effect=AssertionError)).attempts,1)
+            calls=once.call_count
+            with self.assertRaises(TypeError):self.send(still=True)
+            self.assertEqual(once.call_count,calls)
+        self.assertEqual([r['result'] for r in self.rows()],['failed']*5+['ok'])
+
     def test_lost_original_check_during_wait_propagates_without_retry(self):
         original=locks.LostLock();active=[True]
         def check():

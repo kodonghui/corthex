@@ -5,6 +5,7 @@ format-2 stores. Every embedding request goes to a local test server, with keys
 made up during the run; no provider is called. Nothing calls the step before
 the 0.3.0 activation.
 """
+import contextlib
 import json
 import math
 import os
@@ -18,8 +19,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, diagnostics, fence_plan, index_io, index_worker, model_access, model_embed,
-                        revision_io)
+from memory_lib import (clock, diagnostics, fence_plan, forget_effects, index_io, index_worker, locks,
+                        model_access, model_embed, revision_io)
 import test_memory_curation_worker as worker_fixture
 
 STAMP, WHEN = worker_fixture.STAMP, worker_fixture.WHEN
@@ -255,8 +256,11 @@ class IndexWorkerTest(unittest.TestCase):
         reader = sqlite3.connect(str(self.root / 'index.db'))
         self.addCleanup(reader.close)
         reader.execute('SELECT count(*) FROM index_items').fetchall()
+        meta = self.tables()['index_meta']
         later = self.keep()
         self.assertEqual((later.removed, later.requests), ((forgotten['id'],), 0))
+        # Once the log is emptied, the index's `built` mark is back as it was, so it is not built again.
+        self.assertEqual((later.rebuilt, self.tables()['index_meta']), (None, meta))
         for table, rows in self.tables().items():
             self.assertFalse([row for row in rows if forgotten['id'] in row], table)
         # Neither the file nor its write-ahead log keeps the item's own word.
@@ -350,6 +354,337 @@ class IndexWorkerTest(unittest.TestCase):
         self.assertNotIn(forgotten['text'], json.dumps(self.server.requests))
         self.assertEqual(set(self.vectors()), {item['id'] for item in items} - {forgotten['id']})
 
+    def test_tc140_an_item_forgotten_between_two_attempts_of_a_request_is_not_sent_again(self):
+        items = sorted(self.made(3), key=lambda item: item['id'])
+        self.layer(items)
+        forgotten = items[1]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.advance(other, forgotten)
+        with self.quick() as waits:
+            outcome = self.keep()
+        # The request is not tried again: it fails with its bad vector, and its items wait for a later step 6.
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('done', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+        self.assertEqual(self.failures(), [('embed', 'bad-vector')])
+        later = self.keep()
+        self.assertEqual((later.removed, later.embedded), ((forgotten['id'],), (items[0]['id'], items[2]['id'])))
+        self.assertEqual(self.inputs()[1], [index_worker.text(items[0]), index_worker.text(items[2])])
+        self.assertNotIn(forgotten['text'], json.dumps(self.server.requests[1:]))
+
+    def test_a_project_turned_off_during_a_request_sends_no_later_request(self):
+        items = self.made(101)
+        self.layer(items)
+        # Turning memory off takes only the store's lock, not the curation lease that the step holds.
+        self.server.before[0] = lambda: self.configure(enabled=False, models={'dims': DIMS})
+        outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_before_a_retry_sends_it_no_more(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.configure(consent=None, models={'dims': DIMS})
+        with self.quick() as waits:
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+
+    def turning(self, call, **setting):
+        """Change the configuration at the step's `call`-th fence comparison, as if while it waited for the layer
+        lease before a request or a further attempt."""
+        fresh, calls = index_worker._fresh, []
+
+        def waiting(*args):
+            calls.append(None)
+            if len(calls) == call:
+                self.configure(models={'dims': DIMS}, **setting)
+            return fresh(*args)
+        return mock.patch.object(index_worker, '_fresh', side_effect=waiting)
+
+    def test_a_project_turned_off_while_the_step_waits_for_the_layer_lease_sends_no_later_request(self):
+        items = self.made(101)
+        self.layer(items)
+        with self.turning(2, enabled=False):
+            outcome = self.keep()
+        # The conditions are read after the wait for the layer lease, right before the request.
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_while_a_retry_waits_for_the_layer_lease_sends_it_no_more(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        with self.quick() as waits, self.turning(2, consent=None):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+
+    def test_a_configuration_that_cannot_be_read_during_a_request_ends_the_step_before_the_next(self):
+        items = self.made(101)
+        self.layer(items)
+        self.server.before[0] = lambda: (self.folder / 'configuration.json').write_bytes(b'{"projects": 3}')
+        outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('configuration', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def busy(self, call):
+        """Let the step's `call`-th fence comparison find the layer lease held past its wait."""
+        fresh, calls = index_worker._fresh, []
+
+        def waiting(*args):
+            calls.append(None)
+            if len(calls) == call:
+                raise locks.LockBusy()
+            return fresh(*args)
+        return mock.patch.object(index_worker, '_fresh', side_effect=waiting)
+
+    def test_a_project_turned_off_during_a_request_ends_the_step_without_waiting_for_the_layer_lease_again(self):
+        items = self.made(101)
+        self.layer(items)
+        self.server.before[0] = lambda: self.configure(enabled=False, models={'dims': DIMS})
+        with self.busy(2):
+            outcome = self.keep()
+        # The conditions are read before the wait for the layer lease too, so the step ends as `disabled`, not
+        # `busy`.
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_before_a_retry_ends_the_step_without_waiting_for_the_layer_lease(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.configure(consent=None, models={'dims': DIMS})
+        with self.quick() as waits, self.busy(2):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+        self.assertEqual(self.failures(), [('embed', 'bad-vector')])
+
+    def test_a_step_with_nothing_to_embed_reads_its_conditions_once_more_at_its_end(self):
+        self.layer(self.made(2))
+        self.assertEqual(self.keep().reason, 'done')
+        rows = index_worker._rows
+
+        def turned_off(*args):
+            result = rows(*args)
+            self.configure(enabled=False, models={'dims': DIMS})
+            return result
+        with mock.patch.object(index_worker, '_rows', side_effect=turned_off):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests), ('disabled', 0))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_a_project_turned_off_while_the_step_waits_and_its_last_item_goes_ends_as_disabled(self):
+        items = sorted(self.made(101), key=lambda item: item['id'])
+        self.layer(items)
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.server.before[0] = lambda: self.advance(other, items[100])
+        with self.turning(2, enabled=False):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_a_request_is_tried_again_when_the_fence_moved_and_its_items_did_not_change(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.bad = {0, 1}
+        self.server.before[0] = self.server.before[1] = lambda: self.advance(other)
+        with self.quick() as waits:
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('done', 1, (), tuple(item['id'] for item in items)))
+        self.assertEqual(waits, [10, 60])
+        first, second, third = self.inputs()
+        self.assertEqual((second, third), (first, first))
+
+    def test_tc140_rows_that_a_stopped_forget_left_take_the_index_with_them_when_a_reader_keeps_its_log(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        with mock.patch.dict(os.environ, {'CORTHEX_MEMORY_OPENAI_API_KEY': ''}):
+            self.assertEqual(self.keep().reason, 'key')
+        # A reader holds the index open while step 6 writes the vectors, so they stay in the write-ahead log,
+        # and then keeps the log in a read transaction.
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        self.assertEqual(len(self.keep().embedded), 2)
+        self.assertGreater((self.root / 'index.db-wal').stat().st_size, 0)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_vectors').fetchone()[0], 2)
+        # While no row goes, the reader changes nothing.
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1):
+            kept = self.keep()
+        self.assertEqual((kept.reason, kept.rebuilt, kept.removed, kept.requests), ('done', None, (), 0))
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1):
+            later = self.keep()
+        if os.name == 'nt':
+            # Windows keeps a file that a reader holds open, so the step reports no success, as a forget does,
+            # and leaves the index unfinished for the next step 6, which builds it again once the reader is gone.
+            self.assertEqual((later.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+            self.assertNotIn('built', dict(self.tables()['index_meta']))
+            reader.close()
+            later = self.keep()
+            self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                             ('done', 'building', (), (items[1]['id'],)))
+        else:
+            self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                             ('done', 'missing', (forgotten['id'],), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_an_index_whose_files_cannot_go_after_rows_went_is_left_unfinished_and_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        unlink = forget_effects.files._unlink
+
+        def held(path, check=None):
+            if path.name.startswith('index.db'):
+                raise PermissionError(13, 'held open', str(path))
+            return unlink(path, check)
+        with mock.patch.object(forget_effects, 'CHECKPOINT_SECONDS', 0.1), \
+                mock.patch.object(forget_effects.files, '_unlink', held):
+            failed = self.keep()
+        self.assertEqual((failed.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+        self.assertEqual(sorted(dict(self.tables()['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        reader.close()
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_an_index_file_that_stays_after_its_log_went_is_left_unfinished_and_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        self.assertFalse((self.root / 'index.db-wal').exists())
+        before = (self.root / 'index.db').read_bytes()
+
+        def reverted(memory, root, selected, deadline, check):
+            # The log goes and the index file stays, as when another program holds it open on Windows. Without
+            # its log the file is as it was before the rows went: with their words and the `built` mark.
+            for name in ('index.db-wal', 'index.db-shm'):
+                if (root / name).exists():
+                    (root / name).unlink()
+            (root / 'index.db').write_bytes(before)
+            raise PermissionError(13, 'held open', str(root / 'index.db'))
+        with mock.patch.object(forget_effects, '_index', reverted):
+            failed = self.keep()
+        tables = self.tables()
+        self.assertEqual((failed.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+        self.assertEqual([row[0] for row in tables['index_items']], [item['id'] for item in items])
+        self.assertEqual(sorted(dict(tables['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_once_the_log_is_emptied_leaves_the_index_to_be_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        emptied = forget_effects._index
+        with contextlib.ExitStack() as stack:
+            def moved(*args):
+                how = emptied(*args)
+                # The fence moves once the log is emptied, as when the lease ran out meanwhile and a forget
+                # followed: the step writes nothing more, so the mark stays away.
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                return how
+            stack.enter_context(mock.patch.object(forget_effects, '_index', moved))
+            stale = self.keep()
+        self.assertEqual((stale.reason, sorted(dict(self.tables()['index_meta']))),
+                         ('stale', ['embedding_dims', 'embedding_model', 'words']))
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_when_the_index_file_stays_leaves_the_rows_to_the_next_step(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        before = (self.root / 'index.db').read_bytes()
+        with contextlib.ExitStack() as stack:
+            def reverted(memory, root, selected, deadline, check):
+                for name in ('index.db-wal', 'index.db-shm'):
+                    if (root / name).exists():
+                        (root / name).unlink()
+                (root / 'index.db').write_bytes(before)
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                raise PermissionError(13, 'held open', str(root / 'index.db'))
+            stack.enter_context(mock.patch.object(forget_effects, '_index', reverted))
+            stale = self.keep()
+        # Without the lease the step writes nothing more; the rows are back, and the next step 6 deletes them again.
+        self.assertEqual((stale.reason, self.failures()), ('stale', []))
+        self.assertEqual([row[0] for row in self.tables()['index_items']], [item['id'] for item in items])
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', None, (forgotten['id'],), ()))
+        self.assertNoWordsOf(forgotten)
+
+    def test_tc140_rows_that_went_before_the_step_stopped_leave_the_index_to_be_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        # The step stops after the rows went and before it empties the files of their words, as when its lease is
+        # lost there or its process ends: the index is left unfinished with them, so readers leave it.
+        with mock.patch.object(forget_effects, '_index', side_effect=locks.LostLock()):
+            stopped = self.keep()
+        tables = self.tables()
+        self.assertEqual((stopped.reason, [row[0] for row in tables['index_items']]), ('lost-lock', [items[1]['id']]))
+        self.assertEqual(sorted(dict(tables['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        later = self.keep()
+        if os.name == 'nt':
+            # Windows keeps the files while the reader holds them; the next step 6 after it builds the index again.
+            self.assertEqual(later.reason, 'error')
+            reader.close()
+            later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def assertNoWordsOf(self, forgotten):
+        """Neither the index file nor its write-ahead log keeps the item's own word, and no table its ID."""
+        word = re.search(r'marker\d+', forgotten['text']).group().encode('utf-8')
+        for name in ('index.db', 'index.db-wal'):
+            path = self.root / name
+            self.assertNotIn(word, path.read_bytes() if path.exists() else b'', name)
+        for table, rows in self.tables().items():
+            self.assertFalse([row for row in rows if forgotten['id'] in row], table)
+
     def test_an_index_built_again_with_other_settings_during_a_request_takes_no_vector(self):
         items = self.made(2)
         self.layer(items)
@@ -392,6 +727,7 @@ class IndexWorkerTest(unittest.TestCase):
         index_io.put(index, [stray])
         index.execute('INSERT INTO index_vectors VALUES (?, ?)', (stray['id'], vectors[fourth['id']]))
         index.close()
+        meta = self.tables()['index_meta']
         outcome = self.keep()
         self.assertEqual((outcome.reason, outcome.rebuilt), ('done', None))
         self.assertEqual(outcome.written, tuple(sorted((first['id'], second['id'], third['id']))))
@@ -400,7 +736,7 @@ class IndexWorkerTest(unittest.TestCase):
         self.assertEqual(sorted(outcome.embedded), sorted((second['id'], third['id'])))
         tables = self.tables()
         self.assertEqual({k: tables[k] for k in ('index_items', 'index_terms')}, self.expected())
-        self.assertEqual(self.vectors(), vectors)
+        self.assertEqual((self.vectors(), tables['index_meta']), (vectors, meta))
 
     # The gates
 

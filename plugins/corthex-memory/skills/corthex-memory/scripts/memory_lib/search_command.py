@@ -66,12 +66,16 @@ def _without(settings, only):
 
 
 def _ready(memory, root, model, dims, deadline):
-    """Whether the index can rank by meaning, read without a lease as recall reads it, so nothing is sent for nothing."""
-    connection = recall._index(memory, root, model, dims, deadline)
-    if connection is None:
+    """Whether the index can rank by meaning, read without a lease as recall reads it, so nothing is sent for nothing.
+
+    An index that SQLite cannot read, for a lock that outlasts the search's time
+    or another error, is not ready either: the search goes by words, as
+    `_ranked` does with such an index.
+    """
+    try:
+        return recall._index(memory, root, model, dims, deadline, lambda connection: True) is not None
+    except sqlite3.DatabaseError:
         return False
-    connection.close()
-    return True
 
 
 def _embedded(memory, project, words, settings, dims, deadline):
@@ -165,7 +169,7 @@ def _ranked(memory, root, words, vector, kind, model, dims, deadline, check):
         connection = None
     if connection is not None:
         try:
-            state = index_io.state(connection, model=model, dims=dims, pages=False)
+            state = index_io.state(connection, model=model, dims=dims, reader=True)
             if state in (None, 'embedding'):
                 by_words, by_meaning = _rank(connection, words, vector if state is None else None, kind, dims,
                                              present, deadline)

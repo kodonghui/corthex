@@ -529,6 +529,45 @@ class UndoPlanTest(unittest.TestCase):
         world.history.clear()
         self.assertNotEqual(world.plan(first).data['binding'], again.data['binding'])
 
+    def test_the_binding_holds_the_items_that_the_run_s_pins_and_candidates_name(self):
+        def moves(world, log, key):
+            """Whether a new revision of `key` alone, which changes nothing else in the preview, moves the binding."""
+            before = world.plan(log).data
+            world.touch(key)
+            after = world.plan(log).data
+            self.assertEqual({field: value for field, value in after.items() if field != 'binding'},
+                             {field: value for field, value in before.items() if field != 'binding'})
+            return after['binding'] != before['binding']
+
+        # A candidate that the run closed reopens only while both of its items are current, also the one that the run
+        # did not change.
+        world = World()
+        world.run(1, lambda w: [w.save(self.a), w.save(self.b), w.open(1, self.a['id'], self.b['id'])])
+        fourth = world.run(4, lambda w: [w.save(item(4)), w.status(self.a['id'], 'superseded', ident('i', 4)),
+                                         w.close(ident('c', 1))])
+        self.assertEqual(world.plan(fourth).candidates, {ident('c', 1): 'open'})
+        self.assertTrue(moves(world, fourth, 'item:' + self.b['id']))
+        # A run that changed neither item of the candidate that it closed, and the other open candidate for the pair
+        # that keeps it closed.
+        world = World()
+        world.run(1, lambda w: [w.save(self.a), w.save(self.b), w.open(1, self.a['id'], self.b['id'])])
+        second = world.run(2, lambda w: [w.save(self.c), w.close(ident('c', 1))])
+        self.assertEqual(world.plan(second).candidates, {ident('c', 1): 'open'})
+        for name in (self.a['id'], self.b['id']):
+            self.assertTrue(moves(world, second, 'item:' + name))
+        world.run(3, lambda w: [w.open(2, self.b['id'], self.a['id'])])
+        self.assertEqual(kept(world.plan(second)), {'candidate:' + ident('c', 1): ('later-dependent-change', '')})
+        self.assertTrue(moves(world, second, 'candidate:' + ident('c', 2)))
+        # A pin that is on afterwards names a current item, which the run did not change.
+        world = World()
+        world.run(1, lambda w: [w.save(self.a), w.pin(self.a['id'])])
+        third = world.run(3, lambda w: [w.pin(self.a['id'], on=False)])
+        self.assertEqual(world.plan(third).data['changes'], self.counts(pins=1))
+        self.assertTrue(moves(world, third, 'item:' + self.a['id']))
+        # An item that nothing of the run names leaves it as it was.
+        world.run(4, lambda w: [w.save(self.b)])
+        self.assertFalse(moves(world, third, 'item:' + self.b['id']))
+
     def test_a_run_whose_changes_are_already_undone_by_its_own_later_applies_needs_nothing(self):
         world = self.world
         world.run(1, lambda w: [w.save(self.a), w.save(self.b)])
