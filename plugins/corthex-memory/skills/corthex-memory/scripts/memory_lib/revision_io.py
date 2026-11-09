@@ -168,16 +168,17 @@ def reserve(memory, root, expected, targets, deadline, run_id=None, *, primary_o
 def update_progress(memory, root, expected, changes, deadline, removed=()):
     """Merge intended progress fields into fresh metadata, preserving its fence.
 
-    `changes` sets fields of the record, the fence aside, and `removed` names
-    fields that the record may lack (TBL-009) to take out, as a resume takes
-    out the fault guard's stop (TASK-096). A field cannot be both changed and
-    removed, and the record must stay valid (TBL-009), or nothing is written.
-    The arguments' shape is checked before the record is read, so that a
-    merge refused for its shape, which changes the fence or a field that the
-    record does not have, or removes a field that the record always has,
-    restores no damaged record; a changed value that the record's check
-    refuses is refused after the read, which restores a damaged primary from
-    a whole backup as every writer's read does.
+    `changes` sets fields of the curation record (TBL-009), the fence aside,
+    also one that this record lacks, as the fault guard sets `stopped`, and
+    `removed` names fields that the record may lack to take out, as a resume
+    takes out the fault guard's stop (TASK-096). A field cannot be both changed
+    and removed, and the record must stay valid (TBL-009), or nothing is
+    written. The arguments' shape is checked before the record is read, so
+    that a merge refused for its shape, which changes the fence or a field
+    that the curation record does not define, or removes a field that the
+    record always has, restores no damaged record; a changed value that the
+    record's check refuses is refused after the read, which restores a
+    damaged primary from a whole backup as every writer's read does.
     """
     if not isinstance(changes, dict) or 'fence' in changes:
         raise ValueError('progress merge must preserve the fence')
