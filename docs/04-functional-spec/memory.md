@@ -188,7 +188,7 @@ Five behaviours call a model API. The template's "Checked by the server" means h
 | Not sent | Raw log text that no item quotes; keys; other projects. |
 | Output | One vector per item. |
 | Checked by the server | Each vector has the length asked for, and is scaled to length 1. |
-| Failure | The item is kept without a vector, and is found by words only until a later curation, consolidation or sync embeds it. The failure log notes it. |
+| Failure | The item is kept without a vector, and is found by words only until a later step 6 of the memory worker embeds it. The failure log notes it. |
 | Human decision | None. |
 
 ### Embed a search request (SPEC-025)

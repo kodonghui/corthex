@@ -1,6 +1,6 @@
 """TASK-098: the confirmed forget's effects (API-025; SPEC-035, SPEC-029, SPEC-012) on fabricated format-2 stores.
 
-TC-235, TC-236, TC-237, TC-343 and TC-393. The runner does not hand `forget`
+TC-235, TC-236, TC-237, TC-343, TC-393 and, with TASK-082's vectors, TC-140. The runner does not hand `forget`
 to the handler before the 0.3.0 activation, so these tests call it as the
 runner will, after its gates, with the format-2 store binding and the code that
 its preview gave; a forget that fails raises, and the runner reports the
@@ -11,6 +11,7 @@ provider is called.
 import json
 import os
 import sqlite3
+import struct
 import subprocess
 import sys
 import unittest
@@ -18,7 +19,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, diagnostics, files, forget_effects, format2, history_recovery, item_types,
+from memory_lib import (clock, diagnostics, files, forget_effects, format2, history_recovery, index_io, item_types,
                         raw_log, state_types)
 from memory_lib.c2_store import C2Store
 from test_memory_curator_answers import answer, change, quote
@@ -416,6 +417,30 @@ class ForgetEffectsTest(ForgetStore, unittest.TestCase):
         self.assertEqual(self.holding(), [])
 
     # The search index
+
+    def test_tc140_no_row_of_a_forgotten_or_deleted_item_is_left_in_the_four_tables(self):
+        gone, stay, other, _, _ = self.private_store()
+        # Each item has its vector, as step 6 of the memory worker writes it (TASK-082).
+        vector = struct.pack('<512f', *([1.0] + [0.0] * 511))
+        connection = index_io.connect(self.root / 'index.db')
+        try:
+            self.assertEqual(index_io.put_vectors(connection, [(item['id'], vector) for item in (gone, stay, other)]),
+                             [gone['id'], stay['id'], other['id']])
+        finally:
+            connection.close()
+        self.forget(gone['id'])
+        connection = index_io.connect(self.root / 'index.db')
+        try:
+            index_io.delete(connection, [other['id']])
+            tables = {table: connection.execute('SELECT * FROM ' + table).fetchall()
+                      for table in ('index_meta', 'index_items', 'index_vectors', 'index_terms')}
+        finally:
+            connection.close()
+        self.assertEqual({table: sum(gone['id'] in row or other['id'] in row for row in rows)
+                          for table, rows in tables.items()}, dict.fromkeys(tables, 0))
+        self.assertEqual([row[0] for row in tables['index_items']], [stay['id']])
+        self.assertEqual(tables['index_vectors'], [(stay['id'], vector)])
+        self.assertEqual(self.holding(), [])
 
     def test_an_index_that_cannot_be_read_goes_and_its_rows_with_it(self):
         gone = self.item(1, self.span(SECRET, self.private), source=self.private)

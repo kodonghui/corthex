@@ -534,7 +534,9 @@ class MemoryDiagnosticsTest(StoreCase):
         self.assertEqual(diagnostics.error_kind(ValueError("made-up")), "ValueError")
         self.assertIsNone(diagnostics.error_kind("LostLock made-up private text"))
         self.assertIsNone(diagnostics.error_kind("unknown-class"))
-        self.assertIsNone(diagnostics.error_kind("refusal"))
+        # The model calls' codes go to the failure log too (stage 06, TASK-082); `stale` is not a failure.
+        self.assertEqual(diagnostics.error_kind("refusal"), "refusal")
+        self.assertEqual(diagnostics.error_kind("bad-vector"), "bad-vector")
         self.assertIsNone(diagnostics.error_kind("stale"))
 
     def test_tc014_timing_release_failure_is_logged_without_discarding_the_timing(self):

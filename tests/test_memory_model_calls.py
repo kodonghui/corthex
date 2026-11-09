@@ -78,9 +78,10 @@ class ModelCallsTest(unittest.TestCase):
                                                    mime='application/json')
 
     def embed(self, call='embed-items', texts=('Keep the four hooks in one script.',), *, deadline=None,
-              check=lambda: None, config=CONFIG, project='sample'):
+              check=lambda: None, config=CONFIG, project='sample', **options):
         return model_embed.embed(self.usage.memory, project=project, call=call, texts=list(texts), config=config,
-                                 check=check, deadline=clock.now() + 600 if deadline is None else deadline)
+                                 check=check, deadline=clock.now() + 600 if deadline is None else deadline,
+                                 **options)
 
     def count(self, **options):
         arguments = dict(project='sample', instructions='curate-2', source=DOCUMENT, schema=SCHEMA, config={},
@@ -237,6 +238,24 @@ class ModelCallsTest(unittest.TestCase):
                 self.assertEqual([(r['result'], r['error']) for r in self.rows()[before:]],
                                  [('failed', code)] * attempts)
         self.assertNotIn(marker, json.dumps(self.rows()))
+
+    def test_an_item_embedding_is_tried_again_only_while_its_caller_says_the_texts_may_still_go(self):
+        asked, answers = [], [True, False]
+
+        def still():
+            asked.append(len(self.transport.requests))
+            return answers[len(asked) - 1]
+        self.reply({'error': {'type': 'server_error'}}, status=500)
+        with mock.patch.object(model_client, '_wait', return_value=True):
+            result = self.embed(still=still)
+            self.assertEqual((result.failure.code, result.attempts, asked), ('api_error', 2, [1, 2]))
+            # A caller that never says no changes nothing; a prompt's embedding asks nothing.
+            self.assertEqual(self.embed(still=lambda: True).attempts, 3)
+            self.assertEqual(self.embed('embed-prompt', still=mock.Mock(side_effect=AssertionError)).attempts, 1)
+        requests = len(self.transport.requests)
+        with self.assertRaises(TypeError):
+            self.embed(still=True)
+        self.assertEqual(len(self.transport.requests), requests)
 
     def test_retry_after_is_honoured_for_items_only_up_to_300_seconds(self):
         waits = []

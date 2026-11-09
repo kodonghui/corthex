@@ -18,10 +18,10 @@ It works in this order, and reads each effect back before the next one:
 3. Each item's file with its backup and temporary copies; its search index
    rows, deleted under SQLite's secure delete with the write-ahead log
    checkpointed and truncated, or the index's files when the index cannot be
-   opened or a reader keeps the log, so that the next curation builds it again;
-   its pin record; the open conflict candidates that name it, settled; and the
-   item list, written again, without the copies of it that stopped writes
-   left, which can hold the item's title.
+   opened or a reader keeps the log, so that step 6 of the memory worker builds
+   it again (TASK-082); its pin record; the open conflict candidates that name
+   it, settled; and the item list, written again, without the copies of it that
+   stopped writes left, which can hold the item's title.
 4. Each state line that cites a forgotten item, an entry that one quotes or an
    ID that an earlier tombstone names, whether the view showed it or hid it,
    with one privacy marker in its place among the removed lines (TBL-013),
@@ -134,7 +134,8 @@ def _index(memory, root, selected, deadline, check):
             pass
         finally:
             connection.close()
-    # The index cannot be cleaned where it is: its files go, the log first, and the next curation builds it again.
+    # The index cannot be cleaned where it is: its files go, the log first, and step 6 of the memory
+    # worker builds it again.
     for name in INDEX_FILES:
         path = root / name
         index_io._regular(memory, path)
