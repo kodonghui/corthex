@@ -178,6 +178,28 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             finally:
                 if start.poll() is None: start.kill(); start.communicate()
 
+    def test_the_start_file_is_replaced_again_while_windows_refuses_the_replace(self):
+        # A prompt child that reads the start file makes Windows refuse its replace for a moment (Access is denied).
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            replace, refused = Path.replace, []
+
+            def busy(source, target):
+                if len(refused) < 3:
+                    refused.append(Path(target).name)
+                    raise PermissionError(13, "Access is denied")
+                return replace(source, target)
+            with patch.object(Path, "replace", busy):
+                self.lifecycle.write_start(folder / "start.json", {"session": "native-fixture"})
+            self.assertEqual(refused, ["start.json"] * 3)
+            self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
+            self.assertEqual([path.name for path in folder.iterdir()], ["start.json"])
+            # A refusal that outlasts the wait still fails the check.
+            with patch.object(Path, "replace", side_effect=PermissionError(13, "Access is denied")):
+                with self.assertRaises(PermissionError):
+                    self.lifecycle.write_start(folder / "start.json", {"session": "other"}, seconds=.1)
+            self.assertEqual(json.loads((folder / "start.json").read_text(encoding="utf-8")), {"session": "native-fixture"})
+
     def test_resume_rejects_a_previous_completed_start_for_the_same_native_session(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary).resolve()/"prompt-gates"
