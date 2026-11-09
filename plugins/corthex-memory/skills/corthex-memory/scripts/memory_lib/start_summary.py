@@ -298,12 +298,8 @@ def _layer(memory, root, deadline):
         value = cache[item]
         return value if value is not None and value['status'] == 'current' else None
 
-    state = state_types.parse_state(read('state.json'))
-    removed = state_types.parse_removed(read('state-removed.json'))
-    cited = sorted({cite for line in state['lines'] if line['part'] == 'decisions'
-                    for cite in line['cites'] if item_types.ITEM.fullmatch(cite)})
-    items = {item: cache[item] for item in cited if current(item) is not None}
-    lines = state_types.validity_view(state, removed, items, private)['lines']
+    lines = _lines(state_types.parse_state(read('state.json')), state_types.parse_removed(read('state-removed.json')),
+                   private, current)
     pins = item_types.parse_pins(read('pins.json'))['pins']
     pinned = start_memory.pinned(pins, current)
     conflicts = conflict_types.parse_conflicts(read('conflicts.json'))
@@ -316,6 +312,30 @@ def _layer(memory, root, deadline):
                                total)
             return tuple(pinned), tuple(lines), (Notice('conflict', text), candidate['id'])
     return tuple(pinned), tuple(lines), None
+
+
+def _lines(state, removed, private, current):
+    """The state lines that the validity view keeps, each decision that they cite checked with `current`."""
+    cited = sorted({cite for line in state['lines'] if line['part'] == 'decisions'
+                    for cite in line['cites'] if item_types.ITEM.fullmatch(cite)})
+    items = {}
+    for item in cited:
+        value = current(item)
+        if value is not None:
+            items[item] = value
+    return state_types.validity_view(state, removed, items, private)['lines']
+
+
+def state_lines(memory, root, state, removed, current, deadline):
+    """The current state lines that the next start would show, for the pin command's room (TASK-095).
+
+    `state` and `removed` are the project's TBL-013 records, as the caller
+    read them, and `current(item)` the item's record while it is current and
+    no tombstone names it, else None. The tombstones make cites private as the
+    start summary reads them.
+    """
+    private, _ = _tombstones(memory, root / 'layer', root.name, deadline)
+    return _lines(state, removed, private, current)
 
 
 def _tombstones(memory, folder, project, deadline):

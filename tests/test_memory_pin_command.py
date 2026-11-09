@@ -351,6 +351,17 @@ class PinCommandTest(PinStore, unittest.TestCase):
         self.assertEqual(shown.pins, (values[0]['id'],))
         self.assertNotIn('Left out for room', shown.text)
 
+    def test_a_pin_reads_no_conflict_candidate_and_counts_state_records_that_the_project_lacks_as_empty(self):
+        values = [self.item('Pinned first'), self.item('Pinned next')]
+        self.fixture.layer(items=values)
+        # The start summary would fail on these conflict candidates; the room for a pin does not depend on them.
+        (self.root / 'layer/conflicts.json').write_bytes(b'{"candidates": [')
+        for name in ('state.json', 'state-removed.json'):
+            (self.root / 'layer' / name).unlink()
+        found = [self.pin(value['id'], at=minute(number)) for number, value in enumerate(values)]
+        self.assertEqual([value['code'] for value in found], ['ok', 'ok'])
+        self.assertEqual(found[1]['data']['pins'], [value['id'] for value in values])
+
     def test_a_base_that_leaves_no_room_for_the_item_alone_says_so_while_other_items_are_pinned(self):
         values = [self.long(number) for number in range(2)]
         self.fixture.layer(items=values)
@@ -571,16 +582,36 @@ class PinCommandTest(PinStore, unittest.TestCase):
                     pin_command.pin(self.context('pin', value['id']), at=PINNED, base_text=BASE)
                 self.assertEqual(self.tree(), before)
                 path.write_bytes(good)
-        # Another pinned item's record that cannot be read fails an unpin before the revision or the pins change.
-        other = self.item('Also pinned')
-        self.fixture.layer(items=[value, other], pinned=[value['id'], other['id']])
+        # Another pinned item's record that cannot be read fails an unpin, and a new pin, before the revision or the
+        # pins change.
+        other, third = self.item('Also pinned'), self.item('Not pinned yet')
+        self.fixture.layer(items=[value, other, third], pinned=[value['id'], other['id']])
         record = self.root / 'layer/items' / (other['id'] + '.json')
         record.write_bytes(b'{"id": ')
         before = self.tree()
         with self.assertRaises(files.RestoreNeeded):
             pin_command.unpin(self.context('unpin', value['id']), at=UNPINNED)
+        with self.assertRaises(files.RestoreNeeded):
+            pin_command.pin(self.context('pin', third['id']), at=PINNED, base_text=BASE)
         self.assertEqual(self.tree(), before)
         record.write_bytes(item_types.item_bytes(other))
+        # So does a current state record that cannot be read, or a missing one whose backup is there.
+        state = self.root / 'layer/state.json'
+        kept = state.read_bytes()
+        for name, damage in (('damaged', b'{"lines": ['), ('missing', None)):
+            with self.subTest('state ' + name):
+                if damage is None:
+                    state.with_name('state.json.bak').write_bytes(kept)
+                    state.unlink()
+                else:
+                    state.write_bytes(damage)
+                before = self.tree()
+                with self.assertRaises(files.RestoreNeeded):
+                    pin_command.pin(self.context('pin', third['id']), at=PINNED, base_text=BASE)
+                self.assertEqual(self.tree(), before)
+                state.write_bytes(kept)
+                if damage is None:
+                    state.with_name('state.json.bak').unlink()
         path.write_bytes(good)
         target = self.fixture.folder / 'elsewhere.json'
         target.write_bytes(good)

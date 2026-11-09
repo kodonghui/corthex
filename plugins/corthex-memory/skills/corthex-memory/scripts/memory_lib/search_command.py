@@ -73,12 +73,13 @@ def _ready(memory, root, model, dims, deadline):
     It must be built with the configured model and vector length and hold a
     vector: an index whose items step 6 has not embedded yet ranks nothing by
     meaning. An index that SQLite cannot read, for a lock that outlasts the
-    time given or another error, is not ready either: the search goes by
-    words, as `_ranked` does with such an index.
+    time given or another error, is not ready either, nor is one whose look
+    ends after that time: the search goes by words, as `_ranked` does with
+    such an index.
     """
     try:
         return recall._index(memory, root, model, dims, deadline, _vectors) is True
-    except sqlite3.DatabaseError:
+    except (sqlite3.DatabaseError, locks.LockBusy):
         return False
 
 
@@ -157,7 +158,12 @@ def _meaning(rows, vector, dims, deadline):
 
 
 def _rank(connection, words, vector, kind, dims, present, deadline):
-    """(by words, by meaning or None) from one index; the meaning only with a vector."""
+    """(by words, by meaning or None) from one index.
+
+    The meaning ranks only with the request's vector and with a vector of the
+    configured length for an item that the search wants, which the index can
+    lose between the look before the request and this read.
+    """
     kinds = dict(connection.execute('SELECT item, kind FROM index_items').fetchall())
 
     def wanted(item):
@@ -165,8 +171,9 @@ def _rank(connection, words, vector, kind, dims, present, deadline):
     by_words = [item for item, _ in index_io.search(connection, words) if wanted(item)]
     if vector is None:
         return by_words, None
-    rows = [row for row in connection.execute('SELECT item, vector FROM index_vectors').fetchall() if wanted(row[0])]
-    return by_words, _meaning(rows, vector, dims, deadline)
+    rows = [(item, data) for item, data in connection.execute('SELECT item, vector FROM index_vectors').fetchall()
+            if wanted(item) and isinstance(data, bytes) and len(data) == 4 * dims]
+    return by_words, (_meaning(rows, vector, dims, deadline) if rows else None)
 
 
 def _ranked(memory, root, words, vector, kind, model, dims, deadline, check):
