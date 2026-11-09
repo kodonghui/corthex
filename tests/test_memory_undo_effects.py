@@ -42,13 +42,26 @@ class Inverse:
         """The preview and the yes; the result of the yes."""
         preview = self.command(run)
         self.assertEqual((preview['outcome'], preview['code']), ('confirm', 'ok'))
+        began = clock.now()
         with self.at(stamp):
             done = self.command(run, code=preview['confirm'])
-        self.assertEqual((done['outcome'], done['code'], done['say']), ('done', 'ok', undo_effects.SAY))
+        self.assertEqual((done['outcome'], done['code'], done['say']), ('done', 'ok', undo_effects.SAY),
+                         None if done['code'] == 'ok' else self.diagnosis(clock.now() - began))
         self.assertEqual(done['data'], {'project': 'sample', 'run': run, 'undo': done['data']['undo'],
                                         'changes': preview['data']['changes'], 'kept': preview['data']['kept']})
         self.assertEqual(self.memory.held, [])
         return done['data']['undo']
+
+    def diagnosis(self, seconds):
+        """What a yes that failed leaves to read: how long it took, the failure log and the lease files left."""
+        logs = self.memory.folder / 'logs'
+        failures = [line for path in sorted(logs.glob('failures-*.jsonl'))
+                    for line in path.read_text(encoding='utf-8').splitlines()]
+        leases = sorted(str(path.relative_to(self.memory.folder)) for folder in (self.root, logs)
+                        for path in folder.glob('*.lock*'))
+        notes = [(error if isinstance(error, str) else type(error).__name__, step)
+                 for error, _, step in self.memory.notes]
+        return 'the yes took %.1f s; failure log %s; notes %s; lease files %s' % (seconds, failures, notes, leases)
 
     def state(self):
         return {line['id']: line for line in

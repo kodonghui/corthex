@@ -109,8 +109,9 @@ class UndoneAgainTest(effects.Inverse, UndoStore, unittest.TestCase):
         self.assertEqual(self.candidates(), [candidate])
         self.assertEqual((self.root / 'notices' / conflict_counts.NAME).read_bytes(), counts)
         conflicts = conflict_types.parse_conflicts((self.root / 'layer/conflicts.json').read_bytes())
+        # A deadline of its own: the two undos above can outlast the first one on a slow runner.
         self.assertEqual([value['id'] for value in conflict_counts.eligible(
-            conflicts, conflict_counts.read(self.memory, self.root, deadline))], [candidate['id']])
+            conflicts, conflict_counts.read(self.memory, self.root, clock.now() + 30))], [candidate['id']])
         self.assertEqual(run_log.read(self.root, again)['conflicts'],
                          [{'candidate': candidate['id'], 'from': 'settled', 'to': 'open'}])
 

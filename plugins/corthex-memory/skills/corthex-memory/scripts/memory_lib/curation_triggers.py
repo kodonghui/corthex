@@ -18,12 +18,13 @@ HOOKS = ('end-of-turn', 'end')
 Markers = namedtuple('Markers', 'count oldest')
 
 
-def turns(memory, root):
+def turns(memory, root, deadline=None):
     """Each unprocessed turn, as (log, seq), with its oldest time, from the markers' names alone.
 
     Several markers of one turn count once, at their oldest time; a name that
     is not a marker or holds an impossible time is left out, as the memory
-    status does (SPEC-033).
+    status does (SPEC-033). With a deadline, the scan ends with `LockBusy` once
+    it passes.
     """
     folder = root / 'unprocessed'
     if memory.fence.check(folder) is None:
@@ -31,6 +32,8 @@ def turns(memory, root):
     found = {}
     with os.scandir(str(folder)) as entries:
         for entry in entries:
+            if deadline is not None and clock.now() >= deadline:
+                raise locks.LockBusy()
             match = retention.MARKER.fullmatch(entry.name)
             if match is None or not entry.is_file(follow_symlinks=False):
                 continue
@@ -43,9 +46,9 @@ def turns(memory, root):
     return found
 
 
-def scan(memory, root):
+def scan(memory, root, deadline=None):
     """Unprocessed turns and the oldest time, as `turns` finds them."""
-    found = turns(memory, root)
+    found = turns(memory, root, deadline)
     return Markers(len(found), min(found.values()) if found else None)
 
 
@@ -70,10 +73,11 @@ def _progress(memory, root, deadline):
     path = root / 'curation.json'
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            return format2.parse_curation(memory.fence.read(candidate, deadline))
+            return format2.parse_curation(files.fence_read(memory, candidate, deadline))
         except files._RESTORABLE:
             continue
     return None
+
 
 
 def decide(memory, configuration, project, hook, deadline, *, now=None, environment=None):
@@ -93,7 +97,7 @@ def decide(memory, configuration, project, hook, deadline, *, now=None, environm
     if model_access.Credentials.read(environment).presence()['anthropic'] != 'present':
         return 'key'
     root = memory.folder / 'projects' / base.project_folder_name(project)
-    markers = scan(memory, root)
+    markers = scan(memory, root, deadline)
     now = datetime.now(timezone.utc) if now is None else now
     values = configuration.values
     if not met(hook, markers, now, values['triggers'], values['temporary']):
@@ -122,7 +126,7 @@ def start(memory, configuration, project, hook, deadline, logger, *, host=None, 
     try:
         reason = decide(memory, configuration, project, hook, deadline, now=now, environment=environment)
     except locks.LockBusy:
-        return 'deadline'  # The record's read found the deadline passed.
+        return 'deadline'  # The listing of the markers or the record's read found the deadline passed.
     if reason != 'start':
         return reason
     if clock.now() >= deadline:

@@ -142,13 +142,16 @@ def connect(path, create=False, timeout=1.0):
     return connection
 
 
-def state(connection, *, model, dims, pages=True):
+def state(connection, *, model, dims, reader=False):
     """None when the index can be used, otherwise why it must be built again.
 
     SQLite's quick check reads every page, so a damaged table that the schema
     and index_meta do not show is found here rather than by a later search.
-    Recall, within the prompt hook's time, leaves it out with `pages=False`; a
-    damaged page then fails the read that meets it.
+    A reader within a hook's time, recall, leaves it out with `reader=True`:
+    a damaged page then fails the read that meets it, and SQLite's other
+    errors, such as a lock or a disk's, are raised to the reader rather than
+    taken for damage. Text that is not UTF-8, which the sqlite3 module refuses
+    with the same kind of error, stays damage.
     """
     try:
         if connection.execute('PRAGMA user_version').fetchone()[0] != VERSION:
@@ -156,8 +159,12 @@ def state(connection, *, model, dims, pages=True):
         if _schema(connection) != schema():
             return 'schema'
         meta = dict(connection.execute('SELECT name, value FROM index_meta').fetchall())
-        if pages and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+        if not reader and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
             return 'malformed'
+    except sqlite3.OperationalError as error:
+        if reader and not str(error).startswith('Could not decode to UTF-8'):
+            raise
+        return 'malformed'
     except sqlite3.DatabaseError:
         return 'malformed'
     if set(meta) - set(NAMES) or set(NAMES[:3]) - set(meta):
@@ -182,7 +189,11 @@ def put(connection, items):
 
 
 def _write(connection, rows, stale=(), gone=()):
-    """In one transaction: write rows, delete the vectors of `stale` and every row of `gone`."""
+    """In one transaction: write rows, delete the vectors of `stale` and every row of `gone`.
+
+    When rows of `gone` go, the `built` mark goes with them; returns its value, or None.
+    """
+    built = None
     connection.execute('BEGIN IMMEDIATE')
     try:
         for item, fields, counts in rows:
@@ -193,11 +204,16 @@ def _write(connection, rows, stale=(), gone=()):
             connection.executemany('INSERT INTO index_terms VALUES (?, ?, ?)',
                                    [(term, item, count) for term, count in sorted(counts.items())])
         connection.executemany('DELETE FROM index_vectors WHERE item = ?', [(item,) for item in stale])
-        connection.executemany('DELETE FROM index_items WHERE item = ?', [(item,) for item in gone])
+        if gone:
+            found = connection.execute("SELECT value FROM index_meta WHERE name = 'built'").fetchone()
+            built = None if found is None else found[0]
+            connection.execute("DELETE FROM index_meta WHERE name = 'built'")
+            connection.executemany('DELETE FROM index_items WHERE item = ?', [(item,) for item in gone])
         connection.execute('COMMIT')
     except BaseException:
         _rollback(connection)
         raise
+    return built
 
 
 def rows(connection):
@@ -217,22 +233,25 @@ def rows(connection):
 
 
 def sync(connection, items):
-    """Make the rows match the canonical items: (the items written again, the items whose rows went).
+    """Make the rows match the canonical items: (the items written again, the items whose rows went, the mark).
 
     An item whose row is missing or differs is written again, losing its vector
-    when its words changed; the rows of every item not given are deleted, and
-    the write-ahead log emptied as after a forget.
+    when its words changed; the rows of every item not given are deleted. Those
+    rows take the index's `built` mark with them, in the same transaction, and
+    the mark's value is returned (None when no row went): the caller then empties
+    the files of their words, as a forget does, and puts it back with `finish`.
+    Until then readers leave the index, and if the caller stops first, the next
+    step 6 builds the index again rather than finding no row left to clean.
     """
     found, _ = rows(connection)
     wanted = {item['id']: _row(item) for item in items}
     changed = [(item,) + value for item, value in sorted(wanted.items()) if found.get(item) != value]
     stale = [item for item, _, counts in changed if item in found and found[item][1] != counts]
     gone = sorted(set(found) - set(wanted))
+    built = None
     if changed or gone:
-        _write(connection, changed, stale, gone)
-    if gone:
-        connection.execute('PRAGMA wal_checkpoint(TRUNCATE)')
-    return [item for item, _, _ in changed], gone
+        built = _write(connection, changed, stale, gone)
+    return [item for item, _, _ in changed], gone, built
 
 
 def put_vectors(connection, vectors):
@@ -274,6 +293,40 @@ def delete(connection, items, forget=False):
         return True
     busy, _, _ = connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
     return busy == 0
+
+
+def unfinish(memory, root):
+    """Take the index's `built` mark away, so that readers leave it and step 6 builds it again.
+
+    The caller holds the layer lease. Returns whether the mark went; when it
+    cannot, the caller's own error says why.
+    """
+    try:
+        connection = open_index(memory, root)
+        if connection is None:
+            return False
+        try:
+            connection.execute("DELETE FROM index_meta WHERE name = 'built'")
+        finally:
+            connection.close()
+    except (sqlite3.Error, IndexUnavailable):
+        return False
+    return True
+
+
+def finish(memory, root, built):
+    """Put back the `built` mark, with its value, that `sync` took away with the rows that went.
+
+    The caller holds the layer lease and has emptied the index's files of those
+    rows' words.
+    """
+    connection = open_index(memory, root)
+    if connection is None:
+        raise IndexUnavailable()
+    try:
+        connection.execute("INSERT INTO index_meta VALUES ('built', ?)", (built,))
+    finally:
+        connection.close()
 
 
 def search(connection, text, limit=None):

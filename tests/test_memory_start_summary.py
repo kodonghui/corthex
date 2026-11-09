@@ -18,8 +18,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, configuration, conflict_counts, format2, injection_log, item_types, raw_log,
-                        start_memory, start_summary, state_types)
+from memory_lib import (clock, configuration, conflict_counts, curation_triggers, format2, injection_log,
+                        item_types, locks, raw_log, start_memory, start_summary, state_types)
 import test_memory_curation_worker as worker_fixture
 
 AT, WHEN, DEVICE = worker_fixture.AT, worker_fixture.WHEN, worker_fixture.DEVICE
@@ -377,6 +377,27 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual(self.after(part).deleted, 0)
         self.assertEqual(self.notices(self.start()), ['Curation failed since the last session (timeout).'])
 
+    def test_step_7_deletes_notices_only_under_the_layer_lease_that_every_notice_writer_holds(self):
+        self.layer()
+        stored = self.notice('rebuilt.json', kind='rebuilt')
+        part = self.start()
+        self.assertEqual(part.shown, ((stored, stored.read_bytes()),))
+        # A curation, consolidation, pin or undo holding the lease may write the notice again at any moment.
+        release = self.holder(self.root / 'layer.lock', 'layer')
+        started = time.monotonic()
+        self.assertEqual(self.after(part), start_summary.After(0, True, ()))
+        waited = time.monotonic() - started
+        release()
+        # It waited for the lease within the step's second, then left the notice for the next start.
+        self.assertGreaterEqual(waited, start_summary.STEP_SECONDS * 0.8)
+        self.assertLess(waited, 3)
+        self.assertTrue(stored.exists())
+        again = self.start()
+        self.assertEqual(self.notices(again), [start_summary.REBUILT])
+        self.assertEqual(self.after(again), start_summary.After(1, True, ()))
+        self.assertFalse(stored.exists())
+        self.assertFalse((self.root / 'layer.lock').exists())
+
     def test_a_failures_error_that_is_not_a_known_code_shows_as_runtimeerror(self):
         self.layer()
         self.notice('curation-failed.json', kind='curation-failed', error='Traceback: secret words')
@@ -415,6 +436,51 @@ class StartSummaryTest(unittest.TestCase):
         # A damaged layer file is such an error too, never a guess about which file.
         (self.root / 'layer/state.json').write_bytes(b'{"lines": [')
         self.assertEqual(self.start().outcome, 'error')
+
+    def test_files_that_another_process_is_replacing_on_windows_are_read_again_within_the_deadline(self):
+        item = self.item('Kept')
+        self.layer([item], pinned=[item['id']])
+        self.notice('rebuilt.json', kind='rebuilt')
+        self.progress(stopped={'at': AT, 'by': 'curate', 'errors': ['refusal']})
+        settings = self.memory.configuration(deadline=clock.now() + 10)
+        read, refused = self.memory.fence.read, []
+
+        def sharing(path, deadline):
+            """Windows refuses the first read of each file, as while a worker's move replaces it."""
+            if path not in refused:
+                refused.append(path)
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(start_summary.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=sharing):
+            part = start_summary.compose(self.memory, 'sample', BASE, clock.now() + 5, settings=settings,
+                                         environment=dict(self.environment), now=WHEN, zone=UTC)
+        self.assertEqual(part.pins, (item['id'],))
+        self.assertEqual(self.notices(part), [start_summary.STOPPED % 'refusal', start_summary.REBUILT])
+        self.assertTrue({self.root / 'curation.json', self.root / 'notices/rebuilt.json',
+                         self.root / 'layer/state.json', self.root / 'layer/pins.json',
+                         self.root / 'layer/items' / (item['id'] + '.json')} <= set(refused), refused)
+
+        # A file still being replaced when the deadline passes gives the line about the deadline, not an error.
+        def replacing(path, deadline):
+            if path.name == 'state.json':
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(start_summary.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=replacing):
+            part = start_summary.compose(self.memory, 'sample', BASE, clock.now() + 0.5, settings=settings,
+                                         environment=dict(self.environment), now=WHEN, zone=UTC)
+        self.assertEqual(part.outcome, 'deadline')
+
+    def test_a_deadline_that_passes_while_the_unprocessed_turns_are_listed_ends_the_memory_part(self):
+        self.layer()
+        self.marker(WHEN - timedelta(days=92), 2)
+        self.assertTrue(curation_triggers.turns(self.memory, self.root))
+        with self.assertRaises(locks.LockBusy):
+            curation_triggers.turns(self.memory, self.root, clock.now())
+        with mock.patch.object(start_summary.curation_triggers, 'clock', mock.Mock(now=lambda: float('inf'))):
+            part = self.start()
+        self.assertEqual((part.outcome, part.shown), ('deadline', ()))
 
     # SPEC-143
 
@@ -497,6 +563,38 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual((len(rows), rows[-1], part.reserved), (3, '2 more notices are in the memory status.', None))
         self.assertEqual(self.counts(), {value['id']: 0})
 
+    def test_a_reserved_showing_goes_out_when_the_deadline_passes_while_the_summary_is_built(self):
+        value, newer, older = self.candidate()
+        self.layer([newer, older], candidates=[value])
+        counts = self.root / 'notices' / conflict_counts.NAME
+        counts.write_bytes(conflict_counts.counts_bytes({value['id']: 0}))
+        build, now, late, pin = start_memory.build_summary, clock.now, [], self.memory.pin
+
+        def start(replaced=False):
+            def building(*args, **kwargs):
+                late.append(True)   # from here on the clock reads a minute later: the deadline has passed
+                if replaced:
+                    self.memory.pin = 'another store'
+                return build(*args, **kwargs)
+            late.clear()
+            try:
+                with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
+                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)):
+                    return self.start()
+            finally:
+                self.memory.pin = pin
+        part = start()
+        # The reservation used up a showing, so the summary goes out with its line.
+        self.assertEqual((part.outcome, part.reserved, self.counts()), ('ok', value['id'], {value['id']: 1}))
+        self.assertEqual(self.notices(part)[0][:12], 'Memory items')
+        # The store is still checked: one replaced meanwhile gives the line about an internal error.
+        part = start(replaced=True)
+        self.assertEqual((part.outcome, type(part.error), self.counts()),
+                         ('error', locks.LostLock, {value['id']: 2}))
+        # Without a reservation, the same lateness gives the line about the deadline.
+        counts.write_bytes(conflict_counts.counts_bytes({value['id']: 3}))
+        self.assertEqual(start().outcome, 'deadline')
+
     # TBL-011
 
     def test_the_injection_log_line_waits_for_the_raw_log_lock_once_and_holds_no_text(self):
@@ -523,7 +621,8 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual(injection_log.parse_line(injection_log.line_bytes(good)), good)
         for change in (dict(where='start'), dict(scores=[0.5, 0.4]), dict(scores=[float('nan')]),
                        dict(scores=[True]), dict(items=[item, item], scores=[1, 1]), dict(prompt=item),
-                       dict(session=''), dict(session='s' * 201), dict(where='end'), dict(items=['i_x'])):
+                       dict(session=''), dict(session='s' * 201), dict(where='end'), dict(items=['i_x']),
+                       dict(items=[[item]]), dict(items=[{'id': item}])):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 injection_log.line_bytes(dict(good, **change))
         with self.assertRaises(ValueError):

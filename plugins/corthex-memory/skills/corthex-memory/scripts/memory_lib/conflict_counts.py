@@ -155,10 +155,11 @@ def reserve(memory, root, candidate, deadline):
     Only the notice-counter lease is taken. The count is read again under it
     and written, one higher, durably before this returns; the caller shows the
     line only then. A busy or lost lease, a passed deadline, or a failed read
-    or write returns None and counts nothing, as does a candidate already
-    shown three times. A stop after the write but before the output uses up
-    that showing. The third showing also removes the candidate's individual
-    notice, when there is one; its count stays.
+    or write returns None, as does a candidate already shown three times. It
+    counts nothing when it comes before the move of the new file; after the
+    move, while the folder is synced, it uses up that showing, as a stop after
+    the move but before the output does. The third showing also removes the
+    candidate's individual notice, when there is one; its count stays.
     """
     format2._id(candidate, format2._CANDIDATE)
     root = Path(root)

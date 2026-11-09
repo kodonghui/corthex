@@ -200,6 +200,26 @@ class TriggerTest(unittest.TestCase):
         self.assertEqual([args[:2] for args, _ in self.failures], [('worker-start', 'trigger')])
         self.assertEqual(self.failures[0][1]['hook'], 'end-of-turn')
 
+    def test_a_deadline_that_passes_while_the_markers_are_listed_skips_the_start_before_the_record(self):
+        for turn in range(1, 11):
+            self.mark(turn)
+        with self.assertRaises(locks.LockBusy):
+            curation_triggers.scan(self.memory, self.project, clock.now())
+        now, calls = clock.now(), []
+
+        def later():
+            calls.append(None)
+            return now if len(calls) == 1 else now + 60   # the deadline passes once the check has begun
+        _AUDIT.append([])
+        try:
+            with mock.patch.object(clock, 'now', side_effect=later):
+                outcome = self.start(deadline=now + 30)
+        finally:
+            events = _AUDIT.pop()
+        self.assertEqual(outcome, ('deadline', []))
+        self.assertNotIn('curation.json', [Path(os.fsdecode(args[0])).name for event, args in events
+                                           if event == 'open'])
+
     def test_tc151_the_check_lists_the_markers_and_reads_the_record_only(self):
         for turn in range(1, 1001):
             self.mark(turn, minutes=turn % 29, seconds=turn % 60)
