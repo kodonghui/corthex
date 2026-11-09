@@ -21,6 +21,7 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import clock, commands, files, index_io, item_types, recall, run_listing, search_command
+from memory_lib import worker_support
 import test_memory_curation_worker as worker_fixture
 import test_memory_item_commands as item_fixture
 import test_memory_recall as recall_fixture
@@ -419,6 +420,40 @@ class SearchCommandTest(unittest.TestCase):
                 self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
                 self.assertEqual([line['item'] for line in found['data']['results']], expected)
         self.assertEqual((self.server.requests, self.usage()), ([], []))
+
+    @unittest.skipIf(os.name == 'nt', 'symbolic links need privileges on Windows')
+    def test_a_linked_index_or_side_file_is_not_followed_and_the_words_come_from_the_items(self):
+        values, _ = self.four()
+        expected = self.ranked('raw logs device')
+        index = self.root / 'index.db'
+        target = self.root.parent / 'elsewhere.db'
+        index.rename(target)
+        kept = target.read_bytes()
+        for name in ('index.db', 'index.db-wal'):
+            with self.subTest(name=name):
+                link = self.root / name
+                if name != 'index.db':
+                    index.write_bytes(kept)  # a regular index beside a linked side file
+                link.symlink_to(target)
+                # The look before the request finds the index not ready, and the ranking does not open it.
+                found = self.search('raw logs device')
+                self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
+                self.assertEqual([line['item'] for line in found['data']['results']], expected)
+                words = self.search('raw logs device', words_only=True)
+                self.assertEqual((words['data']['by'], words['data']['reason']), ('words', 'asked'))
+                self.assertEqual([line['item'] for line in words['data']['results']], expected)
+                self.assertTrue(link.is_symlink())
+                link.unlink()
+        self.assertEqual((target.read_bytes(), self.server.requests, self.usage()), (kept, [], []))
+        # An item file that a link reaches still fails the search that reads the items.
+        index.unlink()
+        index.symlink_to(target)
+        path = self.root / 'layer/items' / (values[0]['id'] + '.json')
+        outside = self.root.parent / 'outside.json'
+        path.rename(outside)
+        path.symlink_to(outside)
+        with self.assertRaises(worker_support.UnsafePath):
+            self.search('raw logs device', words_only=True)
 
     def test_rows_of_forgotten_items_and_of_items_without_a_file_are_left_out(self):
         values, cosines = self.four()

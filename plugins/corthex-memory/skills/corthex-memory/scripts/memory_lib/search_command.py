@@ -40,7 +40,7 @@ import sqlite3
 import struct
 
 from . import base, clock, commands, curation_worker, files, index_io, item_io, item_types, locks, model_access
-from . import model_client, model_embed, recall, run_listing
+from . import model_client, model_embed, recall, run_listing, worker_support
 
 # The commands' shared lock wait, within one bound for the whole search.
 WAIT, SECONDS = 10.0, 60.0
@@ -74,12 +74,13 @@ def _ready(memory, root, model, dims, deadline):
     vector: an index whose items step 6 has not embedded yet ranks nothing by
     meaning. An index that SQLite cannot read, for a lock that outlasts the
     time given or another error, is not ready either, nor is one whose look
-    ends after that time: the search goes by words, as `_ranked` does with
-    such an index.
+    ends after that time, nor one that a link reaches, at the index or one of
+    its side files, which is not followed: the search goes by words, as
+    `_ranked` does with such an index.
     """
     try:
         return recall._index(memory, root, model, dims, deadline, _vectors) is True
-    except (sqlite3.DatabaseError, locks.LockBusy):
+    except (sqlite3.DatabaseError, locks.LockBusy, worker_support.UnsafePath):
         return False
 
 
@@ -181,7 +182,9 @@ def _ranked(memory, root, words, vector, kind, model, dims, deadline, check):
     present = _present(memory, root, deadline)
     try:
         connection = index_io.open_index(memory, root, timeout=max(0.0, deadline - clock.now()))
-    except (sqlite3.DatabaseError, index_io.IndexUnavailable):
+    except (sqlite3.DatabaseError, index_io.IndexUnavailable, worker_support.UnsafePath):
+        # `_present` has passed the project folder, so an unsafe path here is a link at the index or a side file,
+        # which is not followed: the words come from the items, whose own paths still refuse a link.
         connection = None
     if connection is not None:
         try:
