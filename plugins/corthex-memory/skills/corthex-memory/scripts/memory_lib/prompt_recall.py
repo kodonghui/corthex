@@ -70,16 +70,16 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
     skipped = ranking.skipped(prompt, values['skip'])
     if skipped is not None:
         return Result(skipped)
+    # The embedding's end; the index is looked at only before it, since a lock that outlasts it leaves no time to send.
+    sent_by = min(deadline, started + EMBED_SECONDS)
     try:
-        # The index is looked at only within the embedding's time: a lock that outlasts it leaves no time to send.
-        missing = ranking.ready(memory, project, min(deadline, started + EMBED_SECONDS), settings=settings)
+        missing = ranking.ready(memory, project, sent_by, settings=settings)
         if missing == 'late':
             return Result('late', error='deadline')
         if missing is not None:
             return Result(missing)
         answer = model_embed.embed(memory, project=project, call='embed-prompt', texts=[prompt],
-                                   config=settings.document, check=lambda: memory.check(deadline),
-                                   deadline=min(deadline, started + EMBED_SECONDS))
+                                   config=settings.document, check=lambda: memory.check(deadline), deadline=sent_by)
         if answer.failure is not None:
             code = answer.failure.code
             return Result('late' if code == 'timeout' else 'failed', error=code)
