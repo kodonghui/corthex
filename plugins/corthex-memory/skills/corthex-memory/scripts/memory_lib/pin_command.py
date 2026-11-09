@@ -7,7 +7,10 @@ handlers as the runner will, after its gates, with the format-2 store binding.
 Each works under the project's layer lease, waiting for it as long as the other
 commands wait for theirs, and reads through the store's path fence: the named
 item, the pins (TBL-014), the pinned items' records and, for a new pin, the
-curated layer as the start summary reads it. An argument that names no item of
+current state (TBL-013) and the decisions that it cites, as the start summary
+keeps its lines; the conflict candidates and notices are not read. A state
+record that the project lacks counts as empty, as the start summary reads it.
+An argument that names no item of
 the project, or names one that a tombstone names, is `item-not-found`, with the
 closest lines of the item list (TBL-015).
 
@@ -48,7 +51,7 @@ from pathlib import Path
 
 from . import base, clock, commands, context as start_context, curation_worker, fence_plan, files
 from . import forget_plan, item_commands, item_io, item_types, locks, revision_io, run_listing, start_memory
-from . import start_summary
+from . import start_summary, state_types
 
 # The commands' shared lock wait, within one bound for the whole command.
 WAIT, SECONDS = 10.0, 60.0
@@ -148,7 +151,6 @@ def _publish(memory, root, pins, item, deadline):
     after = item_io._record(memory, path, item_types.parse_pins, deadline, reservation.check)
     if item_types.pins_bytes(after) != data:
         raise RuntimeError('the pins did not read back')
-    return after['pins']
 
 
 def _command(context, command, at, start_base=None):
@@ -196,7 +198,12 @@ def _command(context, command, at, start_base=None):
                 return commands.result(command, data, SAY['already' if on else 'not-pinned'] % name, 'nothing')
             if command == 'pin':
                 # The pinned items and state lines as the next start would show them, notices aside.
-                now, lines, _ = start_summary._layer(memory, root, deadline)
+                now = pinned(pins, current)
+                state, removed = (item_io.optional_record(memory, root / 'layer' / name, parse, deadline, check,
+                                                          parse(start_summary.EMPTY[name]))
+                                  for name, parse in (('state.json', state_types.parse_state),
+                                                      ('state-removed.json', state_types.parse_removed)))
+                lines = start_summary.state_lines(memory, root, state, removed, current, deadline)
                 text = start_base()
                 if not fits(text, now, value, lines):
                     data['pins'] = [item['id'] for item in now]
