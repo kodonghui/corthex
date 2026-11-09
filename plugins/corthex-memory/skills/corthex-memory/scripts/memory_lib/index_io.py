@@ -180,7 +180,11 @@ def put(connection, items):
 
 
 def _write(connection, rows, stale=(), gone=()):
-    """In one transaction: write rows, delete the vectors of `stale` and every row of `gone`."""
+    """In one transaction: write rows, delete the vectors of `stale` and every row of `gone`.
+
+    When rows of `gone` go, the `built` mark goes with them; returns its value, or None.
+    """
+    built = None
     connection.execute('BEGIN IMMEDIATE')
     try:
         for item, fields, counts in rows:
@@ -191,11 +195,16 @@ def _write(connection, rows, stale=(), gone=()):
             connection.executemany('INSERT INTO index_terms VALUES (?, ?, ?)',
                                    [(term, item, count) for term, count in sorted(counts.items())])
         connection.executemany('DELETE FROM index_vectors WHERE item = ?', [(item,) for item in stale])
-        connection.executemany('DELETE FROM index_items WHERE item = ?', [(item,) for item in gone])
+        if gone:
+            found = connection.execute("SELECT value FROM index_meta WHERE name = 'built'").fetchone()
+            built = None if found is None else found[0]
+            connection.execute("DELETE FROM index_meta WHERE name = 'built'")
+            connection.executemany('DELETE FROM index_items WHERE item = ?', [(item,) for item in gone])
         connection.execute('COMMIT')
     except BaseException:
         _rollback(connection)
         raise
+    return built
 
 
 def rows(connection):
@@ -215,20 +224,25 @@ def rows(connection):
 
 
 def sync(connection, items):
-    """Make the rows match the canonical items: (the items written again, the items whose rows went).
+    """Make the rows match the canonical items: (the items written again, the items whose rows went, the mark).
 
     An item whose row is missing or differs is written again, losing its vector
-    when its words changed; the rows of every item not given are deleted. The
-    caller then empties the write-ahead log of their words, as a forget does.
+    when its words changed; the rows of every item not given are deleted. Those
+    rows take the index's `built` mark with them, in the same transaction, and
+    the mark's value is returned (None when no row went): the caller then empties
+    the files of their words, as a forget does, and puts it back with `finish`.
+    Until then readers leave the index, and if the caller stops first, the next
+    step 6 builds the index again rather than finding no row left to clean.
     """
     found, _ = rows(connection)
     wanted = {item['id']: _row(item) for item in items}
     changed = [(item,) + value for item, value in sorted(wanted.items()) if found.get(item) != value]
     stale = [item for item, _, counts in changed if item in found and found[item][1] != counts]
     gone = sorted(set(found) - set(wanted))
+    built = None
     if changed or gone:
-        _write(connection, changed, stale, gone)
-    return [item for item, _, _ in changed], gone
+        built = _write(connection, changed, stale, gone)
+    return [item for item, _, _ in changed], gone, built
 
 
 def put_vectors(connection, vectors):
@@ -289,6 +303,21 @@ def unfinish(memory, root):
     except (sqlite3.Error, IndexUnavailable):
         return False
     return True
+
+
+def finish(memory, root, built):
+    """Put back the `built` mark, with its value, that `sync` took away with the rows that went.
+
+    The caller holds the layer lease and has emptied the index's files of those
+    rows' words.
+    """
+    connection = open_index(memory, root)
+    if connection is None:
+        raise IndexUnavailable()
+    try:
+        connection.execute("INSERT INTO index_meta VALUES ('built', ?)", (built,))
+    finally:
+        connection.close()
 
 
 def search(connection, text, limit=None):

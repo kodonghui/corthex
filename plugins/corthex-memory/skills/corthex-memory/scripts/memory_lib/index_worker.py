@@ -7,10 +7,11 @@ to make its rows match the canonical items: an item whose row is missing or
 differs is written again, and the rows of items that are gone or private are
 deleted, their words emptied from the write-ahead log as a forget empties them,
 or, when a reader keeps the log, with the index's files, which are then built
-again; an index whose files cannot go either is marked unfinished, so that the
-next step 6 builds it again. This also repairs what a stopped writer left, such
-as the row of an item that a stopped undo made current again (TASK-108) or the
-rows that a stopped forget left.
+again. Those rows take the index's `built` mark with them until their words are
+gone, so an index left by a step that stopped in between, or whose files cannot
+go either, is unfinished, and the next step 6 builds it again. This also
+repairs what a stopped writer left, such as the row of an item that a stopped
+undo made current again (TASK-108) or the rows that a stopped forget left.
 
 With the OpenAI memory key it then embeds every current item without a vector
 (API-011): the item's kind, text and the words of its quotes, joined by line
@@ -108,28 +109,34 @@ def _rows(memory, root, deadline, model, dims, at):
         rebuilt = index_io.ensure(memory, root, expected, deadline, model=model, dims=dims, when=at)
         items = item_io._items(memory, root, deadline, lambda: memory.check(deadline))
         check()
-        written, removed = (), ()
+        written, removed, built = (), (), None
         if rebuilt is None:
             connection = _opened(memory, root, model, dims)
             if connection is None:
                 raise index_io.IndexUnavailable()
             try:
-                written, removed = index_io.sync(connection, items)
+                written, removed, built = index_io.sync(connection, items)
             finally:
                 connection.close()
             check()
         # The rows that went leave no word in the files: the log is emptied as a forget empties it, or, when a
-        # reader keeps it, the index's files go and the index is built again (TC-140).
+        # reader keeps it, the index's files go and the index is built again (TC-140). They took the `built`
+        # mark with them, so a step that stops before this leaves the index for the next step 6 to build again.
         if removed:
             try:
                 how = forget_effects._index(memory, root, removed, deadline, check)
             except (OSError, forget_effects.Unverified):
-                # Its files could not go either, as when Windows keeps a file that a reader holds open: the
-                # index is marked unfinished, so that readers leave it and the next step 6 builds it again.
+                # Its files could not go either, as when Windows keeps a file that a reader holds open. When the
+                # log went and the index file stayed, the file is back as it was before the rows went, `built`
+                # mark and all: the mark goes again, so that readers leave the index and the next step 6 builds
+                # it again.
                 check()
                 index_io.unfinish(memory, root)
                 raise
-            if how == 'files':
+            check()
+            if how == 'rows':
+                index_io.finish(memory, root, built)
+            else:
                 rebuilt = index_io.ensure(memory, root, expected, deadline, model=model, dims=dims, when=at)
         connection = _opened(memory, root, model, dims)
         if connection is None:
