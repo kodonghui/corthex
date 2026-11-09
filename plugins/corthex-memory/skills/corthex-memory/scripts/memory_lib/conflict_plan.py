@@ -45,8 +45,10 @@ def record(conflicts, pairs, items, *, at, run, by, make_id=None):
     `pairs` are proposed in order and `items` maps item IDs to their records
     once the writer's changes are applied. A pair that names one item twice,
     an item that is not current, or a pair that an open candidate already
-    names in either order, is left out. The newer item comes first, by the
-    time it was saved, then by ID; candidate IDs come from the code.
+    names in either order, is left out, and so is a pair whose candidate the
+    person dismissed: they found no disagreement in it (SPEC-143). The newer
+    item comes first, by the time it was saved, then by ID; candidate IDs come
+    from the code.
     """
     format2._time(at)
     format2._id(run, format2._RUN)
@@ -54,11 +56,12 @@ def record(conflicts, pairs, items, *, at, run, by, make_id=None):
     make_id = base.new_id if make_id is None else make_id
     value = copy.deepcopy(_parsed(conflicts))
     known = {candidate['id'] for candidate in value['candidates']}
-    opened = {frozenset(candidate['items']) for candidate in value['candidates'] if candidate['status'] == 'open'}
+    taken = {frozenset(candidate['items']) for candidate in value['candidates']
+             if candidate['status'] in ('open', 'dismissed')}
     added = []
     for first, second in pairs:
         pair = frozenset((first, second))
-        if len(pair) != 2 or pair in opened or any(
+        if len(pair) != 2 or pair in taken or any(
                 item not in items or items[item]['status'] != 'current' for item in pair):
             continue
         identifier = make_id('c')
@@ -70,7 +73,7 @@ def record(conflicts, pairs, items, *, at, run, by, make_id=None):
         value['candidates'].append({'id': identifier, 'items': ordered, 'at': at, 'run': run, 'by': by,
                                     'status': 'open'})
         known.add(identifier)
-        opened.add(pair)
+        taken.add(pair)
         added.append(identifier)
     _parsed(value)
     return value, added
