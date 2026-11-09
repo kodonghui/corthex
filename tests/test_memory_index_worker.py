@@ -5,6 +5,7 @@ format-2 stores. Every embedding request goes to a local test server, with keys
 made up during the run; no provider is called. Nothing calls the step before
 the 0.3.0 activation.
 """
+import contextlib
 import json
 import math
 import os
@@ -18,8 +19,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, diagnostics, fence_plan, forget_effects, index_io, index_worker, model_access,
-                        model_embed, revision_io)
+from memory_lib import (clock, diagnostics, fence_plan, forget_effects, index_io, index_worker, locks,
+                        model_access, model_embed, revision_io)
 import test_memory_curation_worker as worker_fixture
 
 STAMP, WHEN = worker_fixture.STAMP, worker_fixture.WHEN
@@ -255,8 +256,11 @@ class IndexWorkerTest(unittest.TestCase):
         reader = sqlite3.connect(str(self.root / 'index.db'))
         self.addCleanup(reader.close)
         reader.execute('SELECT count(*) FROM index_items').fetchall()
+        meta = self.tables()['index_meta']
         later = self.keep()
         self.assertEqual((later.removed, later.requests), ((forgotten['id'],), 0))
+        # Once the log is emptied, the index's `built` mark is back as it was, so it is not built again.
+        self.assertEqual((later.rebuilt, self.tables()['index_meta']), (None, meta))
         for table, rows in self.tables().items():
             self.assertFalse([row for row in rows if forgotten['id'] in row], table)
         # Neither the file nor its write-ahead log keeps the item's own word.
@@ -448,6 +452,113 @@ class IndexWorkerTest(unittest.TestCase):
                          ('done', 'building', (), (items[1]['id'],)))
         self.assertNoWordsOf(forgotten)
 
+    def test_an_index_file_that_stays_after_its_log_went_is_left_unfinished_and_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        self.assertFalse((self.root / 'index.db-wal').exists())
+        before = (self.root / 'index.db').read_bytes()
+
+        def reverted(memory, root, selected, deadline, check):
+            # The log goes and the index file stays, as when another program holds it open on Windows. Without
+            # its log the file is as it was before the rows went: with their words and the `built` mark.
+            for name in ('index.db-wal', 'index.db-shm'):
+                if (root / name).exists():
+                    (root / name).unlink()
+            (root / 'index.db').write_bytes(before)
+            raise PermissionError(13, 'held open', str(root / 'index.db'))
+        with mock.patch.object(forget_effects, '_index', reverted):
+            failed = self.keep()
+        tables = self.tables()
+        self.assertEqual((failed.reason, self.failures()), ('error', [('index', 'PermissionError')]))
+        self.assertEqual([row[0] for row in tables['index_items']], [item['id'] for item in items])
+        self.assertEqual(sorted(dict(tables['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_once_the_log_is_emptied_leaves_the_index_to_be_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        emptied = forget_effects._index
+        with contextlib.ExitStack() as stack:
+            def moved(*args):
+                how = emptied(*args)
+                # The fence moves once the log is emptied, as when the lease ran out meanwhile and a forget
+                # followed: the step writes nothing more, so the mark stays away.
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                return how
+            stack.enter_context(mock.patch.object(forget_effects, '_index', moved))
+            stale = self.keep()
+        self.assertEqual((stale.reason, sorted(dict(self.tables()['index_meta']))),
+                         ('stale', ['embedding_dims', 'embedding_model', 'words']))
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_when_the_index_file_stays_leaves_the_rows_to_the_next_step(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        before = (self.root / 'index.db').read_bytes()
+        with contextlib.ExitStack() as stack:
+            def reverted(memory, root, selected, deadline, check):
+                for name in ('index.db-wal', 'index.db-shm'):
+                    if (root / name).exists():
+                        (root / name).unlink()
+                (root / 'index.db').write_bytes(before)
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                raise PermissionError(13, 'held open', str(root / 'index.db'))
+            stack.enter_context(mock.patch.object(forget_effects, '_index', reverted))
+            stale = self.keep()
+        # Without the lease the step writes nothing more; the rows are back, and the next step 6 deletes them again.
+        self.assertEqual((stale.reason, self.failures()), ('stale', []))
+        self.assertEqual([row[0] for row in self.tables()['index_items']], [item['id'] for item in items])
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', None, (forgotten['id'],), ()))
+        self.assertNoWordsOf(forgotten)
+
+    def test_tc140_rows_that_went_before_the_step_stopped_leave_the_index_to_be_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        reader = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+        self.addCleanup(reader.close)
+        reader.execute('BEGIN')
+        self.assertEqual(reader.execute('SELECT count(*) FROM index_items').fetchone()[0], 2)
+        # The step stops after the rows went and before it empties the files of their words, as when its lease is
+        # lost there or its process ends: the index is left unfinished with them, so readers leave it.
+        with mock.patch.object(forget_effects, '_index', side_effect=locks.LostLock()):
+            stopped = self.keep()
+        tables = self.tables()
+        self.assertEqual((stopped.reason, [row[0] for row in tables['index_items']]), ('lost-lock', [items[1]['id']]))
+        self.assertEqual(sorted(dict(tables['index_meta'])), ['embedding_dims', 'embedding_model', 'words'])
+        later = self.keep()
+        if os.name == 'nt':
+            # Windows keeps the files while the reader holds them; the next step 6 after it builds the index again.
+            self.assertEqual(later.reason, 'error')
+            reader.close()
+            later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
     def assertNoWordsOf(self, forgotten):
         """Neither the index file nor its write-ahead log keeps the item's own word, and no table its ID."""
         word = re.search(r'marker\d+', forgotten['text']).group().encode('utf-8')
@@ -499,6 +610,7 @@ class IndexWorkerTest(unittest.TestCase):
         index_io.put(index, [stray])
         index.execute('INSERT INTO index_vectors VALUES (?, ?)', (stray['id'], vectors[fourth['id']]))
         index.close()
+        meta = self.tables()['index_meta']
         outcome = self.keep()
         self.assertEqual((outcome.reason, outcome.rebuilt), ('done', None))
         self.assertEqual(outcome.written, tuple(sorted((first['id'], second['id'], third['id']))))
@@ -507,7 +619,7 @@ class IndexWorkerTest(unittest.TestCase):
         self.assertEqual(sorted(outcome.embedded), sorted((second['id'], third['id'])))
         tables = self.tables()
         self.assertEqual({k: tables[k] for k in ('index_items', 'index_terms')}, self.expected())
-        self.assertEqual(self.vectors(), vectors)
+        self.assertEqual((self.vectors(), tables['index_meta']), (vectors, meta))
 
     # The gates
 
