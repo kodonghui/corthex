@@ -32,10 +32,19 @@ def start_path(output, event):
     return output / ("start-" + hashlib.sha256(event["session_id"].encode("utf-8")).hexdigest() + ".json")
 
 
-def write_start(path, value):
+def write_start(path, value, seconds=2):
     pending = path.with_suffix("." + uuid.uuid4().hex + ".tmp")
     pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
-    pending.replace(path)
+    # On Windows the prompt hook's read of the file refuses the replace for a moment (Access is denied).
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            pending.replace(path)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(.025)
 
 
 def wait_start_completed(output, event, generation, timeout=6):
