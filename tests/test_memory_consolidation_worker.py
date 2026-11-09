@@ -721,6 +721,95 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual(self.progress()['recent'][1], {'at': STAMP, 'kind': 'consolidate', 'result': 'stale'})
         self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
 
+    def test_tc193_a_merge_request_that_fails_after_a_forget_is_not_tried_again(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        self.server.before[0] = lambda: self.advance(other, third)
+        self.answering({'decision': merges(merge([first, second], [(first, 1), (second, 1)], title='Built again'))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits:
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        # The failed request is not tried again with the forgotten item: the next one is built again without it.
+        self.assertEqual(self.sent(), [('merge', 'decision', [first['id'], second['id'], third['id']]),
+                                       ('merge', 'decision', [first['id'], second['id']])])
+        self.assertEqual((waits, outcome.requests), ([10], 2))
+        (new,) = self.new_items(first, second)
+        self.assertEqual(new['title'], 'Built again')
+        self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
+
+    def test_tc193_a_forget_while_a_merge_request_is_counted_sends_nothing_built_before_it(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.advance(other, first)
+                # Just over 99,000, so that the part loses only its newest item and would be counted again.
+                return 99050
+            return 1000
+        self.server.counter = counter
+        self.answering({'decision': merges(merge([second, third], [(second, 1), (third, 1)], title='Built again'))})
+        with mock.patch.object(request_budget, 'UNCOUNTED', 0):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        counted = [body['messages'][0]['content'] for body in self.server.counts]
+        self.assertIn(first['id'], counted[0])
+        self.assertTrue(len(counted) > 1 and not any(first['id'] in text for text in counted[1:]))
+        self.assertEqual(self.sent(), [('merge', 'decision', [second['id'], third['id']])])
+        (new,) = self.new_items(second, third)
+        self.assertEqual(new['title'], 'Built again')
+
+    def test_tc193_a_forget_after_a_merge_request_is_built_sends_nothing_of_it(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        second = self.item('decision', 'Raw logs stay here', saved=LATER)
+        third = self.item('decision', 'The raw logs never leave', saved='2026-11-06T08:30:00.000Z')
+        self.layer([first, second, third])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        planned, forgot = request_budget.merge_part, []
+
+        def plan(*args, **kwargs):
+            part = planned(*args, **kwargs)
+            if not forgot:
+                forgot.append(third['id'])
+                self.advance(other, third)
+            return part
+        self.answering({'decision': merges(merge([first, second], [(first, 1), (second, 1)], title='Built again'))})
+        with mock.patch.object(request_budget, 'merge_part', side_effect=plan):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual((self.sent(), outcome.requests), ([('merge', 'decision', [first['id'], second['id']])], 1))
+        (new,) = self.new_items(first, second)
+        self.assertEqual(new['title'], 'Built again')
+
+    def test_tc193_a_fence_moved_after_the_last_request_is_built_sends_nothing_of_it(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        built, moved = curator_document.shorten, []
+
+        def shorten(**kwargs):
+            source = built(**kwargs)
+            if not moved:
+                moved.append(True)
+                self.advance(other)
+            return source
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        with mock.patch.object(curator_document, 'shorten', side_effect=shorten):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual(([kind for kind, _, _ in self.sent()], outcome.requests), (['state'], 1))
+        self.assertEqual(self.state(), {line['id']: dict(line, text='Raw logs stay on the device.', at=STAMP)})
+
     def test_tc193_a_fence_moved_while_the_last_request_waits_makes_it_stale(self):
         value = self.item('decision', 'Keep raw logs on the device')
         line = row('decisions', 0, 'Raw logs stay here.', [value])

@@ -105,6 +105,11 @@ class _Failed(Exception):
         self.code = code
 
 
+class _Moved(Exception):
+    """A forget, an undo or a tombstone moved the fence after the request was built: the attempt is stale, and
+    nothing more of it is sent (SPEC-012)."""
+
+
 def _run_id():
     """A run ID with 60 random bits, as base.new_id makes the other IDs (TBL-121)."""
     bits = secrets.randbits(60)
@@ -142,6 +147,16 @@ def _layer(memory, root, deadline):
     with memory.lease(root / 'layer.lock', 'layer', deadline, 'curate',
                       acquire_deadline=min(deadline, clock.now() + LAYER_WAIT)) as lease:
         yield lease
+
+
+def _unmoved(memory, root, deadline, expected):
+    """Whether the fence is still where it was when the request was built, compared under the layer lease.
+
+    Asked before each token count, each request and each further attempt of a request, so that nothing built
+    before a forget, an undo or a tombstone is sent after it (SPEC-012).
+    """
+    with _layer(memory, root, deadline):
+        return fence_plan.matches(revision_io.read(memory, root, deadline), expected)
 
 
 def _gate(memory, project, deadline):
@@ -346,16 +361,24 @@ def _size(planned, request, schema):
 def _ask(memory, project, root, owner, deadline, settings, found, batch):
     """Plan and send a batch's requests without the layer lease; its checked answers.
 
-    `batch` is a list that gets the batch once it is planned, so that a failure can name its turns.
+    `batch` is a list that gets the batch once it is planned, so that a failure can name its turns. Before each
+    token count, each request and each further attempt of a request the fence is compared under the layer lease;
+    once a forget, an undo or a tombstone has moved it, nothing more is sent and `_Moved` makes the attempt stale.
     """
     layer, sessions, stored, progress = found
     schema, document = curator_answers.schema(), copy.deepcopy(settings.document)
+    expected = fence_plan.snapshot(progress)
 
     def check():
         memory.check(deadline, (owner,))
 
+    def still():
+        return _unmoved(memory, root, deadline, expected)
+
     def count(source):
         _left(deadline)
+        if not still():
+            raise _Moved()
         return model_count.count(memory, project=project, instructions=INSTRUCTIONS, source=source, schema=schema,
                                  config=document, check=check, deadline=deadline - RESERVE).tokens
 
@@ -365,9 +388,11 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
     answers = []
     for request in planned.requests:
         _left(deadline)
+        if not still():
+            raise _Moved()
         result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
                                    schema=schema, config=document, check=check, deadline=deadline - RESERVE,
-                                   size=_size(planned, request, schema))
+                                   size=_size(planned, request, schema), still=still)
         batch[0].sent_requests += 1
         failure = result.response.failure
         if failure is not None:
@@ -569,11 +594,13 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
             memory.note(error, step='curate')
             record, stopped = _failure(memory, root, deadline, first, _code(error), at)
             return Attempt(record, first, (), 0, {}, {}, None, stopped)
-    expected, batch, code = fence_plan.snapshot(progress), [], None
+    expected, batch, code, moved = fence_plan.snapshot(progress), [], None, False
     try:
         checked = _ask(memory, project, root, owner, deadline, settings, (layer, sessions, stored, progress), batch)
     except _LEASES + (model_client.MissingKey,):
         raise
+    except _Moved:
+        moved = True
     except _Failed as failed:
         code = failed.code
     except _BREAKS as error:
@@ -595,7 +622,7 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
         # A forget, an undo or a tombstone that moved the fence after the request was built makes the
         # attempt stale, whether its requests succeeded or failed (SPEC-012). From here on only this
         # attempt moves the fence, under the layer lease.
-        if not unmoved():
+        if moved or not unmoved():
             return stale()
         if code is not None:
             return failed(code)

@@ -490,6 +490,84 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertNotIn('locker', json.dumps(self.items()) + json.dumps(self.lines()))
         self.assertNotIn('failures', self.progress())
 
+    def test_tc174_a_request_that_fails_after_a_forget_is_not_tried_again(self):
+        said, _ = self.one_turn('My spare locker phrase stays apart; keep the hooks in one script.',
+                                'One script now serves the hooks.')
+        forgotten = self.saved(said, 'My spare locker phrase stays apart', kind='reference')
+        self.layer([forgotten])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        self.server.before[0] = lambda: self.advance(other, forgotten)
+        self.server.answers = [failing(529, 'overloaded_error'),
+                               answer(change(quote(said, 'keep the hooks in one script'), kind='decision'))]
+        with self.quick() as waits:
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        # The failed attempt is not tried again with the forgotten words: the next request is built again.
+        self.assertEqual((len(self.server.requests), waits), (2, [10]))
+        self.assertIn('locker phrase', self.server.content(0))
+        self.assertNotIn('locker', self.server.content(1))
+        self.assertIn('[forgotten]', self.server.content(1))
+        self.assertEqual([(row['call'], row['result']) for row in self.usage()],
+                         [('curate', 'failed'), ('curate', 'ok')])
+        self.assertNotIn('failures', self.progress())
+
+    def test_a_failed_attempt_is_tried_again_with_the_same_request_while_the_fence_stays(self):
+        said, _ = self.one_turn()
+        self.server.answers = [failing(529, 'overloaded_error'), answer(change(quote(said, HOOKS), kind='decision'))]
+        with self.quick() as waits:
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('done', ['ok']))
+        self.assertEqual((len(self.server.requests), waits), (2, [10]))
+        self.assertEqual(self.server.content(0), self.server.content(1))
+        self.assertEqual([row['result'] for row in self.usage()], ['failed', 'ok'])
+
+    def test_tc174_a_forget_while_a_part_waits_sends_no_other_part_built_before_it(self):
+        said, paragraphs = self.long_turn()
+        forgotten = self.saved(said, paragraphs[0][:20], kind='fact')
+        self.layer([forgotten])
+        other = C2Store(self.folder, expected_device=DEVICE)
+        self.server.before[0] = lambda: self.advance(other, forgotten)
+        self.server.answers = [answer()]
+        outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual(outcome.attempts[0].requests, 1)
+        parts = [re.search(r' part="(\d+)" parts="(\d+)"', self.server.content(number)).groups()
+                 for number in range(len(self.server.requests))]
+        # Every part carries the item list: after the forget, only the parts built again go.
+        self.assertGreaterEqual(int(parts[0][1]), 3)
+        self.assertEqual([int(part) for part, _ in parts], [1] + list(range(1, len(parts))))
+        self.assertIn('id="%s"' % forgotten['id'], self.server.content(0))
+        for number in range(1, len(parts)):
+            self.assertNotIn(forgotten['id'], self.server.content(number))
+
+    def test_tc174_a_forget_while_a_request_is_counted_sends_nothing_built_before_it(self):
+        said, _ = self.one_turn('My spare locker phrase stays apart; keep the hooks in one script.',
+                                'One script now serves the hooks.')
+        for n in range(12):
+            self.raw.turn(budget.prose(9000, 300 + n), budget.prose(9000, 400 + n))
+        self.write()
+        forgotten = self.saved(said, 'My spare locker phrase stays apart', kind='reference')
+        self.layer([forgotten])
+        other = C2Store(self.folder, expected_device=DEVICE)
+
+        def counter(body):
+            if not self.server.counts[1:]:
+                self.advance(other, forgotten)
+                # Over 99,000, so that the request loses turns and would be counted again.
+                return 120000
+            return budget.body_rule(body)
+        self.server.counter = counter
+        self.server.answers = [answer()]
+        outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual(outcome.attempts[0].requests, 0)
+        counted = [body['messages'][0]['content'] for body in self.server.counts]
+        self.assertIn('locker phrase', counted[0])
+        self.assertTrue(len(counted) > 1 and not any('locker' in text for text in counted[1:]))
+        self.assertTrue(self.server.requests)
+        self.assertFalse([number for number in range(len(self.server.requests))
+                          if 'locker' in self.server.content(number)])
+
     def test_tc119_an_applies_count_changed_while_a_request_waits_drops_its_results(self):
         said, _ = self.one_turn()
 
@@ -726,7 +804,8 @@ class CurationWorkerTest(unittest.TestCase):
 
     # SPEC-015
 
-    def test_tc153_a_turn_of_250000_tokens_applies_once_every_part_has_succeeded(self):
+    def long_turn(self):
+        """A turn of 250,000 tokens, which goes in parts, and its paragraphs; the test server counts it."""
         paragraphs = ['문단 %03d ' % n + '가나다라마바사아자차카타파하' * 300 for n in range(38)]
         # An ASCII paragraph among them makes the turn 250,000 tokens by the test server's counting rule.
         head, tail = '\n\n'.join(paragraphs[:10]) + '\n\n', '\n\n' + '\n\n'.join(paragraphs[10:])
@@ -736,6 +815,10 @@ class CurationWorkerTest(unittest.TestCase):
         said, _ = self.one_turn(head + filler + tail, 'Done.')
         self.assertEqual(budget.rule(said['text']) + budget.rule('Done.'), 250000)
         self.server.counter = budget.body_rule
+        return said, paragraphs
+
+    def test_tc153_a_turn_of_250000_tokens_applies_once_every_part_has_succeeded(self):
+        said, paragraphs = self.long_turn()
         ended = self.saved(said, paragraphs[0][:20], kind='fact')
         self.layer([ended])
         first, last = paragraphs[1][:30], paragraphs[-1][:30]

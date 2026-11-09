@@ -66,7 +66,7 @@ WEEK = timedelta(days=7)
 FAILURES = 3    # failed consolidations in a row stop the project (SPEC-018)
 STALE = 3       # stale requests in a row end the run; consolidation stays due
 _BREAKS, _LEASES = curation_worker._BREAKS, curation_worker._LEASES
-_Failed = curation_worker._Failed
+_Failed, _Moved = curation_worker._Failed, curation_worker._Moved
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,16 @@ def _layer(memory, root, deadline):
     with memory.lease(root / 'layer.lock', 'layer', deadline, 'consolidate',
                       acquire_deadline=min(deadline, clock.now() + curation_worker.LAYER_WAIT)) as lease:
         yield lease
+
+
+def _unmoved(memory, root, deadline, expected):
+    """Whether the fence is still where it was when the request was built, compared under the layer lease.
+
+    Asked before each token count, each request and each further attempt of a request, so that nothing built
+    before a forget, an undo or a tombstone is sent after it (SPEC-012).
+    """
+    with _layer(memory, root, deadline):
+        return fence_plan.matches(revision_io.read(memory, root, deadline), expected)
 
 
 def _read(memory, deadline):
@@ -203,14 +213,20 @@ def _stale(memory, root, deadline, run, at):
     return 'stale'
 
 
-def _send(memory, project, owner, deadline, settings, instructions, source, schema, run):
-    """Send one request without the layer lease; its answer, decoded from JSON."""
+def _send(memory, project, owner, deadline, settings, instructions, source, schema, run, still):
+    """Send one request without the layer lease; its answer, decoded from JSON.
+
+    `still` compares the fence before the request and each further attempt of it; once a forget, an undo or a
+    tombstone has moved it, nothing more is sent and `_Moved` makes the request stale.
+    """
     def check():
         memory.check(deadline, (owner,))
     curation_worker._left(deadline)
+    if not still():
+        raise _Moved()
     result = model_client.send(memory, project=project, instructions=instructions, source=source, schema=schema,
                                config=copy.deepcopy(settings.document), check=check,
-                               deadline=deadline - curation_worker.RESERVE)
+                               deadline=deadline - curation_worker.RESERVE, still=still)
     run.requests += 1
     failure = result.response.failure
     if failure is not None:
@@ -223,9 +239,11 @@ def _send(memory, project, owner, deadline, settings, instructions, source, sche
         raise _Failed('bad-answer') from None
 
 
-def _counter(memory, project, owner, deadline, settings, instructions, schema):
+def _counter(memory, project, owner, deadline, settings, instructions, schema, still):
     def count(source):
         curation_worker._left(deadline)
+        if not still():
+            raise _Moved()
         return model_count.count(memory, project=project, instructions=instructions, source=source, schema=schema,
                                  config=copy.deepcopy(settings.document),
                                  check=lambda: memory.check(deadline, (owner,)),
@@ -362,22 +380,28 @@ def _merge(memory, project, root, owner, deadline, settings, when, group, run):
                      key=lambda value: (value['saved'], value['id']))
     if len(pending) < 2:
         return None
-    expected, code, part, checked = fence_plan.snapshot(progress), None, None, None
+    expected, code, part, checked, moved = fence_plan.snapshot(progress), None, None, None, False
     schema = curator_answers.merge_schema()
+
+    def still():
+        return _unmoved(memory, root, deadline, expected)
     try:
         part = request_budget.merge_part(pending, layer.candidates, group=group, schema=schema,
-                                         count=_counter(memory, project, owner, deadline, settings, 'merge-2', schema))
+                                         count=_counter(memory, project, owner, deadline, settings, 'merge-2', schema,
+                                                        still))
         if len(part.items) < 2:
             # Items too large to go two to a request have nothing to merge with.
             run.done.update(value['id'] for value in part.items)
             return 'ok'
-        answer = _send(memory, project, owner, deadline, settings, 'merge-2', part.source, schema, run)
+        answer = _send(memory, project, owner, deadline, settings, 'merge-2', part.source, schema, run, still)
         try:
             checked = curator_answers.check_merge(answer, items=part.items, device=memory.device, rules=schema)
         except ValueError:
             raise _Failed('bad-answer') from None
     except _LEASES + (model_client.MissingKey,):
         raise
+    except _Moved:
+        moved = True
     except _Failed as failed:
         code = failed.code
     except _BREAKS as error:
@@ -390,7 +414,7 @@ def _merge(memory, project, root, owner, deadline, settings, when, group, run):
     with _layer(memory, root, deadline):
         # A forget, an undo or a tombstone that moved the fence after the request was built makes it stale,
         # whether it succeeded or failed (SPEC-012). From here on only this run moves the fence.
-        if not unmoved():
+        if moved or not unmoved():
             return _stale(memory, root, deadline, run, at)
         if code is not None:
             return _failure(memory, root, deadline, run, code, at)
@@ -432,18 +456,23 @@ def _shorten(memory, project, root, owner, deadline, settings, when, run):
         if not layer.lines:
             # No line to shorten: nothing is sent and the consolidation ends.
             return _done(memory, root, deadline, run, at, expected, 'kept')
-    code, answer, listed = None, None, None
+    code, answer, listed, moved = None, None, None, False
+
+    def still():
+        return _unmoved(memory, root, deadline, expected)
     try:
         listed = request_budget.state_list(layer, schema)
         source = curator_document.shorten(lines=list(layer.lines), items=list(listed.items), form=listed.form,
                                           candidates=list(listed.candidates), omitted=listed.omitted)
-        sent = _send(memory, project, owner, deadline, settings, 'state-1', source, schema, run)
+        sent = _send(memory, project, owner, deadline, settings, 'state-1', source, schema, run, still)
         try:
             answer = curator_answers.decode(sent, schema)
         except ValueError:
             raise _Failed('bad-answer') from None
     except _LEASES + (model_client.MissingKey,):
         raise
+    except _Moved:
+        moved = True
     except _Failed as failed:
         code = failed.code
     except _BREAKS as error:
@@ -454,7 +483,7 @@ def _shorten(memory, project, root, owner, deadline, settings, when, run):
         return fence_plan.matches(revision_io.read(memory, root, deadline), expected)
 
     with _layer(memory, root, deadline):
-        if not unmoved():
+        if moved or not unmoved():
             return _stale(memory, root, deadline, run, at)
         if code is not None:
             return _failure(memory, root, deadline, run, code, at)
