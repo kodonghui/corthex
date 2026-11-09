@@ -206,8 +206,9 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                 with self.assertRaises(PermissionError) as raised:
                     self.lifecycle.write_start(folder / "start.json", {"session": "other"}, seconds=.1)
             self.assertEqual(raised.exception.errno, 13)
-            for path in folder.glob("*.tmp"):
-                path.unlink()
+            left = list(folder.glob("start.*.tmp"))
+            self.assertEqual(len(left), 1)
+            left[0].unlink()
             # A write that fails part of the way leaves no temporary file either.
             write = Path.write_text
 

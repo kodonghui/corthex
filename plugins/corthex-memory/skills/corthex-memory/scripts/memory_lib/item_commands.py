@@ -29,10 +29,11 @@ reads around what such a write left: a tombstone is its file, or its backup
 when the file is gone, as the start summary reads it, other names in the
 tombstones' folder, such as temporary copies, are skipped, and the items that
 stay are read as `list` reads them. Only `--around` reads the tombstones, once
-for the command, so a tombstone that cannot be read fails `open --around`
-alone, while `open` without it, like `list`, sees only the names in their
-folder; the items that stay are read at most once, for both the pending ranges
-and the closest lines. An argument that names no item of the project, or names
+for the command and only when a named item quotes this device's entries, so a
+tombstone that cannot be read fails only such an `open`, while `open` without
+`--around`, like `list`, sees only the names in their folder; the items that
+stay are read at most once, for both the pending ranges and the closest
+lines. An argument that names no item of the project, or names
 one that a tombstone names, is `item-not-found`, with the arguments in
 `missing`, the closest lines of the item list in `matches` and the items that
 the other arguments name. An entry ID is missing too until TASK-112 opens

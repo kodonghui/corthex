@@ -47,8 +47,8 @@ def write_start(path, value, seconds=2):
                     raise
                 time.sleep(.025)
     finally:
-        # A write or replace that failed leaves no temporary file in the folder that later steps read, and a
-        # removal that fails too leaves the first error to be raised.
+        # A write or replace that failed removes its temporary file when it can; a removal that fails too is
+        # ignored, leaving that file, so that the first error is raised.
         try:
             pending.unlink(missing_ok=True)
         except OSError:
