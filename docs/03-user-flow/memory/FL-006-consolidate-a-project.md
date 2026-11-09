@@ -25,7 +25,7 @@ flowchart TD
   G -->|yes| G2["Save the merged item, and mark the items<br/>it merges superseded, never deleted<br/>REQ-019"]
   G2 --> M
   M -->|no| CF["Record disagreement pairs not merged by this answer<br/>as conflict candidates<br/>REQ-221"]
-  CF --> H["Use the last state-1 request to shorten state;<br/>first keep previous text of changed/omitted lines<br/>REQ-015, REQ-220"]
+  CF --> H["Use the last state-2 request to shorten state;<br/>first keep previous text of changed/omitted lines<br/>REQ-015, REQ-220"]
   H --> I["Update the item list; once an OpenAI memory key<br/>is there, embed the merged items for the search index<br/>and append that call to the usage log<br/>REQ-040, REQ-050, REQ-052"]
   I --> RL["Log the actual changed IDs of the run<br/>REQ-224"]
   RL --> K["Record the consolidation date<br/>REQ-026"]
