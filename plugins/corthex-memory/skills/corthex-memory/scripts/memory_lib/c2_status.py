@@ -23,18 +23,21 @@ items are current, as `conflicts` lists them (TBL-120), and the newest run that
 `runs` lists (TBL-121). From the curation record come the last curation
 attempt with its result, its error and how many failed in a row, the fault
 guard's stop, and the last consolidation with the time it is due and its
-failures in a row. A record that cannot be read leaves its fields out; an item,
-pins or candidates file that cannot be read raises, which the runner reports
-as `internal`, as it does for the other commands. Nothing is written but the
-failure log's notes of what was restored.
+failures in a row. A record that cannot be read leaves its fields out. A
+project without its pins or candidates file, as before its first curation, has
+none, as the start summary reads it; an item, pins or candidates file that
+cannot be read, or a missing one whose backup can be read, raises, which the
+runner reports as `internal`, as it does for the other commands. Nothing is
+written but the failure log's notes of what was restored, which the binding
+writes only while the store record is the one that it pinned.
 
 No conversation text and no key is shown: items appear by ID, errors by their
 codes, and every string goes through the C1 status's redaction.
 """
 import copy
 
-from . import base, clock, command_result, commands, conflicts_command, curation_triggers, curation_worker
-from . import item_commands, item_io, item_types, locks, pin_command, run_listing, run_log
+from . import base, clock, command_result, commands, conflicts_command, curation_triggers, curation_worker, files
+from . import item_commands, item_types, locks, pin_command, run_listing, run_log
 from . import status as c1_status
 
 # The commands' shared lock wait, within one bound for each project's read.
@@ -59,6 +62,19 @@ def record_fields(progress):
     if 'stopped' in progress:
         fields['stopped'] = copy.deepcopy(progress['stopped'])
     return fields
+
+
+def _pins(memory, root, deadline):
+    """The project's pins (TBL-014); none while it has no pins file, as the start summary reads it.
+
+    A file that cannot be read raises, and so does a missing one whose backup
+    can be read, which a writer of the pins restores.
+    """
+    try:
+        return files.read_record(root / 'layer/pins.json', item_types.parse_pins, deadline=deadline,
+                                 reader=lambda path: memory.fence.read(path, deadline))['pins']
+    except FileNotFoundError:
+        return []
 
 
 class _Binding:
@@ -129,8 +145,8 @@ class Reader(c1_status.Reader):
             for value in items:
                 result['items'][value['status']] += 1
             current = {value['id']: value for value in items if value['status'] == 'current'}
-            pins = item_io._record(memory, root / 'layer/pins.json', item_types.parse_pins, deadline, check)['pins']
-            result['pins'] = [value['id'] for value in pin_command.pinned(pins, current.get)]
+            check()
+            result['pins'] = [value['id'] for value in pin_command.pinned(_pins(memory, root, deadline), current.get)]
             read = run_listing._reader(memory, deadline)
             candidates = conflicts_command._candidates(memory, root, deadline)
             result['open_conflicts'] = len(conflicts_command.listed(memory, root, candidates, read))

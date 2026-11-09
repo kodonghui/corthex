@@ -432,8 +432,26 @@ class RevisionIOTest(unittest.TestCase):
                     revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), changes,
                                                 self.deadline, removed=removed)
                 self.assertEqual(self.path.read_bytes(), before)
+            # Names that are not text are refused too, before anything is read.
+            for removed in ([['stopped']], (None,)):
+                with self.subTest(removed=removed), self.assertRaises(ValueError):
+                    revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), {},
+                                                self.deadline, removed=removed)
             value = revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh),
                                                 {'failures': dict(failures, count=0)}, self.deadline,
                                                 removed=('stopped', 'rebuilt'))
         expected = dict(PROGRESS, failures=dict(failures, count=0))
         self.assertEqual((value, self.value()), (expected, expected))
+
+    def test_a_refused_progress_merge_does_not_restore_a_damaged_record(self):
+        stopped = {'at': '2026-11-04T13:00:00.000Z', 'by': 'curate', 'errors': ['refusal']}
+        self.path.write_bytes(format2.curation_bytes(dict(PROGRESS, stopped=stopped)))
+        fresh = self.value()
+        self.damaged_with_backup()
+        damaged, backup = self.path.read_bytes(), self.backup.read_bytes()
+        with self.held(curator=True):
+            for changes in ({'stopped': stopped}, {'fence': fresh['fence']}):
+                with self.subTest(changes=sorted(changes)), self.assertRaises(ValueError):
+                    revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), changes,
+                                                self.deadline, removed=('stopped',))
+                self.assertEqual((self.path.read_bytes(), self.backup.read_bytes()), (damaged, backup))

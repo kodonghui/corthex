@@ -170,17 +170,20 @@ def update_progress(memory, root, expected, changes, deadline, removed=()):
 
     `removed` names fields to take out, as a resume takes out the fault
     guard's stop (TASK-096). A field cannot be both changed and removed, and
-    the record must stay valid without it (TBL-009), or nothing is written.
+    the record must stay valid without it (TBL-009), or nothing is written;
+    the arguments are checked before the record is read, so that a refused
+    merge does not restore a damaged record either.
     """
+    if not isinstance(changes, dict) or 'fence' in changes:
+        raise ValueError('progress merge must preserve the fence')
+    if (not isinstance(removed, (tuple, list)) or not all(isinstance(key, str) for key in removed)
+            or set(removed) & set(changes)):
+        raise ValueError('removed progress fields are a list of names that the merge does not change')
     root = Path(root)
     check = guard(memory, root, deadline, curator=True)
     fresh = read(memory, root, deadline)
     if not fence_plan.matches(fresh, expected):
         raise fence_plan.Stale()
-    if not isinstance(changes, dict) or 'fence' in changes:
-        raise ValueError('progress merge must preserve the fence')
-    if not isinstance(removed, (tuple, list)) or set(removed) & set(changes):
-        raise ValueError('removed progress fields are a list of names that the merge does not change')
     value = copy.deepcopy(fresh)
     value.update(copy.deepcopy(changes))
     for key in removed:

@@ -11,8 +11,10 @@ commands wait for theirs, and reads under them, through the store's path
 fence, the curation record and the project's unprocessed turns, counted from
 the markers' names as the triggers count them (TBL-008). A project that the
 fault guard has not stopped has nothing to resume. For a stopped project,
-without a code it changes nothing and shows the failed attempts that the stop
-came from, newest first, and the unprocessed turns. With a code that matches
+without a code it changes nothing, except that its reading of the record
+restores a damaged primary from a whole backup with a new epoch, as the
+record's writers read it; it shows the failed attempts that the stop came
+from, newest first, and the unprocessed turns. With a code that matches
 what it has just read under the same leases, it clears the stop: the record
 loses `stopped`, and the count of failed attempts from one first turn and the
 count of failed consolidations in a row go back to zero, as a success sets

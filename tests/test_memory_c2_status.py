@@ -16,7 +16,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (c2_status, clock, commands, curation_worker, format2, item_types, locks, pin_command,
+from memory_lib import (c2_status, clock, commands, curation_worker, files, format2, item_types, locks, pin_command,
                         run_log)
 from test_memory_curator_answers import answer, change, quote
 import test_memory_commands as commands_fixture
@@ -318,6 +318,37 @@ class StatusTest(StatusStore, unittest.TestCase):
         noted = [json.loads(line) for name in sorted((self.fixture.folder / 'logs').glob('failures-*.jsonl'))
                  for line in name.read_bytes().splitlines()]
         self.assertEqual([note['step'] for note in noted], ['restore'])
+
+    def test_a_restore_note_is_not_written_once_the_store_record_changed(self):
+        # This month's usage log is read from its backup, and the store record is made again after it is read: the
+        # binding, which pinned the record that the status read, writes no note into the new store's logs.
+        path = self.fixture.folder / 'logs' / ('usage-%s.jsonl' % NOW.strftime('%Y-%m'))
+        path.with_name(path.name + '.bak').write_bytes(b'')
+        store, usage = self.fixture.folder / 'store.json', c2_status.Reader.usage
+        made_again = format2.store_bytes({'format': 2, 'device': DEVICE, 'made': '2026-11-05T00:00:00.000Z',
+                                          'release': '0.3.0'})
+
+        def after_the_usage(reader, config):
+            value = usage(reader, config)
+            store.write_bytes(made_again)
+            return value
+        memory = worker_fixture.C2Store(self.fixture.folder, expected_device=DEVICE)
+        with mock.patch.object(c2_status.Reader, 'usage', after_the_usage), self.assertRaises(locks.LostLock):
+            self.status(memory=memory)
+        self.assertEqual(sorted((self.fixture.folder / 'logs').glob('failures-*.jsonl')), [])
+
+    def test_a_project_without_its_pins_file_has_no_pins(self):
+        value = self.item('Saved')
+        self.fixture.layer(items=[value])
+        (self.root / 'layer/pins.json').unlink()
+        before = self.tree()
+        project = self.project()
+        self.assertEqual((project['pins'], project['items']['current']), ([], 1))
+        self.assertEqual(self.tree(), before)
+        # A backup without its file is a damaged pins file that a writer of the pins restores.
+        (self.root / 'layer/pins.json.bak').write_bytes(item_types.pins_bytes({'pins': []}))
+        with self.assertRaises(files.RestoreNeeded):
+            self.status()
 
     def test_a_stop_by_consolidation_is_named_with_its_consolidations(self):
         consolidation = consolidation_fixture.ConsolidationWorkerTest
