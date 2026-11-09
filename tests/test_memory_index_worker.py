@@ -5,6 +5,7 @@ format-2 stores. Every embedding request goes to a local test server, with keys
 made up during the run; no provider is called. Nothing calls the step before
 the 0.3.0 activation.
 """
+import contextlib
 import json
 import math
 import os
@@ -478,6 +479,56 @@ class IndexWorkerTest(unittest.TestCase):
         later = self.keep()
         self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
                          ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_once_the_log_is_emptied_leaves_the_index_to_be_built_again(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        emptied = forget_effects._index
+        with contextlib.ExitStack() as stack:
+            def moved(*args):
+                how = emptied(*args)
+                # The fence moves once the log is emptied, as when the lease ran out meanwhile and a forget
+                # followed: the step writes nothing more, so the mark stays away.
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                return how
+            stack.enter_context(mock.patch.object(forget_effects, '_index', moved))
+            stale = self.keep()
+        self.assertEqual((stale.reason, sorted(dict(self.tables()['index_meta']))),
+                         ('stale', ['embedding_dims', 'embedding_model', 'words']))
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', 'building', (), (items[1]['id'],)))
+        self.assertNoWordsOf(forgotten)
+
+    def test_a_step_whose_fence_moves_when_the_index_file_stays_leaves_the_rows_to_the_next_step(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.assertEqual(len(self.keep().embedded), 2)
+        forgotten = items[0]
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.advance(other, forgotten)
+        before = (self.root / 'index.db').read_bytes()
+        with contextlib.ExitStack() as stack:
+            def reverted(memory, root, selected, deadline, check):
+                for name in ('index.db-wal', 'index.db-shm'):
+                    if (root / name).exists():
+                        (root / name).unlink()
+                (root / 'index.db').write_bytes(before)
+                stack.enter_context(mock.patch.object(fence_plan, 'matches', return_value=False))
+                raise PermissionError(13, 'held open', str(root / 'index.db'))
+            stack.enter_context(mock.patch.object(forget_effects, '_index', reverted))
+            stale = self.keep()
+        # Without the lease the step writes nothing more; the rows are back, and the next step 6 deletes them again.
+        self.assertEqual((stale.reason, self.failures()), ('stale', []))
+        self.assertEqual([row[0] for row in self.tables()['index_items']], [item['id'] for item in items])
+        later = self.keep()
+        self.assertEqual((later.reason, later.rebuilt, later.removed, later.embedded),
+                         ('done', None, (forgotten['id'],), ()))
         self.assertNoWordsOf(forgotten)
 
     def test_tc140_rows_that_went_before_the_step_stopped_leave_the_index_to_be_built_again(self):
