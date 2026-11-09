@@ -314,14 +314,16 @@ The direct boundary of steps 5 and 7 is `start_summary` (TASK-091). `compose(mem
 2. A host-made prompt ends the hook with `left-out` ([above](#prompts-the-host-makes-and-pasted-text)).
 3. Redacts the prompt once (SPEC-004). When redaction raises an error, nothing is written or sent, and the failure log notes `redaction`.
 4. Records the prompt (SPEC-002), unless the folder or prompts are left out. A prompt that is empty once trimmed makes no entry.
-5. Recalls (SPEC-023) unless consent or the OpenAI memory key is missing, the recall threshold has no value, the redacted and trimmed prompt is shorter than `recall.skip` characters, the prompt is a command (`/` and a letter), or the search index is missing, being built, or built with another embedding model or vector length. It embeds the prompt (API-010), scores and picks items ([Recall](#recall)) and builds the recall block. Recall runs also where prompts are left out of recording (SPEC-006).
+5. Recalls (SPEC-023) unless consent or the OpenAI memory key is missing, the recall threshold has no value, the redacted and trimmed prompt, in NFC, is shorter than `recall.skip` characters, the prompt is a command (`/` and a letter), or the search index is missing, being built, or built with another embedding model or vector length. It embeds the prompt (API-010), scores and picks items ([Recall](#recall)) and builds the recall block. Recall runs also where prompts are left out of recording (SPEC-006).
 6. From release 0.3.0, reads the session's compaction check (TBL-122), when there is one (SPEC-147).
 7. Prints the compaction check's line, if any, then a blank line and the recall block, if there is one, as one added context. The line is `The last compaction summary has no <parts>; read the handoff record or the transcript before going on.`, the parts named as in [the compaction check](#compaction-check-hook-api-156) and joined by `, ` and a final ` or `. It is printed even when nothing is recalled.
 8. Deletes the compaction check that it printed, under the session's raw log lock.
-9. Appends an injection log line, also when it injects nothing (TBL-011).
+9. Appends an injection log line, also when it injects nothing, with recall's outcome and candidates (TBL-011).
 10. Appends its hook timing line.
 
 Outcomes: `ok`, `left-out`, `lock-busy`, `deadline`, `error`. Recall, including API-010 and SPEC-023, is active under D2 confirmed on 2026-10-27. A host-made prompt ends at step 2, so it leaves a compaction check for the next prompt.
+
+The direct boundary of step 5's skip and ranking is `recall` (TASK-093). `skipped(prompt, skip)` gives `command` for a prompt that starts with `/` and a letter once trimmed, `short` for one shorter than `skip` characters once trimmed and put in NFC, and otherwise nothing. `rank(memory, project, host, session, prompt, vector, deadline, *, settings=None, zone=None)` takes the redacted prompt and its vector and returns the outcome (`injected`, `below`, `no-threshold`, `no-index` or `late`), the block, the injected items with their scores and the candidates ([Recall](#recall)). It reads the search index, the session's injection log and the item files without a lease, as stage 05 lets a reader, and writes nothing; the hook's step 9 writes the line. It checks the index and reads its rows in one read, whose first statement alone waits for another connection's lock, and only until just after the deadline: a lock that outlasts it makes the outcome `late`; an index that cannot be opened, or that the check finds not to be a database or damaged, is like a missing one; and any other SQLite error, such as a disk's or a damaged page that the check does not read, fails recall. A file that another process is replacing on Windows is read again until the deadline, as the start summary reads; elsewhere a refused read fails recall. A prompt vector whose length is not `models.dims` or is zero, and a damaged item file, raise an error, which the hook's line is to record as `failed` (TASK-094). Its item lines have no pointers yet; TASK-112 adds them. No hook calls `recall` before the 0.3.0 activation, so the installed prompt hook keeps C1 behaviour.
 
 ### End-of-turn hook (API-003)
 
@@ -486,7 +488,7 @@ The memory configuration (TBL-002) is `configuration.json` in the memory store, 
 | `models.embedding` | a model ID | `text-embedding-3-small` | SPEC-023 |
 | `models.dims` | 64 to 3,072 | 512 | SPEC-023 |
 | `recall.threshold` | 0 to 2 | none: recall injects nothing until stage 12 sets it | SPEC-023 |
-| `recall.skip` | 0 to 1,000 characters | 8 | SPEC-023 |
+| `recall.skip` | 0 to 1,000 characters, counted in NFC | 8 | SPEC-023 |
 | `prices` | `taken` (date), `from` (one or more addresses of price pages), `models` (model → prices) | [the first price list](#the-first-price-list) | SPEC-032 |
 | `sync` | `address` and `branch` | left out: sync is off; `branch` is `main` | SPEC-026 |
 
@@ -1014,11 +1016,12 @@ An item's words come from its kind, title, text and the words of its quotes. For
 
 ### Recall
 
-- An item's score for a prompt is the cosine of the prompt's vector and the item's, plus 0.1 times the share of the prompt's identifiers (step 2 above) that are among the item's words (SPEC-023).
-- Only current items with a vector, of the session's project, take part, less the pinned items that the session's latest start summary showed and the items that its last three prompts injected, as the injection log says (TBL-011).
+- An item's score for a prompt is the cosine of the prompt's vector and the item's, plus 0.1 times the share of the prompt's distinct identifiers (step 2 above) that are among the item's words (SPEC-023). Items with equal scores go in the order of their IDs.
+- Only current items with a vector, of the session's project, take part, less the pinned items that the session's latest start summary showed and the items that its last three prompts injected, as the injection log says (TBL-011). A line of the log that cannot be read is left out, and a log whose file is missing is read from its backup.
+- Before an item counts, its file is read: an item that the index still holds as current but whose file says otherwise or is missing, or that a tombstone or a tombstone's backup names, is left out (REQ-037), and a damaged item file fails recall. The five best items left are the line's candidates, also below the threshold (TBL-011).
 - Items at or above the recall threshold are taken, best first, five at most, then dropped from the end until the safe estimate of the whole block is under 600 tokens (REQ-033). From release 0.3.0 the lines' pointers are left out first, from the last line back, and only then items.
-- The index's `embedding_model` and `embedding_dims` must be the configuration's, or nothing is injected until the index is built again (stage 05).
-- Scoring is plain Python over the vectors of the project's current items; stage 12 measures the prompt hook with 1,000, 5,000 and 20,000 items against REQ-034.
+- The index's `embedding_model` and `embedding_dims` must be the configuration's, or nothing is injected until the index is built again (stage 05). Nothing is injected either while it is being built, when the project has no curated layer, or while its memory is being deleted (TBL-017); the outcome is then `no-index`. SQLite waits for another connection's lock until just after the deadline, and the outcome is then `late`.
+- Scoring is plain Python over the vectors of the project's current items: the cosine comes from the distance and the two lengths, which Python's `math.dist` and `math.hypot` compute in C, and the deadline is checked every 512 vectors. Stage 12 measures the prompt hook with 1,000, 5,000 and 20,000 items against REQ-034.
 
 ## Git sync
 

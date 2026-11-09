@@ -142,11 +142,16 @@ def connect(path, create=False, timeout=1.0):
     return connection
 
 
-def state(connection, *, model, dims):
+def state(connection, *, model, dims, reader=False):
     """None when the index can be used, otherwise why it must be built again.
 
     SQLite's quick check reads every page, so a damaged table that the schema
     and index_meta do not show is found here rather than by a later search.
+    A reader within a hook's time, recall, leaves it out with `reader=True`:
+    a damaged page then fails the read that meets it, and SQLite's other
+    errors, such as a lock or a disk's, are raised to the reader rather than
+    taken for damage. Text that is not UTF-8, which the sqlite3 module refuses
+    with the same kind of error, stays damage.
     """
     try:
         if connection.execute('PRAGMA user_version').fetchone()[0] != VERSION:
@@ -154,8 +159,12 @@ def state(connection, *, model, dims):
         if _schema(connection) != schema():
             return 'schema'
         meta = dict(connection.execute('SELECT name, value FROM index_meta').fetchall())
-        if connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+        if not reader and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
             return 'malformed'
+    except sqlite3.OperationalError as error:
+        if reader and not str(error).startswith('Could not decode to UTF-8'):
+            raise
+        return 'malformed'
     except sqlite3.DatabaseError:
         return 'malformed'
     if set(meta) - set(NAMES) or set(NAMES[:3]) - set(meta):
@@ -361,14 +370,17 @@ def _regular(memory, path):
     return info
 
 
-def open_index(memory, root):
-    """Open the project's index to read and write, or None when it is missing."""
+def open_index(memory, root, timeout=1.0):
+    """Open the project's index to read and write, or None when it is missing.
+
+    `timeout` bounds SQLite's wait for a lock that another connection holds.
+    """
     path = Path(root) / 'index.db'
     for name in ('index.db',) + tuple('index.db' + side for side in _SIDES):
         _regular(memory, Path(root) / name)
     if _regular(memory, path) is None:
         return None
-    return connect(path)
+    return connect(path, timeout=timeout)
 
 
 def rebuild(memory, root, expected, deadline, *, model, dims, when):

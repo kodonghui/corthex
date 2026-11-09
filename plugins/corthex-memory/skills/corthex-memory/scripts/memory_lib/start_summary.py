@@ -47,7 +47,7 @@ TITLE_BYTES = 40
 RESERVE_SECONDS = 0.25  # the conflict reservation: its wait for the notice-counter lease and its write
 STEP_SECONDS = 1.0   # step 7's reads and deletions, after the summary is printed
 TIMEOUT = Notice('unreadable', 'Memory could not be read in time.')
-_read = curation_triggers._read  # reads without a lease: again on a Windows sharing violation, until the deadline
+_read = files.fence_read  # reads without a lease: again on a Windows sharing violation, until the deadline
 INTERNAL = start_memory.unreadable('an internal memory error occurred')
 STOPPED = ('Curation is stopped for this project after three failed attempts in a row (%s). '
            'The memory status can resume it.')

@@ -312,7 +312,7 @@ C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID
 
 ### Injection log (TBL-011)
 
-One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. Appended by the session's hooks under the lock of the session's raw log file; each line gets one attempt at the lock and recording's wait, and a lock that stays busy skips the line, as it skips a recorded entry. Lines are deleted by their own time once past the retention period. No text of items or prompts.
+One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. A prompt's line says what recall did, and keeps the five best items that recall could inject with their scores, also below the threshold, so that the share of skipped prompts and the scores near the threshold can be counted (TASK-050). Appended by the session's hooks under the lock of the session's raw log file; each line gets one attempt at the lock and recording's wait, and a lock that stays busy skips the line, as it skips a recorded entry. Lines are deleted by their own time once past the retention period. No text of items or prompts.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
@@ -320,8 +320,10 @@ One file per host session, named as its raw log file, also in a left-out folder,
 | `session` | text | The host's session ID |
 | `where` | `start` or `prompt` | |
 | `prompt` | optional entry ID | The prompt's raw log entry, when the prompt was recorded |
+| `outcome` | for a prompt, `injected`, `below`, `short`, `command`, `no-threshold`, `no-key`, `no-index`, `late` or `failed` | What recall did: injected items; found none at the threshold; skipped a short prompt or a command; had no threshold, no OpenAI memory key or no index that it could use; ran out of time; or failed, as the failure log says. A prompt's line has items exactly when this is `injected`; a start line has no outcome |
 | `items` | list of item IDs | At a start, the pinned items shown; for a prompt, the items injected, best first, or none |
 | `scores` | optional list of numbers | For a prompt, recall's score of each item, in the same order |
+| `candidates` | optional list of at most 5 objects | For a prompt, the five best items that recall could inject, best first, each `{"item", "score"}`, also below the threshold; the injected items are the first of them, with the same scores |
 
 ### Memory items (TBL-012)
 
