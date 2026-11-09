@@ -407,6 +407,22 @@ class ItemCommandsTest(unittest.TestCase):
             self.assertEqual(refused['data']['items'][0]['quotes'][0]['after'], ' and drop [forgotten].')
             self.assertEqual((stones.call_count, items.call_count), (1, 1))
 
+    def test_a_tombstone_that_cannot_be_read_fails_only_around(self):
+        # Without --around, open sees only the names in the tombstones' folder, as list does.
+        said, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        self.write()
+        value, gone = self.saved(said, 'Keep the hooks in one script'), self.saved(said, 'the old remark')
+        self.layer([value])
+        (self.root / 'layer/tombstones' / (gone['id'] + '.json')).write_bytes(b'{')
+        before = self.snapshot()
+        found = self.open(value['id'])
+        self.assertEqual((found['code'], found['data']['items'][0]['quotes'][0]['held']), ('ok', 'here'))
+        refused = self.open(gone['id'])
+        self.assertEqual((refused['code'], refused['data']['missing']), ('item-not-found', [gone['id']]))
+        with self.assertRaises(ValueError):
+            self.open(value['id'], around=10)
+        self.assertEqual(self.snapshot(), before)
+
     def test_adjacent_and_overlapping_forgotten_ranges_make_one_mark(self):
         entry = {'text': 'abcdefghijklmnop', 'forgotten': [[4, 6], [2, 4], [5, 8]]}
         self.assertEqual(item_commands.around(entry, {'start': 10, 'end': 12}, 2000), ('ab[forgotten]ij', 'mnop'))
