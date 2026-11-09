@@ -37,7 +37,10 @@ def _held(root, selected, read):
     """(log, entry ID) -> each entry that the items quote and this device's raw logs hold.
 
     A damaged or unfinished line is left out, as the request reader leaves it
-    out (`request_inputs.entries`), and so is a log that retention deleted.
+    out (`request_inputs.entries`), and so is a log that retention deleted. A
+    log whose file is missing is read from its backup, which the next append
+    would restore and which the confirmed forget restores and fills
+    (`raw_fill.fill`); the preview restores nothing.
     """
     wanted = {}
     for value in selected:
@@ -45,10 +48,14 @@ def _held(root, selected, read):
             wanted.setdefault(quote['log'], set()).add(quote['entry'])
     held = {}
     for log in sorted(wanted):
+        path = root / 'raw' / (log + '.jsonl')
         try:
-            data = read(root / 'raw' / (log + '.jsonl'))
+            data = read(path)
         except FileNotFoundError:
-            continue
+            try:
+                data = read(path.with_name(path.name + '.bak'))
+            except FileNotFoundError:
+                continue
         last = 0
         for line in data.split(b'\n')[:-1]:
             try:

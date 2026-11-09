@@ -23,9 +23,15 @@ part ended.
   succeeded or failed: nothing applies, nothing counts as a failure, and the
   next attempt builds the request again from the raw log as it now is
   (SPEC-012). Three stale attempts in a row end the run. The fence is
-  compared when the layer lease is taken again to apply; after that only the
-  attempt itself moves it, so a later error is a failure, never stale, and
-  the request is not sent again in the same run.
+  compared before each token count, each request and each further attempt of
+  a request, and again when the layer lease is taken again to apply; after
+  that only the attempt itself moves it, so a later error is a failure, never
+  stale, and the request is not sent again in the same run.
+- The run's conditions (a readable configuration, consent, the project on and
+  the memory key) are read again at the same points, both before and after
+  that comparison, which may wait for the layer lease: once one of them ends
+  the run, nothing more of the attempt is sent, neither a retry nor a later
+  part, and the attempt is stale, also when a request failed meanwhile.
 - When the line edits fail after the item changes were published and before
   they moved the fence, the state stays as it was and the item changes and
   the turns count, as when a required history append fails (SPEC-017); the
@@ -105,6 +111,12 @@ class _Failed(Exception):
         self.code = code
 
 
+class _Moved(Exception):
+    """The request may no longer go: a forget, an undo or a tombstone moved the fence after it was built
+    (SPEC-012), or the project was turned off, consent withdrawn or the key removed. The attempt is stale, and
+    nothing more of it is sent."""
+
+
 def _run_id():
     """A run ID with 60 random bits, as base.new_id makes the other IDs (TBL-121)."""
     bits = secrets.randbits(60)
@@ -125,6 +137,24 @@ def _chain(error):
     return found
 
 
+class _Recheck:
+    """`still` as `model_client.send` asks it before each further attempt of a request.
+
+    It remembers a no, so that the request is stale on that answer rather than on a later reading, which may differ
+    by then, and whether it was asked at all, which only happens once an attempt of the request has gone.
+    """
+
+    def __init__(self, still):
+        self.still, self.asked, self.refused = still, False, False
+
+    def __call__(self):
+        self.asked = True
+        if self.still():
+            return True
+        self.refused = True
+        return False
+
+
 def _left(deadline):
     """Refuse to start a request in the run's last RESERVE seconds."""
     if clock.now() >= deadline - RESERVE:
@@ -142,6 +172,16 @@ def _layer(memory, root, deadline):
     with memory.lease(root / 'layer.lock', 'layer', deadline, 'curate',
                       acquire_deadline=min(deadline, clock.now() + LAYER_WAIT)) as lease:
         yield lease
+
+
+def _unmoved(memory, root, deadline, expected):
+    """Whether the fence is still where it was when the request was built, compared under the layer lease.
+
+    Asked before each token count, each request and each further attempt of a request, so that nothing built
+    before a forget, an undo or a tombstone is sent after it (SPEC-012).
+    """
+    with _layer(memory, root, deadline):
+        return fence_plan.matches(revision_io.read(memory, root, deadline), expected)
 
 
 def _gate(memory, project, deadline):
@@ -346,16 +386,27 @@ def _size(planned, request, schema):
 def _ask(memory, project, root, owner, deadline, settings, found, batch):
     """Plan and send a batch's requests without the layer lease; its checked answers.
 
-    `batch` is a list that gets the batch once it is planned, so that a failure can name its turns.
+    `batch` is a list that gets the batch once it is planned, so that a failure can name its turns. Before each
+    token count, each request and each further attempt of a request the run's conditions are read again, both
+    before and after the fence is compared under the layer lease, which may wait for it; once the project is off,
+    consent or the key is gone, or a forget, an undo or a tombstone has moved the fence, nothing more is sent and
+    `_Moved` makes the attempt stale, as it does a request that failed meanwhile.
     """
     layer, sessions, stored, progress = found
     schema, document = curator_answers.schema(), copy.deepcopy(settings.document)
+    expected = fence_plan.snapshot(progress)
 
     def check():
         memory.check(deadline, (owner,))
 
+    def still():
+        return (_gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline, expected)
+                and _gate(memory, project, deadline)[0] is None)
+
     def count(source):
         _left(deadline)
+        if not still():
+            raise _Moved()
         return model_count.count(memory, project=project, instructions=INSTRUCTIONS, source=source, schema=schema,
                                  config=document, check=check, deadline=deadline - RESERVE).tokens
 
@@ -365,14 +416,24 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
     answers = []
     for request in planned.requests:
         _left(deadline)
-        result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
-                                   schema=schema, config=document, check=check, deadline=deadline - RESERVE,
-                                   size=_size(planned, request, schema))
+        if not still():
+            raise _Moved()
+        again = _Recheck(still)
+        try:
+            result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
+                                       schema=schema, config=document, check=check, deadline=deadline - RESERVE,
+                                       size=_size(planned, request, schema), still=again)
+        except _BREAKS:
+            if again.asked:
+                batch[0].sent_requests += 1  # an attempt of it went before the check failed
+            raise
         batch[0].sent_requests += 1
         failure = result.response.failure
         if failure is not None:
             if failure.code == 'timeout' and clock.now() >= deadline - RESERVE:
                 raise locks.LockBusy()  # the run's own time ran out, not the request's
+            if again.refused or not still():
+                raise _Moved()
             raise _Failed(failure.code)
         try:
             answers.append(json.loads(result.response.text))
@@ -569,11 +630,13 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
             memory.note(error, step='curate')
             record, stopped = _failure(memory, root, deadline, first, _code(error), at)
             return Attempt(record, first, (), 0, {}, {}, None, stopped)
-    expected, batch, code = fence_plan.snapshot(progress), [], None
+    expected, batch, code, moved = fence_plan.snapshot(progress), [], None, False
     try:
         checked = _ask(memory, project, root, owner, deadline, settings, (layer, sessions, stored, progress), batch)
     except _LEASES + (model_client.MissingKey,):
         raise
+    except _Moved:
+        moved = True
     except _Failed as failed:
         code = failed.code
     except _BREAKS as error:
@@ -595,7 +658,7 @@ def _attempt(memory, project, root, owner, deadline, settings, when):
         # A forget, an undo or a tombstone that moved the fence after the request was built makes the
         # attempt stale, whether its requests succeeded or failed (SPEC-012). From here on only this
         # attempt moves the fence, under the layer lease.
-        if not unmoved():
+        if moved or not unmoved():
             return stale()
         if code is not None:
             return failed(code)

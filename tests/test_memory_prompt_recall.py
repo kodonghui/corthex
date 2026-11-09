@@ -291,6 +291,18 @@ class PromptRecallTest(unittest.TestCase):
         self.assertEqual(late, prompt_recall.Result('late', error='deadline'))
         self.assertEqual((failed.outcome, type(failed.error)), ('failed', sqlite3.OperationalError))
         self.assertEqual(self.server.requests, [])
+        # Another SQLite error in the index's check, such as a disk's, is a failure also once the deadline has passed.
+
+        def broken(*arguments, **options):
+            time.sleep(0.35)
+            raise sqlite3.OperationalError('disk I/O error')
+        started = clock.now()
+        with mock.patch.object(recall.index_io, 'state', side_effect=broken):
+            broke = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.3,
+                                         settings=self.settings(), zone=UTC)
+        self.assertEqual((broke.outcome, type(broke.error), str(broke.error)),
+                         ('failed', sqlite3.OperationalError, 'disk I/O error'))
+        self.assertEqual(self.server.requests, [])
 
     # Failures
 

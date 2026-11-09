@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from .base import json_bytes, private_open
-from . import clock
+from . import clock, locks
 
 _WINDOWS = os.name == "nt"
 _RESTORABLE = (FileNotFoundError, ValueError, UnicodeError)
@@ -39,6 +39,22 @@ def _retry(operation, deadline=None):
             if not _WINDOWS or left <= 0:
                 raise
             time.sleep(min(0.02, left))
+
+
+def fence_read(memory, path, deadline):
+    """A file's bytes through the store's fence, without a lease.
+
+    A file that another process is replacing on Windows is read again, for up
+    to `_retry`'s second and not past the deadline, and a deadline that passes
+    meanwhile is `LockBusy`, as when the read itself finds it passed. Elsewhere
+    a refused read is an error, also after the deadline.
+    """
+    try:
+        return _retry(lambda: memory.fence.read(path, deadline), deadline)
+    except PermissionError:
+        if _WINDOWS and clock.now() >= deadline:
+            raise locks.LockBusy() from None
+        raise
 
 
 def _checked(check, operation):

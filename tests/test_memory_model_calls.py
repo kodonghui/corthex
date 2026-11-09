@@ -78,9 +78,10 @@ class ModelCallsTest(unittest.TestCase):
                                                    mime='application/json')
 
     def embed(self, call='embed-items', texts=('Keep the four hooks in one script.',), *, deadline=None,
-              check=lambda: None, config=CONFIG, project='sample'):
+              check=lambda: None, config=CONFIG, project='sample', **options):
         return model_embed.embed(self.usage.memory, project=project, call=call, texts=list(texts), config=config,
-                                 check=check, deadline=clock.now() + 600 if deadline is None else deadline)
+                                 check=check, deadline=clock.now() + 600 if deadline is None else deadline,
+                                 **options)
 
     def count(self, **options):
         arguments = dict(project='sample', instructions='curate-2', source=DOCUMENT, schema=SCHEMA, config={},
@@ -238,6 +239,24 @@ class ModelCallsTest(unittest.TestCase):
                                  [('failed', code)] * attempts)
         self.assertNotIn(marker, json.dumps(self.rows()))
 
+    def test_an_item_embedding_is_tried_again_only_while_its_caller_says_the_texts_may_still_go(self):
+        asked, answers = [], [True, False]
+
+        def still():
+            asked.append(len(self.transport.requests))
+            return answers[len(asked) - 1]
+        self.reply({'error': {'type': 'server_error'}}, status=500)
+        with mock.patch.object(model_client, '_wait', return_value=True):
+            result = self.embed(still=still)
+            self.assertEqual((result.failure.code, result.attempts, asked), ('api_error', 2, [1, 2]))
+            # A caller that never says no changes nothing; a prompt's embedding asks nothing.
+            self.assertEqual(self.embed(still=lambda: True).attempts, 3)
+            self.assertEqual(self.embed('embed-prompt', still=mock.Mock(side_effect=AssertionError)).attempts, 1)
+        requests = len(self.transport.requests)
+        with self.assertRaises(TypeError):
+            self.embed(still=True)
+        self.assertEqual(len(self.transport.requests), requests)
+
     def test_retry_after_is_honoured_for_items_only_up_to_300_seconds(self):
         waits = []
         self.replies(self.json({'error': {'type': 'server_error'}}, status=500, headers={'retry-after': '75'}),
@@ -254,10 +273,14 @@ class ModelCallsTest(unittest.TestCase):
                 self.assertEqual(self.embed(call).attempts, 1)
 
     def test_a_stalled_error_body_keeps_the_openai_status_class(self):
+        # The body stalls until the call has given up. The deadline also covers the call's own interpreter
+        # starting and sending the request, which took more than 0.5 s on a slow runner (Intel macOS, Python 3.8).
+        released = threading.Event(); self.addCleanup(released.set)
         def stall(handler):
-            self.transport.send(handler, b'', status=503, headers={'retry-after': '301'}); time.sleep(1.5)
+            self.transport.send(handler, b'', status=503, headers={'retry-after': '301'}); released.wait(30)
         self.transport.reply = stall
-        result = self.embed('embed-search', deadline=clock.now() + .5)
+        result = self.embed('embed-search', deadline=clock.now() + 3)
+        released.set()
         self.assertEqual((result.failure.code, result.failure.lasting, result.attempts), ('overloaded_error', False, 1))
         self.assertEqual(self.rows()[-1]['error'], 'overloaded_error')
 
