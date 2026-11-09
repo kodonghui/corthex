@@ -12,7 +12,6 @@ import os
 import secrets
 import sqlite3
 import sys
-import threading
 import time
 import unicodedata
 import unittest
@@ -315,21 +314,37 @@ class PromptRecallTest(unittest.TestCase):
 
     def test_an_index_lock_that_outlasts_the_embedding_s_time_is_late_before_anything_is_sent(self):
         self.three()
-        writer = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None, check_same_thread=False)
-        writer.execute('PRAGMA locking_mode = EXCLUSIVE')
-        writer.execute('BEGIN EXCLUSIVE')
-        writer.execute('COMMIT')
-        release = threading.Timer(1.5, writer.close)  # after the embedding's 800 ms, before the hook's deadline
-        release.start()
+        writer = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
         try:
+            writer.execute('PRAGMA locking_mode = EXCLUSIVE')
+            writer.execute('BEGIN EXCLUSIVE')
+            writer.execute('COMMIT')
             started = clock.now()
-            result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 3.0,
+            # The hook's deadline is far beyond the embedding's 800 ms: a look that waited for it would take 10 s.
+            result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 10.0,
                                           settings=self.settings(), zone=UTC)
             elapsed = clock.now() - started
         finally:
-            release.join()
+            writer.close()
         self.assertEqual(result, prompt_recall.Result('late', error='deadline'))
-        self.assertLess(elapsed, 1.4)
+        self.assertLess(elapsed, 5.0)
+        self.assertEqual((self.server.requests, self.usage()), ([], []))
+
+    def test_a_look_at_the_index_that_ends_after_the_embedding_s_time_sends_nothing(self):
+        self.three()
+        ready = recall.ready
+
+        def slow(*arguments, **options):
+            # SQLite's wait for a lock can end later than asked on a busy machine, and find the index released then.
+            found = ready(*arguments, **options)
+            time.sleep(0.3)
+            return found
+        started = clock.now()
+        with mock.patch.object(prompt_recall, 'EMBED_SECONDS', 0.2), \
+                mock.patch.object(recall, 'ready', side_effect=slow):
+            result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 30,
+                                          settings=self.settings(), zone=UTC)
+        self.assertEqual(result, prompt_recall.Result('late', error='deadline'))
         self.assertEqual((self.server.requests, self.usage()), ([], []))
 
     # Failures
