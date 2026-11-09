@@ -42,7 +42,7 @@ FORGOTTEN = curator_document.FORGOTTEN
 MISSING = 'No item of this project has an ID in data.missing; data.matches holds the closest lines of the item list.'
 
 
-def _read(context, command, read):
+def _read(context, read):
     """read(memory, root, deadline, check) under the project's layer lease; None without a folder or while deleted."""
     memory = context.memory
     root = memory.folder / 'projects' / base.project_folder_name(context.project.name)
@@ -90,7 +90,7 @@ def list_items(context):
     if kind is not None and kind not in item_types.KINDS or type(limit) is not int or limit < 1:
         return commands.common_result('list', 'usage')
     try:
-        items = _read(context, 'list', _items) or []
+        items = _read(context, _items) or []
     except locks.LockBusy:
         return commands.common_result('list', 'lock-busy')
     lines = [run_listing.list_line(value) for value in listed(items) if kind is None or value['kind'] == kind]
@@ -216,7 +216,6 @@ def open_items(context):
             any(type(name) is not str or not 1 <= len(name) <= ARGUMENT for name in names) or
             size is not None and (type(size) is not int or not 0 <= size <= AROUND)):
         return commands.common_result('open', 'usage')
-    memory = context.memory
 
     def read(memory, root, deadline, check):
         # Each name once, in the order first named.
@@ -228,7 +227,7 @@ def open_items(context):
             if missing else []
         return shown, missing, lines
     try:
-        shown, missing, lines = _read(context, 'open', read) or ([], names, [])
+        shown, missing, lines = _read(context, read) or ([], list(dict.fromkeys(names)), [])
     except locks.LockBusy:
         return commands.common_result('open', 'lock-busy')
     data = {'project': project, 'items': shown}

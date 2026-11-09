@@ -10,8 +10,10 @@ that the open ones name, each through the store's path fence.
 Without `--dismiss` it lists the open candidates in the order that curation
 carries them, oldest first, each with both items' lines as the item list shows
 them (TBL-015), and changes nothing. A candidate whose items are not both
-current, or whose item records cannot be read, is left out, as the start
-summary leaves it out; the next writer of the candidates settles it. A project
+current is left out, as the start summary's notice leaves it out, and the next
+writer of the candidates settles it. An item record that is missing, damaged or
+reached through a link counts as not current here, as the runs command leaves
+such a record out, while the start summary fails on a damaged one. A project
 without candidates, or without its candidates' file, has none to list, and a
 candidates' file that cannot be read is an error, as it is for forget and undo.
 
