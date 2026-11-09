@@ -18,7 +18,7 @@ from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import (clock, consolidation_worker, curator_answers, curator_document, fence_plan, format2,
-                        history_io, item_io, item_types, request_budget, revision_io, run_log, state_rewrite,
+                        history_io, item_io, item_types, locks, request_budget, revision_io, run_log, state_rewrite,
                         state_types)
 from memory_lib.c2_store import C2Store
 import test_memory_curation_worker as fixture
@@ -879,6 +879,74 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
         self.assertEqual((len(self.server.requests), waits, outcome.requests, outcome.applied), (1, [10], 1, False))
         self.assertEqual((self.state(), self.progress()['consolidation']), ({line['id']: line}, {'failures': 0}))
+
+    def waiting(self, act, sent=False):
+        """Run `act` when the run compares the fence, or with `sent` only once a request has gone, as if while it
+        waited for the layer lease."""
+        unmoved = consolidation_worker._unmoved
+
+        def compared(*args):
+            if not sent or self.server.requests:
+                act()
+            return unmoved(*args)
+        return mock.patch.object(consolidation_worker, '_unmoved', side_effect=compared)
+
+    @staticmethod
+    def busy():
+        raise locks.LockBusy()
+
+    def test_a_project_turned_off_while_a_merge_request_waits_for_the_layer_lease_sends_nothing(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        with self.waiting(lambda: self.configure(enabled=False)):
+            outcome = self.consolidate()
+        # The conditions are read again after the wait for the layer lease, right before the request.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((self.server.requests, outcome.requests), ([], 0))
+        self.assertEqual(self.items(), {value['id']: value for value in values})
+
+    def test_a_project_turned_off_while_the_last_request_waits_for_the_layer_lease_sends_nothing(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        with self.waiting(lambda: self.configure(enabled=False)):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((self.server.requests, outcome.requests), ([], 0))
+        self.assertEqual(self.state(), {line['id']: line})
+
+    def test_consent_withdrawn_before_a_merge_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+        with self.quick() as waits, self.waiting(self.busy, sent=True):
+            outcome = self.consolidate()
+        # Read before that wait as well, so the run ends as `consent`, not `busy`.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+
+    def test_a_project_turned_off_before_the_last_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        line = row('decisions', 0, 'Raw logs stay here.', [value])
+        self.layer([value], lines=[line])
+        self.server.before[0] = lambda: self.configure(enabled=False)
+        self.answering(last=shorter(decisions=[keeps(line, text='Raw logs stay on the device.')]))
+        shortening = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else shortening(
+            number, body)
+        with self.quick() as waits, self.waiting(self.busy, sent=True):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('disabled', ['stale']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+        self.assertEqual(self.state(), {line['id']: line})
 
     def test_three_stale_requests_end_the_run_and_consolidation_stays_due(self):
         values = [self.item('decision', 'Keep raw logs on the device'),

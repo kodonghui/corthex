@@ -218,9 +218,10 @@ def _stale(memory, root, deadline, run, at):
 def _send(memory, project, owner, deadline, settings, instructions, source, schema, run, still):
     """Send one request without the layer lease; its answer, decoded from JSON.
 
-    `still` reads the run's conditions again and compares the fence before the request and each further attempt
-    of it; once the project is off, consent or the key is gone, or a forget, an undo or a tombstone has moved the
-    fence, nothing more is sent and `_Moved` makes the request stale, as it does a request that failed meanwhile.
+    `still` reads the run's conditions again, both before and after it compares the fence under the layer lease,
+    which may wait for it, before the request and each further attempt of it; once the project is off, consent or
+    the key is gone, or a forget, an undo or a tombstone has moved the fence, nothing more is sent and `_Moved`
+    makes the request stale, as it does a request that failed meanwhile.
     """
     def check():
         memory.check(deadline, (owner,))
@@ -389,8 +390,9 @@ def _merge(memory, project, root, owner, deadline, settings, when, group, run):
     schema = curator_answers.merge_schema()
 
     def still():
-        return curation_worker._gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline,
-                                                                                        expected)
+        return (curation_worker._gate(memory, project, deadline)[0] is None
+                and _unmoved(memory, root, deadline, expected)
+                and curation_worker._gate(memory, project, deadline)[0] is None)
     try:
         part = request_budget.merge_part(pending, layer.candidates, group=group, schema=schema,
                                          count=_counter(memory, project, owner, deadline, settings, 'merge-2', schema,
@@ -465,8 +467,9 @@ def _shorten(memory, project, root, owner, deadline, settings, when, run):
     code, answer, listed, moved = None, None, None, False
 
     def still():
-        return curation_worker._gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline,
-                                                                                        expected)
+        return (curation_worker._gate(memory, project, deadline)[0] is None
+                and _unmoved(memory, root, deadline, expected)
+                and curation_worker._gate(memory, project, deadline)[0] is None)
     try:
         listed = request_budget.state_list(layer, schema)
         source = curator_document.shorten(lines=list(layer.lines), items=list(listed.items), form=listed.form,

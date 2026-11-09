@@ -613,6 +613,40 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertEqual((len(self.server.counts), self.server.requests, outcome.attempts[0].requests), (1, [], 0))
         self.assertEqual(self.progress()['logs'], {})
 
+    def waiting(self, act):
+        """Run `act` each time the run compares the fence once a request has gone, as if while it waited for the
+        layer lease before a further attempt."""
+        unmoved = curation_worker._unmoved
+
+        def compared(*args):
+            if self.server.requests:
+                act()
+            return unmoved(*args)
+        return mock.patch.object(curation_worker, '_unmoved', side_effect=compared)
+
+    def test_consent_withdrawn_while_a_retry_waits_for_the_layer_lease_sends_it_no_more(self):
+        said, _ = self.one_turn()
+        self.server.answers = [failing(529, 'overloaded_error'), answer(change(quote(said, HOOKS), kind='decision'))]
+        with self.quick() as waits, self.waiting(lambda: self.configure(consent=None)):
+            outcome = self.curate()
+        # The conditions are read again after the wait for the layer lease, right before the retry.
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits), (1, [10]))
+        self.assertEqual((self.items(), self.progress()['logs']), ({}, {}))
+
+    def test_consent_withdrawn_before_a_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
+        said, _ = self.one_turn()
+        self.server.before[0] = lambda: self.configure(consent=None)
+        self.server.answers = [failing(529, 'overloaded_error'), answer(change(quote(said, HOOKS), kind='decision'))]
+
+        def busy():
+            raise locks.LockBusy()
+        with self.quick() as waits, self.waiting(busy):
+            outcome = self.curate()
+        # Read before that wait as well, so the run ends as `consent`, not `busy`.
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('consent', ['stale']))
+        self.assertEqual((len(self.server.requests), waits), (1, [10]))
+
     def test_tc119_an_applies_count_changed_while_a_request_waits_drops_its_results(self):
         said, _ = self.one_turn()
 

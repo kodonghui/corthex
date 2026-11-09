@@ -28,7 +28,8 @@ part ended.
   that only the attempt itself moves it, so a later error is a failure, never
   stale, and the request is not sent again in the same run.
 - The run's conditions (a readable configuration, consent, the project on and
-  the memory key) are read again at the same points: once one of them ends
+  the memory key) are read again at the same points, both before and after
+  that comparison, which may wait for the layer lease: once one of them ends
   the run, nothing more of the attempt is sent, neither a retry nor a later
   part, and the attempt is stale, also when a request failed meanwhile.
 - When the line edits fail after the item changes were published and before
@@ -368,10 +369,10 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
     """Plan and send a batch's requests without the layer lease; its checked answers.
 
     `batch` is a list that gets the batch once it is planned, so that a failure can name its turns. Before each
-    token count, each request and each further attempt of a request the run's conditions are read again and the
-    fence is compared under the layer lease; once the project is off, consent or the key is gone, or a forget, an
-    undo or a tombstone has moved the fence, nothing more is sent and `_Moved` makes the attempt stale, as it
-    does a request that failed meanwhile.
+    token count, each request and each further attempt of a request the run's conditions are read again, both
+    before and after the fence is compared under the layer lease, which may wait for it; once the project is off,
+    consent or the key is gone, or a forget, an undo or a tombstone has moved the fence, nothing more is sent and
+    `_Moved` makes the attempt stale, as it does a request that failed meanwhile.
     """
     layer, sessions, stored, progress = found
     schema, document = curator_answers.schema(), copy.deepcopy(settings.document)
@@ -381,7 +382,8 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
         memory.check(deadline, (owner,))
 
     def still():
-        return _gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline, expected)
+        return (_gate(memory, project, deadline)[0] is None and _unmoved(memory, root, deadline, expected)
+                and _gate(memory, project, deadline)[0] is None)
 
     def count(source):
         _left(deadline)
