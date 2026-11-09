@@ -6,19 +6,24 @@ that are still current, oldest pin first, and the current state's lines that
 the validity view keeps (TBL-013), within the start hook's deadline. It reads
 without the layer lease and writes nothing to the curated layer, and of the
 item files it reads only those that the summary needs: the pinned items, the
-items that decision lines cite and the two items of a conflict candidate. The
-one lease it takes is the notice-counter lease (TBL-010): once the conflict
-line fits among the notices, it reserves one showing of the oldest eligible
-candidate, within a quarter of a second, and a reservation that fails leaves
-the line out and counts nothing.
+items that decision lines cite and the two items of a conflict candidate. A
+file that another process is replacing on Windows is read again within the
+deadline. The one lease it takes is the notice-counter lease (TBL-010): once
+the conflict line fits among the notices, it reserves one showing of the
+oldest eligible candidate, within a quarter of a second. A reservation that
+fails leaves the line out and counts nothing, unless it failed after its move,
+which uses up that showing as a stop before the output does; one that holds
+goes out with the summary, also when the deadline passes while the summary is
+built.
 
 When the deadline passes, the memory part is the one line `Memory could not
 be read in time.`, and when anything else fails it is the line about an
 internal error, with the error for the hook's failure log; neither deletes a
-notice or writes the injection log. `after` is step 7: it deletes each stored
-notice that the summary showed, unless a later notice of the same name
-replaced it meanwhile, and appends the start's line to the session's injection
-log (TBL-011).
+notice or writes the injection log. `after` is step 7: under the project's
+layer lease, which every notice writer holds, it deletes each stored notice
+that the summary showed, unless a later notice of the same name replaced it
+meanwhile, and appends the start's line to the session's injection log
+(TBL-011).
 
 Nothing calls this module before the 0.3.0 activation, when the start hook
 uses it for format-2 stores; until then the installed start hook keeps C1
@@ -42,6 +47,7 @@ TITLE_BYTES = 40
 RESERVE_SECONDS = 0.25  # the conflict reservation: its wait for the notice-counter lease and its write
 STEP_SECONDS = 1.0   # step 7's reads and deletions, after the summary is printed
 TIMEOUT = Notice('unreadable', 'Memory could not be read in time.')
+_read = files.fence_read  # reads without a lease: again on a Windows sharing violation, until the deadline
 INTERNAL = start_memory.unreadable('an internal memory error occurred')
 STOPPED = ('Curation is stopped for this project after three failed attempts in a row (%s). '
            'The memory status can resume it.')
@@ -116,7 +122,9 @@ def compose(memory, project, base_text, deadline, *, settings=None, environment=
                 else:
                     reserved = candidate
         summary = start_memory.build_summary(base_text, notices, pins, lines, zone=zone)
-        memory.check(deadline)
+        # A reserved showing is used up, so it goes out even when the deadline passed while the summary was
+        # built; the store is still checked.
+        memory.check(deadline if reserved is None else max(deadline, clock.now() + RESERVE_SECONDS))
         shown = start_memory.fitting(notices)[0]
         kept = tuple((path, data) for notice, path, data in stored if any(notice is value for value in shown))
         return Part(summary.text, 'ok', summary.pins, kept, reserved)
@@ -129,23 +137,38 @@ def compose(memory, project, base_text, deadline, *, settings=None, environment=
 def after(memory, project, part, host, session, *, when=None):
     """API-001 step 7, once the summary is printed.
 
-    Only a memory part that was composed counts. A stored notice is deleted
+    Only a memory part that was composed counts. The stored notices shown are
+    deleted under the project's layer lease, which every notice writer holds,
+    so that no notice is written between the reading and the deletion of its
+    file; the lease and the deletions get the step's one second, and a lease
+    that stays busy leaves them all for the next start. A notice is deleted
     only while it holds the bytes that were shown, so that a later notice of
-    the same name stays for the next start; the injection log takes the start's
-    line with the pinned items shown (TBL-011).
+    the same name stays for the next start. The lease goes before the injection
+    log takes the start's line with the pinned items shown (TBL-011).
     """
     if part.outcome != 'ok':
         return After(0, False, ())
     deleted, errors = 0, []
-    deadline = clock.now() + STEP_SECONDS
-    for path, data in part.shown:
+    if part.shown:
+        root = memory.folder / 'projects' / base.project_folder_name(project)
+        deadline = clock.now() + STEP_SECONDS
         try:
-            if files._retry(lambda: memory.fence.read(path, deadline), deadline) != data:
-                continue
-            files._unlink(path, lambda: memory.fence.check(path))
-            deleted += 1
-        except FileNotFoundError:
-            continue
+            with memory.lease(root / 'layer.lock', 'layer', deadline, 'summary', acquire_deadline=deadline):
+                for path, data in part.shown:
+                    def check(path=path):
+                        memory.check(deadline, memory.held)
+                        memory.fence.check(path)
+                    try:
+                        if _read(memory, path, deadline) != data:
+                            continue
+                        files._unlink(path, check)
+                        deleted += 1
+                    except FileNotFoundError:
+                        continue
+                    except (OSError, ValueError) as error:
+                        errors.append(error)
+        except locks.LockBusy:
+            pass  # the notices not deleted yet are shown again at the next start
         except (OSError, RuntimeError, ValueError) as error:
             errors.append(error)
     try:
@@ -168,7 +191,7 @@ def _lasting(memory, root, settings, deadline, environment, now, zone):
     for provider, text in WAITS:
         if presence[provider] != 'present':
             notices.append(Notice('key', ' '.join([text, KEYS] + scrub)))
-    soon = _retention(memory, root, settings, now, zone)
+    soon = _retention(memory, root, settings, deadline, now, zone)
     if soon is not None:
         notices.append(soon)
     if settings.values.get('temporary'):
@@ -176,11 +199,12 @@ def _lasting(memory, root, settings, deadline, environment, now, zone):
     return notices
 
 
-def _retention(memory, root, settings, now, zone):
+def _retention(memory, root, settings, deadline, now, zone):
     """The unprocessed turns that retention deletes within 7 days, and the first local date (SPEC-009)."""
     period = timedelta(days=settings.values['retention']['days'])
     now = datetime.now(timezone.utc) if now is None else now
-    ends = sorted(at + period for at in curation_triggers.turns(memory, root).values() if at + period - WEEK <= now)
+    ends = sorted(at + period for at in curation_triggers.turns(memory, root, deadline).values()
+                  if at + period - WEEK <= now)
     if not ends:
         return None
     return Notice('retention', RETENTION % (len(ends), max(ends[0], now).astimezone(zone).date().isoformat()))
@@ -202,7 +226,7 @@ def _stored(memory, root, deadline):
             continue
         path = folder / name
         try:
-            data = memory.fence.read(path, deadline)
+            data = _read(memory, path, deadline)
         except FileNotFoundError:
             continue
         try:
@@ -252,7 +276,7 @@ def _layer(memory, root, deadline):
 
     def read(name):
         try:
-            return memory.fence.read(folder / name, deadline)
+            return _read(memory, folder / name, deadline)
         except FileNotFoundError:
             return EMPTY[name]
 
@@ -265,7 +289,7 @@ def _layer(memory, root, deadline):
             return None
         if item not in cache:
             try:
-                value = item_types.parse_item(memory.fence.read(folder / 'items' / (item + '.json'), deadline))
+                value = item_types.parse_item(_read(memory, folder / 'items' / (item + '.json'), deadline))
             except FileNotFoundError:
                 value = None
             if value is not None and value['id'] != item:
@@ -313,7 +337,7 @@ def _tombstones(memory, folder, project, deadline):
     for item, found in sorted(names.items()):
         for name in sorted(found):
             try:
-                data = memory.fence.read(path / name, deadline)
+                data = _read(memory, path / name, deadline)
             except FileNotFoundError:
                 continue
             private.update(history_recovery._tombstone(data, item, project))

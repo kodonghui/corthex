@@ -19,7 +19,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, diagnostics, forget_effects, format2, history_recovery, index_io, item_types,
+from memory_lib import (clock, diagnostics, files, forget_effects, format2, history_recovery, index_io, item_types,
                         raw_log, state_types)
 from memory_lib.c2_store import C2Store
 from test_memory_curator_answers import answer, change, quote
@@ -178,6 +178,81 @@ class ForgetEffectsTest(ForgetStore, unittest.TestCase):
             child.communicate('\n', timeout=30)
         self.assertEqual((child.returncode, done['code']), (0, 'ok'))
         self.assertEqual(self.holding(), [])
+
+    def test_a_raw_log_whose_file_is_missing_is_read_from_its_backup_then_restored_and_filled(self):
+        gone = self.item(1, self.span(SECRET, self.private), source=self.private)
+        stay = self.item(2, self.span(HOOKS, self.private), source=self.private)
+        self.fixture.layer(items=[gone, stay])
+        path = self.root / 'raw' / (self.log + '.jsonl')
+        backup = path.with_name(path.name + '.bak')
+        os.replace(str(path), str(backup))
+        preview = self.command(gone['id'])
+        self.assertEqual(preview['data']['raw'], [{'entry': self.private['id'], 'log': self.log,
+                                                   'forgotten': [list(self.span(SECRET, self.private))],
+                                                   'kept': []}])
+        # The preview restores nothing.
+        self.assertEqual((path.exists(), backup.exists()), (False, True))
+        done = self.command(gone['id'], code=preview['confirm'])
+        self.assertEqual((done['code'], done['data']['raw']), ('ok', preview['data']['raw']))
+        self.assertFalse(backup.exists())
+        entry = self.entry(self.private['id'])
+        start, end = self.span(SECRET, self.private)
+        self.assertEqual((entry['forgotten'], entry['text'][start:end]), ([[start, end]], '�' * (end - start)))
+        self.assertEqual(self.holding(), [])
+
+    def stale_copies(self, cited):
+        """A forget while the state and the item list have the backup and temporary copies that stopped writes left."""
+        gone = self.item(1, self.span(SECRET, self.private), kind='reference', title='Zebra orchid phrase',
+                         source=self.private)
+        stay = self.item(2, self.span(HOOKS, self.private), source=self.private)
+        private = line(1, 'progress', 'The zebra orchid phrase stays private.', [gone['id']])
+        kept = line(2, 'decisions', 'The hooks stay in one script.', [stay['id']])
+        self.fixture.layer(items=[gone, stay], lines=[private, kept] if cited else [kept])
+        layer = self.root / 'layer'
+        state = state_types.state_bytes({'lines': [private, kept]})
+        copies = {'state.json.bak': state, 'state.json.abcd1234.tmp': state, 'state.json.bak.efgh_678.tmp': state,
+                  'item-list.txt.ijkl9012.tmp': (layer / 'item-list.txt').read_bytes()}
+        for name, data in copies.items():
+            (layer / name).write_bytes(data)
+        self.assertEqual(self.holding(), sorted(
+            ['projects/sample/layer/' + name for name in list(copies) + ['item-list.txt', 'items/%s.json' % gone['id']]]
+            + ['projects/sample/layer/state.json'] * cited + ['projects/sample/raw/%s.jsonl' % self.log]))
+        _, done = self.forget(gone['id'])
+        self.assertEqual(done['code'], 'ok')
+        self.assertFalse(any((layer / name).exists() for name in copies))
+        self.assertEqual(self.fixture.lines(), [kept])
+        self.assertEqual(self.holding(), [])
+
+    def test_copies_of_the_state_and_the_item_list_that_a_stopped_write_left_go(self):
+        self.stale_copies(cited=True)
+
+    def test_copies_of_the_state_go_also_when_no_current_line_cites_the_item(self):
+        # The copies alone hold the line that cited the item, which a curation removed before it stopped.
+        self.stale_copies(cited=False)
+
+    def copy_stays(self, name, source):
+        """A forget whose removal of one leftover copy does nothing stops before it reports success."""
+        gone = self.item(1, self.span(SECRET, self.private), source=self.private)
+        self.fixture.layer(items=[gone])
+        copy = self.root / name
+        copy.write_bytes((self.root / source).read_bytes())
+        preview = self.command(gone['id'])
+        unlink = files._unlink
+
+        def keep(path, check=None):
+            if path != copy:
+                unlink(path, check)
+        with mock.patch.object(files, '_unlink', keep):
+            with self.assertRaises(forget_effects.Unverified):
+                self.command(gone['id'], code=preview['confirm'])
+        self.assertTrue(copy.exists())
+        self.assertTrue((self.root / 'layer/tombstones' / (gone['id'] + '.json')).exists())
+
+    def test_a_copy_of_the_state_that_stays_stops_the_forget(self):
+        self.copy_stays('layer/state.json.abcd1234.tmp', 'layer/state.json')
+
+    def test_a_copy_of_a_raw_log_that_stays_stops_the_forget(self):
+        self.copy_stays('raw/%s.jsonl.abcd1234.tmp' % self.log, 'raw/%s.jsonl' % self.log)
 
     # TC-236
 

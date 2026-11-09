@@ -88,9 +88,10 @@ class RecallTest(unittest.TestCase):
     def settings(self):
         return self.memory.configuration(deadline=clock.now() + 10)
 
-    def rank(self, prompt='Which hooks does memory keep?', vector=PROMPT, seconds=10, session=SESSION):
+    def rank(self, prompt='Which hooks does memory keep?', vector=PROMPT, seconds=10, session=SESSION, settings=None):
+        settings = self.settings() if settings is None else settings
         return recall.rank(self.memory, 'sample', HOST, session, prompt, vector, clock.now() + seconds,
-                           settings=self.settings(), zone=UTC)
+                           settings=settings, zone=UTC)
 
     def log(self, where, items=(), session=SESSION, **fields):
         self.assertTrue(injection_log.append(self.memory, 'sample', HOST, session, where, list(items), **fields))
@@ -426,8 +427,142 @@ class RecallTest(unittest.TestCase):
 
         with mock.patch.object(recall, '_read', locked), self.assertRaises(sqlite3.OperationalError):
             self.rank()
-        with mock.patch.object(recall, '_read', lambda *args: locked(wait=0.2)):
-            self.assertEqual(self.rank(seconds=0.1), recall.Recall('late'))
+        passed = mock.Mock(now=lambda: float('inf'))  # recall's own clock, past any deadline
+        with mock.patch.object(recall, '_read', locked), mock.patch.object(recall, 'clock', passed):
+            self.assertEqual(self.rank(), recall.Recall('late'))
+
+        # Another error of SQLite, such as a disk's, is a failure, also once the deadline has passed.
+        def broken(*args):
+            raise sqlite3.OperationalError('disk I/O error')
+        with mock.patch.object(recall, '_read', broken), mock.patch.object(recall, 'clock', passed), \
+                self.assertRaises(sqlite3.OperationalError):
+            self.rank()
+
+        # The same through the read itself: a disk error in the index's check fails recall after the deadline too,
+        # while an index file that is not a database is like a missing one.
+        opened = index_io.open_index
+
+        class Failing:
+            """The index's connection, whose check meets a disk error."""
+            def __init__(self, connection):
+                self.connection = connection
+
+            def execute(self, sql, *args):
+                if sql == 'SELECT name, value FROM index_meta':
+                    raise sqlite3.OperationalError('disk I/O error')
+                return self.connection.execute(sql, *args)
+
+            def __getattr__(self, name):
+                return getattr(self.connection, name)
+        def failing(*args, **kwargs):
+            return Failing(opened(*args, **kwargs))
+        with mock.patch.object(recall.index_io, 'open_index', failing), mock.patch.object(recall, 'clock', passed), \
+                self.assertRaises(sqlite3.OperationalError):
+            self.rank()
+        (self.root / 'index.db').write_bytes(b'not an index\n' * 512)
+        self.assertEqual(self.rank(), recall.Recall('no-index'))
+
+    def test_the_index_check_and_its_rows_come_from_one_read_that_waits_only_for_the_time_left(self):
+        kept = self.store((self.item('Kept'), toward(0.9)))[0]
+        state, opened, opens, waits = index_io.state, index_io.open_index, [], []
+
+        def opening(*args, **kwargs):
+            opens.append(kwargs.get('timeout'))
+            return opened(*args, **kwargs)
+
+        def changed(connection, **kwargs):
+            """The index's check, after which a writer takes the built mark and the item's vector away."""
+            waits.append(connection.execute('PRAGMA busy_timeout').fetchone()[0])
+            found = state(connection, **kwargs)
+            writer = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None)
+            try:
+                writer.execute('BEGIN IMMEDIATE')
+                writer.execute("DELETE FROM index_meta WHERE name = 'built'")
+                writer.execute('DELETE FROM index_vectors WHERE item = ?', (kept['id'],))
+                writer.execute('COMMIT')
+            finally:
+                writer.close()
+            return found
+        settings, deadline = self.settings(), float(2 ** 40)  # far ahead, and exact with 1.5 seconds taken away
+        left = mock.Mock(now=lambda: deadline - 1.5)  # recall's clock: 1.5 seconds before the deadline
+        with mock.patch.object(recall.index_io, 'open_index', opening), \
+                mock.patch.object(recall.index_io, 'state', changed), mock.patch.object(recall, 'clock', left):
+            found = recall.rank(self.memory, 'sample', HOST, SESSION, 'Which hooks does memory keep?', PROMPT,
+                                deadline, settings=settings, zone=UTC)
+        # The rows are the index as its check found it, not the writer's later one ...
+        self.assertEqual(found.items, (kept['id'],))
+        # ... opening waits for nothing, and the read may wait for a lock for the time left and the margin.
+        self.assertEqual((opens, waits), ([0], [int((1.5 + recall.LOCK_MARGIN) * 1000)]))
+        # The next read finds the mark gone.
+        self.assertEqual(self.rank(), recall.Recall('no-index'))
+
+    def test_damage_that_the_check_finds_is_no_index_and_a_damaged_page_fails_the_read_that_meets_it(self):
+        self.store((self.item('Kept'), toward(0.9)))
+        path = self.root / 'index.db'
+
+        def check(reader):
+            connection = index_io.connect(path)
+            try:
+                return index_io.state(connection, model=MODEL, dims=DIMS, reader=reader)
+            finally:
+                connection.close()
+        # A value of index_meta that is not UTF-8, which the sqlite3 module refuses with an operational error.
+        connection = index_io.connect(path)
+        try:
+            words = connection.execute("SELECT value FROM index_meta WHERE name = 'words'").fetchone()[0]
+            connection.execute("UPDATE index_meta SET value = CAST(x'ff' AS TEXT) WHERE name = 'words'")
+        finally:
+            connection.close()
+        self.assertEqual((check(False), check(True)), ('malformed', 'malformed'))
+        self.assertEqual(self.rank(), recall.Recall('no-index'))
+        connection = index_io.connect(path)
+        try:
+            connection.execute("UPDATE index_meta SET value = ? WHERE name = 'words'", (words,))
+            page = connection.execute('PRAGMA page_size').fetchone()[0]
+            root = connection.execute("SELECT rootpage FROM sqlite_master WHERE name = 'index_vectors'").fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual((check(False), check(True)), (None, None))
+        # A damaged page of the vectors: the writer's check reads every page, the reader's leaves them to its read.
+        with open(str(path), 'r+b') as handle:
+            handle.seek((root - 1) * page)
+            handle.write(b'\xff' * page)
+        self.assertEqual((check(False), check(True)), ('malformed', None))
+        with self.assertRaises(sqlite3.DatabaseError):
+            self.rank()
+
+    def test_files_that_another_process_is_replacing_on_windows_are_read_again_within_the_deadline(self):
+        shown, kept = self.store((self.item('Shown'), toward(0.9)), (self.item('Kept'), toward(0.8)))
+        self.log('start', [shown['id']])
+        settings, read, refused = self.settings(), self.memory.fence.read, []
+
+        def sharing(path, deadline):
+            """Windows refuses the first read of each file, as while another process's move replaces it."""
+            if path not in refused:
+                refused.append(path)
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(recall.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=sharing):
+            self.assertEqual(self.rank(settings=settings).items, (kept['id'],))
+        self.assertTrue({self.root / 'injections' / (raw_log.log_name(HOST, SESSION) + '.jsonl'),
+                         self.root / 'layer/items' / (kept['id'] + '.json')} <= set(refused), refused)
+
+        # A file still being replaced when the deadline passes makes recall late, not a failure.
+        def replacing(path, deadline):
+            if path.name == kept['id'] + '.json':
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(recall.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=replacing):
+            self.assertEqual(self.rank(seconds=0.5, settings=settings), recall.Recall('late'))
+        # Elsewhere than on Windows, the refusal is a failure, also once the deadline has passed (the reads' clock).
+        for now in (time.perf_counter, lambda: float('inf')):
+            with self.subTest(passed=now() == float('inf')), mock.patch.object(recall.files, '_WINDOWS', False), \
+                    mock.patch.object(recall.files, 'clock', mock.Mock(now=now)), \
+                    mock.patch.object(self.memory.fence, 'read', side_effect=replacing), \
+                    self.assertRaises(PermissionError):
+                self.rank(settings=settings)
 
     def test_a_bad_prompt_vector_is_refused_and_bad_item_vectors_take_no_part(self):
         good, short, zero = self.store((self.item('Good'), toward(0.5)), (self.item('Short'), None),

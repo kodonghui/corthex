@@ -8,7 +8,8 @@ must hold `dims` finite numbers and have a length above 0, else `bad-vector`;
 it is scaled to length 1 and returned as float32 little-endian bytes
 (TBL-021). Every attempt adds one usage line with the prompt tokens that the
 answer reports. Only item embeddings (API-011) try a passing failure again,
-twice, as the curator does; a prompt's embedding ends at its hook's deadline.
+twice, as the curator does, and only while the caller's `still` says that the
+texts may still be sent; a prompt's embedding ends at its hook's deadline.
 No hook, worker or command calls this module yet.
 """
 import copy
@@ -105,10 +106,17 @@ def vectors(text, count, dims):
     return tuple(found[index] for index in range(count)), tokens
 
 
-def embed(memory, *, project, call, texts, config, check, deadline):
-    """Embed one request's texts; `deadline` is the caller's, the hook's for a prompt."""
+def embed(memory, *, project, call, texts, config, check, deadline, still=None):
+    """Embed one request's texts; `deadline` is the caller's, the hook's for a prompt.
+
+    `still`, when given, is asked before each attempt after the first whether
+    the texts may still be sent; when it says no, the request is not tried
+    again and keeps its last failure.
+    """
     if not callable(check):
         raise TypeError('original memory client check required')
+    if still is not None and not callable(still):
+        raise TypeError('invalid memory embedding recheck')
     if call not in LIMITS:
         raise ValueError('invalid memory embedding call')
     begun = clock.now()
@@ -135,6 +143,8 @@ def embed(memory, *, project, call, texts, config, check, deadline):
     count, logged, result, failure = 0, [0], (), model_access.classify('openai', reason='timeout')
     while count < 3:
         model_client._verify(check)
+        if count and still is not None and not still():
+            break
         now = clock.now()
         until = deadline if limit is None else min(deadline, now + limit)
         if now >= until:

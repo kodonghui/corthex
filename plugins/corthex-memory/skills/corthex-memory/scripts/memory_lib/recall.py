@@ -15,8 +15,10 @@ of the whole block is under 600 tokens.
 
 It reads the index, the injection log and the item files without a lease, as
 stage 05 lets a reader, and writes nothing: the prompt hook prints the block
-and appends the injection log line (TASK-094). Nothing calls this module
-before the 0.3.0 activation.
+and appends the injection log line (TASK-094). The index's check and its rows
+come from one read, and a file that another process is replacing on Windows
+is read again within the deadline, as the start summary reads. Nothing calls
+this module before the 0.3.0 activation.
 """
 from collections import Counter
 from dataclasses import dataclass
@@ -26,10 +28,10 @@ import sqlite3
 import struct
 import unicodedata
 
-from . import base, clock, index_io, injection_log, item_types, locks, raw_log, request_budget, start_memory
+from . import base, clock, files, index_io, injection_log, item_types, locks, raw_log, request_budget, start_memory
 
 BOOST = 0.1        # the most that the prompt's identifiers add to a score
-ITEMS = 5          # the most items that one prompt injects, and the candidates of its line
+ITEMS = injection_log.CANDIDATES  # the most items that one prompt injects, and the candidates of its line
 TOKENS = 600       # the block's safe estimate stays under this
 PROMPTS = 3        # the last prompts of the session whose injected items are left out
 TERMS = 500        # identifiers per query, under SQLite's oldest limit of 999 variables
@@ -75,13 +77,10 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
     point = _point(vector, dims)
     root = memory.folder / 'projects' / base.project_folder_name(project)
     try:
-        connection = _index(memory, root, model, dims, deadline)
-        if connection is None:
+        read = _index(memory, root, model, dims, deadline, lambda connection: _rows(connection, prompt))
+        if read is None:
             return Recall('no-index')
-        try:
-            rows, hits, identifiers = _read(connection, prompt)
-        finally:
-            connection.close()
+        rows, hits, identifiers = read
         excluded = _excluded(memory, root, host, session, deadline)
         scored = _scores(rows, hits, identifiers, point, dims, excluded, deadline)
         candidates = _candidates(memory, root / 'layer', scored, deadline, zone)
@@ -91,9 +90,8 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
         memory.check(deadline)
     except locks.LockBusy:
         return Recall('late')
-    except sqlite3.OperationalError:
-        # SQLite stopped waiting for another connection's lock, which it does just after the deadline.
-        if clock.now() < deadline:
+    except sqlite3.OperationalError as error:
+        if not _late(error, deadline):
             raise
         return Recall('late')
     shown = tuple((item, score) for item, score, _ in candidates)
@@ -108,35 +106,33 @@ def ready(memory, project, deadline, *, settings=None):
 
     The prompt hook asks before it embeds the prompt, so that nothing is sent
     for a project without a curated layer or a usable index, or whose memory
-    is being deleted. It reads as `rank` does and writes nothing.
+    is being deleted. It checks the index in one read as `rank` does, with the
+    same outcomes for a lock and SQLite's other errors, and writes nothing.
     """
     settings = memory.config if settings is None else settings
     model, dims = settings.values['models']['embedding'], settings.values['models']['dims']
     root = memory.folder / 'projects' / base.project_folder_name(project)
     try:
-        connection = _index(memory, root, model, dims, deadline)
+        found = _index(memory, root, model, dims, deadline, lambda connection: True)
     except locks.LockBusy:
         return 'late'
-    except sqlite3.OperationalError:
-        if clock.now() < deadline:
+    except sqlite3.OperationalError as error:
+        if not _late(error, deadline):
             raise
         return 'late'
-    if connection is None:
-        return 'no-index'
-    connection.close()
-    return None
+    return None if found else 'no-index'
 
 
-def _index(memory, root, model, dims, deadline):
-    """The project's index, open, when it has a curated layer, is not being deleted and its index fits, else None."""
+def _index(memory, root, model, dims, deadline, then):
+    """`_read`'s result when the project has a curated layer and its memory is not being deleted, else None."""
     memory.check(deadline)
     folder = root / 'layer'
     if memory.fence.check(folder) is None or _deleted(folder):
         return None
-    connection = _open(memory, root, model, dims, deadline)
-    if connection is None:
+    found = _read(memory, root, model, dims, deadline, then)
+    if found is None:
         memory.check(deadline)
-    return connection
+    return found
 
 
 def _point(vector, dims):
@@ -155,41 +151,69 @@ def _deleted(folder):
     return any(name == 'deleted.json' or name.startswith('deleted.json.') for name in os.listdir(str(folder)))
 
 
-def _open(memory, root, model, dims, deadline):
-    """The index when it is built with the configuration's model and vector length, else None.
+def _late(error, deadline):
+    """Whether an SQLite error makes the outcome `late`: SQLite stopped waiting for another connection's lock, which
+    it does just after the deadline. Any other error, such as a disk's, is a failure even then."""
+    return clock.now() >= deadline and _locked(error)
 
-    SQLite waits for another connection's lock until just after the deadline
-    (it counts whole milliseconds), so that a lock that outlasts the deadline
-    makes the outcome `late`; an index that cannot be read is like a missing one.
+
+def _locked(error):
+    """Whether SQLite stopped waiting for another connection's lock (SQLITE_BUSY).
+
+    Python 3.11 and later give the error's code; before, its message tells.
+    """
+    code = getattr(error, 'sqlite_errorcode', None)
+    if code is not None:
+        return code & 0xff == 5
+    return str(error).startswith('database is locked')
+
+
+def _wait(deadline):
+    """Seconds that SQLite may wait for another connection's lock: until just after the deadline."""
+    return max(0.0, deadline - clock.now()) + LOCK_MARGIN
+
+
+def _read(memory, root, model, dims, deadline, then):
+    """`then(connection)` in one read of the index after its check; None when the index is missing, cannot be read,
+    or is not built with the configuration's model and vector length.
+
+    The check and what `then` reads come from the same read, so that a writer
+    that commits in between, taking the `built` mark away, is not seen. Only
+    the read's first statement waits for another connection's lock, and only
+    until just after the deadline (SQLite counts whole milliseconds), so that a
+    lock that outlasts the deadline makes the outcome `late`. An index that
+    cannot be opened, or that the check finds not to be a database or damaged,
+    is like a missing one; SQLite's other errors, such as a disk's or a damaged
+    page that the check does not read, propagate. Closing the connection ends
+    the read, so that no statement runs after an error.
     """
     try:
-        connection = index_io.open_index(memory, root, timeout=max(0.0, deadline - clock.now()) + LOCK_MARGIN)
+        connection = index_io.open_index(memory, root, timeout=0)  # opening reads nothing; the read sets the wait
     except (sqlite3.DatabaseError, index_io.IndexUnavailable):
         return None
     if connection is None:
         return None
-    if index_io.state(connection, model=model, dims=dims, pages=False) is not None:
+    try:
+        connection.execute('PRAGMA busy_timeout = %d' % int(_wait(deadline) * 1000))
+        connection.execute('BEGIN')
+        if index_io.state(connection, model=model, dims=dims, reader=True) is not None:
+            return None
+        return then(connection)
+    finally:
         connection.close()
-        return None
-    return connection
 
 
-def _read(connection, prompt):
-    """In one read: (item, vector) of every current item with a vector, and the prompt's identifiers each holds."""
+def _rows(connection, prompt):
+    """(item, vector) of every current item with a vector, the prompt's identifiers that each holds, and those."""
     identifiers = sorted(set(index_io.identifiers(prompt)))
     hits = Counter()
-    connection.execute('BEGIN')
-    try:
-        rows = connection.execute(
-            "SELECT index_vectors.item, index_vectors.vector FROM index_vectors JOIN index_items "
-            "ON index_items.item = index_vectors.item WHERE index_items.status = 'current'").fetchall()
-        for start in range(0, len(identifiers), TERMS):
-            chunk = identifiers[start:start + TERMS]
-            hits.update(item for (item,) in connection.execute(
-                'SELECT item FROM index_terms WHERE term IN (%s)' % ', '.join('?' * len(chunk)), chunk))
-    finally:
-        if connection.in_transaction:
-            connection.execute('COMMIT')
+    rows = connection.execute(
+        "SELECT index_vectors.item, index_vectors.vector FROM index_vectors JOIN index_items "
+        "ON index_items.item = index_vectors.item WHERE index_items.status = 'current'").fetchall()
+    for start in range(0, len(identifiers), TERMS):
+        chunk = identifiers[start:start + TERMS]
+        hits.update(item for (item,) in connection.execute(
+            'SELECT item FROM index_terms WHERE term IN (%s)' % ', '.join('?' * len(chunk)), chunk))
     return rows, hits, identifiers
 
 
@@ -203,7 +227,7 @@ def _excluded(memory, root, host, session, deadline):
     data = b''
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            data = memory.fence.read(candidate, deadline)
+            data = files.fence_read(memory, candidate, deadline)
             break
         except FileNotFoundError:
             continue
@@ -263,7 +287,7 @@ def _candidates(memory, folder, scored, deadline, zone):
         if item in forgotten or not item_types.ITEM.fullmatch(item):
             continue
         try:
-            value = item_types.parse_item(memory.fence.read(folder / 'items' / (item + '.json'), deadline))
+            value = item_types.parse_item(files.fence_read(memory, folder / 'items' / (item + '.json'), deadline))
         except FileNotFoundError:
             continue
         if value['id'] != item:

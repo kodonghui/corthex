@@ -359,6 +359,18 @@ class SearchCommandTest(unittest.TestCase):
         self.assertEqual([line['item'] for line in found['data']['results']], expected)
         self.assertEqual(len(self.server.requests), 1)
 
+    def test_an_index_that_sqlite_cannot_read_searches_by_words_and_sends_nothing(self):
+        values, _ = self.four()
+        expected = self.ranked('raw logs device')
+        # The index's check meets a disk error, or a lock: the index is not ready, and the words come from the items.
+        for error in ('disk I/O error', 'database is locked'):
+            with self.subTest(error=error):
+                with mock.patch.object(index_io, 'state', side_effect=sqlite3.OperationalError(error)):
+                    found = self.search('raw logs device')
+                self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
+                self.assertEqual([line['item'] for line in found['data']['results']], expected)
+        self.assertEqual((self.server.requests, self.usage()), ([], []))
+
     def test_rows_of_forgotten_items_and_of_items_without_a_file_are_left_out(self):
         values, cosines = self.four()
         # The index still holds both rows: a stopped forget's tombstone, and an item whose file went.
