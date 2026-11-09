@@ -373,6 +373,26 @@ class IndexWorkerTest(unittest.TestCase):
         self.assertEqual(self.inputs()[1], [index_worker.text(items[0]), index_worker.text(items[2])])
         self.assertNotIn(forgotten['text'], json.dumps(self.server.requests[1:]))
 
+    def test_a_project_turned_off_during_a_request_sends_no_later_request(self):
+        items = self.made(101)
+        self.layer(items)
+        # Turning memory off takes only the store's lock, not the curation lease that the step holds.
+        self.server.before[0] = lambda: self.configure(enabled=False, models={'dims': DIMS})
+        outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_before_a_retry_sends_it_no_more(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.configure(consent=None, models={'dims': DIMS})
+        with self.quick() as waits:
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+
     def test_a_request_is_tried_again_when_the_fence_moved_and_its_items_did_not_change(self):
         items = sorted(self.made(2), key=lambda item: item['id'])
         self.layer(items)

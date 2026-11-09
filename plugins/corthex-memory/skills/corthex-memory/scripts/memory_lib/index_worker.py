@@ -21,7 +21,9 @@ and before each further attempt of one, the step takes it to read the curation
 record's fence again, and when a forget, an undo or a tombstone has moved it,
 it reads the items again. A request one of whose items is then gone, changed or
 private is not tried again, so an item forgotten before an attempt is never in
-it. A vector is written under the layer lease only while its item is still
+it. The step's conditions are read again before each request and each further
+attempt: once the project is off or consent is withdrawn, nothing more is sent,
+and the step ends with that reason. A vector is written under the layer lease only while its item is still
 current, unchanged and not private, and the index still has the embedding model
 and vector length that made it. A failed request is noted in the failure log
 with its code, and its items stay without a vector, found by words, until a
@@ -177,17 +179,21 @@ def _fresh(memory, root, deadline, items, expected):
     return items, proof
 
 
-def _again(memory, root, deadline, batch, expected):
+def _again(memory, project, root, deadline, batch, expected):
     """Asked before each further attempt of a request: whether every item of its batch may still be sent.
 
-    It compares the fence as `_fresh` does, against the proof that its last
-    comparison read, so that the batch is read again only when the fence has
-    moved since; a request one of whose items is gone, changed or private is
-    not tried again, and its items wait for a later step 6 (TC-140).
+    A request is not tried again once the step's conditions no longer hold, as
+    when the project was turned off meanwhile. Otherwise it compares the fence
+    as `_fresh` does, against the proof that its last comparison read, so that
+    the batch is read again only when the fence has moved since; a request one
+    of whose items is gone, changed or private is not tried again, and its
+    items wait for a later step 6 (TC-140).
     """
     proof = [expected]
 
     def still():
+        if _gate(memory, project, deadline)[0] is not None:
+            return False
         kept, proof[0] = _fresh(memory, root, deadline, batch, proof[0])
         return len(kept) == len(batch)
     return still
@@ -257,19 +263,26 @@ def keep(memory, project, owner, deadline, *, when=None):
         prepared = model_embed.prepare([text(item) for item in pending], credentials=credentials,
                                        environment=dict(os.environ))
         remaining = list(zip(pending, prepared))
-        while remaining:
+        while True:
+            # The step's conditions are read again before each request and at the end, so that a project turned
+            # off, or consent withdrawn, during a request sends nothing more and ends the step with its reason.
+            reason, _ = _gate(memory, project, deadline)
+            if reason is not None:
+                return end(reason)
+            if not remaining:
+                return end('done')
             curation_worker._left(deadline)
             kept, expected = _fresh(memory, root, deadline, [item for item, _ in remaining], expected)
             kept = {item['id'] for item in kept}
             remaining = [pair for pair in remaining if pair[0]['id'] in kept]
             if not remaining:
-                break
+                return end('done')
             _, stop = model_embed.batches([sent for _, sent in remaining])[0]
             batch, remaining = [item for item, _ in remaining[:stop]], remaining[stop:]
             result = model_embed.embed(memory, project=project, call='embed-items',
                                        texts=[text(item) for item in batch], config=settings.document,
                                        check=check, deadline=deadline - RESERVE,
-                                       still=_again(memory, root, deadline, batch, expected))
+                                       still=_again(memory, project, root, deadline, batch, expected))
             done['requests'] += 1
             failure = result.failure
             if failure is not None:
@@ -281,7 +294,6 @@ def keep(memory, project, owner, deadline, *, when=None):
                     raise locks.LockBusy()  # the run's own time ran out, not the request's
                 continue
             done['embedded'] += _store(memory, root, deadline, model, dims, batch, result.vectors)
-        return end('done')
     except locks.LostLock:
         memory.note(locks.LostLock(), step=step)
         return end('lost-lock')
