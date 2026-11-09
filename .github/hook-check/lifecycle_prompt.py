@@ -34,10 +34,10 @@ def start_path(output, event):
 
 def write_start(path, value, seconds=2):
     pending = path.with_suffix("." + uuid.uuid4().hex + ".tmp")
-    pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
-    # On Windows the prompt hook's read of the file refuses the replace for a moment (Access is denied).
-    deadline = time.monotonic() + seconds
     try:
+        pending.write_text(json.dumps(value) + "\n", encoding="utf-8")
+        # On Windows the prompt hook's read of the file refuses the replace for a moment (Access is denied).
+        deadline = time.monotonic() + seconds
         while True:
             try:
                 pending.replace(path)
@@ -47,8 +47,12 @@ def write_start(path, value, seconds=2):
                     raise
                 time.sleep(.025)
     finally:
-        # A replace that never succeeded leaves no temporary file in the folder that later steps read.
-        pending.unlink(missing_ok=True)
+        # A write or replace that failed leaves no temporary file in the folder that later steps read, and a
+        # removal that fails too leaves the first error to be raised.
+        try:
+            pending.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def wait_start_completed(output, event, generation, timeout=6):
