@@ -1,4 +1,4 @@
-"""Apply the checked changes of a curate-2 answer (SPEC-016, SPEC-143; TASK-086).
+"""Apply the checked changes of a curate answer (SPEC-016, SPEC-143; TASK-086).
 
 The changes come from `curator_answers.check_curate`, which already applied
 the quote check, the item limits and the speaker rules. Here, in the answer's

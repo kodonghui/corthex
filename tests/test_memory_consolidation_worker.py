@@ -19,8 +19,8 @@ from _common import ROOT
 SCRIPTS = ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'
 sys.path.insert(0, str(SCRIPTS))
 from memory_lib import (clock, commands, conflicts_command, consolidation_worker, curator_answers, curator_document,
-                        fence_plan, format2, history_io, item_io, item_types, locks, request_budget, revision_io,
-                        run_log, state_rewrite, state_types)
+                        fence_plan, format2, history_io, item_io, item_types, locks, model_prompts, request_budget,
+                        revision_io, run_log, state_rewrite, state_types)
 from memory_lib.c2_store import C2Store
 import test_memory_curation_worker as fixture
 from test_memory_curator_answers import answer as curate_answer
@@ -479,6 +479,39 @@ class ConsolidationWorkerTest(unittest.TestCase):
                                                  'dropped': 0, 'state': 'kept'})
         self.assertEqual((progress['applies'], self.runs()), (1, []))
 
+    # TASK-111: dead ends and the done condition (REQ-228)
+
+    def test_tc402_the_last_request_names_state_2_and_the_shorter_state_keeps_a_dead_end_and_the_done_condition(self):
+        value = self.item('decision', 'Keep raw logs on the device')
+        entry = value['quotes'][0]['entry']
+        dead = row('blockers', 0, 'Dead end: Polling the raw lock in a loop hangs on Windows.', [entry])
+        done = row('next', 0, 'Done when: the hook check passes on Windows.', [value])
+        step = row('next', 1, 'Write the hook check, then run it on a Windows runner.', [value])
+        self.layer([value], lines=[dead, done, step])
+        self.answering(last=shorter(blockers=[keeps(dead)],
+                                    next=[keeps(done), keeps(step, text='Write and run the hook check.')]))
+        self.assertEqual(self.consolidate().reason, 'done')
+        (_, body), = self.server.requests
+        sent = ET.fromstring(body['messages'][0]['content'])
+        self.assertEqual((sent.get('kind'), sent.get('instructions'), body['system']),
+                         ('state', 'state-2', model_prompts.PROMPTS['state-2']))
+        self.assertIn('`Done when:`', body['system'])
+        self.assertEqual([(line.get('id'), line.text) for line in sent.find('state')],
+                         [(dead['id'], dead['text']), (done['id'], done['text']), (step['id'], step['text'])])
+        lines = self.state()
+        self.assertEqual((lines[dead['id']], lines[done['id']]), (dead, done))
+        self.assertEqual(lines[step['id']]['text'], 'Write and run the hook check.')
+        self.assertEqual([used['instructions'] for used in self.usage()], ['state-2'])
+
+        # A week later, a last answer that does not fit its schema fails as bad-answer and keeps the state.
+        before = self.snapshot()['layer/state.json']
+        self.answering(last=fixture.stream({'state': 'none'}))
+        with self.quick():
+            outcome = self.consolidate(when=WHEN + timedelta(days=8))
+        self.assertEqual((outcome.reason, self.progress()['recent'][0]['error']), ('failed', 'bad-answer'))
+        self.assertEqual(self.snapshot()['layer/state.json'], before)
+        self.assertEqual({used['instructions'] for used in self.usage()}, {'state-2'})
+
     # SPEC-019: when it runs, and what it sends
 
     def test_tc188_consolidation_is_due_a_week_after_the_last_or_when_made_due(self):
@@ -633,7 +666,7 @@ class ConsolidationWorkerTest(unittest.TestCase):
         # Each request adds one usage line, and each count of a large part one more.
         rows = self.usage()
         self.assertEqual([row['instructions'] for row in rows if row['call'] == 'consolidate'],
-                         ['merge-2'] * len(merged) + ['state-1'])
+                         ['merge-2'] * len(merged) + ['state-2'])
         self.assertEqual(len([row for row in rows if row['call'] == 'count-tokens']), len(self.server.counts))
 
     # SPEC-018 and SPEC-012

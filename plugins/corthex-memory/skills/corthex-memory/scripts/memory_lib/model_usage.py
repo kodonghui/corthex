@@ -19,7 +19,8 @@ from . import base, clock, configuration, curation, files, history_recovery, loc
 _CALLS = frozenset('curate consolidate embed-prompt embed-items embed-search count-tokens'.split())
 _MODEL = re.compile(r'[a-z0-9][a-z0-9.-]{0,63}\Z')
 _REQUEST = re.compile(r'[A-Za-z0-9_-]{1,200}\Z')
-_INSTRUCTIONS = frozenset(('curate-1', 'curate-2', 'merge-1', 'merge-2', 'state-1'))
+# The versions that a usage line may name: those that the code sends (model_prompts) and the earlier ones.
+_INSTRUCTIONS = frozenset(('curate-1', 'curate-2', 'curate-3', 'merge-1', 'merge-2', 'state-1', 'state-2'))
 # A curate request's size, without any of its text (TASK-116): the turns it carries, how many parts its one
 # turn goes in when that turn is too large alone, its item list's form (API-006) and its working estimate.
 SIZE = ('turns', 'parts', 'list', 'estimate')

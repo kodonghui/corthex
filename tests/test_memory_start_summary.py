@@ -170,6 +170,20 @@ class StartSummaryTest(unittest.TestCase):
         self.assertLess(len(part.text.encode('utf-8')), 8000)
         self.assertEqual(json.dumps(part.text).count(self.environment['CORTHEX_MEMORY_ANTHROPIC_API_KEY']), 0)
 
+    def test_tc403_a_dead_end_and_the_done_condition_show_labelled_without_their_marker(self):
+        rule = self.item('Keep one script')
+        lines = [line('blockers', 1, 'Dead end: Polling the raw lock in a loop hangs on Windows.', [self.said['id']]),
+                 line('blockers', 2, 'Windows sharing.', [rule['id']]),
+                 line('next', 1, 'Done when: the hook check passes on Windows.', [rule['id']]),
+                 line('next', 2, 'Write the hook check.', [rule['id']])]
+        self.layer([rule], lines)
+        self.assertEqual(self.memory_part(self.start()).split('\n\n')[-1],
+                         'Current state:\n'
+                         '- Dead end: Polling the raw lock in a loop hangs on Windows.\n'
+                         '- Blocker: Windows sharing. (%s)\n'
+                         '- Done when: the hook check passes on Windows. (%s)\n'
+                         '- Next action: Write the hook check. (%s)' % (rule['id'], rule['id'], rule['id']))
+
     def test_a_pin_or_line_that_is_not_current_or_valid_is_not_shown(self):
         kept, old, new = self.item('Kept'), self.item('Old'), self.item('New')
         withdrawn, undone = self.item('Withdrawn', status='withdrawn'), self.item('Undone', status='undone')

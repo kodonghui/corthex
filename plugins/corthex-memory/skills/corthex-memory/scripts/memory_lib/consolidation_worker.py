@@ -9,10 +9,11 @@ or 7 days after the last consolidation ended or, before the first, after
 memory was last turned on for the project (the configuration's `since`).
 Unprocessed turns and a curation trigger are not needed. It sends the current
 items in groups by kind, in the order of stage 06's kinds, and a kind's items
-in parts by time, oldest first: each part is one merge-2 request, sized as
-API-009 sizes a curate request, with the open candidates whose two items it
-carries. Once every group has succeeded, the last request (state-1) sends the
-current state and the item list and asks for a shorter state.
+in parts by time, oldest first: each part is one merge request (merge-2),
+sized as API-009 sizes a curate request, with the open candidates whose two
+items it carries. Once every group has succeeded, the last request (state-2)
+sends the current state and the item list and asks for a shorter state that
+keeps its dead ends and its done condition (TASK-111).
 
 Each request is built under the layer lease from the layer as it then is.
 The lease is released while the request is counted and sent, so that a forget
@@ -60,8 +61,8 @@ from datetime import datetime, timedelta, timezone
 import json
 
 from . import (base, clock, conflict_plan, conflict_types, curator_answers, curator_document, curation_worker,
-               diagnostics, fence_plan, files, item_io, item_types, locks, model_client, model_count, request_budget,
-               request_inputs, revision_io, run_log, state_io, state_rewrite)
+               diagnostics, fence_plan, files, item_io, item_types, locks, model_client, model_count, model_prompts,
+               request_budget, request_inputs, revision_io, run_log, state_io, state_rewrite)
 
 GROUPS = ('decision', 'preference', 'lesson', 'reference', 'fact')  # stage 06's order of kinds
 WEEK = timedelta(days=7)
@@ -77,7 +78,7 @@ class Outcome:
     # deadline or error
     reason: str
     attempts: tuple   # the attempts that this run added to the record, oldest first
-    requests: int     # merge-2 and state-1 requests sent
+    requests: int     # merge and state requests sent
     applied: bool     # whether this run applied anything
 
 
@@ -401,13 +402,14 @@ def _merge(memory, project, root, owner, deadline, settings, when, group, run):
                 and curation_worker._gate(memory, project, deadline)[0] is None)
     try:
         part = request_budget.merge_part(pending, layer.candidates, group=group, schema=schema,
-                                         count=_counter(memory, project, owner, deadline, settings, 'merge-2', schema,
-                                                        still))
+                                         count=_counter(memory, project, owner, deadline, settings, model_prompts.MERGE,
+                                                        schema, still))
         if len(part.items) < 2:
             # Items too large to go two to a request have nothing to merge with.
             run.done.update(value['id'] for value in part.items)
             return 'ok'
-        answer = _send(memory, project, owner, deadline, settings, 'merge-2', part.source, schema, run, still)
+        answer = _send(memory, project, owner, deadline, settings, model_prompts.MERGE, part.source, schema, run,
+                       still)
         try:
             checked = curator_answers.check_merge(answer, items=part.items, device=memory.device, rules=schema)
         except ValueError:
@@ -480,7 +482,7 @@ def _shorten(memory, project, root, owner, deadline, settings, when, run):
         listed = request_budget.state_list(layer, schema)
         source = curator_document.shorten(lines=list(layer.lines), items=list(listed.items), form=listed.form,
                                           candidates=list(listed.candidates), omitted=listed.omitted)
-        sent = _send(memory, project, owner, deadline, settings, 'state-1', source, schema, run, still)
+        sent = _send(memory, project, owner, deadline, settings, model_prompts.STATE, source, schema, run, still)
         try:
             answer = curator_answers.decode(sent, schema)
         except ValueError:

@@ -4,7 +4,7 @@ import copy
 import os
 import time
 
-from . import clock, configuration, model_access, model_request, model_transport, model_usage, store
+from . import clock, configuration, model_access, model_prompts, model_request, model_transport, model_usage, store
 
 
 class MissingKey(ValueError):
@@ -60,7 +60,7 @@ def send(memory, *, project, instructions, source, schema, config, check, deadli
     config, schema = copy.deepcopy(config), copy.deepcopy(schema)
     settings = configuration.prepare(config, temporary=False).values
     if instructions not in model_request._KINDS:raise ValueError('invalid memory instructions')
-    call = 'curate' if instructions == 'curate-2' else 'consolidate'
+    call = 'curate' if instructions == model_prompts.CURATE else 'consolidate'
     size = model_usage._size(call, copy.deepcopy(size))
     endpoint_name = 'CORTHEX_MEMORY_ANTHROPIC_BASE_URL'
     original_endpoint = os.environ.get(endpoint_name)
