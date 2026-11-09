@@ -91,9 +91,7 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
     except locks.LockBusy:
         return Recall('late')
     except sqlite3.OperationalError as error:
-        # SQLite stopped waiting for another connection's lock, which it does just after the deadline;
-        # any other error, such as a disk's, is a failure even then.
-        if clock.now() < deadline or not _locked(error):
+        if not _late(error, deadline):
             raise
         return Recall('late')
     shown = tuple((item, score) for item, score, _ in candidates)
@@ -108,7 +106,8 @@ def ready(memory, project, deadline, *, settings=None):
 
     The prompt hook asks before it embeds the prompt, so that nothing is sent
     for a project without a curated layer or a usable index, or whose memory
-    is being deleted. It reads as `rank` does and writes nothing.
+    is being deleted. It checks the index in one read as `rank` does, with the
+    same outcomes for a lock and SQLite's other errors, and writes nothing.
     """
     settings = memory.config if settings is None else settings
     model, dims = settings.values['models']['embedding'], settings.values['models']['dims']
@@ -117,8 +116,8 @@ def ready(memory, project, deadline, *, settings=None):
         found = _index(memory, root, model, dims, deadline, lambda connection: True)
     except locks.LockBusy:
         return 'late'
-    except sqlite3.OperationalError:
-        if clock.now() < deadline:
+    except sqlite3.OperationalError as error:
+        if not _late(error, deadline):
             raise
         return 'late'
     return None if found else 'no-index'
@@ -150,6 +149,12 @@ def _point(vector, dims):
 def _deleted(folder):
     """Whether the project's memory is being deleted (TBL-017)."""
     return any(name == 'deleted.json' or name.startswith('deleted.json.') for name in os.listdir(str(folder)))
+
+
+def _late(error, deadline):
+    """Whether an SQLite error makes the outcome `late`: SQLite stopped waiting for another connection's lock, which
+    it does just after the deadline. Any other error, such as a disk's, is a failure even then."""
+    return clock.now() >= deadline and _locked(error)
 
 
 def _locked(error):
