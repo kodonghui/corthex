@@ -330,6 +330,38 @@ class PinCommandTest(PinStore, unittest.TestCase):
                          ('refused', 'pin-no-room', SAY['base'], []))
         self.assertEqual(self.tree(), before)
 
+    def test_the_line_that_says_how_many_state_lines_the_start_cuts_takes_room_too(self):
+        values = [self.long(number) for number in range(2)]
+        goal = start_fixture.line('goal', 0, 'Keep the pinned items in the start summary.', [self.said['id']])
+        self.fixture.layer(items=values, lines=[goal])
+        # A base that leaves room for both long pins, but not for them and the line that says the goal was cut.
+        room = memory_bytes(values) + 30
+        large = BASE + '\n\n' + ('The base is large. ' * 400)[:start_memory.SUMMARY_BYTES - 2 - room - len(BASE) - 2]
+        self.assertEqual(start_memory.SUMMARY_BYTES - len(large.encode('utf-8')) - 2, room)
+        self.assertEqual(start_memory.build_summary(large, (), values, ()).pins, tuple(v['id'] for v in values))
+        cut = start_memory.build_summary(large, (), values, [goal])
+        self.assertEqual(cut.pins, (values[1]['id'],))
+        self.assertIn('Left out for room: 1 current state lines and 1 pinned items.', cut.text)
+        found = [self.pin(value['id'], at=minute(number), base_text=large) for number, value in enumerate(values)]
+        self.assertEqual([value['code'] for value in found], ['ok', 'pin-no-room'])
+        self.assertEqual((found[1]['say'], found[1]['data']['pins']), (SAY['no-room'], [values[0]['id']]))
+        self.assertEqual([pin['item'] for pin in self.pins()], [values[0]['id']])
+        # The start that the first pin left shows it with the goal.
+        shown = start_memory.build_summary(large, (), values[:1], [goal])
+        self.assertEqual(shown.pins, (values[0]['id'],))
+        self.assertNotIn('Left out for room', shown.text)
+
+    def test_a_base_that_leaves_no_room_for_the_item_alone_says_so_while_other_items_are_pinned(self):
+        values = [self.long(number) for number in range(2)]
+        self.fixture.layer(items=values)
+        self.assertEqual(self.pin(values[0]['id'])['code'], 'ok')
+        full = BASE + '\n\n' + 'The base fills it. ' * 410
+        before = self.tree()
+        value = self.pin(values[1]['id'], at=AGAIN, base_text=full)
+        self.assertEqual((value['outcome'], value['code'], value['say'], value['data']['pins']),
+                         ('refused', 'pin-no-room', SAY['base'], [values[0]['id']]))
+        self.assertEqual(self.tree(), before)
+
     def test_notices_are_not_counted_and_a_start_that_shows_them_leaves_the_oldest_pin_out(self):
         values = [self.long(number) for number in range(14)]
         self.fixture.layer(items=values)
@@ -539,6 +571,17 @@ class PinCommandTest(PinStore, unittest.TestCase):
                     pin_command.pin(self.context('pin', value['id']), at=PINNED, base_text=BASE)
                 self.assertEqual(self.tree(), before)
                 path.write_bytes(good)
+        # Another pinned item's record that cannot be read fails an unpin before the revision or the pins change.
+        other = self.item('Also pinned')
+        self.fixture.layer(items=[value, other], pinned=[value['id'], other['id']])
+        record = self.root / 'layer/items' / (other['id'] + '.json')
+        record.write_bytes(b'{"id": ')
+        before = self.tree()
+        with self.assertRaises(files.RestoreNeeded):
+            pin_command.unpin(self.context('unpin', value['id']), at=UNPINNED)
+        self.assertEqual(self.tree(), before)
+        record.write_bytes(item_types.item_bytes(other))
+        path.write_bytes(good)
         target = self.fixture.folder / 'elsewhere.json'
         target.write_bytes(good)
         path.unlink()

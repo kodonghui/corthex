@@ -19,7 +19,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, commands, files, index_io, item_types, run_listing, search_command
+from memory_lib import clock, commands, files, index_io, item_types, recall, run_listing, search_command
 import test_memory_curation_worker as worker_fixture
 import test_memory_item_commands as item_fixture
 import test_memory_recall as recall_fixture
@@ -323,7 +323,9 @@ class SearchCommandTest(unittest.TestCase):
                                                              "WHERE name = 'words'")),
                  ('another version', lambda: self.meta('PRAGMA user_version = 1')),
                  ('damaged', lambda: (self.root / 'index.db').write_bytes(b'not an index')),
-                 ('missing', lambda: (self.root / 'index.db').unlink())]
+                 ('missing', lambda: (self.root / 'index.db').unlink()),
+                 # Built with the configured model and length, but step 6 has embedded no item yet.
+                 ('without a vector', lambda: self.meta('DELETE FROM index_vectors'))]
         for name, arrange in cases:
             with self.subTest(index=name):
                 self.configure(models={'dims': DIMS})
@@ -358,6 +360,19 @@ class SearchCommandTest(unittest.TestCase):
         self.assertEqual((found['data']['by'], found['data']['reason']), ('words', 'index-not-ready'))
         self.assertEqual([line['item'] for line in found['data']['results']], expected)
         self.assertEqual(len(self.server.requests), 1)
+
+    def test_the_look_at_the_index_before_the_request_waits_no_longer_than_the_lease(self):
+        self.four()
+        looked, real = [], recall._index
+
+        def look(memory, root, model, dims, deadline, then):
+            looked.append(deadline - clock.now())
+            return real(memory, root, model, dims, deadline, then)
+        with mock.patch.object(recall, '_index', side_effect=look):
+            found = self.search('raw logs device')
+        self.assertEqual(found['data']['by'], 'both')
+        self.assertEqual(len(looked), 1)
+        self.assertLessEqual(looked[0], search_command.WAIT)
 
     def test_an_index_that_sqlite_cannot_read_searches_by_words_and_sends_nothing(self):
         values, _ = self.four()

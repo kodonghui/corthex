@@ -389,7 +389,8 @@ class ItemCommandsTest(unittest.TestCase):
     def test_a_project_without_a_folder_or_being_deleted_opens_nothing(self):
         value = self.item('Kept')
         self.layer([value])
-        missing = self.open(value['id'], project='nowhere')
+        # Each argument is missing once, as when the project has a folder.
+        missing = self.open(value['id'], value['id'], project='nowhere')
         self.assertEqual((missing['code'], missing['data']['missing'], missing['data']['matches']),
                          ('item-not-found', [value['id']], []))
         copy = self.root / 'layer/deleted.json.0123456789abcdef.tmp'
@@ -399,7 +400,7 @@ class ItemCommandsTest(unittest.TestCase):
                          ('item-not-found', [value['id']], []))
         copy.unlink()
         (self.root / 'layer/deleted.json').write_bytes(b'{}\n')
-        deleted = self.open(value['id'])
+        deleted = self.open(value['id'], value['id'])
         self.assertEqual((deleted['code'], deleted['data']['missing'], deleted['data']['matches']),
                          ('item-not-found', [value['id']], []))
 

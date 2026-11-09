@@ -120,6 +120,21 @@ def state_line(line):
     return "- %s: %s%s" % (LABELS[line["part"]], one_line(line["text"]), suffix)
 
 
+def pinned(pins, current):
+    """The records of the current items whose pins are on, oldest pin first (TBL-014).
+
+    `current(item)` gives the item's record while it is current and no
+    tombstone names it, else None. The start summary and the pin commands
+    both take their pinned items from here.
+    """
+    found = []
+    for pin in sorted(pins, key=lambda pin: pin["at"]):
+        value = current(pin["item"]) if pin["on"] else None
+        if value is not None:
+            found.append(value)
+    return found
+
+
 def fitting(notices):
     """(the notices shown, how many more): stable table order, stopping at the first
     row beyond five rows or 600 bytes. The shown values are the given objects."""

@@ -6,21 +6,24 @@ and an installed plugin keeps C1 behaviour; until then the tests call these
 handlers as the runner will, after its gates, with the format-2 store binding.
 Each works under the project's layer lease, waiting for it as long as the other
 commands wait for theirs, and reads through the store's path fence: the named
-item, the pins (TBL-014) and, for `pin`, the pinned items' records. An argument
-that names no item of the project, or names one that a tombstone names, is
-`item-not-found`, with the closest lines of the item list (TBL-015).
+item, the pins (TBL-014), the pinned items' records and, for a new pin, the
+curated layer as the start summary reads it. An argument that names no item of
+the project, or names one that a tombstone names, is `item-not-found`, with the
+closest lines of the item list (TBL-015).
 
 `pin` takes a current item. A superseded item is `item-not-current`, with the
 current item at the end of its replacements in `current` when there is one; a
 withdrawn or undone item is `item-not-current` without it. An item already
 pinned is `nothing`. A new pin has to fit: the start summary that a session in
-the command's folder would get, with its base (`build_context`) and the pinned
-items, the new one last, has to show every one of them, as SPEC-021 composes
-it; otherwise the answer is `pin-no-room` with the pins, oldest pin first,
-since the oldest go first when the summary is short of room. Notices, which
-come and go, are not counted, nor is the current state, whose lines go before
-any pinned item: a start that shows notices leaves the oldest pinned items out
-for room, and says so (SPEC-021).
+the command's folder would get, with its base (`build_context`), the pinned
+items, the new one last, and the current state as the start shows it now, has
+to show every pinned item, as SPEC-021 composes it; otherwise the answer is
+`pin-no-room` with the pins, oldest pin first, since the oldest go first when
+the summary is short of room, and says to unpin one first only when the item
+would fit with no other pin. State lines are cut before any pinned item, but a
+start that cuts them says so in a line that takes room too. Notices, which come
+and go, are not counted: a start that shows notices, or more state lines than
+now, leaves the oldest pinned items out for room, and says so (SPEC-021).
 
 `unpin` takes an item of any status: a pin that is on turns off, and an item
 that is not pinned is `nothing`.
@@ -33,7 +36,9 @@ item's record on or off at the command's time and with this device, in the
 record's place or last for a new record, and reads them back. The record stays
 after an unpin (TBL-014). No notice is written and no run is recorded.
 `data.pins` holds the pinned items afterwards, oldest pin first, as the start
-summary shows them: the current items whose pins are on.
+summary shows them: the current items whose pins are on. Their records are read
+before the reservation, so that a record that cannot be read fails the command
+before anything changes.
 
 A project without a folder, or whose memory is being deleted, has no items. An
 item record or pin file that cannot be read, or that a link reaches, raises,
@@ -43,6 +48,7 @@ from pathlib import Path
 
 from . import base, clock, commands, context as start_context, curation_worker, fence_plan, files
 from . import forget_plan, item_commands, item_io, item_types, locks, revision_io, run_listing, start_memory
+from . import start_summary
 
 # The commands' shared lock wait, within one bound for the whole command.
 WAIT, SECONDS = 10.0, 60.0
@@ -65,24 +71,17 @@ SAY = {
 }
 
 
-def pinned(pins, current):
-    """The current items whose pins are on, oldest pin first, as the start summary shows them.
+pinned = start_memory.pinned
 
-    `current(item)` gives the item's record while it is current and no
-    tombstone names it, else None.
+
+def fits(base_text, values, value, lines=()):
+    """Whether the start summary with this base, pinned items and state lines, `value` the newest pin, shows every pin.
+
+    `lines` are the state lines as the start summary keeps them; those that do
+    not fit are cut before any pinned item, and the line that says so counts.
     """
-    found = []
-    for pin in sorted(pins, key=lambda pin: pin['at']):
-        value = current(pin['item']) if pin['on'] else None
-        if value is not None:
-            found.append(value)
-    return found
-
-
-def fits(base_text, values, value):
-    """Whether the start summary with this base and pinned items, `value` the newest, shows every one of them."""
     values = list(values) + [value]
-    shown = start_memory.build_summary(base_text, (), values, ()).pins
+    shown = start_memory.build_summary(base_text, (), values, lines).pins
     return set(shown) == {item['id'] for item in values}
 
 
@@ -196,16 +195,19 @@ def _command(context, command, at, start_base=None):
                 check()
                 return commands.result(command, data, SAY['already' if on else 'not-pinned'] % name, 'nothing')
             if command == 'pin':
-                now = pinned(pins, current)
-                if not fits(start_base(), now, value):
+                # The pinned items and state lines as the next start would show them, notices aside.
+                now, lines, _ = start_summary._layer(memory, root, deadline)
+                text = start_base()
+                if not fits(text, now, value, lines):
                     data['pins'] = [item['id'] for item in now]
                     check()
-                    return commands.result('pin', data, SAY['no-room' if now else 'base'], 'refused',
-                                           'pin-no-room')
-            after = _publish(memory, root, changed(pins, name, command == 'pin', at or base.utc_time(),
-                                                  memory.device), name, deadline)
+                    # Unpinning helps only when the item fits without any other pin.
+                    say = SAY['no-room'] if now and fits(text, (), value, lines) else SAY['base']
+                    return commands.result('pin', data, say, 'refused', 'pin-no-room')
+            after = changed(pins, name, command == 'pin', at or base.utc_time(), memory.device)
             data['pins'] = [item['id'] for item in pinned(after, current)]
             check()
+            _publish(memory, root, after, name, deadline)
             return commands.result(command, data, SAY['pinned' if command == 'pin' else 'unpinned'] % name)
     except locks.LockBusy:
         return commands.common_result(command, 'lock-busy')

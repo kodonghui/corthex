@@ -305,11 +305,7 @@ def _layer(memory, root, deadline):
     items = {item: cache[item] for item in cited if current(item) is not None}
     lines = state_types.validity_view(state, removed, items, private)['lines']
     pins = item_types.parse_pins(read('pins.json'))['pins']
-    pinned = []
-    for pin in sorted(pins, key=lambda pin: pin['at']):
-        value = current(pin['item']) if pin['on'] else None
-        if value is not None:
-            pinned.append(value)
+    pinned = start_memory.pinned(pins, current)
     conflicts = conflict_types.parse_conflicts(read('conflicts.json'))
     total = len(conflict_types.open_candidates(conflicts))
     counts = conflict_counts.read(memory, root, deadline) if total else None
