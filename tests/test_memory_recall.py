@@ -415,7 +415,9 @@ class RecallTest(unittest.TestCase):
             writer.execute('COMMIT')
             began = time.monotonic()
             self.assertEqual(self.rank(seconds=0.3), recall.Recall('late'))
-            self.assertLess(time.monotonic() - began, 1.0)
+            # Recall waits about as long as its deadline, not the sqlite3 module's five seconds. SQLite's sleeps run
+            # long on a busy machine: a macOS runner took 1.1 seconds here.
+            self.assertLess(time.monotonic() - began, 3.0)
         finally:
             writer.close()
         self.assertEqual(self.rank().items, (value['id'],))
