@@ -12,16 +12,18 @@ schema or word splitting, the words come from the project's items through an
 index made in memory in the same way, so that a search never waits for the
 memory worker's step 6 to build it again. By meaning, with consent, the OpenAI
 memory key and an index built with the configured embedding model and vector
-length, the request is redacted and embedded (API-012), with its usage line,
-before any lease is taken and within 10 seconds; the items with a vector are
-ranked by their cosine with the request's, those above 0. Both rankings hold
-items of every status, each once, and with `--kind` only items of that kind.
-An item's score is then the sum of 1 / (60 + its rank) over the rankings it is
-in, and equal scores go by ID. Otherwise the search goes by words only, and
-`reason` says why: `asked` with `--words-only`, `no-consent`, `no-key`,
-`index-not-ready` when the index cannot give vectors, and `embedding-failed`
-when the request could not be sent or its answer failed, which the failure log
-notes with the step `embed`. Nothing is sent in the first four cases.
+length that holds a vector, which a look at the index finds while waiting no
+longer than the lease would, the request is redacted and embedded (API-012),
+with its usage line, before any lease is taken and within 10 seconds; the items
+with a vector are ranked by their cosine with the request's, those above 0.
+Both rankings hold items of every status, each once, and with `--kind` only
+items of that kind. An item's score is then the sum of 1 / (60 + its rank)
+over the rankings it is in, and equal scores go by ID. Otherwise the search
+goes by words only, and `reason` says why: `asked` with `--words-only`,
+`no-consent`, `no-key`, `index-not-ready` when the index cannot give vectors,
+and `embedding-failed` when the request could not be sent or its answer
+failed, which the failure log notes with the step `embed`. Nothing is sent in
+the first four cases.
 
 Under the project's layer lease, waiting for it as long as the other commands
 wait for theirs, it reads the index, the names of the items and tombstones and
@@ -68,14 +70,21 @@ def _without(settings, only):
 def _ready(memory, root, model, dims, deadline):
     """Whether the index can rank by meaning, read without a lease as recall reads it, so nothing is sent for nothing.
 
-    An index that SQLite cannot read, for a lock that outlasts the search's time
-    or another error, is not ready either: the search goes by words, as
-    `_ranked` does with such an index.
+    It must be built with the configured model and vector length and hold a
+    vector: an index whose items step 6 has not embedded yet ranks nothing by
+    meaning. An index that SQLite cannot read, for a lock that outlasts the
+    time given or another error, is not ready either: the search goes by
+    words, as `_ranked` does with such an index.
     """
     try:
-        return recall._index(memory, root, model, dims, deadline, lambda connection: True) is not None
+        return recall._index(memory, root, model, dims, deadline, _vectors) is True
     except sqlite3.DatabaseError:
         return False
+
+
+def _vectors(connection):
+    """Whether the index holds a vector; the check before it proved their model and length."""
+    return connection.execute('SELECT 1 FROM index_vectors LIMIT 1').fetchone() is not None
 
 
 def _embedded(memory, project, words, settings, dims, deadline):
@@ -225,7 +234,8 @@ def search(context):
     deadline = clock.now() + SECONDS
     vector, reason, meant, results = None, _without(settings, only), False, []
     try:
-        if reason is None and not _ready(memory, root, model, dims, deadline):
+        # The look before the request waits for another connection's lock no longer than the lease would.
+        if reason is None and not _ready(memory, root, model, dims, min(deadline, clock.now() + WAIT)):
             reason = 'index-not-ready'
         if reason is None:
             vector, reason = _embedded(memory, project, words, settings, dims, deadline)
