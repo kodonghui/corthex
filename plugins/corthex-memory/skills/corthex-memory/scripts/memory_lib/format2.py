@@ -15,8 +15,9 @@ _RUN = re.compile(r"r_" + _DIGITS + r"\Z")
 _CANDIDATE = re.compile(r"c_" + _DIGITS + r"\Z")
 _EPOCH = re.compile(r"[0-9a-fA-F]{32}\Z")
 _OBJECT = re.compile(r"(?:item:i_|line:s_|pin:i_|candidate:c_|run:r_)" + _DIGITS + r"\Z")
-# The curation record's fields in their order (TBL-009), those that it may lack, and those that it always has.
-CURATION_FIELDS = tuple("logs applies recent failures consolidation stopped rebuilt fence conflict_after".split())
+# The curation record's fields in their order (TBL-009): C1's, then format 2's fence and conflict rotation;
+# those that it may lack, and those that it always has.
+CURATION_FIELDS = tuple(base.FIELDS["TBL-009"].split()) + ("fence", "conflict_after")
 CURATION_OPTIONAL = ("failures", "stopped", "rebuilt", "conflict_after")
 _CURATION_REQUIRED = tuple(name for name in CURATION_FIELDS if name not in CURATION_OPTIONAL)
 _ATTEMPT_ORDER = "at kind result error applied dropped reasons state edit_reasons run".split()
