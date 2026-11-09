@@ -93,10 +93,12 @@ def dismissed(conflicts, candidate, at):
 
 
 def _candidates(memory, root, deadline, check):
-    """The project's candidates (TBL-120) as their writers read them; none while it has neither the file nor its backup.
+    """The project's candidates (TBL-120), read through the fence under the checks before and after the read.
 
-    A file that cannot be read raises, and so does a missing one whose backup
-    is there, whether the backup reads or not.
+    A file that cannot be read raises RestoreNeeded, as for the candidates'
+    writers, and so does a missing one whose backup is there, whether the
+    backup reads or not; a project with neither the file nor its backup, as
+    before its first curation, has none, where a writer would raise.
     """
     return item_io.optional_record(memory, root / 'layer/conflicts.json', conflict_types.parse_conflicts, deadline,
                                    check, {'candidates': []})

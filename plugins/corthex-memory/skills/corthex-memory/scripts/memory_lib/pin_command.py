@@ -74,7 +74,6 @@ SAY = {
 }
 
 
-
 def fits(base_text, values, value, lines=()):
     """Whether the start summary with this base, pinned items and state lines, `value` the newest pin, shows every pin.
 
