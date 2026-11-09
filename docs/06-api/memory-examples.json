@@ -995,18 +995,18 @@
               "title": "Curation runs in one detached background process"
             },
             {
-              "item": "i_7f3k2m9q4x1v",
-              "kind": "decision",
-              "speaker": "user",
-              "date": "2026-10-24",
-              "title": "Keep raw logs on the device"
-            },
-            {
               "item": "i_2b8d0w5n6c3r",
               "kind": "fact",
               "speaker": "agent",
               "date": "2026-10-24",
               "title": "Release 0.2.0 adds recording and the start summary"
+            },
+            {
+              "item": "i_7f3k2m9q4x1v",
+              "kind": "decision",
+              "speaker": "user",
+              "date": "2026-10-24",
+              "title": "Keep raw logs on the device"
             }
           ],
           "more": 0
