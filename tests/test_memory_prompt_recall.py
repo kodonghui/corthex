@@ -12,6 +12,7 @@ import os
 import secrets
 import sqlite3
 import sys
+import threading
 import time
 import unicodedata
 import unittest
@@ -303,6 +304,33 @@ class PromptRecallTest(unittest.TestCase):
         self.assertEqual((broke.outcome, type(broke.error), str(broke.error)),
                          ('failed', sqlite3.OperationalError, 'disk I/O error'))
         self.assertEqual(self.server.requests, [])
+
+    def test_a_key_that_cannot_be_sent_is_missing(self):
+        self.three()
+        # A space, a line break and 8,193 characters: the key is set but no request could carry it.
+        for number, key in enumerate(('memory-openai-key with-space', 'memory-openai-key\n', 'k' * 8193)):
+            with self.subTest(number=number), mock.patch.dict(os.environ, {'CORTHEX_MEMORY_OPENAI_API_KEY': key}):
+                self.assertEqual(self.recall(), prompt_recall.Result('no-key'))
+        self.assertEqual((self.server.requests, self.usage()), ([], []))
+
+    def test_an_index_lock_that_outlasts_the_embedding_s_time_is_late_before_anything_is_sent(self):
+        self.three()
+        writer = sqlite3.connect(str(self.root / 'index.db'), isolation_level=None, check_same_thread=False)
+        writer.execute('PRAGMA locking_mode = EXCLUSIVE')
+        writer.execute('BEGIN EXCLUSIVE')
+        writer.execute('COMMIT')
+        release = threading.Timer(1.5, writer.close)  # after the embedding's 800 ms, before the hook's deadline
+        release.start()
+        try:
+            started = clock.now()
+            result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 3.0,
+                                          settings=self.settings(), zone=UTC)
+            elapsed = clock.now() - started
+        finally:
+            release.join()
+        self.assertEqual(result, prompt_recall.Result('late', error='deadline'))
+        self.assertLess(elapsed, 1.4)
+        self.assertEqual((self.server.requests, self.usage()), ([], []))
 
     # Failures
 
