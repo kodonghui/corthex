@@ -142,13 +142,16 @@ def connect(path, create=False, timeout=1.0):
     return connection
 
 
-def state(connection, *, model, dims, pages=True):
+def state(connection, *, model, dims, reader=False):
     """None when the index can be used, otherwise why it must be built again.
 
     SQLite's quick check reads every page, so a damaged table that the schema
     and index_meta do not show is found here rather than by a later search.
-    Recall, within the prompt hook's time, leaves it out with `pages=False`; a
-    damaged page then fails the read that meets it.
+    A reader within a hook's time, recall, leaves it out with `reader=True`:
+    a damaged page then fails the read that meets it, and SQLite's other
+    errors, such as a lock or a disk's, are raised to the reader rather than
+    taken for damage. Text that is not UTF-8, which the sqlite3 module refuses
+    with the same kind of error, stays damage.
     """
     try:
         if connection.execute('PRAGMA user_version').fetchone()[0] != VERSION:
@@ -156,8 +159,12 @@ def state(connection, *, model, dims, pages=True):
         if _schema(connection) != schema():
             return 'schema'
         meta = dict(connection.execute('SELECT name, value FROM index_meta').fetchall())
-        if pages and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+        if not reader and connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
             return 'malformed'
+    except sqlite3.OperationalError as error:
+        if reader and not str(error).startswith('Could not decode to UTF-8'):
+            raise
+        return 'malformed'
     except sqlite3.DatabaseError:
         return 'malformed'
     if set(meta) - set(NAMES) or set(NAMES[:3]) - set(meta):

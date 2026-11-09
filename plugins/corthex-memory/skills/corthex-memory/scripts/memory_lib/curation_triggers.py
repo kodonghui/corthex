@@ -73,25 +73,11 @@ def _progress(memory, root, deadline):
     path = root / 'curation.json'
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            return format2.parse_curation(_read(memory, candidate, deadline))
+            return format2.parse_curation(files.fence_read(memory, candidate, deadline))
         except files._RESTORABLE:
             continue
     return None
 
-
-def _read(memory, path, deadline):
-    """A file's bytes through the store's fence, without a lease.
-
-    A file that another process is replacing on Windows is read again, and a
-    deadline that passes meanwhile is `LockBusy`, as when the read itself
-    finds it passed.
-    """
-    try:
-        return files._retry(lambda: memory.fence.read(path, deadline), deadline)
-    except PermissionError:
-        if clock.now() >= deadline:
-            raise locks.LockBusy() from None
-        raise
 
 
 def decide(memory, configuration, project, hook, deadline, *, now=None, environment=None):
