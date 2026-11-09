@@ -295,7 +295,7 @@ In C2 every writer of this record holds the layer lock and merges a fresh read. 
 
 ### Notices (TBL-010)
 
-One file per notice that the start summary shows once (SPEC-022): `curation-failed`, `consolidation-failed`, `rebuilt` or `pin-<item>`. The curator, the sync and the memory skill write them; a later notice of the same name replaces the earlier one; the start hook deletes each notice it shows, under the curated layer lock that the curator and the memory skill hold to write one, and only while it holds the bytes shown, so that a notice written again since stays for the next start (API-001 step 7). Lasting conditions, such as a stop of the fault guard, a missing memory key or unprocessed turns that retention will soon delete, are not stored: the start hook works them out at every session start.
+One file per notice that the start summary shows once (SPEC-022): `curation-failed`, `consolidation-failed`, `rebuilt` or `pin-<item>`. The curator, the sync and the memory skill write them, each under the curated layer lock; a later notice of the same name replaces the earlier one; the start hook deletes each notice it shows under that lock, and only while it holds the bytes shown, so that a notice written again since stays for the next start (API-001 step 7). Lasting conditions, such as a stop of the fault guard, a missing memory key or unprocessed turns that retention will soon delete, are not stored: the start hook works them out at every session start.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
