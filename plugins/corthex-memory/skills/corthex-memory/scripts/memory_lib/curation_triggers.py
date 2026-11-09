@@ -18,12 +18,13 @@ HOOKS = ('end-of-turn', 'end')
 Markers = namedtuple('Markers', 'count oldest')
 
 
-def turns(memory, root):
+def turns(memory, root, deadline=None):
     """Each unprocessed turn, as (log, seq), with its oldest time, from the markers' names alone.
 
     Several markers of one turn count once, at their oldest time; a name that
     is not a marker or holds an impossible time is left out, as the memory
-    status does (SPEC-033).
+    status does (SPEC-033). With a deadline, the scan ends with `LockBusy` once
+    it passes.
     """
     folder = root / 'unprocessed'
     if memory.fence.check(folder) is None:
@@ -31,6 +32,8 @@ def turns(memory, root):
     found = {}
     with os.scandir(str(folder)) as entries:
         for entry in entries:
+            if deadline is not None and clock.now() >= deadline:
+                raise locks.LockBusy()
             match = retention.MARKER.fullmatch(entry.name)
             if match is None or not entry.is_file(follow_symlinks=False):
                 continue
@@ -70,7 +73,7 @@ def _progress(memory, root, deadline):
     path = root / 'curation.json'
     for candidate in (path, path.with_name(path.name + '.bak')):
         try:
-            return format2.parse_curation(memory.fence.read(candidate, deadline))
+            return format2.parse_curation(files._retry(lambda: memory.fence.read(candidate, deadline), deadline))
         except files._RESTORABLE:
             continue
     return None
