@@ -393,6 +393,45 @@ class IndexWorkerTest(unittest.TestCase):
                          ('consent', 1, ('bad-vector',), ()))
         self.assertEqual((waits, len(self.server.requests)), ([10], 1))
 
+    def turning(self, call, **setting):
+        """Change the configuration at the step's `call`-th fence comparison, as if while it waited for the layer
+        lease before a request or a further attempt."""
+        fresh, calls = index_worker._fresh, []
+
+        def waiting(*args):
+            calls.append(None)
+            if len(calls) == call:
+                self.configure(models={'dims': DIMS}, **setting)
+            return fresh(*args)
+        return mock.patch.object(index_worker, '_fresh', side_effect=waiting)
+
+    def test_a_project_turned_off_while_the_step_waits_for_the_layer_lease_sends_no_later_request(self):
+        items = self.made(101)
+        self.layer(items)
+        with self.turning(2, enabled=False):
+            outcome = self.keep()
+        # The conditions are read after the wait for the layer lease, right before the request.
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_while_a_retry_waits_for_the_layer_lease_sends_it_no_more(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        with self.quick() as waits, self.turning(2, consent=None):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+
+    def test_a_configuration_that_cannot_be_read_during_a_request_ends_the_step_before_the_next(self):
+        items = self.made(101)
+        self.layer(items)
+        self.server.before[0] = lambda: (self.folder / 'configuration.json').write_bytes(b'{"projects": 3}')
+        outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('configuration', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
     def test_a_request_is_tried_again_when_the_fence_moved_and_its_items_did_not_change(self):
         items = sorted(self.made(2), key=lambda item: item['id'])
         self.layer(items)
