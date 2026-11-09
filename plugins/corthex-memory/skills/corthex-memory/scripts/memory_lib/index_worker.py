@@ -21,10 +21,11 @@ and before each further attempt of one, the step takes it to read the curation
 record's fence again, and when a forget, an undo or a tombstone has moved it,
 it reads the items again. A request one of whose items is then gone, changed or
 private is not tried again, so an item forgotten before an attempt is never in
-it. The step's conditions are read again right before each request and each
-further attempt, after that comparison, which may wait for the layer lease, and
-at the step's end: once the project is off or consent is withdrawn, nothing more
-is sent, and the step ends with that reason. A vector is written under the layer
+it. The step's conditions are read again before each request and each further
+attempt, both before that comparison, which may wait for the layer lease, and
+after it, right before sending, and once more when no item is left to embed:
+once the project is off or consent is withdrawn, nothing more is sent, and the
+step ends at once with that reason. A vector is written under the layer
 lease only while its item is still current, unchanged and not private, and the
 index still has the embedding model and vector length that made it; the vectors
 of a request already answered are kept on the device. A failed request is noted
@@ -184,17 +185,19 @@ def _fresh(memory, root, deadline, items, expected):
 def _again(memory, project, root, deadline, batch, expected):
     """Asked before each further attempt of a request: whether every item of its batch may still be sent.
 
-    It compares the fence as `_fresh` does, against the proof that its last
-    comparison read, so that the batch is read again only when the fence has
-    moved since; a request one of whose items is gone, changed or private is not
-    tried again, and its items wait for a later step 6 (TC-140). Then, after any
-    wait for the layer lease, it reads the step's conditions again: a request is
-    not tried again once they no longer hold, as when the project was turned off
-    meanwhile.
+    A request is not tried again once the step's conditions no longer hold, as
+    when the project was turned off meanwhile: they are read before and after
+    the wait for the layer lease. Between the two reads it compares the fence as
+    `_fresh` does, against the proof that its last comparison read, so that the
+    batch is read again only when the fence has moved since; a request one of
+    whose items is gone, changed or private is not tried again, and its items
+    wait for a later step 6 (TC-140).
     """
     proof = [expected]
 
     def still():
+        if _gate(memory, project, deadline)[0] is not None:
+            return False
         kept, proof[0] = _fresh(memory, root, deadline, batch, proof[0])
         return len(kept) == len(batch) and _gate(memory, project, deadline)[0] is None
     return still
@@ -241,11 +244,6 @@ def keep(memory, project, owner, deadline, *, when=None):
     def check():
         memory.check(deadline, (owner,))
 
-    def finished():
-        # Read again at the end, so that a step whose project was turned off during its last request says so.
-        reason, _ = _gate(memory, project, deadline)
-        return end(reason or 'done')
-
     try:
         curation_worker._owned(memory, root, owner)
         check()
@@ -259,7 +257,9 @@ def keep(memory, project, owner, deadline, *, when=None):
             memory, root, deadline, model, dims, base.utc_time(when))
         step = 'embed'
         if not pending:
-            return end('done')
+            # Read again at the end, as the loop below does, so that a project turned off meanwhile says so.
+            reason, _ = _gate(memory, project, deadline)
+            return end(reason or 'done')
         try:
             credentials = model_access.Credentials.read()
             if credentials.headers('openai') is None:
@@ -270,17 +270,20 @@ def keep(memory, project, owner, deadline, *, when=None):
                                        environment=dict(os.environ))
         remaining = list(zip(pending, prepared))
         while True:
+            # The step's conditions are read again before each request, before and after the wait for the layer
+            # lease, and once more when no item is left to embed, so that a project turned off, or consent
+            # withdrawn, sends nothing more and ends the step at once with its reason.
+            reason, _ = _gate(memory, project, deadline)
+            if reason is not None:
+                return end(reason)
             if not remaining:
-                return finished()
+                return end('done')
             curation_worker._left(deadline)
             kept, expected = _fresh(memory, root, deadline, [item for item, _ in remaining], expected)
             kept = {item['id'] for item in kept}
             remaining = [pair for pair in remaining if pair[0]['id'] in kept]
             if not remaining:
-                return finished()
-            # The step's conditions are read again right before each request, after the wait for the layer
-            # lease, so that a project turned off, or consent withdrawn, sends nothing more and ends the step
-            # with its reason.
+                continue
             reason, _ = _gate(memory, project, deadline)
             if reason is not None:
                 return end(reason)
