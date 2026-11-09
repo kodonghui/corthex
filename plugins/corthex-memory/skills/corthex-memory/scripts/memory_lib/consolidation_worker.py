@@ -228,15 +228,21 @@ def _send(memory, project, owner, deadline, settings, instructions, source, sche
     curation_worker._left(deadline)
     if not still():
         raise _Moved()
-    result = model_client.send(memory, project=project, instructions=instructions, source=source, schema=schema,
-                               config=copy.deepcopy(settings.document), check=check,
-                               deadline=deadline - curation_worker.RESERVE, still=still)
+    again = curation_worker._Recheck(still)
+    try:
+        result = model_client.send(memory, project=project, instructions=instructions, source=source, schema=schema,
+                                   config=copy.deepcopy(settings.document), check=check,
+                                   deadline=deadline - curation_worker.RESERVE, still=again)
+    except _BREAKS:
+        if again.asked:
+            run.requests += 1  # an attempt of it went before the check failed
+        raise
     run.requests += 1
     failure = result.response.failure
     if failure is not None:
         if failure.code == 'timeout' and clock.now() >= deadline - curation_worker.RESERVE:
             raise locks.LockBusy()  # the run's own time ran out, not the request's
-        if not still():
+        if again.refused or not still():
             raise _Moved()
         raise _Failed(failure.code)
     try:

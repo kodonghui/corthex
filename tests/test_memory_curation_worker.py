@@ -647,6 +647,42 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('consent', ['stale']))
         self.assertEqual((len(self.server.requests), waits), (1, [10]))
 
+    def flickering(self):
+        """Have the run's conditions read as gone once, at the first reading once a request has gone, and as they
+        are at every other reading."""
+        gate, gone = curation_worker._gate, []
+
+        def read(*args):
+            if self.server.requests and not gone:
+                gone.append(True)
+                return 'consent', None
+            return gate(*args)
+        return mock.patch.object(curation_worker, '_gate', side_effect=read)
+
+    def test_a_retry_that_the_conditions_stopped_is_stale_though_they_hold_again_right_after(self):
+        said, _ = self.one_turn()
+        self.server.answers = [failing(529, 'overloaded_error'), answer(change(quote(said, HOOKS), kind='decision'))]
+        with self.quick() as waits, self.flickering():
+            outcome = self.curate()
+        # The no that kept the retry back makes the attempt stale, not failed, though the next reading says yes.
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual((len(self.server.requests), waits), (2, [10]))
+        self.assertEqual([row['result'] for row in self.usage()], ['failed', 'ok'])
+        self.assertNotIn('failures', self.progress())
+        self.assertIsNone(self.notice())
+
+    def test_a_request_whose_check_before_a_retry_fails_counts_as_sent(self):
+        self.one_turn()
+        self.server.answers = [failing(529, 'overloaded_error')]
+
+        def unreadable():
+            raise ValueError('unreadable')
+        with self.quick() as waits, self.waiting(unreadable):
+            outcome = self.curate()
+        self.assertEqual((outcome.reason, [a.record['result'] for a in outcome.attempts]), ('failed', ['failed']))
+        self.assertEqual(outcome.attempts[0].record['error'], 'ValueError')
+        self.assertEqual((len(self.server.requests), waits, outcome.attempts[0].requests), (1, [10], 1))
+
     def test_tc119_an_applies_count_changed_while_a_request_waits_drops_its_results(self):
         said, _ = self.one_turn()
 

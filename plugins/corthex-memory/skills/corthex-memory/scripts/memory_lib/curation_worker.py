@@ -137,6 +137,24 @@ def _chain(error):
     return found
 
 
+class _Recheck:
+    """`still` as `model_client.send` asks it before each further attempt of a request.
+
+    It remembers a no, so that the request is stale on that answer rather than on a later reading, which may differ
+    by then, and whether it was asked at all, which only happens once an attempt of the request has gone.
+    """
+
+    def __init__(self, still):
+        self.still, self.asked, self.refused = still, False, False
+
+    def __call__(self):
+        self.asked = True
+        if self.still():
+            return True
+        self.refused = True
+        return False
+
+
 def _left(deadline):
     """Refuse to start a request in the run's last RESERVE seconds."""
     if clock.now() >= deadline - RESERVE:
@@ -400,15 +418,21 @@ def _ask(memory, project, root, owner, deadline, settings, found, batch):
         _left(deadline)
         if not still():
             raise _Moved()
-        result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
-                                   schema=schema, config=document, check=check, deadline=deadline - RESERVE,
-                                   size=_size(planned, request, schema), still=still)
+        again = _Recheck(still)
+        try:
+            result = model_client.send(memory, project=project, instructions=INSTRUCTIONS, source=request.source,
+                                       schema=schema, config=document, check=check, deadline=deadline - RESERVE,
+                                       size=_size(planned, request, schema), still=again)
+        except _BREAKS:
+            if again.asked:
+                batch[0].sent_requests += 1  # an attempt of it went before the check failed
+            raise
         batch[0].sent_requests += 1
         failure = result.response.failure
         if failure is not None:
             if failure.code == 'timeout' and clock.now() >= deadline - RESERVE:
                 raise locks.LockBusy()  # the run's own time ran out, not the request's
-            if not still():
+            if again.refused or not still():
                 raise _Moved()
             raise _Failed(failure.code)
         try:

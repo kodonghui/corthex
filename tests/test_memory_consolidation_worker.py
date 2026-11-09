@@ -933,6 +933,49 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('consent', ['stale']))
         self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
 
+    def failing_first(self, values):
+        """The first merge request of `values` fails as overloaded; the next one merges them."""
+        self.answering({'decision': merges(merge(values, [(values[0], 1), (values[1], 1)]))})
+        merging = self.server.reply
+        self.server.reply = lambda number, body: failing(529, 'overloaded_error') if number == 0 else merging(number,
+                                                                                                             body)
+
+    def test_a_merge_retry_that_the_conditions_stopped_is_stale_though_they_hold_again_right_after(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.failing_first(values)
+        gate, gone = consolidation_worker.curation_worker._gate, []
+
+        def read(*args):
+            # The conditions read as gone once, at the first reading once a request has gone.
+            if self.server.requests and not gone:
+                gone.append(True)
+                return 'consent', None
+            return gate(*args)
+        with self.quick() as waits, mock.patch.object(consolidation_worker.curation_worker, '_gate',
+                                                      side_effect=read):
+            outcome = self.consolidate()
+        # The no that kept the retry back makes the request stale, not failed, though the next reading says yes.
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('done', ['stale', 'ok']))
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (2, [10], 2))
+        self.assertEqual(self.progress()['consolidation'], {'failures': 0, 'last': STAMP})
+        self.assertIsNone(self.notice())
+
+    def test_a_merge_request_whose_check_before_a_retry_fails_counts_as_sent(self):
+        values = [self.item('decision', 'Keep raw logs on the device'),
+                  self.item('decision', 'Raw logs stay here', saved=LATER)]
+        self.layer(values)
+        self.failing_first(values)
+
+        def unreadable():
+            raise ValueError('unreadable')
+        with self.quick() as waits, self.waiting(unreadable, sent=True):
+            outcome = self.consolidate()
+        self.assertEqual((outcome.reason, [a['result'] for a in outcome.attempts]), ('failed', ['failed']))
+        self.assertEqual(outcome.attempts[0]['error'], 'ValueError')
+        self.assertEqual((len(self.server.requests), waits, outcome.requests), (1, [10], 1))
+
     def test_a_project_turned_off_before_the_last_retry_ends_the_run_without_waiting_for_the_layer_lease(self):
         value = self.item('decision', 'Keep raw logs on the device')
         line = row('decisions', 0, 'Raw logs stay here.', [value])
