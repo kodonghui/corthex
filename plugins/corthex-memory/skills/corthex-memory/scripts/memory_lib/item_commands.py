@@ -23,7 +23,12 @@ skill read around a quote; and `deleted` when the entry is gone or past that
 period, which retention deletes at its next run. With `--around N` a quote
 held here also has up to N characters of its entry's text before it and after
 it, 2,000 at most, with each range that a forget or a pending tombstone names
-shown as [forgotten], as curator requests show it; a mark is never cut. An
+shown as [forgotten], as curator requests show it; a mark is never cut. Unlike
+the curator, whose worker recovers an interrupted write before it reads, `open`
+reads around what such a write left: a tombstone is its file or else its
+backup, as the start summary counts it, other names in the tombstones' folder,
+such as temporary copies, are skipped, and the items that stay are read as
+`list` reads them. The tombstones are read once for the command. An
 argument that names no item of the project, or names one that a tombstone
 names, is `item-not-found`, with the arguments in `missing`, the closest lines
 of the item list in `matches` and the items that the other arguments name. An
@@ -33,8 +38,8 @@ A project without a folder, or whose memory is being deleted, has no items. An
 item record that cannot be read, or that a link reaches, raises, which the
 runner reports as `internal`, as it does for forget and undo.
 """
-from . import base, clock, commands, curation_worker, curator_document, files, forget_plan, item_io, item_types
-from . import locks, request_inputs, run_listing, run_log
+from . import base, clock, commands, curation_worker, curator_document, files, forget_plan, history_recovery
+from . import item_io, item_types, locks, request_inputs, run_listing, run_log
 
 # The commands' shared lock wait, within one bound for the whole read.
 WAIT, SECONDS = 10.0, 60.0
@@ -187,14 +192,68 @@ def opened(value, entries, device, cutoff, size=None):
     return line
 
 
-def _entries(root, read):
-    """log -> its entries by ID, from this device's raw log of the project; none once retention deleted it."""
-    found = {}
+def _tombstones(memory, root, deadline, read):
+    """The documents of the project's tombstones, each read from its file or else its backup.
+
+    The start summary and recall count a tombstone's backup as the tombstone,
+    since an interrupted write can leave it alone; other names, such as such a
+    write's temporary copies, are skipped. A tombstone that cannot be read
+    raises.
+    """
+    folder = root / 'layer/tombstones'
+    if memory.fence.check(folder) is None:
+        return []
+    names = {}
+    for path in files._retry(lambda: list(folder.iterdir()), deadline):
+        for suffix in ('.json', '.json.bak'):
+            item = path.name[:-len(suffix)] if path.name.endswith(suffix) else ''
+            if item_types.ITEM.fullmatch(item):
+                names.setdefault(item, []).append(path.name)
+    stones = []
+    for item, found in sorted(names.items()):
+        for name in sorted(found):  # the file before its backup
+            try:
+                data = read(folder / name)
+            except FileNotFoundError:
+                continue
+            history_recovery._tombstone(data, item, root.name)
+            stones.append(item_types._document(data))
+            break
+    return stones
+
+
+def _pending(memory, root, deadline, check, read):
+    """log -> entry ID -> the ranges that pending tombstones name and no item that stays quotes (request_inputs.ranges).
+
+    The items that stay are read as `list` reads them (item_io): an item's
+    backup beside its file and temporary copies are skipped, and a backup
+    without its file raises RestoreNeeded.
+    """
+    stones, staying = _tombstones(memory, root, deadline, read), []
+
+    def items():
+        if not staying:
+            staying.append(_items(memory, root, deadline, check))
+        return staying[0]
+    return {log: request_inputs.ranges(stones, log, items)
+            for log in sorted({quote['log'] for stone in stones for quote in stone['quotes']})}
+
+
+def _entries(memory, root, deadline, check, read):
+    """log -> its entries by ID, from this device's raw log of the project; none once retention deleted it.
+
+    The ranges that pending tombstones name are read once, when the first
+    entry is wanted (`_pending`).
+    """
+    found, pending = {}, []
 
     def entries(log):
         if log not in found:
+            if not pending:
+                pending.append(_pending(memory, root, deadline, check, read))
             try:
-                found[log] = {entry['id']: entry for entry in request_inputs.entries(root, log, read)}
+                found[log] = {entry['id']: entry
+                              for entry in request_inputs.entries(root, log, read, pending[0].get(log, {}))}
             except FileNotFoundError:
                 found[log] = {}
         return found[log]
@@ -233,7 +292,7 @@ def open_items(context, *, when=None):
 
     def read(memory, root, deadline, check):
         values = {name: _item(memory, root, name, deadline, check) for name in names}
-        entries = _entries(root, run_listing._reader(memory, deadline))
+        entries = _entries(memory, root, deadline, check, run_listing._reader(memory, deadline))
         shown = [opened(value, entries, memory.device, cutoff, size) for value in values.values() if value is not None]
         missing = [name for name, value in values.items() if value is None]
         lines = [run_listing.list_line(value) for value in listed(_items(memory, root, deadline, check))] \

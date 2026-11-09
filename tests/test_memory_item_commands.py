@@ -18,7 +18,7 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import clock, commands, files, forget_plan, item_commands, item_types, raw_log, run_listing
-from memory_lib import worker_support
+from memory_lib import history_recovery, worker_support
 import test_memory_commands as commands_fixture
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
@@ -343,6 +343,50 @@ class ItemCommandsTest(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(self.open(value['id'], around=2000)))
         self.assertNotIn(pending, json.dumps(self.open(value['id'], around=2000)))
         self.assertIn(pending, said['text'])
+
+    def test_a_tombstone_backup_or_a_temporary_copy_neither_fails_open_nor_shows_its_range(self):
+        words, pending = 'the hooks stay in one script', 'a private remark'
+        text = 'Before ' + words + ' and ' + pending + ' after.'
+        said, _ = self.raw.turn(text, 'Done.')
+        self.write()
+        value, gone = self.saved(said, words), self.saved(said, pending)
+        self.layer([value])
+        # A rewrite of the tombstone stopped with only its backup, and other writes left temporary copies of a
+        # tombstone and of an item, whose backup is beside its file.
+        self.tombstone(gone, backup=True)
+        (self.root / 'layer/tombstones' / (gone['id'] + '.json.k2j4x9.tmp')).write_bytes(b'{')
+        path = self.root / 'layer/items' / (value['id'] + '.json')
+        path.with_name(path.name + '.bak').write_bytes(path.read_bytes())
+        path.with_name(path.name + '.7fq2m1.tmp').write_bytes(b'{')
+        before = self.snapshot()
+        found = self.open(value['id'])
+        self.assertEqual((found['outcome'], found['code'], found['data']['items'][0]['quotes'][0]['held']),
+                         ('done', 'ok', 'here'))
+        quote = self.open(value['id'], around=2000)['data']['items'][0]['quotes'][0]
+        self.assertEqual((quote['before'], quote['after']), ('Before ', ' and [forgotten] after.'))
+        self.assertEqual(self.snapshot(), before)
+
+    def test_open_reads_each_tombstone_once_for_quotes_in_several_logs(self):
+        other = worker_fixture.Raw('other-session-040')
+        first, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        second, _ = other.turn('Keep the logs on this device and drop the other remark.', 'Done.')
+        self.write()
+        (self.root / 'raw' / (other.name + '.jsonl')).write_bytes(other.data())
+        value, gone = self.saved(first, 'Keep the hooks in one script'), self.saved(first, 'the old remark')
+        theirs = 'Keep the logs on this device'
+        value['quotes'].append(dict(value['quotes'][0], entry=second['id'], log=other.name, start=0, end=len(theirs),
+                                    words=theirs, said=second['at']))
+        start = second['text'].index('the other remark')
+        other_gone = dict(gone, id=ident('i'), quotes=[dict(gone['quotes'][0], entry=second['id'], log=other.name,
+                                                            start=start, end=start + len('the other remark'))])
+        self.layer([value])
+        self.tombstone(gone)
+        self.tombstone(other_gone)
+        with mock.patch.object(history_recovery, '_tombstone', wraps=history_recovery._tombstone) as read:
+            quotes = self.open(value['id'], around=2000)['data']['items'][0]['quotes']
+        self.assertEqual([(quote['held'], quote['after']) for quote in quotes],
+                         [('here', ' and drop [forgotten].'), ('here', ' and drop [forgotten].')])
+        self.assertEqual(read.call_count, 2)
 
     def test_adjacent_and_overlapping_forgotten_ranges_make_one_mark(self):
         entry = {'text': 'abcdefghijklmnop', 'forgotten': [[4, 6], [2, 4], [5, 8]]}
