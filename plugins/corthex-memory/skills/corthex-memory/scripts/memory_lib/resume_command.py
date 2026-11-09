@@ -47,7 +47,7 @@ from . import worker_launch
 # The commands' shared lock wait, within one bound for the whole command.
 WAIT, SECONDS = 10.0, 60.0
 SAY = {
-    'stopped': 'Curation of %s stopped after three failed %s in a row (%s).',
+    'stopped': 'Curation of %s stopped after three failed %s in a row (%s)',
     'ask': ' Resuming clears the stop, and the next trigger curates the project.',
     'ask-turns': ' Resuming clears the stop and starts the memory worker for the %s.',
     'resumed': 'Curation of %s resumed; the next trigger curates the project.',
@@ -94,9 +94,13 @@ def _turns(count):
     return '%d unprocessed turn%s' % (count, '' if count == 1 else 's')
 
 
+def stopped_said(project, stopped):
+    """The stop (SPEC-018) as the status and resume name it: what failed three times in a row, and the errors."""
+    return SAY['stopped'] % (project, WHAT[stopped['by']], ', '.join(stopped['errors']) or 'RuntimeError')
+
+
 def _ask(project, progress, unprocessed):
-    stopped = progress['stopped']
-    say = SAY['stopped'] % (project, WHAT[stopped['by']], ', '.join(stopped['errors']) or 'RuntimeError')
+    say = stopped_said(project, progress['stopped']) + '.'
     return say + (SAY['ask-turns'] % _turns(unprocessed) if unprocessed else SAY['ask'])
 
 

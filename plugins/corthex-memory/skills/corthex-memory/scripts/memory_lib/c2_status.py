@@ -19,11 +19,13 @@ fence, the curation record as the start summary reads it, the primary or else
 its backup with nothing restored (TBL-009), the items of every status that no
 tombstone names, the pinned items that are still current, oldest pin first, as
 the start summary shows them (TBL-014), the open conflict candidates whose two
-items are current, as `conflicts` lists them (TBL-120), and the newest run that
-`runs` lists (TBL-121). From the curation record come the last curation
-attempt with its result, its error and how many failed in a row, the fault
-guard's stop, and the last consolidation with the time it is due and its
-failures in a row. A record that cannot be read leaves its fields out. A
+items are current, as `conflicts` lists them (TBL-120), counted from the items
+already read, and the newest run that `runs` lists (TBL-121). From the curation
+record come the last curation attempt with its result, its error and how many
+failed in a row, the fault guard's stop, and the last consolidation with the
+time it is due and its failures in a row. A record that cannot be read leaves
+its fields out. `runs` reads only the primary record, so while the primary
+cannot be read the status shows no last run either, and says so. A
 project without its pins or candidates file and without its backup, as before
 its first curation, has none, as the start summary reads it; an item, pins or
 candidates file that cannot be read, or a missing one whose backup is there,
@@ -36,8 +38,9 @@ codes, and every string goes through the C1 status's redaction.
 """
 import copy
 
-from . import base, clock, command_result, commands, conflicts_command, curation_triggers, curation_worker
-from . import item_commands, item_io, item_types, locks, run_listing, run_log, start_memory
+from . import base, clock, command_result, commands, conflict_types, conflicts_command, curation_triggers
+from . import curation_worker, item_commands, item_io, item_types, locks, resume_command, run_listing, run_log
+from . import start_memory
 from . import status as c1_status
 
 # The commands' shared lock wait, within one bound for each project's read.
@@ -45,9 +48,9 @@ WAIT, SECONDS = 10.0, 60.0
 STATUSES = ('current', 'superseded', 'withdrawn', 'undone')
 SAY = {
     'status': 'Memory status from the memory store and its logs, with no conversation text and no key.',
-    'stopped': 'Curation of %s is stopped after three failed %s in a row (%s); resume can start it again.',
+    'stopped': '%s; resume can start it again.',
+    'record': 'The curation record of %s cannot be read, so its last run is not shown; the next curation repairs it.',
 }
-WHAT = {'curate': 'attempts', 'consolidate': 'consolidations'}
 
 
 def record_fields(progress):
@@ -96,6 +99,8 @@ class Reader(c1_status.Reader):
         self.header = context.memory.record(self.note, deadline=clock.now() + 10)
         self.now = c1_status._now() if when is None else when
         self.unreadable, self.latest = set(), {}
+        # The projects whose primary curation record cannot be read, which `runs` reads alone.
+        self.unread = []
 
     def flush(self):
         notes, self.notes = self.notes, []
@@ -121,11 +126,11 @@ class Reader(c1_status.Reader):
 
             def check():
                 memory.check(deadline, memory.held)
-            turns = curation_triggers.turns(memory, root)
-            result['unprocessed'] = len(turns)
-            if turns:
-                result['oldest'] = min(turns.values()).strftime('%Y-%m-%dT%H:%M:%S.000Z')
-            progress = curation_triggers._progress(memory, root, deadline)
+            markers = curation_triggers.scan(memory, root)
+            result['unprocessed'] = markers.count
+            if markers.count:
+                result['oldest'] = base.utc_time(markers.oldest)
+            progress, primary = curation_triggers.read_progress(memory, root, deadline)
             if progress is not None:
                 result.update(record_fields(progress))
             items = item_commands._items(memory, root, deadline, check)
@@ -135,22 +140,29 @@ class Reader(c1_status.Reader):
             pins = item_io.optional_record(memory, root / 'layer/pins.json', item_types.parse_pins, deadline, check,
                                            {'pins': []})['pins']
             result['pins'] = [value['id'] for value in start_memory.pinned(pins, current.get)]
-            read = run_listing._reader(memory, deadline)
             candidates = conflicts_command._candidates(memory, root, deadline, check)
-            result['open_conflicts'] = len(conflicts_command.listed(memory, root, candidates, read))
-            if progress is not None:
+            # The open candidates whose two items are current, as `conflicts` lists them.
+            result['open_conflicts'] = sum(all(item in current for item in candidate['items'])
+                                           for candidate in conflict_types.open_candidates(candidates))
+            if primary:
                 logs = run_log.listed(root, progress, memory.device, when=base.utc_time(self.now),
-                                      days=config.values['retention']['days'], reader=read)
+                                      days=config.values['retention']['days'],
+                                      reader=run_listing._reader(memory, deadline))
                 if logs:
                     result['last_run'] = {'run': logs[0]['id'], 'kind': logs[0]['kind']}
+            else:
+                self.unread.append(name)
             check()
         return result
 
 
-def _say(projects):
-    said = [SAY['stopped'] % (value['project'], WHAT[value['stopped']['by']],
-                              ', '.join(value['stopped']['errors']) or 'RuntimeError')
-            for value in projects if 'stopped' in value]
+def _say(projects, unread):
+    said = []
+    for value in projects:
+        if 'stopped' in value:
+            said.append(SAY['stopped'] % resume_command.stopped_said(value['project'], value['stopped']))
+        if value['project'] in unread:
+            said.append(SAY['record'] % value['project'])
     return ' '.join(said) or SAY['status']
 
 
@@ -168,4 +180,4 @@ def status(context, *, when=None):
             reader.flush()
     except locks.LockBusy:
         return commands.common_result('status', 'lock-busy')
-    return commands.result('status', value['data'], _say(value['data']['projects']))
+    return commands.result('status', value['data'], _say(value['data']['projects'], reader.unread))

@@ -16,8 +16,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (c2_status, clock, commands, curation_worker, files, format2, item_types, locks, pin_command,
-                        run_log)
+from memory_lib import (c2_status, clock, commands, configuration, curation_worker, files, format2, item_types, locks,
+                        pin_command, run_listing, run_log)
 from test_memory_curator_answers import answer, change, quote
 import test_memory_commands as commands_fixture
 import test_memory_conflicts_command as conflicts_fixture
@@ -111,7 +111,7 @@ class StatusTest(StatusStore, unittest.TestCase):
             'consolidation': {'failures': 0, 'last': MERGED},
             'items': dict(EMPTY, current=1, superseded=2), 'pins': [merged], 'open_conflicts': 0,
             'last_run': {'run': consolidated, 'kind': 'consolidate'}}])
-        self.assertEqual(value['say'], 'Curation of sample is stopped after three failed attempts in a row '
+        self.assertEqual(value['say'], 'Curation of sample stopped after three failed attempts in a row '
                                        '(refusal); resume can start it again.')
         # This month's usage by model: the curator's calls cost 0 and name it as having no price.
         rows = [row for row in self.fixture.usage() if row['call'] != 'count-tokens']
@@ -191,20 +191,35 @@ class StatusTest(StatusStore, unittest.TestCase):
     # What cannot be read, and the projects without a layer
 
     def test_a_record_that_cannot_be_read_leaves_its_fields_out_and_its_backup_is_read_not_restored(self):
-        self.fixture.mark(self.said)
+        first = self.curate('Answer me in Korean.', lambda said: answer(change(
+            quote(said, 'Answer me in Korean'), kind='preference', title='Korean answers')))
         self.failed('Name the script hook.py.')
-        whole = self.project()
+        value = self.status()
+        (whole,) = value['data']['projects']
+        self.assertEqual((whole['last_run'], whole['stopped']['by']), ({'run': first, 'kind': 'curate'}, 'curate'))
+        stop = 'Curation of sample stopped after three failed attempts in a row (refusal); resume can start it again.'
+        self.assertEqual(value['say'], stop)
         path = self.root / 'curation.json'
         good = path.read_bytes()
         path.with_name('curation.json.bak').write_bytes(good)
         path.write_bytes(b'{"logs": ')
-        self.assertEqual(self.project(), whole)
+        # The backup gives the record's fields, as the start summary reads it. `runs` reads only the primary and lists
+        # no run, so the status shows no last run and says why.
+        value = self.status()
+        self.assertEqual(value['data']['projects'], [{k: v for k, v in whole.items() if k != 'last_run'}])
+        self.assertEqual(value['say'], stop + ' ' + c2_status.SAY['record'] % 'sample')
+        context = commands.Context('runs', {'folder': str(self.root)}, None, self.memory)
+        context.project = types.SimpleNamespace(name='sample')
+        context.configuration = configuration.prepare({'retention': {'days': 100}})
+        self.assertEqual(run_listing.runs(context, when=NOW)['say'], run_listing.SAY['unreadable'])
         self.assertEqual(path.read_bytes(), b'{"logs": ')
         path.with_name('curation.json.bak').write_bytes(b'{"logs": ')
-        value = self.project()
+        value = self.status()
+        (project,) = value['data']['projects']
         for field in ('curation', 'stopped', 'consolidation', 'last_run'):
-            self.assertNotIn(field, value)
-        self.assertEqual((value['unprocessed'], value['items']), (whole['unprocessed'], whole['items']))
+            self.assertNotIn(field, project)
+        self.assertEqual((project['unprocessed'], project['items']), (whole['unprocessed'], whole['items']))
+        self.assertEqual(value['say'], c2_status.SAY['record'] % 'sample')
         self.assertEqual(path.read_bytes(), b'{"logs": ')
 
     def test_a_project_without_a_folder_or_being_deleted_shows_its_configuration_only(self):
@@ -373,7 +388,7 @@ class StatusTest(StatusStore, unittest.TestCase):
         value = self.status()
         (project,) = value['data']['projects']
         self.assertEqual((project['stopped']['by'], project['consolidation']['failures']), ('consolidate', 3))
-        self.assertEqual(value['say'], 'Curation of sample is stopped after three failed consolidations in a row '
+        self.assertEqual(value['say'], 'Curation of sample stopped after three failed consolidations in a row '
                                        '(invalid_request_error); resume can start it again.')
 
 
