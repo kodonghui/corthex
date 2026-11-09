@@ -221,16 +221,21 @@ class Context:
     store_error: object = None
     configuration_error: object = None
 
-    def confirm(self, data, say, apply, code="ok"):
-        """Ask without calling apply; a mismatch always returns a fresh preview."""
+    def confirm(self, data, say, apply, code="ok", bound=None):
+        """Ask without calling apply; a mismatch always returns a fresh preview.
+
+        The code covers the preview's data, or only `bound` when a command's
+        confirmation covers less than its preview shows.
+        """
         if self.command not in ASKS or self.command == "sync" and self.arguments["mode"] != "on":
             raise ValueError()
         device = self.record["device"] if self.record else "none"
         # Check the typed preview before even serializing data into a token.
         preview = result(self.command, data, say, "confirm", code, "00000000")
         period = int(time.time() // 600)
-        current = confirmation(device, self.command, self.arguments, data, period)
-        accepted = (current, confirmation(device, self.command, self.arguments, data, period - 1))
+        basis = data if bound is None else bound
+        current = confirmation(device, self.command, self.arguments, basis, period)
+        accepted = (current, confirmation(device, self.command, self.arguments, basis, period - 1))
         preview["confirm"] = current
         if self.supplied not in accepted:
             stale = self.supplied is not None

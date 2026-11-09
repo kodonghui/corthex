@@ -21,10 +21,13 @@ loses `stopped`, and the count of failed attempts from one first turn and the
 count of failed consolidations in a row go back to zero, as a success sets
 them, so that the fault guard counts three new failures before it stops the
 project again (SPEC-018). Every other field of the record, its fence included,
-stays as it is, and no item, line, pin, candidate, notice or run changes. A
-new turn or another change to what the preview shows, or two ten-minute
-periods, make the code stale (`confirm-stale`), with the new data and a new
-code.
+stays as it is, and no item, line, pin, candidate, notice or run changes. The
+code covers the project, the stop and the failed attempts that it shows, not
+the unprocessed turns, as the maintainer decided on 2026-11-09: the person's
+own answer is recorded as a new turn, so a new turn leaves the code current,
+and the result counts the turns that wait then. Another stop or other failed
+attempts, or two ten-minute periods, make the code stale (`confirm-stale`),
+with the new data and a new code.
 
 Once the leases are released, when turns wait, it starts the memory worker
 with `--reason skill` (API-005), unless a fresh curation lease shows that a
@@ -132,7 +135,9 @@ def resume(context):
                 revision_io.update_progress(memory, root, fence_plan.snapshot(progress), cleared(progress),
                                             deadline, removed=('stopped',))
                 applied.append(True)
-            answer = context.confirm(data, _ask(project, progress, data['unprocessed']), apply)
+            # The code leaves out the unprocessed turns, which the person's own answer adds to.
+            bound = {'project': project, 'stopped': progress['stopped'], 'failures': data['failures']}
+            answer = context.confirm(data, _ask(project, progress, data['unprocessed']), apply, bound=bound)
             if not applied:
                 return answer
     except locks.LockBusy:

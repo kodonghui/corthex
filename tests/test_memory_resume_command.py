@@ -250,21 +250,43 @@ class ResumeTest(ResumeStore, unittest.TestCase):
         self.assertEqual(calls, [WORKER])
         self.assertNotIn('stopped', self.fixture.progress())
 
-    def test_tc233_a_new_turn_after_the_preview_makes_its_code_stale(self):
+    def test_tc233_a_new_turn_after_the_preview_leaves_its_code_current(self):
+        # The maintainer's decision of 2026-11-09: the person's own answer is recorded as a new turn, so the code
+        # covers the stop and its failures, not the unprocessed turns.
         self.stop()
         with self.launches() as calls:
             asked = self.command()
+            self.assertEqual(asked['data']['unprocessed'], 1)
             self.turn('Name the script hook.py.')
-            before = self.tree()
+            done = self.command(asked['confirm'])
+        self.assertEqual((done['outcome'], done['code'], done['data']),
+                         ('done', 'ok', dict(asked['data'], unprocessed=2)))
+        self.assertEqual(done['say'], SAY['started'] % ('sample', '2 unprocessed turns'))
+        self.assertEqual(calls, [WORKER])
+        self.assertNotIn('stopped', self.fixture.progress())
+
+    def test_tc233_a_code_for_an_earlier_stop_is_stale(self):
+        self.stop()
+        with self.launches():
+            asked = self.command()
+            self.assertEqual(self.command(asked['confirm'])['outcome'], 'done')
+        # Later curations fail again, and the fault guard stops the project once more.
+        self.server.answers = [REFUSAL]
+        reasons = []
+        for minutes in (10, 20, 30):
+            deadline = clock.now() + 300
+            with self.memory.lease(self.root / 'curation.lock', 'curation', deadline) as owner:
+                when = worker_fixture.WHEN + timedelta(minutes=minutes)
+                reasons.append(curation_worker.curate(self.memory, 'sample', owner, deadline, when=when).reason)
+        self.assertEqual(reasons, ['failed', 'failed', 'stopped'])
+        before = self.tree()
+        with self.launches() as calls:
             stale = self.command(asked['confirm'])
             self.assertEqual((stale['outcome'], stale['code']), ('confirm', 'confirm-stale'))
-            self.assertEqual(stale['data'], dict(asked['data'], unprocessed=2))
+            self.assertNotEqual(stale['data']['failures'], asked['data']['failures'])
             self.assertNotEqual(stale['confirm'], asked['confirm'])
             self.assertEqual((self.tree(), calls), (before, []))
-            self.assertIn('stopped', self.fixture.progress())
-            done = self.command(stale['confirm'])
-        self.assertEqual((done['outcome'], done['data']['unprocessed']), ('done', 2))
-        self.assertNotIn('stopped', self.fixture.progress())
+        self.assertIn('stopped', self.fixture.progress())
 
     def test_a_made_up_code_is_stale_and_changes_nothing(self):
         self.stop()
