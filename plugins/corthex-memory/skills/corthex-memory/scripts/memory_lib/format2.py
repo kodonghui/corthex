@@ -15,7 +15,10 @@ _RUN = re.compile(r"r_" + _DIGITS + r"\Z")
 _CANDIDATE = re.compile(r"c_" + _DIGITS + r"\Z")
 _EPOCH = re.compile(r"[0-9a-fA-F]{32}\Z")
 _OBJECT = re.compile(r"(?:item:i_|line:s_|pin:i_|candidate:c_|run:r_)" + _DIGITS + r"\Z")
-_CURATION_ORDER = "logs applies recent failures consolidation stopped rebuilt fence conflict_after".split()
+# The curation record's fields in their order (TBL-009), those that it may lack, and those that it always has.
+CURATION_FIELDS = tuple("logs applies recent failures consolidation stopped rebuilt fence conflict_after".split())
+CURATION_OPTIONAL = ("failures", "stopped", "rebuilt", "conflict_after")
+_CURATION_REQUIRED = tuple(name for name in CURATION_FIELDS if name not in CURATION_OPTIONAL)
 _ATTEMPT_ORDER = "at kind result error applied dropped reasons state edit_reasons run".split()
 # Why a curate attempt dropped an item change (TASK-085) or a line edit (TASK-087), and why a consolidate
 # attempt dropped a merge or a line of the last state answer (TASK-089, TASK-090): each counts once, under the
@@ -111,8 +114,7 @@ def parse_curation(data):
     invents a zero revision nor rotates a recovery epoch.
     """
     value = _document(data)
-    curation._shape(value, "logs applies recent consolidation fence",
-                    "failures stopped rebuilt conflict_after")
+    curation._shape(value, " ".join(_CURATION_REQUIRED), " ".join(CURATION_OPTIONAL))
     _fence(value["fence"])
     if "conflict_after" in value:
         _id(value["conflict_after"], _CANDIDATE)
@@ -142,7 +144,7 @@ def _bytes(value, table, parser, **options):
     validated = parser(plain, **options)
     ordered = base._ordered(validated, table)
     if table == "TBL-009":
-        ordered = {key: ordered[key] for key in _CURATION_ORDER if key in ordered}
+        ordered = {key: ordered[key] for key in CURATION_FIELDS if key in ordered}
         ordered["recent"] = [{key: attempt[key] for key in _ATTEMPT_ORDER if key in attempt}
                              for attempt in ordered["recent"]]
     return (json.dumps(ordered, ensure_ascii=False, allow_nan=False, indent=2) + "\n").encode("utf-8")

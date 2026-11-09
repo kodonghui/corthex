@@ -417,3 +417,45 @@ class RevisionIOTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(value),
                                             {'fence': PROGRESS['fence']}, self.deadline)
+
+    def test_progress_merge_removes_the_named_fields_and_keeps_the_record_valid(self):
+        stopped = {'at': '2026-11-04T13:00:00.000Z', 'by': 'curate', 'errors': ['refusal']}
+        failures = {'count': 3, 'log': 'codex-0123456789abcdef', 'turn': 9}
+        self.path.write_bytes(format2.curation_bytes(dict(PROGRESS, stopped=stopped, failures=failures)))
+        with self.held(curator=True):
+            fresh = self.value()
+            before = self.path.read_bytes()
+            # A required field cannot go, a name is not a list of names, and a field is changed or removed.
+            for removed, changes in ((('fence',), {}), (('logs',), {}), (('consolidation',), {}),
+                                     ('stopped', {}), (('stopped',), {'stopped': stopped})):
+                with self.subTest(removed=removed), self.assertRaises(ValueError):
+                    revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), changes,
+                                                self.deadline, removed=removed)
+                self.assertEqual(self.path.read_bytes(), before)
+            # Names that are not text are refused too, before anything is read.
+            for removed in ([['stopped']], (None,)):
+                with self.subTest(removed=removed), self.assertRaises(ValueError):
+                    revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), {},
+                                                self.deadline, removed=removed)
+            value = revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh),
+                                                {'failures': dict(failures, count=0)}, self.deadline,
+                                                removed=('stopped', 'rebuilt'))
+        expected = dict(PROGRESS, failures=dict(failures, count=0))
+        self.assertEqual((value, self.value()), (expected, expected))
+
+    def test_a_refused_progress_merge_does_not_restore_a_damaged_record(self):
+        stopped = {'at': '2026-11-04T13:00:00.000Z', 'by': 'curate', 'errors': ['refusal']}
+        self.path.write_bytes(format2.curation_bytes(dict(PROGRESS, stopped=stopped)))
+        fresh = self.value()
+        self.damaged_with_backup()
+        damaged, backup = self.path.read_bytes(), self.backup.read_bytes()
+        with self.held(curator=True):
+            # A field both changed and removed, the fence changed or removed, a field that the record does not
+            # have changed, or a field that the record always has removed: each is refused before the record is read.
+            for changes, removed in (({'stopped': stopped}, ('stopped',)), ({'fence': fresh['fence']}, ('stopped',)),
+                                     ({'bogus': 1}, ()), ({}, ('fence',)), ({}, ('applies',)),
+                                     ({}, ('logs', 'stopped'))):
+                with self.subTest(changes=sorted(changes), removed=removed), self.assertRaises(ValueError):
+                    revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), changes,
+                                                self.deadline, removed=removed)
+                self.assertEqual((self.path.read_bytes(), self.backup.read_bytes()), (damaged, backup))

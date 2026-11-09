@@ -310,7 +310,8 @@ class RequestInputsTest(unittest.TestCase):
         self.transport = transport_fixture.ModelTransportTest(); self.transport.setUp()
         self.addCleanup(self.transport.doCleanups)
         self.usage = usage_fixture.ModelUsageTest(); self.usage.setUp(); self.addCleanup(self.usage.doCleanups)
-        self.key = 'fixture-memory-key-' + secrets.token_hex(12)
+        # Letters only: a run of digits could pass the Luhn check and be redacted as a card number when recorded.
+        self.key = 'fixture-memory-key-' + ''.join(secrets.choice(string.ascii_lowercase) for _ in range(24))
         self.environment = mock.patch.dict(os.environ, {
             'CORTHEX_MEMORY_ANTHROPIC_API_KEY': self.key, 'CORTHEX_MEMORY_OPENAI_API_KEY': '',
             'CORTHEX_MEMORY_ANTHROPIC_BASE_URL': 'http://127.0.0.1:' + str(self.transport.server.server_port)})

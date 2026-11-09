@@ -19,7 +19,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, locks, model_embed, model_transport, prompt_recall, raw_log, recall, start_memory
+from memory_lib import (clock, locks, model_embed, model_transport, model_usage, prompt_recall, raw_log, recall,
+                        start_memory)
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
@@ -140,46 +141,72 @@ class PromptRecallTest(unittest.TestCase):
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
         settings, before = self.settings(), self.raw_files()
-        ready, once, marks = recall.ready, model_transport.once, {}
+        spans, stalls = {}, []
 
-        def looked(*arguments, **options):
-            marks['look'] = clock.now()
-            try:
-                return ready(*arguments, **options)
-            finally:
-                marks['looked'] = clock.now()
+        def timed(name, call):
+            """`call`, noting when it began and ended under `name`."""
+            def run(*arguments, **options):
+                spans[name] = [clock.now(), None]
+                try:
+                    return call(*arguments, **options)
+                finally:
+                    spans[name][1] = clock.now()
+            return run
 
-        def sent(*arguments, **options):
-            marks['sent'] = clock.now()
-            return once(*arguments, **options)
-        # The request has to start within the embedding's 800 ms. On busy macOS runners the steps before it took all
-        # of that time in two of three runs (2026-11-09): recall is then late with `deadline` and sends nothing, as
-        # it should, and the case is tried again, saying where the time went.
+        def at(name, end=0):
+            moment = spans.get(name, (None, None))[end]
+            return 'never' if moment is None else '%.3f s' % (moment - started)
+        # The request has to start within the embedding's 800 ms and reach the server. On busy macOS runners the
+        # steps before it took all of that time in two of three runs (2026-11-09): recall is then late and sends
+        # nothing, as it should, and the case is tried again, saying when each step before the request began and
+        # ended. The server answers the one request after two seconds.
+        self.server.before[0] = lambda: time.sleep(2)
         for _ in range(3):
-            marks.clear()
-            self.server.before[len(self.server.requests)] = lambda: time.sleep(2)
+            spans.clear()
+            used = len(self.usage())
             started = clock.now()
-            with mock.patch.object(recall, 'ready', side_effect=looked), \
-                    mock.patch.object(model_transport, 'once', side_effect=sent):
+            attempt = model_usage.Attempt
+            with mock.patch.object(recall, 'ready', side_effect=timed('look', recall.ready)), \
+                    mock.patch.object(model_embed, 'embed', side_effect=timed('embed', model_embed.embed)), \
+                    mock.patch.object(attempt, 'start', side_effect=timed('start', attempt.start)), \
+                    mock.patch.object(model_transport, 'once', side_effect=timed('send', model_transport.once)):
                 result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.9,
                                               settings=settings, zone=UTC)
             elapsed = clock.now() - started
-            if 'sent' in marks:
+            # The test server records a request as it reads it, which can come just after a request that started at
+            # the end of the 800 ms; one that started too late to reach it at all makes a stalled try too.
+            until = clock.now() + 1
+            while 'send' in spans and not self.server.requests and clock.now() < until:
+                time.sleep(0.01)
+            steps = ('the index look ran from %s to %s, the embedding call from %s to %s, its attempt from %s to %s, '
+                     'its request from %s to %s, and recall ended at %.3f s'
+                     % (at('look'), at('look', 1), at('embed'), at('embed', 1), at('start'), at('start', 1),
+                        at('send'), at('send', 1), elapsed))
+            if self.server.requests:
                 break
-            self.assertEqual((result, self.server.requests, self.usage()),
-                             (prompt_recall.Result('late', error='deadline'), [], []))
-            print('\nTC-207: no request within 800 ms; the index look ran from %.3f s to %.3f s, recall ended at %.3f s'
-                  % (tuple(marks.get(name, clock.now()) - started for name in ('look', 'looked')) + (elapsed,)),
-                  file=sys.stderr)
+            stalls.append('no request reached the test server: ' + steps)
+            print('\nTC-207: ' + stalls[-1], file=sys.stderr)
+            # Recall is late: when its request started, with `timeout`, or with `deadline` if the hook's own
+            # deadline passed too before recall ended; otherwise with `deadline` and no usage line, since no request
+            # was counted.
+            if 'send' in spans:
+                self.assertIn(result, [prompt_recall.Result('late', error=error) for error in ('timeout', 'deadline')],
+                              stalls[-1])
+            else:
+                self.assertEqual((result, self.usage()[used:]), (prompt_recall.Result('late', error='deadline'), []),
+                                 stalls[-1])
+        else:
+            self.fail('TC-207: no request reached the test server in three tries; ' + '; '.join(stalls))
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
-                         ('late', '', (), (), 'timeout'))
-        self.assertLess(elapsed, 1.0)
-        self.assertGreaterEqual(elapsed, 0.79)
-        self.assertEqual(prompt_recall.output(result), b'')
-        self.assertEqual(len(self.server.requests), 1)
-        usage, = self.usage()
-        self.assertEqual((usage['call'], usage['result'], usage.get('error')), ('embed-prompt', 'failed', 'timeout'))
-        self.assertLess(usage['total_ms'], 900)
+                         ('late', '', (), (), 'timeout'), steps)
+        self.assertLess(elapsed, 1.0, steps)
+        self.assertGreaterEqual(elapsed, 0.79, steps)
+        self.assertEqual(prompt_recall.output(result), b'', steps)
+        self.assertEqual(len(self.server.requests), 1, steps)
+        usages = self.usage()[used:]
+        self.assertEqual([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
+                         [('embed-prompt', 'failed', 'timeout')], steps)
+        self.assertLess(usages[0]['total_ms'], 900, steps)
         # Recall writes nothing to the raw log, so the recorded prompt stays as it was.
         self.assertEqual(self.raw_files(), before)
         self.assertTrue(self.log(result, ident('e')))

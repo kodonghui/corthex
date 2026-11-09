@@ -74,9 +74,6 @@ SAY = {
 }
 
 
-pinned = start_memory.pinned
-
-
 def fits(base_text, values, value, lines=()):
     """Whether the start summary with this base, pinned items and state lines, `value` the newest pin, shows every pin.
 
@@ -193,12 +190,12 @@ def _command(context, command, at, start_base=None):
             on = any(pin['item'] == name and pin['on'] for pin in pins)
             data = {'project': project, 'item': name}
             if on == (command == 'pin'):
-                data['pins'] = [item['id'] for item in pinned(pins, current)]
+                data['pins'] = [item['id'] for item in start_memory.pinned(pins, current)]
                 check()
                 return commands.result(command, data, SAY['already' if on else 'not-pinned'] % name, 'nothing')
             if command == 'pin':
                 # The pinned items and state lines as the next start would show them, notices aside.
-                now = pinned(pins, current)
+                now = start_memory.pinned(pins, current)
                 state, removed = (item_io.optional_record(memory, root / 'layer' / name, parse, deadline, check,
                                                           parse(start_summary.EMPTY[name]))
                                   for name, parse in (('state.json', state_types.parse_state),
@@ -212,7 +209,7 @@ def _command(context, command, at, start_base=None):
                     say = SAY['no-room'] if now and fits(text, (), value, lines) else SAY['base']
                     return commands.result('pin', data, say, 'refused', 'pin-no-room')
             after = changed(pins, name, command == 'pin', at or base.utc_time(), memory.device)
-            data['pins'] = [item['id'] for item in pinned(after, current)]
+            data['pins'] = [item['id'] for item in start_memory.pinned(after, current)]
             check()
             _publish(memory, root, after, name, deadline)
             return commands.result(command, data, SAY['pinned' if command == 'pin' else 'unpinned'] % name)

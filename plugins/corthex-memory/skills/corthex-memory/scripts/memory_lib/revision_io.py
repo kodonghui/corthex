@@ -165,17 +165,38 @@ def reserve(memory, root, expected, targets, deadline, run_id=None, *, primary_o
     return reservation
 
 
-def update_progress(memory, root, expected, changes, deadline):
-    """Merge intended progress fields into fresh metadata, preserving its fence."""
+def update_progress(memory, root, expected, changes, deadline, removed=()):
+    """Merge intended progress fields into fresh metadata, preserving its fence.
+
+    `changes` sets fields of the curation record (TBL-009), the fence aside,
+    also one that this record lacks, as the fault guard sets `stopped`, and
+    `removed` names fields that the record may lack to take out, as a resume
+    takes out the fault guard's stop (TASK-096). A field cannot be both changed
+    and removed, and the record must stay valid (TBL-009), or nothing is
+    written. The arguments' shape is checked before the record is read, so
+    that a merge refused for its shape, which changes the fence or a field
+    that the curation record does not define, or removes a field that the
+    record always has, restores no damaged record; a changed value that the
+    record's check refuses is refused after the read, which restores a
+    damaged primary from a whole backup as every writer's read does.
+    """
+    if not isinstance(changes, dict) or 'fence' in changes:
+        raise ValueError('progress merge must preserve the fence')
+    if not set(changes) <= set(format2.CURATION_FIELDS):
+        raise ValueError('progress merge changes only the fields of the curation record')
+    if (not isinstance(removed, (tuple, list)) or not all(isinstance(key, str) for key in removed)
+            or not set(removed) <= set(format2.CURATION_OPTIONAL) or set(removed) & set(changes)):
+        raise ValueError('removed progress fields are fields that the record may lack and that the merge does '
+                         'not change')
     root = Path(root)
     check = guard(memory, root, deadline, curator=True)
     fresh = read(memory, root, deadline)
     if not fence_plan.matches(fresh, expected):
         raise fence_plan.Stale()
-    if not isinstance(changes, dict) or 'fence' in changes:
-        raise ValueError('progress merge must preserve the fence')
     value = copy.deepcopy(fresh)
     value.update(copy.deepcopy(changes))
+    for key in removed:
+        value.pop(key, None)
     data = format2.curation_bytes(value)
     if value['applies'] < fresh['applies']:
         raise ValueError('applies must not go backwards')
