@@ -142,8 +142,7 @@ class Reader(c1_status.Reader):
             result['pins'] = [value['id'] for value in start_memory.pinned(pins, current.get)]
             candidates = conflicts_command._candidates(memory, root, deadline, check)
             # The open candidates whose two items are current, as `conflicts` lists them.
-            result['open_conflicts'] = sum(all(item in current for item in candidate['items'])
-                                           for candidate in conflict_types.open_candidates(candidates))
+            result['open_conflicts'] = len(conflict_types.open_current(candidates, current.__contains__))
             if primary:
                 logs = run_log.listed(root, progress, memory.device, when=base.utc_time(self.now),
                                       days=config.values['retention']['days'],

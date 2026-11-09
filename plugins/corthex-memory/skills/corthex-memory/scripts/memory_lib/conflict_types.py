@@ -51,3 +51,13 @@ def open_candidates(value):
     """Open candidates in the rotation order of SPEC-015: time, then ID."""
     value = parse_conflicts(item_types._raw(value))
     return sorted((c for c in value['candidates'] if c['status'] == 'open'), key=lambda c: (c['at'], c['id']))
+
+
+def open_current(value, current):
+    """The open candidates, in `open_candidates` order, whose two items `current(item)` finds current.
+
+    `conflicts` lists these, the status counts them and a curator request
+    carries them (TBL-120); each caller says what is current as it reads the
+    items.
+    """
+    return [c for c in open_candidates(value) if all(current(item) for item in c['items'])]

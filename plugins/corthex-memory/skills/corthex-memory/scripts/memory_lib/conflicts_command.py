@@ -68,17 +68,14 @@ def _item(memory, root, item, read):
 
 def listed(memory, root, conflicts, read):
     """The open candidates whose two items are current, oldest first, as conflict lines (data-conflicts)."""
-    lines, cache = [], {}
-    for candidate in conflict_types.open_candidates(conflicts):
-        pair = []
-        for item in candidate['items']:
-            if item not in cache:
-                cache[item] = _item(memory, root, item, read)
-            pair.append(cache[item])
-        if None not in pair:
-            lines.append({'candidate': candidate['id'], 'items': [run_listing.list_line(value) for value in pair],
-                          'at': candidate['at']})
-    return lines
+    cache = {}
+
+    def current(item):
+        if item not in cache:
+            cache[item] = _item(memory, root, item, read)
+        return cache[item] is not None
+    return [{'candidate': candidate['id'], 'items': [run_listing.list_line(cache[item]) for item in candidate['items']],
+             'at': candidate['at']} for candidate in conflict_types.open_current(conflicts, current)]
 
 
 def dismissed(conflicts, candidate, at):

@@ -159,6 +159,22 @@ class ConflictCountsTest(unittest.TestCase):
                      candidate(OLDER, status='settled'))
         self.assertEqual([c['id'] for c in conflict_counts.eligible(self.conflicts, self.read())], [NEWER])
 
+    def test_open_current_keeps_the_open_candidates_whose_two_items_the_caller_finds_current(self):
+        # One rule for what `conflicts` lists, the status counts and a curator request carries (TBL-120).
+        current = {'i_0123456789ab', 'i_0123456789ac', 'i_0123456789ad', 'i_0123456789af'}
+        conflicts = {'candidates': [candidate(NEWER, at=LATER, items=('i_0123456789ad', 'i_0123456789ab')),
+                                    candidate(OLDER), candidate(OTHER, items=('i_0123456789ae', 'i_0123456789af')),
+                                    candidate('c_0123456789ae', status='dismissed',
+                                              items=('i_0123456789ag', 'i_0123456789ah'))]}
+        asked = []
+
+        def found(item):
+            asked.append(item)
+            return item in current
+        self.assertEqual([c['id'] for c in conflict_types.open_current(conflicts, found)], [OLDER, NEWER])
+        # The second item is asked only when the first is current, and a closed candidate's items never.
+        self.assertEqual(sorted(set(asked)), ['i_0123456789ab', 'i_0123456789ac', 'i_0123456789ad', 'i_0123456789ae'])
+
     def test_initialize_needs_the_layer_lease_new_ids_and_never_lowers_a_count(self):
         with self.assertRaises(locks.LostLock):
             conflict_counts.initialize(self.memory, self.project, [OLDER], self.conflicts, self.deadline)

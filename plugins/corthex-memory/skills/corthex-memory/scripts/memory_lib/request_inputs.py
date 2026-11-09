@@ -70,8 +70,7 @@ def layer(root, read=_bytes):
     pinned = tuple(pin['item'] for pin in pins if pin['on'] and pin['item'] in items and
                    items[pin['item']]['status'] == 'current')
     conflicts = conflict_types.parse_conflicts(read(folder/'conflicts.json'))
-    candidates = conflict_types.open_candidates(conflicts)
-    candidates = tuple(c for c in candidates if all(items.get(i, {}).get('status') == 'current' for i in c['items']))
+    candidates = tuple(conflict_types.open_current(conflicts, lambda i: items.get(i, {}).get('status') == 'current'))
     places = {c['id']: (c['at'], c['id']) for c in conflicts['candidates']}
     return Layer(tuple(view['lines']), tuple(view['hidden']), items, tuple(current), pinned, candidates, places)
 
