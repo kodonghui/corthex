@@ -4,10 +4,13 @@
 step 1 finds one, and otherwise gives no outcome and nothing to log. It needs
 the OpenAI memory key, a recall threshold, a prompt that is neither short nor a
 command, and an index that it can use, in that order, and says in one word
-which was missing (TBL-011); none of these sends anything. It then embeds the
-redacted prompt (API-010) with a request that ends 800 ms after the hook's
-start and adds a usage line, and ranks the project's items within the hook's
-own deadline (TASK-093). An embedding that comes too late, or a deadline that
+which was missing (TBL-011); none of these sends anything. A key that cannot be
+sent counts as missing, as the index worker counts it, and the index is looked
+at within the embedding's 800 ms. It then embeds the redacted prompt (API-010)
+with a request that ends 800 ms after the hook's start and adds a usage line,
+and ranks the project's items within the hook's own deadline (TASK-093). An
+index that a rebuild or a deletion takes away while the request is out gives
+`no-index` after it. An embedding that comes too late, or a deadline that
 passes while it ranks, makes the outcome `late`; a failed request or answer, a
 vector of the wrong length and any other error make it `failed`. Either way
 nothing is injected and the result carries what the hook's failure log notes.
@@ -56,10 +59,10 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
     if not settings.enabled(project):
         return Result(None)
     try:
-        credentials = model_access.Credentials.read()
+        key = model_access.Credentials.read().headers('openai')
     except ValueError:
-        credentials = None
-    if credentials is None or credentials.headers('openai') is None:
+        key = None  # a key that cannot be read or sent, as the index worker's step 6 counts it
+    if key is None:
         return Result('no-key')
     values = settings.values['recall']
     if values.get('threshold') is None:
@@ -68,7 +71,8 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
     if skipped is not None:
         return Result(skipped)
     try:
-        missing = ranking.ready(memory, project, deadline, settings=settings)
+        # The index is looked at only within the embedding's time: a lock that outlasts it leaves no time to send.
+        missing = ranking.ready(memory, project, min(deadline, started + EMBED_SECONDS), settings=settings)
         if missing == 'late':
             return Result('late', error='deadline')
         if missing is not None:
