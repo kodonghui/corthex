@@ -210,11 +210,28 @@ class ResumeTest(ResumeStore, unittest.TestCase):
             asked = self.command()
             self.assertEqual(asked['data']['unprocessed'], 0)
             self.assertEqual(asked['say'], 'Curation of sample stopped after three failed attempts in a row '
-                                           '(refusal). Resuming clears the stop, and the next trigger curates the '
-                                           'project.')
+                                           '(refusal). Resuming clears the stop and, if turns wait by then, '
+                                           'starts the memory worker for them; otherwise the next trigger curates '
+                                           'the project.')
             done = self.command(asked['confirm'])
         self.assertEqual((done['outcome'], done['say']), ('done', SAY['resumed'] % 'sample'))
         self.assertEqual(calls, [])
+        self.assertNotIn('stopped', self.fixture.progress())
+
+    def test_a_preview_without_unprocessed_turns_says_that_a_turn_recorded_before_the_yes_starts_the_worker(self):
+        # The code leaves the count out, so the person's own answer, recorded as a turn, starts the worker.
+        self.stop()
+        for name in self.fixture.markers():
+            (self.root / 'unprocessed' / name).unlink()
+        with self.launches() as calls:
+            asked = self.command()
+            self.assertEqual(asked['data']['unprocessed'], 0)
+            self.assertIn(' if turns wait by then, starts the memory worker for them;', asked['say'])
+            self.turn('Yes, resume it.')
+            done = self.command(asked['confirm'])
+        self.assertEqual((done['outcome'], done['data']['unprocessed']), ('done', 1))
+        self.assertEqual(done['say'], SAY['started'] % ('sample', '1 unprocessed turn'))
+        self.assertEqual(calls, [WORKER])
         self.assertNotIn('stopped', self.fixture.progress())
 
     def test_a_worker_that_does_not_start_leaves_the_stop_cleared_and_is_noted(self):

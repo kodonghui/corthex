@@ -48,7 +48,10 @@ from . import worker_launch
 WAIT, SECONDS = 10.0, 60.0
 SAY = {
     'stopped': 'Curation of %s stopped after three failed %s in a row (%s)',
-    'ask': ' Resuming clears the stop, and the next trigger curates the project.',
+    # The code leaves the count out, so a turn recorded before the answer, such as the answer itself, starts the
+    # worker even when none waited at the preview.
+    'ask': (' Resuming clears the stop and, if turns wait by then, starts the memory worker for them; otherwise '
+            'the next trigger curates the project.'),
     'ask-turns': ' Resuming clears the stop and starts the memory worker for the %s.',
     'resumed': 'Curation of %s resumed; the next trigger curates the project.',
     'started': 'Curation of %s resumed, and the memory worker started for the %s.',
