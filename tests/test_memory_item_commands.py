@@ -388,6 +388,25 @@ class ItemCommandsTest(unittest.TestCase):
                          [('here', ' and drop [forgotten].'), ('here', ' and drop [forgotten].')])
         self.assertEqual(read.call_count, 2)
 
+    def test_only_around_reads_the_tombstones_and_open_reads_the_items_at_most_once(self):
+        # The ranges that pending tombstones name show only in the words around a quote, and the items that stay,
+        # which those ranges need, also give the closest lines for an argument that names no item.
+        said, _ = self.raw.turn('Keep the hooks in one script and drop the old remark.', 'Done.')
+        self.write()
+        value, gone = self.saved(said, 'Keep the hooks in one script'), self.saved(said, 'the old remark')
+        self.layer([value])
+        self.tombstone(gone)
+        missing = ident('i')
+        with mock.patch.object(item_commands, '_tombstones', wraps=item_commands._tombstones) as stones, \
+                mock.patch.object(item_commands, '_items', wraps=item_commands._items) as items:
+            found = self.open(value['id'])
+            self.assertEqual(found['data']['items'][0]['quotes'][0]['held'], 'here')
+            self.assertEqual((stones.call_count, items.call_count), (0, 0))
+            refused = self.open(value['id'], missing, around=2000)
+            self.assertEqual((refused['code'], refused['data']['missing']), ('item-not-found', [missing]))
+            self.assertEqual(refused['data']['items'][0]['quotes'][0]['after'], ' and drop [forgotten].')
+            self.assertEqual((stones.call_count, items.call_count), (1, 1))
+
     def test_adjacent_and_overlapping_forgotten_ranges_make_one_mark(self):
         entry = {'text': 'abcdefghijklmnop', 'forgotten': [[4, 6], [2, 4], [5, 8]]}
         self.assertEqual(item_commands.around(entry, {'start': 10, 'end': 12}, 2000), ('ab[forgotten]ij', 'mnop'))

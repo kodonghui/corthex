@@ -25,10 +25,11 @@ held here also has up to N characters of its entry's text before it and after
 it, 2,000 at most, with each range that a forget or a pending tombstone names
 shown as [forgotten], as curator requests show it; a mark is never cut. Unlike
 the curator, whose worker recovers an interrupted write before it reads, `open`
-reads around what such a write left: a tombstone is its file or else its
-backup, as the start summary counts it, other names in the tombstones' folder,
-such as temporary copies, are skipped, and the items that stay are read as
-`list` reads them. The tombstones are read once for the command. An
+reads around what such a write left: a tombstone is its file, or its backup
+when the file is gone, as the start summary reads it, other names in the
+tombstones' folder, such as temporary copies, are skipped, and the items that
+stay are read as `list` reads them. Only `--around` reads the tombstones, once
+for the command, and the items are read at most once. An
 argument that names no item of the project, or names one that a tombstone
 names, is `item-not-found`, with the arguments in `missing`, the closest lines
 of the item list in `matches` and the items that the other arguments name. An
@@ -193,12 +194,13 @@ def opened(value, entries, device, cutoff, size=None):
 
 
 def _tombstones(memory, root, deadline, read):
-    """The documents of the project's tombstones, each read from its file or else its backup.
+    """The documents of the project's tombstones, each read from its file, or from its backup when the file is gone.
 
     The start summary and recall count a tombstone's backup as the tombstone,
-    since an interrupted write can leave it alone; other names, such as such a
-    write's temporary copies, are skipped. A tombstone that cannot be read
-    raises.
+    since an interrupted write can leave it alone, and the start summary reads
+    them in the same way; other names, such as such a write's temporary
+    copies, are skipped. A tombstone file that cannot be read raises, even
+    when its backup reads, as it does for the start summary and the curator.
     """
     folder = root / 'layer/tombstones'
     if memory.fence.check(folder) is None:
@@ -222,38 +224,33 @@ def _tombstones(memory, root, deadline, read):
     return stones
 
 
-def _pending(memory, root, deadline, check, read):
+def _pending(memory, root, deadline, read, items):
     """log -> entry ID -> the ranges that pending tombstones name and no item that stays quotes (request_inputs.ranges).
 
-    The items that stay are read as `list` reads them (item_io): an item's
-    backup beside its file and temporary copies are skipped, and a backup
-    without its file raises RestoreNeeded.
+    `items()` gives the items that stay, read as `list` reads them (item_io):
+    an item's backup beside its file and temporary copies are skipped, and a
+    backup without its file raises RestoreNeeded.
     """
-    stones, staying = _tombstones(memory, root, deadline, read), []
-
-    def items():
-        if not staying:
-            staying.append(_items(memory, root, deadline, check))
-        return staying[0]
+    stones = _tombstones(memory, root, deadline, read)
     return {log: request_inputs.ranges(stones, log, items)
             for log in sorted({quote['log'] for stone in stones for quote in stone['quotes']})}
 
 
-def _entries(memory, root, deadline, check, read):
+def _entries(root, read, pending):
     """log -> its entries by ID, from this device's raw log of the project; none once retention deleted it.
 
-    The ranges that pending tombstones name are read once, when the first
-    entry is wanted (`_pending`).
+    `pending()` gives the ranges that pending tombstones name, log -> entry ID
+    -> ranges (`_pending`), and is called once, when the first entry is wanted.
     """
-    found, pending = {}, []
+    found, ranges = {}, []
 
     def entries(log):
         if log not in found:
-            if not pending:
-                pending.append(_pending(memory, root, deadline, check, read))
+            if not ranges:
+                ranges.append(pending())
             try:
                 found[log] = {entry['id']: entry
-                              for entry in request_inputs.entries(root, log, read, pending[0].get(log, {}))}
+                              for entry in request_inputs.entries(root, log, read, ranges[0].get(log, {}))}
             except FileNotFoundError:
                 found[log] = {}
         return found[log]
@@ -291,12 +288,21 @@ def open_items(context, *, when=None):
     cutoff = run_log._cutoff(base.utc_time(when), context.configuration.values['retention']['days'])[0]
 
     def read(memory, root, deadline, check):
+        staying = []
+
+        def items():
+            # Every item that no tombstone names, read at most once, for the pending ranges and the closest lines.
+            if not staying:
+                staying.append(_items(memory, root, deadline, check))
+            return staying[0]
         values = {name: _item(memory, root, name, deadline, check) for name in names}
-        entries = _entries(memory, root, deadline, check, run_listing._reader(memory, deadline))
+        reader = run_listing._reader(memory, deadline)
+        # Only the words around a quote show the ranges that pending tombstones name.
+        pending = dict if size is None else lambda: _pending(memory, root, deadline, reader, items)
+        entries = _entries(root, reader, pending)
         shown = [opened(value, entries, memory.device, cutoff, size) for value in values.values() if value is not None]
         missing = [name for name, value in values.items() if value is None]
-        lines = [run_listing.list_line(value) for value in listed(_items(memory, root, deadline, check))] \
-            if missing else []
+        lines = [run_listing.list_line(value) for value in listed(items())] if missing else []
         return shown, missing, lines
     try:
         shown, missing, lines = _read(context, read) or ([], names, [])
