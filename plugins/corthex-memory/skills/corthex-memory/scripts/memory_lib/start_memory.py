@@ -2,7 +2,9 @@
 
 No state, pin or item files are read. The later start hook selects the project,
 passes its deadline to c1_notices and attaches the returned summary. Its start
-boundary, timeout and worker are TASK-017, not part of this module.
+boundary, timeout and worker are TASK-017, not part of this module. The C2
+notices and the values that `start_summary` reads from the curated layer use
+the same formatter (TASK-091).
 """
 
 import re
@@ -23,7 +25,7 @@ NOTHING = "Memory holds nothing for this project yet."
 NOTICE_HEADING = "Notices from the memory plugin:"
 NOTICE_ORDER = ("unreadable", "stopped", "consent", "key", "retention", "sync-stopped",
                 "sync-unreachable", "temporary", "curation-failed", "consolidation-failed",
-                "rebuilt", "pin-moved", "pin-dropped")
+                "rebuilt", "pin-moved", "pin-dropped", "conflict", "pin-restored", "pin-removed")
 PARTS = ("goal", "decisions", "progress", "blockers", "next")
 LABELS = dict(zip(PARTS, ("Goal", "Decision in force", "Work in progress", "Blocker", "Next action")))
 
@@ -118,20 +120,27 @@ def state_line(line):
     return "- %s: %s%s" % (LABELS[line["part"]], one_line(line["text"]), suffix)
 
 
+def fitting(notices):
+    """(the notices shown, how many more): stable table order, stopping at the first
+    row beyond five rows or 600 bytes. The shown values are the given objects."""
+    ordered = sorted(notices, key=lambda notice: NOTICE_ORDER.index(notice.kind))
+    shown, size = [], 0
+    for notice in ordered:
+        cost = len(("- " + notice.text + "\n").encode("utf-8"))
+        if len(shown) == 5 or size + cost > 600:
+            break
+        shown.append(notice)
+        size += cost
+    return tuple(shown), len(ordered) - len(shown)
+
+
 def notice_part(notices):
     """Stable table order; stop at the first row beyond either notice limit."""
-    ordered = sorted(notices, key=lambda notice: NOTICE_ORDER.index(notice.kind))
-    rows, size = [], 0
-    for notice in ordered:
-        row = "- " + notice.text
-        cost = len((row + "\n").encode("utf-8"))
-        if len(rows) == 5 or size + cost > 600:
-            break
-        rows.append(row)
-        size += cost
-    if len(rows) < len(ordered):
-        rows.append("%d more notices are in the memory status." % (len(ordered) - len(rows)))
-    return "\n".join([NOTICE_HEADING] + rows) if ordered else ""
+    shown, more = fitting(notices)
+    rows = ["- " + notice.text for notice in shown]
+    if more:
+        rows.append("%d more notices are in the memory status." % more)
+    return "\n".join([NOTICE_HEADING] + rows) if rows else ""
 
 
 def build_summary(base_text, notices=(), pins=(), state=(), *, zone=None):
