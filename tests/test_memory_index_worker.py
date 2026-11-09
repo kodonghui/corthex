@@ -393,6 +393,103 @@ class IndexWorkerTest(unittest.TestCase):
                          ('consent', 1, ('bad-vector',), ()))
         self.assertEqual((waits, len(self.server.requests)), ([10], 1))
 
+    def turning(self, call, **setting):
+        """Change the configuration at the step's `call`-th fence comparison, as if while it waited for the layer
+        lease before a request or a further attempt."""
+        fresh, calls = index_worker._fresh, []
+
+        def waiting(*args):
+            calls.append(None)
+            if len(calls) == call:
+                self.configure(models={'dims': DIMS}, **setting)
+            return fresh(*args)
+        return mock.patch.object(index_worker, '_fresh', side_effect=waiting)
+
+    def test_a_project_turned_off_while_the_step_waits_for_the_layer_lease_sends_no_later_request(self):
+        items = self.made(101)
+        self.layer(items)
+        with self.turning(2, enabled=False):
+            outcome = self.keep()
+        # The conditions are read after the wait for the layer lease, right before the request.
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_while_a_retry_waits_for_the_layer_lease_sends_it_no_more(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        with self.quick() as waits, self.turning(2, consent=None):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+
+    def test_a_configuration_that_cannot_be_read_during_a_request_ends_the_step_before_the_next(self):
+        items = self.made(101)
+        self.layer(items)
+        self.server.before[0] = lambda: (self.folder / 'configuration.json').write_bytes(b'{"projects": 3}')
+        outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('configuration', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def busy(self, call):
+        """Let the step's `call`-th fence comparison find the layer lease held past its wait."""
+        fresh, calls = index_worker._fresh, []
+
+        def waiting(*args):
+            calls.append(None)
+            if len(calls) == call:
+                raise locks.LockBusy()
+            return fresh(*args)
+        return mock.patch.object(index_worker, '_fresh', side_effect=waiting)
+
+    def test_a_project_turned_off_during_a_request_ends_the_step_without_waiting_for_the_layer_lease_again(self):
+        items = self.made(101)
+        self.layer(items)
+        self.server.before[0] = lambda: self.configure(enabled=False, models={'dims': DIMS})
+        with self.busy(2):
+            outcome = self.keep()
+        # The conditions are read before the wait for the layer lease too, so the step ends as `disabled`, not
+        # `busy`.
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_consent_withdrawn_before_a_retry_ends_the_step_without_waiting_for_the_layer_lease(self):
+        items = sorted(self.made(2), key=lambda item: item['id'])
+        self.layer(items)
+        self.bad = {0}
+        self.server.before[0] = lambda: self.configure(consent=None, models={'dims': DIMS})
+        with self.quick() as waits, self.busy(2):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
+                         ('consent', 1, ('bad-vector',), ()))
+        self.assertEqual((waits, len(self.server.requests)), ([10], 1))
+        self.assertEqual(self.failures(), [('embed', 'bad-vector')])
+
+    def test_a_step_with_nothing_to_embed_reads_its_conditions_once_more_at_its_end(self):
+        self.layer(self.made(2))
+        self.assertEqual(self.keep().reason, 'done')
+        rows = index_worker._rows
+
+        def turned_off(*args):
+            result = rows(*args)
+            self.configure(enabled=False, models={'dims': DIMS})
+            return result
+        with mock.patch.object(index_worker, '_rows', side_effect=turned_off):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests), ('disabled', 0))
+        self.assertEqual(len(self.server.requests), 1)
+
+    def test_a_project_turned_off_while_the_step_waits_and_its_last_item_goes_ends_as_disabled(self):
+        items = sorted(self.made(101), key=lambda item: item['id'])
+        self.layer(items)
+        other = worker_fixture.C2Store(self.folder, expected_device=worker_fixture.DEVICE)
+        self.server.before[0] = lambda: self.advance(other, items[100])
+        with self.turning(2, enabled=False):
+            outcome = self.keep()
+        self.assertEqual((outcome.reason, outcome.requests, len(outcome.embedded)), ('disabled', 1, 100))
+        self.assertEqual(len(self.server.requests), 1)
+
     def test_a_request_is_tried_again_when_the_fence_moved_and_its_items_did_not_change(self):
         items = sorted(self.made(2), key=lambda item: item['id'])
         self.layer(items)

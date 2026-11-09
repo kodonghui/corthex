@@ -22,13 +22,17 @@ record's fence again, and when a forget, an undo or a tombstone has moved it,
 it reads the items again. A request one of whose items is then gone, changed or
 private is not tried again, so an item forgotten before an attempt is never in
 it. The step's conditions are read again before each request and each further
-attempt: once the project is off or consent is withdrawn, nothing more is sent,
-and the step ends with that reason. A vector is written under the layer lease only while its item is still
-current, unchanged and not private, and the index still has the embedding model
-and vector length that made it. A failed request is noted in the failure log
-with its code, and its items stay without a vector, found by words, until a
-later step 6; a lasting failure ends the step. Nothing calls this module before
-the 0.3.0 activation.
+attempt, both before that comparison, which may wait for the layer lease, and
+after it, right before sending, and once more when no item is left to embed:
+once the project is off or consent is withdrawn, nothing more is sent, and the
+step ends with that reason, unless a wait for the lease or the run's own time
+ends it first, as `busy` or `deadline`. A vector is written under the layer
+lease only while its item is still current, unchanged and not private, and the
+index still has the embedding model and vector length that made it; the vectors
+of a request already answered are kept on the device. A failed request is noted
+in the failure log with its code, and its items stay without a vector, found by
+words, until a later step 6; a lasting failure ends the step. Nothing calls this
+module before the 0.3.0 activation.
 """
 import contextlib
 from dataclasses import dataclass
@@ -183,11 +187,12 @@ def _again(memory, project, root, deadline, batch, expected):
     """Asked before each further attempt of a request: whether every item of its batch may still be sent.
 
     A request is not tried again once the step's conditions no longer hold, as
-    when the project was turned off meanwhile. Otherwise it compares the fence
-    as `_fresh` does, against the proof that its last comparison read, so that
-    the batch is read again only when the fence has moved since; a request one
-    of whose items is gone, changed or private is not tried again, and its
-    items wait for a later step 6 (TC-140).
+    when the project was turned off meanwhile: they are read before and after
+    the wait for the layer lease. Between the two reads it compares the fence as
+    `_fresh` does, against the proof that its last comparison read, so that the
+    batch is read again only when the fence has moved since; a request one of
+    whose items is gone, changed or private is not tried again, and its items
+    wait for a later step 6 (TC-140).
     """
     proof = [expected]
 
@@ -195,7 +200,7 @@ def _again(memory, project, root, deadline, batch, expected):
         if _gate(memory, project, deadline)[0] is not None:
             return False
         kept, proof[0] = _fresh(memory, root, deadline, batch, proof[0])
-        return len(kept) == len(batch)
+        return len(kept) == len(batch) and _gate(memory, project, deadline)[0] is None
     return still
 
 
@@ -253,7 +258,9 @@ def keep(memory, project, owner, deadline, *, when=None):
             memory, root, deadline, model, dims, base.utc_time(when))
         step = 'embed'
         if not pending:
-            return end('done')
+            # Read again at the end, as the loop below does, so that a project turned off meanwhile says so.
+            reason, _ = _gate(memory, project, deadline)
+            return end(reason or 'done')
         try:
             credentials = model_access.Credentials.read()
             if credentials.headers('openai') is None:
@@ -264,8 +271,9 @@ def keep(memory, project, owner, deadline, *, when=None):
                                        environment=dict(os.environ))
         remaining = list(zip(pending, prepared))
         while True:
-            # The step's conditions are read again before each request and at the end, so that a project turned
-            # off, or consent withdrawn, during a request sends nothing more and ends the step with its reason.
+            # The step's conditions are read again before each request, before and after the wait for the layer
+            # lease, and once more when no item is left to embed, so that a project turned off, or consent
+            # withdrawn, sends nothing more and ends the step with its reason.
             reason, _ = _gate(memory, project, deadline)
             if reason is not None:
                 return end(reason)
@@ -276,7 +284,10 @@ def keep(memory, project, owner, deadline, *, when=None):
             kept = {item['id'] for item in kept}
             remaining = [pair for pair in remaining if pair[0]['id'] in kept]
             if not remaining:
-                return end('done')
+                continue
+            reason, _ = _gate(memory, project, deadline)
+            if reason is not None:
+                return end(reason)
             _, stop = model_embed.batches([sent for _, sent in remaining])[0]
             batch, remaining = [item for item, _ in remaining[:stop]], remaining[stop:]
             result = model_embed.embed(memory, project=project, call='embed-items',
