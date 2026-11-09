@@ -579,13 +579,13 @@ class RequestBudgetTest(unittest.TestCase):
         self.assertEqual((len(request.turns), request.counted, request.counts), (15, calls[-1][1], 2))
         self.assertLessEqual(request.counted, 99000)
 
-        # One turn of 160,000 characters: it no longer goes whole and uncounted after one count of 173,423.
+        # One turn of 160,000 characters: it no longer goes whole and uncounted after one count of 173,721.
         text = prose(160000, 7)
         big = session([(text, None)])
         calls.clear()
         result = request_budget.plan(self.layer(), [big], schema=SCHEMA, count=count)
         self.assertEqual([request.part for request in result.requests], [(1, 2), (2, 2)])
-        self.assertEqual(calls[0], (1, 173423))
+        self.assertEqual(calls[0], (1, 173721))
         first, second = result.requests
         self.assertEqual((first.counted, first.counts), (calls[-1][1], 2))
         self.assertLessEqual(first.counted, 99000)

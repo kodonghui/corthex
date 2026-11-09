@@ -880,7 +880,10 @@ class CurationWorkerTest(unittest.TestCase):
         self.assertEqual({(ET.fromstring(body['messages'][0]['content']).get('instructions'), body['system'])
                           for _, body in self.server.requests},
                          {('curate-3', model_prompts.PROMPTS['curate-3'])})
-        self.assertIn('`Dead end:`', model_prompts.PROMPTS['curate-3'])
+        rule, = [line for line in model_prompts.PROMPTS['curate-3'].split('\n') if line.startswith('12. ')]
+        # The start summary looks for the markers in English, and a line keeps its marker while it holds.
+        for words in ('`Dead end:`', '`Done when:`', 'in English', 'rule 8', 'keep its marker'):
+            self.assertIn(words, rule)
         self.assertEqual({(row['call'], row['instructions']) for row in self.usage()}, {('curate', 'curate-3')})
         self.assertEqual(len(self.usage()), 5)
 

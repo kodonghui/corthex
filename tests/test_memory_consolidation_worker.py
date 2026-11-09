@@ -496,6 +496,7 @@ class ConsolidationWorkerTest(unittest.TestCase):
         self.assertEqual((sent.get('kind'), sent.get('instructions'), body['system']),
                          ('state', 'state-2', model_prompts.PROMPTS['state-2']))
         self.assertIn('`Done when:`', body['system'])
+        self.assertIn('its marker, in English', body['system'])
         self.assertEqual([(line.get('id'), line.text) for line in sent.find('state')],
                          [(dead['id'], dead['text']), (done['id'], done['text']), (step['id'], step['text'])])
         lines = self.state()

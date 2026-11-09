@@ -134,19 +134,21 @@ class StartMemoryTest(unittest.TestCase):
         rows = [state(1, "blockers", "Dead end:\t Polling the raw lock hangs on Windows.", 1, cites[:1]),
                 state(2, "blockers", "Windows sharing.", 2),
                 state(3, "blockers", "dead end: written in small letters.", 3),
-                state(4, "blockers", "Dead end:", 4),
+                state(4, "blockers", "Dead end:", 4, cites[1:]),
                 state(5, "next", "Done when: the hook check passes.", 1, cites),
                 state(6, "next", "Write the tests; Done when: is in the text.", 2),
                 state(7, "progress", "Dead end: in another part.", 1),
-                state(8, "goal", "Done when: in another part.", 1)]
+                state(8, "goal", "Done when: in another part.", 1),
+                state(9, "progress", "", 2)]
         result = summary.build_summary("Base", state=rows)
         actual = result.text.split("Current state:\n", 1)[1]
         self.assertEqual(actual, "- Goal: Done when: in another part.\n"
                          "- Work in progress: Dead end: in another part.\n"
+                         "- Work in progress:\n"
                          "- Dead end: Polling the raw lock hangs on Windows. (i_000000000001)\n"
                          "- Blocker: Windows sharing.\n"
                          "- Blocker: dead end: written in small letters.\n"
-                         "- Dead end:\n"
+                         "- Dead end: (i_000000000002)\n"
                          "- Done when: the hook check passes. (i_000000000001, i_000000000002)\n"
                          "- Next action: Write the tests; Done when: is in the text.")
 
