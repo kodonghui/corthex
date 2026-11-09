@@ -14,8 +14,9 @@ current is left out, as the start summary's notice leaves it out, and the next
 writer of the candidates settles it. An item record that is missing, damaged or
 reached through a link counts as not current here, as the runs command leaves
 such a record out, while the start summary fails on a damaged one. A project
-without candidates, or without its candidates' file, has none to list, and a
-candidates' file that cannot be read is an error, as it is for forget and undo.
+without candidates, or without its candidates' file and its backup, has none to
+list, and a candidates' file that cannot be read, or a missing one whose backup
+is there, is an error, as it is for forget and undo.
 
 With `--dismiss <candidate>` a listed candidate closes as `dismissed`, with
 the time, once its revision is reserved (SPEC-012), so that a curator request,
@@ -91,17 +92,14 @@ def dismissed(conflicts, candidate, at):
     return value
 
 
-def _candidates(memory, root, deadline):
-    """The project's candidates (TBL-120); none while it has no candidates' file.
+def _candidates(memory, root, deadline, check):
+    """The project's candidates (TBL-120) as their writers read them; none while it has neither the file nor its backup.
 
     A file that cannot be read raises, and so does a missing one whose backup
-    can be read, which a writer of the candidates restores.
+    is there, whether the backup reads or not.
     """
-    try:
-        return files.read_record(root / 'layer/conflicts.json', conflict_types.parse_conflicts, deadline=deadline,
-                                 reader=lambda path: memory.fence.read(path, deadline))
-    except FileNotFoundError:
-        return {'candidates': []}
+    return item_io.optional_record(memory, root / 'layer/conflicts.json', conflict_types.parse_conflicts, deadline,
+                                   check, {'candidates': []})
 
 
 def _dismiss(memory, root, conflicts, candidate, at, deadline):
@@ -147,9 +145,12 @@ def conflicts(context, *, at=None):
                           acquire_deadline=min(deadline, clock.now() + WAIT)):
             if curation_worker._deleted(memory, root):
                 return answer()
-            value = _candidates(memory, root, deadline)
+
+            def check():
+                memory.check(deadline, memory.held)
+            value = _candidates(memory, root, deadline, check)
             data['open'] = listed(memory, root, value, run_listing._reader(memory, deadline))
-            memory.check(deadline, memory.held)
+            check()
             if candidate is None or candidate not in {line['candidate'] for line in data['open']}:
                 return answer()
             after = _dismiss(memory, root, value, candidate, base.utc_time() if at is None else at, deadline)

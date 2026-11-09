@@ -192,20 +192,25 @@ class ConflictsTest(ConflictsStore, unittest.TestCase):
         self.fixture.layer(items=[newer, older], candidates=[candidate(1, newer, older)])
         path = self.root / 'layer/conflicts.json'
         backup = path.with_name(path.name + '.bak')
-        backup.write_bytes(path.read_bytes())
-        for name, damage, error in (('damaged with a backup', b'{"candidates": [', files.RestoreNeeded),
-                                    ('missing with a backup', None, files.RestoreNeeded),
-                                    ('damaged', b'{"candidates": [', ValueError)):
+        whole = path.read_bytes()
+        # The candidates are read as their writers read them: a missing file whose backup is there, whether the
+        # backup reads or not, is damage too, and nothing restores it.
+        for name, damage, saved in (('damaged with a backup', b'{"candidates": [', whole),
+                                    ('missing with a backup', None, whole),
+                                    ('missing with a damaged backup', None, b'{"candidates": ['),
+                                    ('damaged', b'{"candidates": [', None)):
             with self.subTest(name):
-                if name == 'damaged':
+                if saved is None:
                     backup.unlink()
+                else:
+                    backup.write_bytes(saved)
                 if damage is None:
-                    path.unlink()
+                    path.unlink(missing_ok=True)
                 else:
                     path.write_bytes(damage)
                 before = self.tree()
                 for dismiss in (None, ident('c', 1)):
-                    with self.assertRaises(error):
+                    with self.assertRaises(files.RestoreNeeded):
                         self.conflicts(dismiss)
                 self.assertEqual(self.tree(), before)
                 self.assertEqual(self.memory.held, [])

@@ -16,6 +16,8 @@ _CANDIDATE = re.compile(r"c_" + _DIGITS + r"\Z")
 _EPOCH = re.compile(r"[0-9a-fA-F]{32}\Z")
 _OBJECT = re.compile(r"(?:item:i_|line:s_|pin:i_|candidate:c_|run:r_)" + _DIGITS + r"\Z")
 _CURATION_ORDER = "logs applies recent failures consolidation stopped rebuilt fence conflict_after".split()
+# The curation record's fields that it may lack (TBL-009); it always has the others.
+CURATION_OPTIONAL = ("failures", "stopped", "rebuilt", "conflict_after")
 _ATTEMPT_ORDER = "at kind result error applied dropped reasons state edit_reasons run".split()
 # Why a curate attempt dropped an item change (TASK-085) or a line edit (TASK-087), and why a consolidate
 # attempt dropped a merge or a line of the last state answer (TASK-089, TASK-090): each counts once, under the
@@ -111,8 +113,7 @@ def parse_curation(data):
     invents a zero revision nor rotates a recovery epoch.
     """
     value = _document(data)
-    curation._shape(value, "logs applies recent consolidation fence",
-                    "failures stopped rebuilt conflict_after")
+    curation._shape(value, "logs applies recent consolidation fence", " ".join(CURATION_OPTIONAL))
     _fence(value["fence"])
     if "conflict_after" in value:
         _id(value["conflict_after"], _CANDIDATE)

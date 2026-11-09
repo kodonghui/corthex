@@ -9,12 +9,13 @@ It takes the project's curation lease and then its layer lease, the curation
 record's writers' leases (TBL-009), waiting for each as long as the other
 commands wait for theirs, and reads under them, through the store's path
 fence, the curation record and the project's unprocessed turns, counted from
-the markers' names as the triggers count them (TBL-008). A project that the
-fault guard has not stopped has nothing to resume. For a stopped project,
-without a code it changes nothing, except that its reading of the record
-restores a damaged primary from a whole backup with a new epoch, as the
-record's writers read it; it shows the failed attempts that the stop came
-from, newest first, and the unprocessed turns. With a code that matches
+the markers' names as the triggers count them (TBL-008). Its reading of the
+record, as the record's writers read it, restores a damaged primary from a
+whole backup with a new epoch, whether or not the project is stopped; beyond
+that, a project that the fault guard has not stopped has nothing to resume,
+and for a stopped project, without a code it changes nothing: it shows the
+failed attempts that the stop came from, newest first, and the unprocessed
+turns. With a code that matches
 what it has just read under the same leases, it clears the stop: the record
 loses `stopped`, and the count of failed attempts from one first turn and the
 count of failed consolidations in a row go back to zero, as a success sets

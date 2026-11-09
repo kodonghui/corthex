@@ -450,8 +450,11 @@ class RevisionIOTest(unittest.TestCase):
         self.damaged_with_backup()
         damaged, backup = self.path.read_bytes(), self.backup.read_bytes()
         with self.held(curator=True):
-            for changes in ({'stopped': stopped}, {'fence': fresh['fence']}):
-                with self.subTest(changes=sorted(changes)), self.assertRaises(ValueError):
+            # A field both changed and removed, the fence changed or removed, or a field that the record always
+            # has removed: each is refused before the record is read.
+            for changes, removed in (({'stopped': stopped}, ('stopped',)), ({'fence': fresh['fence']}, ('stopped',)),
+                                     ({}, ('fence',)), ({}, ('applies',)), ({}, ('logs', 'stopped'))):
+                with self.subTest(changes=sorted(changes), removed=removed), self.assertRaises(ValueError):
                     revision_io.update_progress(self.memory, self.project, fence_plan.snapshot(fresh), changes,
-                                                self.deadline, removed=('stopped',))
+                                                self.deadline, removed=removed)
                 self.assertEqual((self.path.read_bytes(), self.backup.read_bytes()), (damaged, backup))

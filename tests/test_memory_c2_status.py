@@ -337,18 +337,31 @@ class StatusTest(StatusStore, unittest.TestCase):
             self.status(memory=memory)
         self.assertEqual(sorted((self.fixture.folder / 'logs').glob('failures-*.jsonl')), [])
 
-    def test_a_project_without_its_pins_file_has_no_pins(self):
-        value = self.item('Saved')
-        self.fixture.layer(items=[value])
-        (self.root / 'layer/pins.json').unlink()
-        before = self.tree()
+    def test_a_project_without_its_pins_or_candidates_file_and_its_backup_has_none(self):
+        newer, older = self.item('Newer'), self.item('Older')
+        self.fixture.layer(items=[newer, older], pinned=[newer['id']],
+                           candidates=[conflicts_fixture.candidate(1, newer, older)])
         project = self.project()
-        self.assertEqual((project['pins'], project['items']['current']), ([], 1))
-        self.assertEqual(self.tree(), before)
-        # A backup without its file is a damaged pins file that a writer of the pins restores.
-        (self.root / 'layer/pins.json.bak').write_bytes(item_types.pins_bytes({'pins': []}))
-        with self.assertRaises(files.RestoreNeeded):
-            self.status()
+        self.assertEqual((project['pins'], project['open_conflicts']), ([newer['id']], 1))
+        for name, left in (('pins.json', ([], 1)), ('conflicts.json', ([], 0))):
+            path = self.root / 'layer' / name
+            backup = path.with_name(name + '.bak')
+            whole = path.read_bytes()
+            path.unlink()
+            before = self.tree()
+            project = self.project()
+            self.assertEqual((project['pins'], project['open_conflicts'], project['items']['current']), left + (2,))
+            self.assertEqual(self.tree(), before)
+            # A backup without its file is damage, whether the backup reads or not, as the record's writers read it.
+            for case, data in (('a whole backup', whole), ('a damaged backup', whole[:-3])):
+                with self.subTest(name, backup=case):
+                    backup.write_bytes(data)
+                    before = self.tree()
+                    with self.assertRaises(files.RestoreNeeded):
+                        self.status()
+                    self.assertEqual(self.tree(), before)
+            backup.unlink()
+        self.assertEqual(self.memory.held, [])
 
     def test_a_stop_by_consolidation_is_named_with_its_consolidations(self):
         consolidation = consolidation_fixture.ConsolidationWorkerTest
