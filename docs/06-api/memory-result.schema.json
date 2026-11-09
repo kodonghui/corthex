@@ -1732,7 +1732,7 @@
           }
         },
         "current": {
-          "description": "With item-not-current: the item that superseded it.",
+          "description": "With item-not-current: the current item at the end of the superseded item's replacements, when there is one.",
           "$ref": "#/$defs/item-id"
         },
         "matches": {

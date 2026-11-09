@@ -39,6 +39,22 @@ def _record(memory, path, parse, deadline, check):
     return value
 
 
+def optional_record(memory, path, parse, deadline, check, empty):
+    """The record at `path` as `_record` reads it, or `empty` while neither the file nor its backup is there.
+
+    A project lacks such a layer record before its first curation, as the
+    start summary reads it. A missing file whose backup is there, or a record
+    that cannot be read, raises RestoreNeeded.
+    """
+    try:
+        return _record(memory, path, parse, deadline, check)
+    except files.RestoreNeeded:
+        if _present(memory, path) or _present(memory, path.with_name(path.name + '.bak')):
+            raise
+    check()
+    return empty
+
+
 def _items(memory, root, deadline, check):
     folder = root / 'layer/items'
     check()
