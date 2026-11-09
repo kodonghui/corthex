@@ -25,7 +25,8 @@ it. The step's conditions are read again before each request and each further
 attempt, both before that comparison, which may wait for the layer lease, and
 after it, right before sending, and once more when no item is left to embed:
 once the project is off or consent is withdrawn, nothing more is sent, and the
-step ends at once with that reason. A vector is written under the layer
+step ends with that reason, unless a wait for the lease or the run's own time
+ends it first, as `busy` or `deadline`. A vector is written under the layer
 lease only while its item is still current, unchanged and not private, and the
 index still has the embedding model and vector length that made it; the vectors
 of a request already answered are kept on the device. A failed request is noted
@@ -272,7 +273,7 @@ def keep(memory, project, owner, deadline, *, when=None):
         while True:
             # The step's conditions are read again before each request, before and after the wait for the layer
             # lease, and once more when no item is left to embed, so that a project turned off, or consent
-            # withdrawn, sends nothing more and ends the step at once with its reason.
+            # withdrawn, sends nothing more and ends the step with its reason.
             reason, _ = _gate(memory, project, deadline)
             if reason is not None:
                 return end(reason)
