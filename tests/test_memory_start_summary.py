@@ -588,6 +588,7 @@ class StartSummaryTest(unittest.TestCase):
         counts = self.root / 'notices' / conflict_counts.NAME
         counts.write_bytes(conflict_counts.counts_bytes({value['id']: 0}))
         build, now, late, pin = start_memory.build_summary, clock.now, [], self.memory.pin
+        reserve = conflict_counts.reserve
 
         def start(replaced=False):
             def building(*args, **kwargs):
@@ -595,10 +596,17 @@ class StartSummaryTest(unittest.TestCase):
                 if replaced:
                     self.memory.pin = 'another store'
                 return build(*args, **kwargs)
+
+            def reserving(memory, root, candidate, deadline):
+                # The reservation may use the start's five seconds: this test is about a deadline that passes while
+                # the summary is built, not about the reservation's quarter of a second, which a Windows runner with
+                # Python 3.8 once took longer than, leaving the line out. The check after the build keeps its bound.
+                return reserve(memory, root, candidate, clock.now() + 5)
             late.clear()
             try:
                 with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
-                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)):
+                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)), \
+                        mock.patch.object(conflict_counts, 'reserve', side_effect=reserving):
                     return self.start()
             finally:
                 self.memory.pin = pin
