@@ -62,8 +62,8 @@ def _fact(memory, path, deadline, ownership):
     previous fact's check or the pass's first one comes before this read, so
     each read still lies between two checks of the leases, which no longer
     repeat around each step of the read. A read that fails checks the leases
-    before its error goes on, so that a lease lost during the read is what
-    the pass reports.
+    before its error goes on, so that what that check finds, such as a lease
+    lost during the read, is what the pass reports.
     """
     try:
         result = _read(memory, path, deadline, lambda: _deadline(deadline))

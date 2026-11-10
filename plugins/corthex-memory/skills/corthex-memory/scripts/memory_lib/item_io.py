@@ -82,8 +82,9 @@ def _items(memory, root, deadline, check):
         # The listing changes nothing, and this entry's check comes before the
         # read and the next entry's, or the last one, after it, so the read's
         # own steps check only the deadline and the path. A read that fails
-        # runs the check before its error goes on, so that a lease lost during
-        # the read is what the listing reports.
+        # runs the check before its error goes on, so that what the check
+        # finds, such as a lease lost during the read, is what the listing
+        # reports.
         try:
             value = _record(memory, path, item_types.parse_item, deadline, reading)
             if value['id'] != item:

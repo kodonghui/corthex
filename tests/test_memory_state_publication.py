@@ -491,10 +491,13 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         for before, after in zip(reads, reads[1:]):
             self.assertGreater(after-before, 1)
         self.assertIsNone(events[reads[-1]+1])
-        # Within each full pass after the catalogue, one check comes between
-        # two files and none repeats around the steps of one read.
-        for before, after in zip(reads[len(names):], reads[len(names)+1:]):
-            if events[after] != names[0]:
+        # Within each pass, the catalogue included, one check comes between two
+        # files and none repeats around the steps of one read; only in the
+        # catalogue does the listing of the tombstones, with its own checks,
+        # come between the last item and the tombstone.
+        listed = reads[len(names)-1]
+        for before, after in zip(reads, reads[1:]):
+            if events[after] != names[0] and after != listed:
                 self.assertEqual(events[before+1:after], [None])
 
     def test_a_lease_lost_while_publication_reads_an_item_file_again_stops_before_the_next(self):
