@@ -1264,7 +1264,8 @@
             "retention",
             "index",
             "restore",
-            "skill"
+            "skill",
+            "compaction"
           ]
         },
         "hook": {
@@ -1272,7 +1273,8 @@
             "start",
             "prompt",
             "end-of-turn",
-            "end"
+            "end",
+            "pre-compact"
           ]
         },
         "host": {
@@ -1314,7 +1316,8 @@
             "start",
             "prompt",
             "end-of-turn",
-            "end"
+            "end",
+            "pre-compact"
           ]
         },
         "host": {
