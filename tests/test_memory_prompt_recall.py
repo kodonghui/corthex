@@ -11,6 +11,7 @@ import json
 import os
 import secrets
 import sqlite3
+import subprocess
 import sys
 import time
 import unicodedata
@@ -169,7 +170,9 @@ class PromptRecallTest(unittest.TestCase):
             with mock.patch.object(recall, 'ready', side_effect=timed('look', recall.ready)), \
                     mock.patch.object(model_embed, 'embed', side_effect=timed('embed', model_embed.embed)), \
                     mock.patch.object(attempt, 'start', side_effect=timed('start', attempt.start)), \
-                    mock.patch.object(model_transport, 'once', side_effect=timed('send', model_transport.once)):
+                    mock.patch.object(model_transport, 'once', side_effect=timed('send', model_transport.once)), \
+                    mock.patch.object(subprocess.Popen, 'kill', autospec=True,
+                                      side_effect=timed('kill', subprocess.Popen.kill)):
                 result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.9,
                                               settings=settings, zone=UTC)
             elapsed = clock.now() - started
@@ -179,9 +182,9 @@ class PromptRecallTest(unittest.TestCase):
             while 'send' in spans and not self.server.requests and clock.now() < until:
                 time.sleep(0.01)
             steps = ('the index look ran from %s to %s, the embedding call from %s to %s, its attempt from %s to %s, '
-                     'its request from %s to %s, and recall ended at %.3f s'
+                     'its request from %s to %s, its child was killed at %s, and recall ended at %.3f s'
                      % (at('look'), at('look', 1), at('embed'), at('embed', 1), at('start'), at('start', 1),
-                        at('send'), at('send', 1), elapsed))
+                        at('send'), at('send', 1), at('kill'), elapsed))
             if self.server.requests:
                 break
             stalls.append('no request reached the test server: ' + steps)

@@ -163,6 +163,76 @@ class ModelTransportTest(unittest.TestCase):
         self.assertEqual(len(self.requests),1)
         self.assertEqual(answer.usage['input_tokens'],4)
 
+    def test_settle_bounds_the_clean_up_and_a_thread_waits_for_the_child(self):
+        # The answer never comes in time, and the killed child takes longer to end than the clean-up may wait, as
+        # on a busy runner (TC-207): with `settle` the attempt returns that soon after its end and says so.
+        self.reply=lambda h:time.sleep(2)
+        popen=subprocess.Popen; real=popen.wait; waits=[]
+        def wait(process,timeout=None):
+            if timeout is None:
+                return real(process)
+            waits.append(timeout)
+            time.sleep(timeout)
+            raise subprocess.TimeoutExpired(process.args,timeout)
+        for settle,least,most in ((.02,0,.2),(None,.15,None)):
+            with self.subTest(settle=settle):
+                children=[]; del waits[:]
+                def spawn(*args,**kwargs):
+                    child=popen(*args,**kwargs); children.append(child); return child
+                begun=clock.now()
+                with mock.patch.object(subprocess,'Popen',side_effect=spawn), \
+                        mock.patch.object(popen,'wait',autospec=True,side_effect=wait):
+                    answer=model_transport.once(self.payload,deadline=begun+.5,started=begun,connect=.5,gap=.5,
+                                                check=lambda:None,settle=settle)
+                    after=clock.now()-begun-.5
+                    self.assertEqual((answer.failure.code,answer.cleanup_pending),('timeout',True))
+                    self.assertGreaterEqual(after,least)
+                    if most is not None:
+                        self.assertLess(after,most)
+                    self.assertLessEqual(sum(waits),.2 if settle is None else settle)
+                    # A daemon thread waits for the killed child, so that it does not stay a zombie.
+                    (child,)=children; until=clock.now()+5
+                    while child.returncode is None and clock.now()<until:
+                        time.sleep(.01)
+                    self.assertIsNotNone(child.returncode)
+        with self.assertRaises(ValueError):
+            model_transport.once(self.payload,deadline=clock.now()+1,started=clock.now(),check=lambda:None,
+                                 settle=-1)
+
+    def test_a_waiting_thread_that_cannot_start_changes_neither_the_answer_nor_the_exception(self):
+        self.reply=lambda h:time.sleep(2)
+        popen=subprocess.Popen; real=popen.wait; thread=threading.Thread; children=[]
+        def wait(process,timeout=None):
+            if timeout is None:
+                return real(process)
+            raise subprocess.TimeoutExpired(process.args,timeout)
+        def spawn(*args,**kwargs):
+            child=popen(*args,**kwargs); children.append(child); return child
+        def make(*args,**kwargs):
+            if kwargs.get('target') is model_transport._reap:
+                raise RuntimeError("can't start new thread")
+            return thread(*args,**kwargs)
+        expected=locks.LostLock(); sent=[]
+        def check():
+            if len(self.requests)>sent[-1]:raise expected
+        for checked in (lambda:None,check):
+            begun=clock.now(); sent.append(len(self.requests))
+            with mock.patch.object(subprocess,'Popen',side_effect=spawn), \
+                    mock.patch.object(popen,'wait',autospec=True,side_effect=wait), \
+                    mock.patch.object(threading,'Thread',side_effect=make):
+                if checked is check:
+                    with self.assertRaises(locks.LostLock) as caught:
+                        model_transport.once(self.payload,deadline=begun+5,started=begun,connect=5,gap=5,
+                                             check=check,settle=.02)
+                    self.assertIs(caught.exception,expected)
+                else:
+                    answer=model_transport.once(self.payload,deadline=begun+.5,started=begun,connect=.5,gap=.5,
+                                                check=checked,settle=.02)
+                    self.assertEqual((answer.failure.code,answer.cleanup_pending),('timeout',True))
+        self.assertEqual(len(children),2)
+        for child in children:
+            child.wait(timeout=5)
+
     def test_original_check_loss_cancels_and_preserves_the_original_exception(self):
         def reply(h):time.sleep(1)
         self.reply=reply; expected=locks.LostLock()

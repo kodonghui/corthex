@@ -947,6 +947,8 @@ A lasting failure ends the attempt, whose turns stay unprocessed; the fault guar
 
 Each attempt connects within 30 seconds, or within its time limit when that is shorter, and its whole answer must come within that limit. When no time is left, nothing is sent and no usage line is written.
 
+Once the answer is in or the time is up, the attempt ends its own child process and waits up to 0.2 seconds for it and up to 0.1 seconds for each of its two pipe threads. For a prompt's embedding all of that takes at most 20 ms, so that the hook still has time to rank, print and log within its own deadline (TC-207); a background thread waits for a child that has not ended by then.
+
 OpenAI's errors are given the same names: 400 `invalid_request_error`, 401 `authentication_error`, 403 `permission_error` and 404 `not_found_error` are lasting. A 429 with the code `credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded` or `organization_usage_limit_exceeded`, or the type `insufficient_quota`, is `insufficient_quota`, lasting. Another 429 is `rate_limit_error`, 500 `api_error` and 503 `overloaded_error`, all passing, as is another 5xx. `retry-after` is honoured as above.
 
 ## Redaction

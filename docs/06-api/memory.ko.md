@@ -947,6 +947,8 @@ PR #140은 격리한 단일 전송 시도와 제한 있는 SSE 판독기를 제�
 
 시도마다 연결은 30초 안에, 시간 제한이 더 짧으면 그 안에 해야 하며, 답 전체도 그 제한 안에 받아야 합니다. 남은 시간이 없으면 아무것도 보내지 않고 사용량 줄도 쓰지 않습니다.
 
+답이 왔거나 시간이 다 되면 시도는 자기 자식 프로세스를 끝내고, 그 프로세스를 0.2초까지, 두 파이프 스레드를 각각 0.1초까지 기다립니다. 프롬프트 임베딩에서는 이 모두가 20ms 안에 끝나므로, 훅은 자기 기한 안에 순위를 매기고 출력하고 기록할 시간이 남습니다(TC-207). 그때까지 끝나지 않은 자식 프로세스는 백그라운드 스레드가 기다립니다.
+
 OpenAI의 오류도 같은 이름을 붙입니다. 400 `invalid_request_error`, 401 `authentication_error`, 403 `permission_error`, 404 `not_found_error`는 오래 가는 실패입니다. 코드가 `credit_balance_exhausted`, `organization_spend_limit_exceeded`, `project_spend_limit_exceeded`, `organization_usage_limit_exceeded`이거나 타입이 `insufficient_quota`인 429는 `insufficient_quota`이며, 오래 가는 실패입니다. 다른 429는 `rate_limit_error`, 500은 `api_error`, 503은 `overloaded_error`이며, 다른 5xx와 함께 모두 지나가는 실패입니다. `retry-after`는 위처럼 따릅니다.
 
 ## 지우기 처리

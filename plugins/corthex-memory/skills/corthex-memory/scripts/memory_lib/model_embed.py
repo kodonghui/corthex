@@ -25,6 +25,9 @@ BATCH_TEXTS = 100
 BATCH_BYTES = 200000
 # The time limit of one attempt, in seconds; a prompt's embedding has only its hook's deadline.
 LIMITS = {'embed-prompt': None, 'embed-items': 60, 'embed-search': 10}
+# The most seconds that ending a prompt's embedding request may take after its answer or its end, so that the hook
+# still has time to rank, print and log within its own deadline (API-002, API-010).
+SETTLE = 0.02
 
 
 @dataclass(frozen=True)
@@ -159,7 +162,8 @@ def embed(memory, *, project, call, texts, config, check, deadline, still=None):
             logged[0] += model_client._account(attempt, memory, request_id=request_id, aborted=True)
         count += 1
         answer = model_transport.once(wire, deadline=until, started=attempt._started, connect=min(30, budget),
-                                      gap=budget, check=check, on_cancel=cancelled)
+                                      gap=budget, check=check, on_cancel=cancelled,
+                                      settle=SETTLE if call == 'embed-prompt' else None)
         failure, tokens = answer.failure, None
         if failure is None:
             try:
