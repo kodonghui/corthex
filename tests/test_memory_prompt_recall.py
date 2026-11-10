@@ -21,8 +21,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, locks, model_embed, model_transport, model_usage, prompt_recall, raw_log, recall,
-                        start_memory)
+from memory_lib import (clock, hooks, locks, model_client, model_embed, model_transport, model_usage, prompt_recall,
+                        raw_log, recall, start_memory)
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
@@ -206,17 +206,18 @@ class PromptRecallTest(unittest.TestCase):
         def slowly(number, body):
             time.sleep(2)
             return self.embeddings(number, body)
-        # The request has to start within the embedding's 800 ms and reach the server, and its end has to be noticed
-        # before the hook's deadline, 100 ms later. On busy macOS runners the steps before the request took all of
-        # the 800 ms in two of three runs (2026-11-09), and in #187's last run (2026-11-10) the request's end was
-        # noticed late when the runner woke its waits as much as 155 ms late, while each check of the deadline took
-        # 1 ms or less, so that recall ended at 0.905 to 0.933 s; one runner did so in four tries running. Recall is
-        # then late, as stage 06 says, and the case is tried again, up to `tries` times, saying when each step began
-        # and ended, how late the request's waits woke and when it last checked the deadline. The server answers each
-        # request after two seconds, and each try's prompt names the try, so that a request is counted only for its
-        # own try.
+        # The request has to start within the embedding's 800 ms and reach the server, and recall has to notice its
+        # end and take its own steps after it, such as the attempt's usage line, before the hook's deadline, 100 ms
+        # later. On busy macOS runners the steps before the request took all of the 800 ms in two of three runs
+        # (2026-11-09), and in #187's last run (2026-11-10) the runner woke the request's waits as much as 155 ms
+        # late, so that its end was noticed at 0.881 to 0.905 s, while its last check of the deadline took 1 ms or
+        # less and recall's steps after the last wake 14 to 35 ms, and recall ended at 0.905 to 0.933 s; one runner
+        # did so in four tries running. Recall is then late, as stage 06 says, and the case is tried again, up to `tries`
+        # times, saying when each step began and ended, how late the request's waits woke and when it last checked
+        # the deadline. The server answers each request after two seconds, and each try's prompt names the try, so
+        # that a request is counted only for its own try.
         self.server.reply = slowly
-        tries = 10
+        tries, hook, embedding = 10, hooks.SECONDS['prompt'], prompt_recall.EMBED_SECONDS
         for number in range(1, tries + 1):
             prompt = '%s Try %d.' % (QUESTION, number)
             spans.clear()
@@ -232,10 +233,11 @@ class PromptRecallTest(unittest.TestCase):
                     mock.patch.object(model_transport, 'once', side_effect=timed('send', send)), \
                     mock.patch.object(model_transport, 'threading', Threading()), \
                     mock.patch.object(subprocess.Popen, 'kill', autospec=True,
-                                      side_effect=timed('kill', subprocess.Popen.kill)):
-                result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, prompt, started, started + 0.9,
+                                      side_effect=timed('kill', subprocess.Popen.kill)), \
+                    mock.patch.object(model_client, '_account', side_effect=timed('account', model_client._account)):
+                result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, prompt, started, started + hook,
                                               settings=settings, zone=UTC)
-            elapsed = clock.now() - started
+                elapsed = clock.now() - started
             # The test server records a request as it reads it, which can come just after a request that started at
             # the end of the 800 ms; one that started too late to reach it at all makes a stalled try too.
             until = clock.now() + 1
@@ -244,25 +246,28 @@ class PromptRecallTest(unittest.TestCase):
             late = max([woke - began - limit for limit, began, woke in waits], default=0)
             steps = ('the index look ran from %s to %s, the embedding call from %s to %s, its attempt from %s to %s, '
                      'its request from %s to %s, its waits woke up to %d ms later than asked, %s, %s, its child was '
-                     'killed at %s, and recall ended at %.3f s'
+                     'killed at %s, its usage line was written from %s to %s, and recall ended at %.3f s'
                      % (at('look'), at('look', 1), at('embed'), at('embed', 1), at('start'), at('start', 1),
-                        at('send'), at('send', 1), round(late * 1000), last_wait(), last_check(), at('kill'), elapsed))
-            # Its end was noticed late if recall is late with the hook's `deadline` while the request's last wait was
-            # for no later than the request's own end; a request that waited past its 800 ms is not tried again.
-            noticed_late = (result == prompt_recall.Result('late', error='deadline') and bool(waits) and
-                            waits[-1][1] + waits[-1][0] - started <= 0.82)
-            if mine() and not noticed_late:
+                        at('send'), at('send', 1), round(late * 1000), last_wait(), last_check(), at('kill'),
+                        at('account'), at('account', 1), elapsed))
+            # A try is late if recall is late with the hook's `deadline` while the request's last wait was for no
+            # later than the request's own end: recall then found the deadline passed when it noticed that end or in
+            # its steps after it. A request that waited past its 800 ms is not tried again.
+            late_try = (result == prompt_recall.Result('late', error='deadline') and bool(waits) and
+                        waits[-1][1] + waits[-1][0] - started <= embedding + 0.02)
+            if mine() and not late_try:
                 break
             if mine():
-                stalls.append("the request reached the test server, but its end was noticed after the hook's "
-                              'deadline: ' + steps)
+                stalls.append("the request reached the test server and ran to its end, but recall then found the "
+                              "hook's deadline passed: " + steps)
                 print('\nTC-207: ' + stalls[-1], file=sys.stderr)
                 # Only a late wake of the runner may make such a try late: had the request's last wait woken when it
-                # asked, recall would have ended in time, so its own steps after that wake, such as its check of the
-                # deadline and the attempt's clean-up, have to fit in the hook's last 100 ms after the request's end.
-                # A try that needed more fails the case at once, as the case cannot tell a stall there from slow code.
+                # asked, recall would have ended in time, so its own steps after that wake, such as its checks of the
+                # deadline, the attempt's clean-up and its usage line, have to fit in the hook's last 100 ms after the
+                # request's end; in #187's late tries they took 14 to 35 ms. A try that needed more fails the case at
+                # once, as the case cannot tell a stall there from slow code.
                 limit, began, woke = waits[-1]
-                self.assertLessEqual(elapsed - (woke - started), 0.9 - max(0.8, began + limit - started),
+                self.assertLessEqual(elapsed - (woke - started), hook - max(embedding, began + limit - started),
                                      "recall's own steps after the request's last wake took too long: " + stalls[-1])
                 # Recall is late with `deadline`, as stage 06 says for a deadline that passes before recall can rank,
                 # with no block, well before the server's answer, and with one usage line for the attempt: an
@@ -288,8 +293,8 @@ class PromptRecallTest(unittest.TestCase):
                 self.assertEqual((result, self.usage()[used:]), (prompt_recall.Result('late', error='deadline'), []),
                                  stalls[-1])
         else:
-            self.fail("TC-207: in %d tries no request both reached the test server and had its end noticed before "
-                      "the hook's deadline; %s" % (tries, '; '.join(stalls)))
+            self.fail("TC-207: in %d tries no request both reached the test server and let recall end with "
+                      "`timeout` rather than the hook's `deadline`; %s" % (tries, '; '.join(stalls)))
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
