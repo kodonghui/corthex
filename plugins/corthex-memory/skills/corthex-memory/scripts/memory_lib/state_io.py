@@ -54,6 +54,20 @@ def _read(memory, path, deadline, ownership, durable=False):
     return history_recovery._read(memory, path, deadline, ownership, durable)
 
 
+def _fact(memory, path, deadline, ownership):
+    """Read a layer fact as `_read` does, with the leases checked after the read.
+
+    The read's own steps check the deadline, the path and the opened file's
+    identity and stamps. The pass that reads the fact changes nothing, and the
+    previous fact's check or the pass's first one comes before this read, so
+    each read still lies between two checks of the leases, which no longer
+    repeat around each step of the read.
+    """
+    result = _read(memory, path, deadline, lambda: _deadline(deadline))
+    ownership()
+    return result
+
+
 def _catalogue(memory, root, deadline, ownership):
     inventories, facts, private = [], [], set()
     for folder_name in ('items','tombstones'):
@@ -64,7 +78,7 @@ def _catalogue(memory, root, deadline, ownership):
             item = name[:-5] if name.endswith('.json') else ''
             if not item_types.ITEM.fullmatch(item):
                 raise files.RestoreNeeded()
-            data, stamp = _read(memory, folder/name, deadline, ownership)
+            data, stamp = _fact(memory, folder/name, deadline, ownership)
             try:
                 if folder_name == 'items':
                     if item_types.parse_item(data)['id'] != item:
@@ -96,7 +110,7 @@ def _facts_check(memory, root, deadline, ownership, catalogue, full=False):
         info = memory.fence.check(path)
         if info is None or history_recovery._stamp(info) != stamp[:-1]:
             raise fence_plan.Stale()
-        if full and _read(memory, path, deadline, ownership)[1] != stamp:
+        if full and _fact(memory, path, deadline, ownership)[1] != stamp:
             raise fence_plan.Stale()
     ownership()
 
