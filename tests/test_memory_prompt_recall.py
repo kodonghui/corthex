@@ -261,11 +261,12 @@ class PromptRecallTest(unittest.TestCase):
                 stalls.append("the request reached the test server and ran to its end, but recall then found the "
                               "hook's deadline passed: " + steps)
                 print('\nTC-207: ' + stalls[-1], file=sys.stderr)
-                # Only a late wake of the runner may make such a try late: had the request's last wait woken when it
-                # asked, recall would have ended in time, so its own steps after that wake, such as its checks of the
-                # deadline, the attempt's clean-up and its usage line, have to fit in the hook's last 100 ms after the
-                # request's end; in #187's late tries they took 14 to 35 ms. The case cannot tell one stall of the
-                # runner there from slow code, so it allows one try whose steps needed more and fails at the second.
+                # Such a try is the runner's when its late wake alone made it late: had the request's last wait woken
+                # when it asked, recall would have ended in time, so its own steps after that wake, such as its checks
+                # of the deadline, the attempt's clean-up and its usage line, have to fit in the hook's last 100 ms
+                # after the request's end; in #187's late tries they took 14 to 35 ms. The case cannot tell one stall
+                # of the runner there from slow code, so it allows one try whose steps needed more and fails at the
+                # second.
                 limit, began, woke = waits[-1]
                 if elapsed - (woke - started) > hook - max(embedding, began + limit - started):
                     slow.append(stalls[-1])
@@ -300,13 +301,13 @@ class PromptRecallTest(unittest.TestCase):
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
-        self.assertGreaterEqual(elapsed, embedding - 0.01, steps)
+        self.assertGreaterEqual(elapsed, 0.79, steps)
         self.assertEqual(prompt_recall.output(result), b'', steps)
         self.assertEqual(len(mine()), 1, steps)
         usages = self.usage()[used:]
         self.assertEqual([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
                          [('embed-prompt', 'failed', 'timeout')], steps)
-        self.assertLess(usages[0]['total_ms'], hook * 1000, steps)
+        self.assertLess(usages[0]['total_ms'], 900, steps)
         # Recall writes nothing to the raw log, so the recorded prompt stays as it was.
         self.assertEqual(self.raw_files(), before)
         self.assertTrue(self.log(result, ident('e')))
