@@ -21,8 +21,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, hooks, locks, model_client, model_embed, model_transport, model_usage, prompt_recall,
-                        raw_log, recall, start_memory)
+from memory_lib import (clock, locks, model_client, model_embed, model_transport, model_usage, prompt_recall, raw_log,
+                        recall, start_memory)
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
@@ -143,7 +143,7 @@ class PromptRecallTest(unittest.TestCase):
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
         settings, before = self.settings(), self.raw_files()
-        spans, stalls, slow, waits, checks = {}, [], [], [], []
+        spans, stalls, slow, waits, checks, ends = {}, [], [], [], [], []
         once = model_transport.once
 
         def timed(name, call):
@@ -161,7 +161,9 @@ class PromptRecallTest(unittest.TestCase):
             return 'never' if moment is None else '%.3f s' % (moment - started)
 
         def send(*arguments, check, **options):
-            """The request, noting when each check of the hook's deadline that it makes began and ended."""
+            """The request, noting the end that it was given and when each check of the hook's deadline that it makes
+            began and ended."""
+            ends.append(options['deadline'])
             def checking():
                 entry = [clock.now(), None]
                 checks.append(entry)
@@ -217,12 +219,14 @@ class PromptRecallTest(unittest.TestCase):
         # and when it last checked the deadline. The server answers each request after two seconds, and each try's
         # prompt names the try, so that a request is counted only for its own try.
         self.server.reply = slowly
-        tries, hook, embedding = 10, hooks.SECONDS['prompt'], prompt_recall.EMBED_SECONDS
+        # The hook's deadline (SPEC-008) and the embedding's end (API-010), in seconds after the hook's start.
+        tries, hook, embedding = 10, 0.9, 0.8
         for number in range(1, tries + 1):
             prompt = '%s Try %d.' % (QUESTION, number)
             spans.clear()
             waits.clear()
             checks.clear()
+            ends.clear()
             used = len(self.usage())
             mine = lambda: [body for _, body in self.server.requests if body['input'] == [prompt]]
             started = clock.now()
@@ -301,13 +305,14 @@ class PromptRecallTest(unittest.TestCase):
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
-        self.assertGreaterEqual(elapsed, 0.79, steps)
+        self.assertGreaterEqual(elapsed, embedding - 0.01, steps)
+        self.assertEqual([round(end - started, 6) for end in ends], [embedding], steps)
         self.assertEqual(prompt_recall.output(result), b'', steps)
         self.assertEqual(len(mine()), 1, steps)
         usages = self.usage()[used:]
         self.assertEqual([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
                          [('embed-prompt', 'failed', 'timeout')], steps)
-        self.assertLess(usages[0]['total_ms'], 900, steps)
+        self.assertLess(usages[0]['total_ms'], hook * 1000, steps)
         # Recall writes nothing to the raw log, so the recorded prompt stays as it was.
         self.assertEqual(self.raw_files(), before)
         self.assertTrue(self.log(result, ident('e')))
