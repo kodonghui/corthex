@@ -343,8 +343,9 @@ class ModelCallsTest(unittest.TestCase):
         def once(payload, **options):
             seen.append(options['deadline'] - now)
             connects.append(options['connect'])
+            settles.append(options.get('settle'))
             return model_transport._failed('timeout', payload.get('provider', 'anthropic'))
-        connects = []
+        connects, settles = [], []
         with mock.patch.object(clock, 'now', return_value=now), mock.patch.object(model_transport, 'once', side_effect=once), \
                 mock.patch.object(model_client, '_wait', return_value=True):
             self.count(deadline=now + 900)
@@ -354,6 +355,8 @@ class ModelCallsTest(unittest.TestCase):
         # API-009 60 s once, API-011 60 s per attempt and tried again, API-012 10 s once, API-010 the hook's deadline.
         self.assertEqual([round(limit, 6) for limit in seen], [60, 60, 60, 60, 10, .8])
         self.assertEqual([round(limit, 6) for limit in connects], [30, 30, 30, 30, 10, .8])
+        # Only the prompt's embedding, which has only its hook's deadline, bounds its clean-up (TC-207).
+        self.assertEqual(settles, [None] * 5 + [model_embed.SETTLE])
 
     def test_tc130_late_answers_time_out_and_a_spent_hook_budget_sends_nothing(self):
         def stall(handler):

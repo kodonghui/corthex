@@ -432,9 +432,12 @@ class StartSummaryTest(unittest.TestCase):
             part = self.start(seconds=0.3)
         self.assertEqual((part.outcome, part.pins, part.shown), ('deadline', (), ()))
         self.assertEqual(part.text, BASE + '\n\n## Memory\n\nMemory could not be read in time.')
-        self.assertEqual(self.after(part), start_summary.After(0, False, ()))
+        # The start still takes its injection log line, with no pinned item shown, so that recall counts the
+        # prompts again after it (SPEC-023).
+        self.assertEqual(self.after(part), start_summary.After(0, True, ()))
         self.assertTrue(stored.exists())
-        self.assertEqual(self.injections(), [])
+        self.assertEqual(self.injections(), [
+            {'at': worker_fixture.STAMP, 'session': SESSION, 'where': 'start', 'items': []}])
 
     def test_tc204_a_failing_memory_part_is_the_line_about_an_internal_error_and_deletes_nothing(self):
         self.layer()
@@ -445,8 +448,10 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual((part.outcome, part.error), ('error', error))
         self.assertEqual(part.text, BASE + '\n\n## Memory\n\nMemory could not be read: an internal memory error '
                                            'occurred. The memory status says more.')
-        self.assertEqual(self.after(part), start_summary.After(0, False, ()))
+        self.assertEqual(self.after(part), start_summary.After(0, True, ()))
         self.assertTrue(stored.exists())
+        self.assertEqual(self.injections(), [
+            {'at': worker_fixture.STAMP, 'session': SESSION, 'where': 'start', 'items': []}])
         # A damaged layer file is such an error too, never a guess about which file.
         (self.root / 'layer/state.json').write_bytes(b'{"lines": [')
         self.assertEqual(self.start().outcome, 'error')

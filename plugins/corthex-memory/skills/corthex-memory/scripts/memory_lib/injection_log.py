@@ -5,12 +5,13 @@ prompt's recall (`prompt`, TASK-094) injected, best first, with recall's
 scores; never the text of an item or a prompt. A prompt's line also says what
 recall did, in one word, and which five eligible items scored best, also below
 the threshold, so that the skipped share and the scores near the threshold can
-be counted later (TASK-050). Recall reads the log to leave out the pinned
-items that the session's start showed and the items that its last three
-prompts injected (SPEC-023, TASK-093). The file is named as the session's raw log
-file (TBL-007) and is written in a left-out folder too, where no raw log is, by
-one append under that raw log file's lock. Retention deletes lines by their own
-time (SPEC-009). Nothing writes it before the 0.3.0 activation.
+be counted later (TASK-050). Recall reads the log to leave out the pinned items
+that the session's latest start showed and the items that the last three
+prompts since that start injected (SPEC-023, TASK-093). The file is named as
+the session's raw log file (TBL-007) and is written in a left-out folder too,
+where no raw log is, by one append under that raw log file's lock. Retention
+deletes lines by their own time (SPEC-009). Nothing writes it before the 0.3.0
+activation.
 """
 import math
 
