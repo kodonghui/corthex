@@ -466,8 +466,9 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
                      'quotes':[{key:quote[key] for key in ('device','entry','log','start','end')} for quote in ITEM['quotes']]}
         (self.project/'layer/tombstones/i_0123456789ae.json').write_bytes(item_types._raw(tombstone))
         items = self.more_items()
-        names, events, listings = items+['i_0123456789ae.json'], [], []
+        names, events, listings, started = items+['i_0123456789ae.json'], [], [], []
         read, project_check, listing = state_io._read, history_io._project_check, history_recovery._names
+        facts_check = state_io._facts_check
         def reading(memory,path,deadline,check,durable=False):
             result = read(memory,path,deadline,check,durable)
             if Path(path).parent.name in ('items','tombstones'):
@@ -484,10 +485,14 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
             try:
                 return listing(memory,folder,*args,**kwargs)
             finally:
-                listings.append((start,len(events)))
+                listings.append((Path(folder).name,start,len(events)))
+        def passing(*args,**kwargs):
+            started.append(len(events))
+            return facts_check(*args,**kwargs)
         with self.held(), mock.patch.object(state_io,'_read',side_effect=reading), \
                 mock.patch.object(history_io,'_project_check',side_effect=checking), \
-                mock.patch.object(history_recovery,'_names',side_effect=naming):
+                mock.patch.object(history_recovery,'_names',side_effect=naming), \
+                mock.patch.object(state_io,'_facts_check',side_effect=passing):
             self.apply()
         reads = [index for index,event in enumerate(events) if event is not None]
         passes = len(reads)//len(names)
@@ -499,19 +504,24 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         for before, after in zip(reads, reads[1:]):
             self.assertGreater(after-before, 1)
         self.assertIsNone(events[reads[-1]+1])
-        # Within each pass, the catalogue included, one check comes between two
-        # files and none repeats around the steps of one read. Only in the
-        # catalogue does the listing of the tombstones, with its own checks,
-        # come between the last item and the first tombstone: one check comes
-        # before that listing and none between it and the tombstone's read.
-        starts, last, first = set(reads[::len(names)]), reads[len(items)-1], reads[len(items)]
-        between = [span for span in listings if last < span[0] and span[1] <= first]
+        # No check repeats around the steps of one read, in any pass, the
+        # catalogue included. The catalogue's first file follows the items'
+        # listing with no check between them, and the tombstones' listing, with
+        # its own checks, comes between its last item and its first tombstone,
+        # one check before it and none after it. Each full pass's first file
+        # follows that pass's first check, and within each pass one check comes
+        # between two files.
+        firsts, last, first = reads[::len(names)], reads[len(items)-1], reads[len(items)]
+        listed = [end for name,_,end in listings if name == 'items' and end <= firsts[0]]
+        self.assertEqual(events[listed[-1]:firsts[0]], [])
+        between = [(start,end) for name,start,end in listings if name == 'tombstones' and last < start and end <= first]
         self.assertEqual(len(between), 1)
+        self.assertEqual(events[last+1:between[0][0]], [None])
+        self.assertEqual(events[between[0][1]:first], [])
+        for index in firsts[1:]:
+            self.assertEqual(events[max(start for start in started if start < index):index], [None])
         for before, after in zip(reads, reads[1:]):
-            if after == first:
-                self.assertEqual(events[before+1:between[0][0]], [None])
-                self.assertEqual(events[between[0][1]:after], [])
-            elif after not in starts:
+            if after != first and after not in firsts:
                 self.assertEqual(events[before+1:after], [None])
 
     def test_a_lease_lost_while_publication_reads_an_item_file_again_stops_before_the_next(self):
