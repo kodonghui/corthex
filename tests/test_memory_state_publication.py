@@ -461,11 +461,15 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         return [name+'.json' for name in names]
 
     def test_publication_checks_the_leases_once_after_each_item_file_that_it_reads_again(self):
-        names, events = self.more_items(), []
+        # A tombstone of another item, which no line cites, is read in each pass too.
+        tombstone = {'item':'i_0123456789ae','project':'sample','at':AT,'device':DEVICE,
+                     'quotes':[{key:quote[key] for key in ('device','entry','log','start','end')} for quote in ITEM['quotes']]}
+        (self.project/'layer/tombstones/i_0123456789ae.json').write_bytes(item_types._raw(tombstone))
+        names, events = self.more_items()+['i_0123456789ae.json'], []
         read, project_check = state_io._read, history_io._project_check
         def reading(memory,path,deadline,check,durable=False):
             result = read(memory,path,deadline,check,durable)
-            if Path(path).parent.name == 'items':
+            if Path(path).parent.name in ('items','tombstones'):
                 events.append(Path(path).name)
             return result
         def checking(memory,root,check):
@@ -481,12 +485,17 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         passes = len(reads)//len(names)
         self.assertGreaterEqual(passes, 3)
         self.assertEqual([events[index] for index in reads], names*passes)
-        # Each item file of a pass lies between two checks of the leases, and
-        # no check repeats around the steps of one read.
+        # Each file that a pass reads lies between two checks of the leases,
+        # the first of each pass and the last included.
+        self.assertIsNone(events[reads[0]-1])
         for before, after in zip(reads, reads[1:]):
+            self.assertGreater(after-before, 1)
+        self.assertIsNone(events[reads[-1]+1])
+        # Within each full pass after the catalogue, one check comes between
+        # two files and none repeats around the steps of one read.
+        for before, after in zip(reads[len(names):], reads[len(names)+1:]):
             if events[after] != names[0]:
                 self.assertEqual(events[before+1:after], [None])
-        self.assertIsNone(events[reads[-1]+1])
 
     def test_a_lease_lost_while_publication_reads_an_item_file_again_stops_before_the_next(self):
         names, reads = self.more_items(), []
