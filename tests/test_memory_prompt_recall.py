@@ -208,12 +208,13 @@ class PromptRecallTest(unittest.TestCase):
             return self.embeddings(number, body)
         # The request has to start within the embedding's 800 ms and reach the server, and its end has to be noticed
         # before the hook's deadline, 100 ms later. On busy macOS runners the steps before the request took all of
-        # the 800 ms in two of three runs (2026-11-09), and in #187's runs (2026-11-10) the request's end was noticed
-        # late when the runner woke its waits up to 155 ms late, while each check of the deadline took 1 ms or less,
-        # so that recall ended at 0.905 to 0.944 s; one runner did so in four tries running. Recall is then late, as
-        # stage 06 says, and the case is tried again, up to `tries` times, saying when each step began and ended, how
-        # late the request's waits woke and when it last checked the deadline. The server answers each request after
-        # two seconds, and each try's prompt names the try, so that a request is counted only for its own try.
+        # the 800 ms in two of three runs (2026-11-09), and in #187's last run (2026-11-10) the request's end was
+        # noticed late when the runner woke its waits as much as 155 ms late, while each check of the deadline took
+        # 1 ms or less, so that recall ended at 0.905 to 0.933 s; one runner did so in four tries running. Recall is
+        # then late, as stage 06 says, and the case is tried again, up to `tries` times, saying when each step began
+        # and ended, how late the request's waits woke and when it last checked the deadline. The server answers each
+        # request after two seconds, and each try's prompt names the try, so that a request is counted only for its
+        # own try.
         self.server.reply = slowly
         tries = 10
         for number in range(1, tries + 1):
@@ -256,11 +257,13 @@ class PromptRecallTest(unittest.TestCase):
                 stalls.append("the request reached the test server, but its end was noticed after the hook's "
                               'deadline: ' + steps)
                 print('\nTC-207: ' + stalls[-1], file=sys.stderr)
-                # Only a late wake of the runner may make such a try late: the request's last wait has to have woken
-                # at least 20 ms later than asked, or else recall's own steps after it, such as its check of the
-                # deadline, used up the hook's last 100 ms, and the case fails at once.
+                # Only a late wake of the runner may make such a try late: had the request's last wait woken when it
+                # asked, recall would have ended in time, so its own steps after that wake, such as its check of the
+                # deadline and the attempt's clean-up, have to fit in the hook's last 100 ms after the request's end.
+                # A try that needed more fails the case at once, as the case cannot tell a stall there from slow code.
                 limit, began, woke = waits[-1]
-                self.assertGreaterEqual(woke - began - limit, 0.02, 'its last wait woke on time: ' + stalls[-1])
+                self.assertLessEqual(elapsed - (woke - started), 0.9 - max(0.8, began + limit - started),
+                                     "recall's own steps after the request's last wake took too long: " + stalls[-1])
                 # Recall is late with `deadline`, as stage 06 says for a deadline that passes before recall can rank,
                 # with no block, well before the server's answer, and with one usage line for the attempt: an
                 # attempt that the check ended has no code, and one that timed out before the check ended recall
