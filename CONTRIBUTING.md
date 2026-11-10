@@ -29,7 +29,7 @@ All changes go through a pull request. Use the PR template to explain what chang
 
 Merge only with a merge commit, after:
 
-- The checks pass. If Actions fails before starting a runner, record the agreed replacement checks and their results in the PR, including each OS, tool versions, pass/fail counts and skips.
+- The checks pass, with `all-checks` on the head. A draft pull request's CI runs only the Linux jobs and reports `linux-checks`, so mark the pull request ready for review, which runs every system, before merging. If Actions fails before starting a runner, record the agreed replacement checks and their results in the PR, including each OS, tool versions, pass/fail counts and skips.
 - Automated code and security reviews have completed at the latest head with no unresolved findings, and review conversations are resolved.
 - If `main` has moved, the combined tree has been checked again on the required systems, and the merge commit's tree ID matches the checked tree.
 
