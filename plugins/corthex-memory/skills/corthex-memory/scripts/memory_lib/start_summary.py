@@ -137,19 +137,19 @@ def compose(memory, project, base_text, deadline, *, settings=None, environment=
 def after(memory, project, part, host, session, *, when=None):
     """API-001 step 7, once the summary is printed.
 
-    Only a memory part that was composed counts. The stored notices shown are
-    deleted under the project's layer lease, which every notice writer holds,
-    so that no notice is written between the reading and the deletion of its
-    file; the lease and the deletions get the step's one second, and a lease
-    that stays busy leaves them all for the next start. A notice is deleted
-    only while it holds the bytes that were shown, so that a later notice of
-    the same name stays for the next start. The lease goes before the injection
-    log takes the start's line with the pinned items shown (TBL-011).
+    Only a memory part that was composed deletes notices. The stored notices
+    shown are deleted under the project's layer lease, which every notice
+    writer holds, so that no notice is written between the reading and the
+    deletion of its file; the lease and the deletions get the step's one
+    second, and a lease that stays busy leaves them all for the next start. A
+    notice is deleted only while it holds the bytes that were shown, so that a
+    later notice of the same name stays for the next start. The lease goes
+    before the injection log takes the start's line with the pinned items shown
+    (TBL-011). A late or failing memory part showed none, and its start still
+    takes the line, so that recall counts the prompts again after it (SPEC-023).
     """
-    if part.outcome != 'ok':
-        return After(0, False, ())
     deleted, errors = 0, []
-    if part.shown:
+    if part.outcome == 'ok' and part.shown:
         root = memory.folder / 'projects' / base.project_folder_name(project)
         deadline = clock.now() + STEP_SECONDS
         try:

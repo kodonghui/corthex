@@ -165,26 +165,30 @@ class ModelTransportTest(unittest.TestCase):
 
     def test_settle_bounds_the_clean_up_and_a_thread_waits_for_the_child(self):
         # The answer never comes in time, and the killed child takes longer to end than the clean-up may wait, as
-        # on a busy runner (TC-207): with `settle` the attempt returns that soon after its end and says so.
+        # on a busy runner (TC-207): with `settle` the attempt returns that soon after the kill and says so. The
+        # time counts from the kill, so that a late wake at the deadline does not count.
         self.reply=lambda h:time.sleep(2)
-        popen=subprocess.Popen; real=popen.wait; waits=[]
+        popen=subprocess.Popen; real_wait,real_kill=popen.wait,popen.kill; waits=[]; killed=[]
         def wait(process,timeout=None):
             if timeout is None:
-                return real(process)
+                return real_wait(process)
             waits.append(timeout)
             time.sleep(timeout)
             raise subprocess.TimeoutExpired(process.args,timeout)
-        for settle,least,most in ((.02,0,.2),(None,.15,None)):
+        def kill(process):
+            killed.append(clock.now()); return real_kill(process)
+        for settle,least,most in ((.02,0,.15),(None,.15,None)):
             with self.subTest(settle=settle):
-                children=[]; del waits[:]
+                children=[]; del waits[:],killed[:]
                 def spawn(*args,**kwargs):
                     child=popen(*args,**kwargs); children.append(child); return child
                 begun=clock.now()
                 with mock.patch.object(subprocess,'Popen',side_effect=spawn), \
-                        mock.patch.object(popen,'wait',autospec=True,side_effect=wait):
+                        mock.patch.object(popen,'wait',autospec=True,side_effect=wait), \
+                        mock.patch.object(popen,'kill',autospec=True,side_effect=kill):
                     answer=model_transport.once(self.payload,deadline=begun+.5,started=begun,connect=.5,gap=.5,
                                                 check=lambda:None,settle=settle)
-                    after=clock.now()-begun-.5
+                    after=clock.now()-killed[0]
                     self.assertEqual((answer.failure.code,answer.cleanup_pending),('timeout',True))
                     self.assertGreaterEqual(after,least)
                     if most is not None:

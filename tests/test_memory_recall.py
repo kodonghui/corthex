@@ -312,6 +312,13 @@ class RecallTest(unittest.TestCase):
             self.assertEqual(self.rank().items, (first['id'],))
         self.log('prompt', outcome='command')
         self.assertEqual(self.rank().items, (first['id'], second['id']))
+        # A start whose memory part was late or failed showed no pin, and its line counts the prompts again too.
+        self.log('prompt', [first['id']], outcome='injected', scores=[0.9], candidates=[(first['id'], 0.9)])
+        self.assertEqual(self.rank().items, (second['id'],))
+        for outcome in ('deadline', 'error'):
+            self.assertTrue(start_summary.after(self.memory, 'sample', start_summary.Part('', outcome), HOST,
+                                                SESSION).injected)
+            self.assertEqual(self.rank().items, (first['id'], second['id']))
 
     def test_unreadable_injection_lines_are_left_out_and_a_missing_log_is_read_from_its_backup(self):
         first, second = self.store((self.item('First'), toward(0.9)), (self.item('Second'), toward(0.6, 2)))
