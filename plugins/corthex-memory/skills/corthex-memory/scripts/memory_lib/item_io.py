@@ -56,12 +56,11 @@ def optional_record(memory, path, parse, deadline, check, empty):
     return empty
 
 
-def _deadline(deadline):
-    if clock.now() >= deadline:
-        raise locks.LockBusy()
-
-
 def _items(memory, root, deadline, check):
+    def reading():
+        if clock.now() >= deadline:
+            raise locks.LockBusy()
+
     folder = root / 'layer/items'
     check()
     memory.fence.check(folder)
@@ -82,10 +81,16 @@ def _items(memory, root, deadline, check):
             continue
         # The listing changes nothing, and this entry's check comes before the
         # read and the next entry's, or the last one, after it, so the read's
-        # own steps check only the deadline and the path.
-        value = _record(memory, path, item_types.parse_item, deadline, lambda: _deadline(deadline))
-        if value['id'] != item:
-            raise files.RestoreNeeded()
+        # own steps check only the deadline and the path. A read that fails
+        # runs the check before its error goes on, so that a lease lost during
+        # the read is what the listing reports.
+        try:
+            value = _record(memory, path, item_types.parse_item, deadline, reading)
+            if value['id'] != item:
+                raise files.RestoreNeeded()
+        except Exception:
+            check()
+            raise
         values.append(value)
     check()
     return values

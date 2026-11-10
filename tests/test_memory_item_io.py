@@ -296,6 +296,22 @@ class ItemIOTest(unittest.TestCase):
                 item_io._items(self.memory, self.project, self.deadline, check)
         self.assertEqual(reads, [FIRST, SECOND])
 
+    def test_a_lease_lost_during_an_item_read_that_fails_is_what_the_listing_reports(self):
+        self.more_items()
+        record = item_io._record
+        def reading(memory, path, parse, deadline, check):
+            if path.name == SECOND + '.json':
+                # The file went as the lease was lost, during its read.
+                self.memory.held[0].token = 'f'*32
+                raise files.RestoreNeeded()
+            return record(memory, path, parse, deadline, check)
+        with self.held():
+            check = revision_io.guard(self.memory, self.project, self.deadline)
+            with mock.patch.object(item_io, '_record', side_effect=reading), \
+                    self.assertRaises(locks.LostLock) as caught:
+                item_io._items(self.memory, self.project, self.deadline, check)
+        self.assertIsInstance(caught.exception.__context__, files.RestoreNeeded)
+
     def test_failure_before_publish_preserves_item_but_keeps_reserved_revision(self):
         before = self.progress()['fence']['generation']
         original = files._sync

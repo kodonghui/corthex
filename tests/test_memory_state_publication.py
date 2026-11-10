@@ -505,6 +505,25 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         self.assertEqual((self.state.read_bytes(),self.marker.read_bytes()), self.initial)
         self.assertEqual(self.path.read_bytes(), self.good)
 
+    def test_a_lease_lost_during_an_item_read_that_fails_is_what_publication_reports(self):
+        names, reads = self.more_items(), []
+        read = state_io._read
+        def reading(memory,path,deadline,check,durable=False):
+            if Path(path).parent.name == 'items':
+                reads.append(Path(path).name)
+                if len(reads) == len(names)+2:
+                    # The file changed as the lease was lost, during its read.
+                    self.memory.held[1].token = 'f'*32
+                    raise fence_plan.Stale()
+            return read(memory,path,deadline,check,durable)
+        with self.held(), mock.patch.object(state_io,'_read',side_effect=reading):
+            with self.assertRaises(locks.LostLock) as caught:
+                self.apply()
+        self.assertIsInstance(caught.exception.__context__, fence_plan.Stale)
+        self.assertEqual(reads, names+names[:2])
+        self.assertEqual((self.state.read_bytes(),self.marker.read_bytes()), self.initial)
+        self.assertEqual(self.path.read_bytes(), self.good)
+
     def test_caller_expected_mutation_cannot_change_returned_before_revision_proof(self):
         with self.held():
             expected = fence_plan.snapshot(format2.parse_curation(self.path.read_bytes()))

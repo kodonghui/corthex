@@ -61,9 +61,15 @@ def _fact(memory, path, deadline, ownership):
     identity and stamps. The pass that reads the fact changes nothing, and the
     previous fact's check or the pass's first one comes before this read, so
     each read still lies between two checks of the leases, which no longer
-    repeat around each step of the read.
+    repeat around each step of the read. A read that fails checks the leases
+    before its error goes on, so that a lease lost during the read is what
+    the pass reports.
     """
-    result = _read(memory, path, deadline, lambda: _deadline(deadline))
+    try:
+        result = _read(memory, path, deadline, lambda: _deadline(deadline))
+    except Exception:
+        ownership()
+        raise
     ownership()
     return result
 
