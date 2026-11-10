@@ -12,7 +12,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT/'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, fence_plan, files, format2, history_io, item_types, locks, revision_io, state_io, state_plan, state_types
+from memory_lib import clock, fence_plan, files, format2, history_io, history_recovery, item_types, locks, revision_io, state_io, state_plan, state_types
 from memory_lib.c2_store import C2Store
 from test_memory_fence_plan import PROGRESS
 from test_memory_item_types import AT, DEVICE, ITEM
@@ -465,8 +465,9 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         tombstone = {'item':'i_0123456789ae','project':'sample','at':AT,'device':DEVICE,
                      'quotes':[{key:quote[key] for key in ('device','entry','log','start','end')} for quote in ITEM['quotes']]}
         (self.project/'layer/tombstones/i_0123456789ae.json').write_bytes(item_types._raw(tombstone))
-        names, events = self.more_items()+['i_0123456789ae.json'], []
-        read, project_check = state_io._read, history_io._project_check
+        items = self.more_items()
+        names, events, listings = items+['i_0123456789ae.json'], [], []
+        read, project_check, listing = state_io._read, history_io._project_check, history_recovery._names
         def reading(memory,path,deadline,check,durable=False):
             result = read(memory,path,deadline,check,durable)
             if Path(path).parent.name in ('items','tombstones'):
@@ -478,8 +479,15 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
                 events.append(None)
                 guarded()
             return logged
+        def naming(memory,folder,*args,**kwargs):
+            start = len(events)
+            try:
+                return listing(memory,folder,*args,**kwargs)
+            finally:
+                listings.append((start,len(events)))
         with self.held(), mock.patch.object(state_io,'_read',side_effect=reading), \
-                mock.patch.object(history_io,'_project_check',side_effect=checking):
+                mock.patch.object(history_io,'_project_check',side_effect=checking), \
+                mock.patch.object(history_recovery,'_names',side_effect=naming):
             self.apply()
         reads = [index for index,event in enumerate(events) if event is not None]
         passes = len(reads)//len(names)
@@ -492,12 +500,18 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
             self.assertGreater(after-before, 1)
         self.assertIsNone(events[reads[-1]+1])
         # Within each pass, the catalogue included, one check comes between two
-        # files and none repeats around the steps of one read; only in the
+        # files and none repeats around the steps of one read. Only in the
         # catalogue does the listing of the tombstones, with its own checks,
-        # come between the last item and the tombstone.
-        listed = reads[len(names)-1]
+        # come between the last item and the first tombstone: one check comes
+        # before that listing and none between it and the tombstone's read.
+        starts, last, first = set(reads[::len(names)]), reads[len(items)-1], reads[len(items)]
+        between = [span for span in listings if last < span[0] and span[1] <= first]
+        self.assertEqual(len(between), 1)
         for before, after in zip(reads, reads[1:]):
-            if events[after] != names[0] and after != listed:
+            if after == first:
+                self.assertEqual(events[before+1:between[0][0]], [None])
+                self.assertEqual(events[between[0][1]:after], [])
+            elif after not in starts:
                 self.assertEqual(events[before+1:after], [None])
 
     def test_a_lease_lost_while_publication_reads_an_item_file_again_stops_before_the_next(self):
