@@ -208,13 +208,14 @@ class PromptRecallTest(unittest.TestCase):
             return self.embeddings(number, body)
         # The request has to start within the embedding's 800 ms and reach the server, and its end has to be noticed
         # before the hook's deadline, 100 ms later. On busy macOS runners the steps before the request took all of
-        # the 800 ms in two of three runs (2026-11-09), and in one run the request's end was noticed 131 ms late, when
-        # its child was killed at 0.931 s, so that recall ended at 0.944 s (2026-11-10). Recall is then late, as stage
-        # 06 says, and the case is tried again, up to five times, saying when each step began and ended, how late the
-        # request's waits woke and when it last checked the deadline. The server answers each request after two
-        # seconds, and each try's prompt names the try, so that a request is counted only for its own try.
+        # the 800 ms in two of three runs (2026-11-09), and the request's end was noticed late when the runner woke
+        # its waits up to 155 ms late while each check of the deadline took 1 ms or less, so that recall ended at
+        # 0.905 to 0.944 s (2026-11-10), in four tries running on one runner. Recall is then late, as stage 06 says,
+        # and the case is tried again, up to ten times, saying when each step began and ended, how late the request's
+        # waits woke and when it last checked the deadline. The server answers each request after two seconds, and
+        # each try's prompt names the try, so that a request is counted only for its own try.
         self.server.reply = slowly
-        for number in range(1, 6):
+        for number in range(1, 11):
             prompt = '%s Try %d.' % (QUESTION, number)
             spans.clear()
             waits.clear()
@@ -278,7 +279,7 @@ class PromptRecallTest(unittest.TestCase):
                 self.assertEqual((result, self.usage()[used:]), (prompt_recall.Result('late', error='deadline'), []),
                                  stalls[-1])
         else:
-            self.fail("TC-207: in five tries no request both reached the test server and had its end noticed before "
+            self.fail("TC-207: in ten tries no request both reached the test server and had its end noticed before "
                       "the hook's deadline; " + '; '.join(stalls))
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
