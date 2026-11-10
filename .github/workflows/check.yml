@@ -1,13 +1,23 @@
 name: check
 
+# A draft pull request runs only the Linux jobs, so that each push gets its results
+# sooner, and its last job reports as linux-checks. Every other run, of a pull request
+# that is ready for review, a push to main or a run started by hand, covers Linux,
+# Windows and macOS, and only such a run reports all-checks, the check that main
+# requires. A draft cannot be merged, and marking it ready for review starts that run.
+# Each `github.event.pull_request.draft` below makes this choice.
 on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+# A newer run of a pull request cancels its run in progress of the same kind, a draft's
+# or a full one, so a draft's Linux-only run never cancels the full run that marking the
+# draft ready started, whatever order GitHub creates them in.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}-${{ github.event.pull_request.draft == true }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -18,28 +28,28 @@ jobs:
     # Each lane runs as three jobs that take every third test (.github/test-shard.py):
     # the whole suite had reached the hour limit on the Python 3.8 Windows lane, and
     # halves of it came within ten minutes of it on slow Windows and Intel macOS runners.
-    name: tests (${{ matrix.lane.os }}, ${{ matrix.lane.python }}, share ${{ matrix.share }} of 3)
+    name: tests (${{ matrix.os }}, ${{ matrix.python }}, share ${{ matrix.share }} of 3)
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        lane:
-          - {os: ubuntu-latest, python: "3.8"}
-          - {os: ubuntu-latest, python: "3.15"}
-          - {os: windows-latest, python: "3.8"}
-          - {os: windows-latest, python: "3.15"}
-          # The older x64 build runs natively; keep the newest on Apple Silicon.
-          - {os: macos-15-intel, python: "3.8"}
-          - {os: macos-latest, python: "3.15"}
+        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest", "macos-15-intel", "macos-latest"]') }}
+        python: ["3.8", "3.15"]
         share: [1, 2, 3]
-    runs-on: ${{ matrix.lane.os }}
+        # Six lanes: both versions on Linux and Windows, and on macOS the older x64
+        # build natively on Intel and the newest on Apple Silicon. A new version or
+        # macOS image needs its own exclusions here.
+        exclude:
+          - {os: macos-15-intel, python: "3.15"}
+          - {os: macos-latest, python: "3.8"}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: ${{ matrix.lane.python }}
+          python-version: ${{ matrix.python }}
       # Node also checks the dependency-free browser helper.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -57,7 +67,7 @@ jobs:
       fail-fast: false
       matrix:
         # Python 3.8 has an Intel macOS build, not an arm64 one.
-        os: [ubuntu-24.04, windows-latest, macos-15-intel]
+        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-latest", "macos-15-intel"]') }}
         python: ["3.8", "3.x"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -97,16 +107,36 @@ jobs:
 
   memory-hooks:
     uses: ./.github/workflows/memory-hook-check.yml
+    with:
+      linux-only: ${{ github.event.pull_request.draft == true }}
 
   windows-hooks:
+    if: ${{ !github.event.pull_request.draft }}
     uses: ./.github/workflows/windows-hook-check.yml
 
   all-checks:
+    # A skipped required check counts as passed, so a draft's run reports this job
+    # under another name instead of skipping it.
+    name: ${{ github.event.pull_request.draft && 'linux-checks' || 'all-checks' }}
     if: ${{ always() }}
     needs: [tests, hub-compatibility, claude-validate, memory-hooks, windows-hooks]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Every job in needs must succeed, one added later included; only a draft's run
+      # may skip one, and only windows-hooks.
       - name: Fail unless every job succeeded
-        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
-        run: exit 1
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          DRAFT: ${{ github.event.pull_request.draft == true }}
+        shell: python3 {0}
+        run: |
+          import json, os, sys
+          results = {name: job["result"] for name, job in json.loads(os.environ["NEEDS"]).items()}
+          may_skip = {"windows-hooks"} if os.environ["DRAFT"] == "true" else set()
+          for name, result in sorted(results.items()):
+              print(f"{name}: {result}")
+          failed = [name for name, result in sorted(results.items())
+                    if result != "success" and not (result == "skipped" and name in may_skip)]
+          if failed or not results:
+              sys.exit(f"Not passed: {', '.join(failed) or 'no jobs'}")

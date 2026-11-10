@@ -29,6 +29,8 @@ claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
 ```
 
+In CI, a draft pull request runs only the Linux jobs, and its gate reports as `linux-checks`: Linux evidence only. A pull request that is ready for review, a push to `main` and a run of `check` started by hand cover Linux, Windows and macOS, and only these report `all-checks`, the check that `main` requires. Merge a pull request only after `all-checks` has passed on its head. Mark a draft ready once its last run has passed, since a full run does not cancel a draft's run.
+
 ## Releases
 
 A release is a tag named `<plugin>--v<version>`. After the checks pass on `main`, create it with `claude plugin tag plugins/<plugin>`, which also checks that the manifest and the marketplace entry agree.
