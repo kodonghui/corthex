@@ -205,12 +205,15 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
         until = None if settle is None else clock.now() + settle
         def within(seconds):
             return seconds if until is None else max(0, min(seconds, until - clock.now()))
+        killed = False
         try:
             if process.poll() is None:process.kill()
+            killed = True
             process.wait(timeout=within(.2))
         except Exception:
             pending = True
-            if process.returncode is None:
+            # A child that the kill reached ends soon; one that it did not is left as before.
+            if killed and process.returncode is None:
                 try:
                     threading.Thread(target=_reap, args=(process,), daemon=True).start()
                 except Exception:

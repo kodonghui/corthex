@@ -165,10 +165,11 @@ class ModelTransportTest(unittest.TestCase):
 
     def test_settle_bounds_the_clean_up_and_a_thread_waits_for_the_child(self):
         # The answer never comes in time, and the killed child takes longer to end than the clean-up may wait, as
-        # on a busy runner (TC-207): with `settle` the attempt returns that soon after the kill and says so. The
-        # time counts from the kill, so that a late wake at the deadline does not count.
+        # on a busy runner (TC-207): with `settle` no wait of the clean-up is longer than it, and the attempt says
+        # so. The waits are checked rather than the time, which a busy runner can stretch.
         self.reply=lambda h:time.sleep(2)
         popen=subprocess.Popen; real_wait,real_kill=popen.wait,popen.kill; waits=[]; killed=[]
+        real_join=threading.Thread.join; joins=[]
         def wait(process,timeout=None):
             if timeout is None:
                 return real_wait(process)
@@ -177,23 +178,29 @@ class ModelTransportTest(unittest.TestCase):
             raise subprocess.TimeoutExpired(process.args,timeout)
         def kill(process):
             killed.append(clock.now()); return real_kill(process)
-        for settle,least,most in ((.02,0,.15),(None,.15,None)):
+        def join(thread,timeout=None):
+            joins.append(timeout); return real_join(thread,timeout)
+        for settle in (.02,None):
             with self.subTest(settle=settle):
-                children=[]; del waits[:],killed[:]
+                children=[]; del waits[:],killed[:],joins[:]
                 def spawn(*args,**kwargs):
                     child=popen(*args,**kwargs); children.append(child); return child
                 begun=clock.now()
                 with mock.patch.object(subprocess,'Popen',side_effect=spawn), \
                         mock.patch.object(popen,'wait',autospec=True,side_effect=wait), \
-                        mock.patch.object(popen,'kill',autospec=True,side_effect=kill):
+                        mock.patch.object(popen,'kill',autospec=True,side_effect=kill), \
+                        mock.patch.object(threading.Thread,'join',autospec=True,side_effect=join):
                     answer=model_transport.once(self.payload,deadline=begun+.5,started=begun,connect=.5,gap=.5,
                                                 check=lambda:None,settle=settle)
                     after=clock.now()-killed[0]
                     self.assertEqual((answer.failure.code,answer.cleanup_pending),('timeout',True))
-                    self.assertGreaterEqual(after,least)
-                    if most is not None:
-                        self.assertLess(after,most)
-                    self.assertLessEqual(sum(waits),.2 if settle is None else settle)
+                    self.assertEqual((len(waits),len(joins)),(1,2))
+                    if settle is None:
+                        # Without it the clean-up waits as before: 0.2 s for the child and 0.1 s for each thread.
+                        self.assertEqual((waits,joins),([.2],[.1,.1]))
+                        self.assertGreaterEqual(after,.15)
+                    else:
+                        self.assertTrue(all(0<=timeout<=settle for timeout in waits+joins),(waits,joins))
                     # A daemon thread waits for the killed child, so that it does not stay a zombie.
                     (child,)=children; until=clock.now()+5
                     while child.returncode is None and clock.now()<until:
@@ -236,6 +243,27 @@ class ModelTransportTest(unittest.TestCase):
         self.assertEqual(len(children),2)
         for child in children:
             child.wait(timeout=5)
+
+    def test_a_child_that_the_kill_did_not_reach_gets_no_waiting_thread(self):
+        # Such a child goes on until its own limits end it, as before; a thread that waited for it would wait as long.
+        self.reply=lambda h:time.sleep(2)
+        popen=subprocess.Popen; real_kill=popen.kill; thread=threading.Thread; children=[]; waiting=[]
+        def spawn(*args,**kwargs):
+            child=popen(*args,**kwargs); children.append(child); return child
+        def make(*args,**kwargs):
+            if kwargs.get('target') is model_transport._reap:
+                waiting.append(kwargs)
+            return thread(*args,**kwargs)
+        begun=clock.now()
+        with mock.patch.object(subprocess,'Popen',side_effect=spawn), \
+                mock.patch.object(popen,'kill',autospec=True,side_effect=PermissionError('refused')), \
+                mock.patch.object(threading,'Thread',side_effect=make):
+            answer=model_transport.once(self.payload,deadline=begun+.5,started=begun,connect=.5,gap=.5,
+                                        check=lambda:None,settle=.02)
+        self.assertEqual((answer.failure.code,answer.cleanup_pending,waiting),('timeout',True,[]))
+        self.assertEqual(len(children),1)
+        for child in children:
+            real_kill(child); child.wait(timeout=5)
 
     def test_original_check_loss_cancels_and_preserves_the_original_exception(self):
         def reply(h):time.sleep(1)
