@@ -258,6 +258,60 @@ class ItemIOTest(unittest.TestCase):
             item_io.rebuild_list(self.memory, self.project, self.proof(), self.deadline)
         self.assertEqual((self.project/'layer/item-list.txt').read_bytes(), item_types.item_list_bytes([self.saved]))
 
+    def more_items(self):
+        for item in (SECOND, THIRD):
+            self.item_path(item).write_bytes(item_types.item_bytes(self.item(item)))
+
+    def test_the_item_listing_checks_once_between_the_items_that_it_reads(self):
+        self.more_items()
+        record, events = item_io._record, []
+        def reading(memory, path, parse, deadline, check):
+            value = record(memory, path, parse, deadline, check)
+            if path.parent.name == 'items':
+                events.append(path.name[:-5])
+            return value
+        with self.held():
+            guard = revision_io.guard(self.memory, self.project, self.deadline)
+            def check():
+                events.append(None)
+                guard()
+            with mock.patch.object(item_io, '_record', side_effect=reading):
+                listed = item_io._items(self.memory, self.project, self.deadline, check)
+        self.assertEqual([value['id'] for value in listed], [FIRST, SECOND, THIRD])
+        self.assertEqual(events, [None, None, FIRST, None, SECOND, None, THIRD, None])
+
+    def test_a_lease_lost_while_the_item_listing_reads_stops_before_the_next_item(self):
+        self.more_items()
+        record, reads = item_io._record, []
+        def reading(memory, path, parse, deadline, check):
+            value = record(memory, path, parse, deadline, check)
+            if path.parent.name == 'items':
+                reads.append(path.name[:-5])
+                if len(reads) == 2:
+                    self.memory.held[0].token = 'f'*32
+            return value
+        with self.held():
+            check = revision_io.guard(self.memory, self.project, self.deadline)
+            with mock.patch.object(item_io, '_record', side_effect=reading), self.assertRaises(locks.LostLock):
+                item_io._items(self.memory, self.project, self.deadline, check)
+        self.assertEqual(reads, [FIRST, SECOND])
+
+    def test_a_lease_lost_during_an_item_read_that_fails_is_what_the_listing_reports(self):
+        self.more_items()
+        record = item_io._record
+        def reading(memory, path, parse, deadline, check):
+            if path.name == SECOND + '.json':
+                # The file went as the lease was lost, during its read.
+                self.memory.held[0].token = 'f'*32
+                raise files.RestoreNeeded()
+            return record(memory, path, parse, deadline, check)
+        with self.held():
+            check = revision_io.guard(self.memory, self.project, self.deadline)
+            with mock.patch.object(item_io, '_record', side_effect=reading), \
+                    self.assertRaises(locks.LostLock) as caught:
+                item_io._items(self.memory, self.project, self.deadline, check)
+        self.assertIsInstance(caught.exception.__context__, files.RestoreNeeded)
+
     def test_failure_before_publish_preserves_item_but_keeps_reserved_revision(self):
         before = self.progress()['fence']['generation']
         original = files._sync

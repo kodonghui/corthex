@@ -451,6 +451,91 @@ class StatePublicationTest(_StateFixture, unittest.TestCase):
         self.late_handoff(mutate, self.marker)
         self.assertEqual((self.state.read_bytes(),self.marker.read_bytes()), self.initial)
 
+    def more_items(self):
+        names = [ITEM['id']]
+        for item in ('i_0123456789ac','i_0123456789ad'):
+            value = copy.deepcopy(ITEM)
+            value['id'] = item
+            (self.project/'layer/items'/(item+'.json')).write_bytes(item_types.item_bytes(value))
+            names.append(item)
+        return [name+'.json' for name in names]
+
+    def test_publication_checks_the_leases_once_after_each_item_file_that_it_reads_again(self):
+        # A tombstone of another item, which no line cites, is read in each pass too.
+        tombstone = {'item':'i_0123456789ae','project':'sample','at':AT,'device':DEVICE,
+                     'quotes':[{key:quote[key] for key in ('device','entry','log','start','end')} for quote in ITEM['quotes']]}
+        (self.project/'layer/tombstones/i_0123456789ae.json').write_bytes(item_types._raw(tombstone))
+        names, events = self.more_items()+['i_0123456789ae.json'], []
+        read, project_check = state_io._read, history_io._project_check
+        def reading(memory,path,deadline,check,durable=False):
+            result = read(memory,path,deadline,check,durable)
+            if Path(path).parent.name in ('items','tombstones'):
+                events.append(Path(path).name)
+            return result
+        def checking(memory,root,check):
+            guarded = project_check(memory,root,check)
+            def logged():
+                events.append(None)
+                guarded()
+            return logged
+        with self.held(), mock.patch.object(state_io,'_read',side_effect=reading), \
+                mock.patch.object(history_io,'_project_check',side_effect=checking):
+            self.apply()
+        reads = [index for index,event in enumerate(events) if event is not None]
+        passes = len(reads)//len(names)
+        self.assertGreaterEqual(passes, 3)
+        self.assertEqual([events[index] for index in reads], names*passes)
+        # Each file that a pass reads lies between two checks of the leases,
+        # the first of each pass and the last included.
+        self.assertIsNone(events[reads[0]-1])
+        for before, after in zip(reads, reads[1:]):
+            self.assertGreater(after-before, 1)
+        self.assertIsNone(events[reads[-1]+1])
+        # Within each pass, the catalogue included, one check comes between two
+        # files and none repeats around the steps of one read; only in the
+        # catalogue does the listing of the tombstones, with its own checks,
+        # come between the last item and the tombstone.
+        listed = reads[len(names)-1]
+        for before, after in zip(reads, reads[1:]):
+            if events[after] != names[0] and after != listed:
+                self.assertEqual(events[before+1:after], [None])
+
+    def test_a_lease_lost_while_publication_reads_an_item_file_again_stops_before_the_next(self):
+        names, reads = self.more_items(), []
+        read = state_io._read
+        def reading(memory,path,deadline,check,durable=False):
+            result = read(memory,path,deadline,check,durable)
+            if Path(path).parent.name == 'items':
+                reads.append(Path(path).name)
+                if len(reads) == len(names)+2:
+                    self.memory.held[1].token = 'f'*32
+            return result
+        with self.held(), mock.patch.object(state_io,'_read',side_effect=reading):
+            with self.assertRaises(locks.LostLock):
+                self.apply()
+        self.assertEqual(reads, names+names[:2])
+        self.assertEqual((self.state.read_bytes(),self.marker.read_bytes()), self.initial)
+        self.assertEqual(self.path.read_bytes(), self.good)
+
+    def test_a_lease_lost_during_an_item_read_that_fails_is_what_publication_reports(self):
+        names, reads = self.more_items(), []
+        read = state_io._read
+        def reading(memory,path,deadline,check,durable=False):
+            if Path(path).parent.name == 'items':
+                reads.append(Path(path).name)
+                if len(reads) == len(names)+2:
+                    # The file changed as the lease was lost, during its read.
+                    self.memory.held[1].token = 'f'*32
+                    raise fence_plan.Stale()
+            return read(memory,path,deadline,check,durable)
+        with self.held(), mock.patch.object(state_io,'_read',side_effect=reading):
+            with self.assertRaises(locks.LostLock) as caught:
+                self.apply()
+        self.assertIsInstance(caught.exception.__context__, fence_plan.Stale)
+        self.assertEqual(reads, names+names[:2])
+        self.assertEqual((self.state.read_bytes(),self.marker.read_bytes()), self.initial)
+        self.assertEqual(self.path.read_bytes(), self.good)
+
     def test_caller_expected_mutation_cannot_change_returned_before_revision_proof(self):
         with self.held():
             expected = fence_plan.snapshot(format2.parse_curation(self.path.read_bytes()))

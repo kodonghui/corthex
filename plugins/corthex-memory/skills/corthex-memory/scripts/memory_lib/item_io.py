@@ -6,7 +6,8 @@ ID-only attempted/known-published effects; unconfirmed attempts are uncertain.
 import os
 from pathlib import Path
 
-from . import conflict_counts, conflict_plan, conflict_types, fence_plan, files, item_plan, item_types, revision_io
+from . import clock, conflict_counts, conflict_plan, conflict_types, fence_plan, files, item_plan, item_types, locks
+from . import revision_io
 
 
 class WriteFailed(RuntimeError):
@@ -56,6 +57,10 @@ def optional_record(memory, path, parse, deadline, check, empty):
 
 
 def _items(memory, root, deadline, check):
+    def reading():
+        if clock.now() >= deadline:
+            raise locks.LockBusy()
+
     folder = root / 'layer/items'
     check()
     memory.fence.check(folder)
@@ -74,9 +79,19 @@ def _items(memory, root, deadline, check):
             raise files.RestoreNeeded()
         if _private(memory, root, item):
             continue
-        value = _record(memory, path, item_types.parse_item, deadline, check)
-        if value['id'] != item:
-            raise files.RestoreNeeded()
+        # The listing changes nothing, and this entry's check comes before the
+        # read and the next entry's, or the last one, after it, so the read's
+        # own steps check only the deadline and the path. A read that fails
+        # runs the check before its error goes on, so that what the check
+        # finds, such as a lease lost during the read, is what the listing
+        # reports.
+        try:
+            value = _record(memory, path, item_types.parse_item, deadline, reading)
+            if value['id'] != item:
+                raise files.RestoreNeeded()
+        except Exception:
+            check()
+            raise
         values.append(value)
     check()
     return values
