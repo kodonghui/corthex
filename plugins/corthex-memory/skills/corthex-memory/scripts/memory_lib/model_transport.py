@@ -66,7 +66,15 @@ def _result(value, first):
     return Response(value['text'] if failure is None else '', usage, first, failure, request, retry)
 
 
-def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=None):
+def _reap(process):
+    """Wait for a killed child that the attempt's clean-up left, so that it does not stay a zombie."""
+    try:
+        process.wait()
+    except Exception:
+        pass
+
+
+def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=None, settle=None):
     """Count startup/DNS/TLS/headers/body under the parent's original deadline.
 
     The required original caller check retains eligibility/ownership authority;
@@ -74,9 +82,18 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
     stdin only. The child has no store, lease or project path and cannot retry.
     A payload with `provider` is one of the JSON calls (API-009 to API-012):
     the answer's text is then the JSON body, which the caller checks.
+
+    Once the answer is in or the time is up, ending the child may take 0.2
+    seconds and joining each of its two threads 0.1; `settle`, when given, is
+    the most that all of it may take, for a caller that has to end soon after
+    its deadline, as the prompt hook does (API-010). What has not ended by then
+    goes on without the caller: a daemon thread waits for the killed child, and
+    the response says that its clean-up is pending.
     """
     store.MemoryStore._deadline(deadline)
     if not callable(check) or on_cancel is not None and not callable(on_cancel) or any(type(n) not in (int, float) or not math.isfinite(n) or n <= 0 for n in (connect, gap)):
+        raise ValueError('invalid memory transport budget')
+    if settle is not None and (type(settle) not in (int, float) or not math.isfinite(settle) or settle < 0):
         raise ValueError('invalid memory transport budget')
     if type(started) not in (int, float) or not math.isfinite(started) or started > clock.now():
         raise ValueError('invalid memory transport clock')
@@ -185,13 +202,24 @@ def once(payload, *, deadline, started, connect=30, gap=600, check, on_cancel=No
         original_error = caught
     finally:
         # This process is ours and has no data/lease effects to roll back.
+        until = None if settle is None else clock.now() + settle
+        def within(seconds):
+            return seconds if until is None else max(0, min(seconds, until - clock.now()))
+        killed = False
         try:
             if process.poll() is None:process.kill()
-            process.wait(timeout=.2)
+            killed = True
+            process.wait(timeout=within(.2))
         except Exception:
             pending = True
+            # A child that the kill reached ends soon; one that it did not is left as before.
+            if killed and process.returncode is None:
+                try:
+                    threading.Thread(target=_reap, args=(process,), daemon=True).start()
+                except Exception:
+                    pass  # The caller's answer or exception comes first; the child is left to the system.
         for thread, stream in zip(threads, (process.stdin, process.stdout)):
-            if thread.ident is not None:thread.join(timeout=.1)
+            if thread.ident is not None:thread.join(timeout=within(.1))
             else:stream.close()
             if thread.is_alive():pending = True
     if original_error is not None:

@@ -312,7 +312,7 @@ C2 conflict-counts.json stores a device-local 0-to-3 high-water per candidate ID
 
 ### Injection log (TBL-011)
 
-One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the session's last three prompts injected. A prompt's line says what recall did, and keeps the five best items that recall could inject with their scores, also below the threshold, so that the share of skipped prompts and the scores near the threshold can be counted (TASK-050). Appended by the session's hooks under the lock of the session's raw log file; each line gets one attempt at the lock and recording's wait, and a lock that stays busy skips the line, as it skips a recorded entry. Lines are deleted by their own time once past the retention period. No text of items or prompts.
+One file per host session, named as its raw log file, also in a left-out folder, where no raw log is written (SPEC-006). One line per start summary (SPEC-021) and per prompt of the session (SPEC-023), also when recall skips the prompt, as a short one or a command, or injects nothing, so that recall can tell which items the last three prompts since the session's latest start injected. A prompt's line says what recall did, and keeps the five best items that recall could inject with their scores, also below the threshold, so that the share of skipped prompts and the scores near the threshold can be counted (TASK-050). Appended by the session's hooks under the lock of the session's raw log file; each line gets one attempt at the lock and recording's wait, and a lock that stays busy skips the line, as it skips a recorded entry. Lines are deleted by their own time once past the retention period. No text of items or prompts.
 
 | Field | Value | Meaning |
 | --- | --- | --- |
@@ -851,6 +851,7 @@ The store library comes first in C1: IDs and JSON form, appending, rewriting and
 - Locks: two processes taking a stale lock over at once, a holder paused past its limit, retention and a forget rewriting one raw log file at once, hooks appending while retention, forgets and tombstones rewrite, and a hook appending to a file that retention is about to delete (SPEC-007, SPEC-009).
 - Retention deleting a file's last entries while it keeps a future-dated one, then an append: the new entry is curated (SPEC-009).
 - An item injected, then three prompts that recall skips: the next prompt can inject the item again (SPEC-023).
+- An item injected, then a start, as after a compaction: the next prompt can inject the item again (SPEC-023).
 - [memory-index.sql](memory-index.sql) run on an empty file gives the same tables as the code's own; an index of another version is built again.
 - After a sync, the sync remote holds only the files of TBL-012 to TBL-018, and no file of the memory store holds a test key.
 

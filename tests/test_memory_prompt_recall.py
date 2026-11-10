@@ -11,7 +11,9 @@ import json
 import os
 import secrets
 import sqlite3
+import subprocess
 import sys
+import threading
 import time
 import unicodedata
 import unittest
@@ -141,7 +143,8 @@ class PromptRecallTest(unittest.TestCase):
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
         settings, before = self.settings(), self.raw_files()
-        spans, stalls = {}, []
+        spans, stalls, waits, checks = {}, [], [], []
+        once = model_transport.once
 
         def timed(name, call):
             """`call`, noting when it began and ended under `name`."""
@@ -156,34 +159,113 @@ class PromptRecallTest(unittest.TestCase):
         def at(name, end=0):
             moment = spans.get(name, (None, None))[end]
             return 'never' if moment is None else '%.3f s' % (moment - started)
-        # The request has to start within the embedding's 800 ms and reach the server. On busy macOS runners the
-        # steps before it took all of that time in two of three runs (2026-11-09): recall is then late and sends
-        # nothing, as it should, and the case is tried again, saying when each step before the request began and
-        # ended. The server answers the one request after two seconds.
-        self.server.before[0] = lambda: time.sleep(2)
-        for _ in range(3):
+
+        def send(*arguments, check, **options):
+            """The request, noting when each check of the hook's deadline that it makes began and ended."""
+            def checking():
+                entry = [clock.now(), None]
+                checks.append(entry)
+                try:
+                    return check()
+                finally:
+                    entry[1] = clock.now()
+            return once(*arguments, check=checking, **options)
+
+        class Wake(threading.Event):
+            """The request's wake, noting for each wait with a time limit the limit, when it began and when it woke."""
+            def wait(self, timeout=None):
+                began = clock.now()
+                try:
+                    return super().wait(timeout)
+                finally:
+                    if timeout is not None:
+                        waits.append((timeout, began, clock.now()))
+
+        class Threading:
+            """The threading module as the transport sees it, with its wake being a `Wake`."""
+            Event = Wake
+
+            def __getattr__(self, name):
+                return getattr(threading, name)
+
+        def moment(value):
+            return 'never' if value is None else '%.3f s' % (value - started)
+
+        def last_wait():
+            if not waits:
+                return 'it never waited'
+            limit, began, woke = waits[-1]
+            return 'its last wait asked for %.3f s at %s and woke at %s' % (limit, moment(began), moment(woke))
+
+        def last_check():
+            if not checks:
+                return 'it never checked the deadline'
+            began, ended = checks[-1]
+            return 'its last check of the deadline ran from %s to %s' % (moment(began), moment(ended))
+
+        def slowly(number, body):
+            time.sleep(2)
+            return self.embeddings(number, body)
+        # The request has to start within the embedding's 800 ms and reach the server, and its end has to be noticed
+        # before the hook's deadline, 100 ms later. On busy macOS runners the steps before the request took all of
+        # the 800 ms in two of three runs (2026-11-09), and in one run the request's end was noticed 131 ms late, when
+        # its child was killed at 0.931 s, so that recall ended at 0.944 s (2026-11-10). Recall is then late, as stage
+        # 06 says, and the case is tried again, up to five times, saying when each step began and ended, how late the
+        # request's waits woke and when it last checked the deadline. The server answers each request after two
+        # seconds, and each try's prompt names the try, so that a request is counted only for its own try.
+        self.server.reply = slowly
+        for number in range(1, 6):
+            prompt = '%s Try %d.' % (QUESTION, number)
             spans.clear()
+            waits.clear()
+            checks.clear()
             used = len(self.usage())
+            mine = lambda: [body for _, body in self.server.requests if body['input'] == [prompt]]
             started = clock.now()
             attempt = model_usage.Attempt
             with mock.patch.object(recall, 'ready', side_effect=timed('look', recall.ready)), \
                     mock.patch.object(model_embed, 'embed', side_effect=timed('embed', model_embed.embed)), \
                     mock.patch.object(attempt, 'start', side_effect=timed('start', attempt.start)), \
-                    mock.patch.object(model_transport, 'once', side_effect=timed('send', model_transport.once)):
-                result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, QUESTION, started, started + 0.9,
+                    mock.patch.object(model_transport, 'once', side_effect=timed('send', send)), \
+                    mock.patch.object(model_transport, 'threading', Threading()), \
+                    mock.patch.object(subprocess.Popen, 'kill', autospec=True,
+                                      side_effect=timed('kill', subprocess.Popen.kill)):
+                result = prompt_recall.recall(self.memory, 'sample', HOST, SESSION, prompt, started, started + 0.9,
                                               settings=settings, zone=UTC)
             elapsed = clock.now() - started
             # The test server records a request as it reads it, which can come just after a request that started at
             # the end of the 800 ms; one that started too late to reach it at all makes a stalled try too.
             until = clock.now() + 1
-            while 'send' in spans and not self.server.requests and clock.now() < until:
+            while 'send' in spans and not mine() and clock.now() < until:
                 time.sleep(0.01)
+            late = max([woke - began - limit for limit, began, woke in waits], default=0)
             steps = ('the index look ran from %s to %s, the embedding call from %s to %s, its attempt from %s to %s, '
-                     'its request from %s to %s, and recall ended at %.3f s'
+                     'its request from %s to %s, its waits woke up to %d ms later than asked, %s, %s, its child was '
+                     'killed at %s, and recall ended at %.3f s'
                      % (at('look'), at('look', 1), at('embed'), at('embed', 1), at('start'), at('start', 1),
-                        at('send'), at('send', 1), elapsed))
-            if self.server.requests:
+                        at('send'), at('send', 1), round(late * 1000), last_wait(), last_check(), at('kill'), elapsed))
+            # Its end was noticed late if recall is late with the hook's `deadline` while the request's last wait was
+            # for no later than the request's own end; a request that waited past its 800 ms is not tried again.
+            noticed_late = (result == prompt_recall.Result('late', error='deadline') and bool(waits) and
+                            waits[-1][1] + waits[-1][0] - started <= 0.82)
+            if mine() and not noticed_late:
                 break
+            if mine():
+                stalls.append("the request reached the test server, but its end was noticed after the hook's "
+                              'deadline: ' + steps)
+                print('\nTC-207: ' + stalls[-1], file=sys.stderr)
+                # Recall is late with `deadline`, as stage 06 says for a deadline that passes before recall can rank,
+                # with no block, well before the server's answer, and with one usage line for the attempt: an
+                # attempt that the check ended has no code, and one that timed out before the check ended recall
+                # has `timeout`.
+                self.assertEqual(prompt_recall.output(result), b'', stalls[-1])
+                self.assertLess(elapsed, 1.5, stalls[-1])
+                usages = self.usage()[used:]
+                self.assertIn([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
+                              [[('embed-prompt', 'failed', None)], [('embed-prompt', 'failed', 'timeout')]],
+                              stalls[-1])
+                self.assertLess(usages[0]['total_ms'], 1500, stalls[-1])
+                continue
             stalls.append('no request reached the test server: ' + steps)
             print('\nTC-207: ' + stalls[-1], file=sys.stderr)
             # Recall is late: when its request started, with `timeout`, or with `deadline` if the hook's own
@@ -196,13 +278,14 @@ class PromptRecallTest(unittest.TestCase):
                 self.assertEqual((result, self.usage()[used:]), (prompt_recall.Result('late', error='deadline'), []),
                                  stalls[-1])
         else:
-            self.fail('TC-207: no request reached the test server in three tries; ' + '; '.join(stalls))
+            self.fail("TC-207: in five tries no request both reached the test server and had its end noticed before "
+                      "the hook's deadline; " + '; '.join(stalls))
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
         self.assertGreaterEqual(elapsed, 0.79, steps)
         self.assertEqual(prompt_recall.output(result), b'', steps)
-        self.assertEqual(len(self.server.requests), 1, steps)
+        self.assertEqual(len(mine()), 1, steps)
         usages = self.usage()[used:]
         self.assertEqual([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
                          [('embed-prompt', 'failed', 'timeout')], steps)
