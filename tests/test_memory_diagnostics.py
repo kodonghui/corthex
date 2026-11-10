@@ -217,6 +217,23 @@ class MemoryDiagnosticsTest(StoreCase):
                      outcomes={"deadline": 1})
         self.assertEqual(errors(self.result_schema["$defs"]["hook-timing"], group, self.result_schema), [])
 
+    def test_the_compaction_check_hook_writes_its_failure_and_timing_lines(self):
+        # TASK-114: the check hook's lines, from the 0.3.0 activation: the hook `post-compact` and the step
+        # `compaction`, with the raw log's name for an unreadable old check (TBL-004, TBL-005).
+        deadline = memory_clock.now() + 2
+        self.assertTrue(self.logger.failure(ValueError("unreadable"), "compaction", deadline, hook="post-compact",
+                                            host="claude-code", project="sample", log="claude-code-0123456789abcdef",
+                                            when=self.when))
+        self.assertTrue(self.logger.timing("post-compact", "claude-code", 51, "lock-busy", deadline, when=self.when))
+        failure, = files.read_jsonl(self.root / "logs/failures-2026-10-27.jsonl")
+        timing, = files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")
+        self.assertEqual((failure["step"], failure["hook"], failure["error"], failure["log"], timing["hook"]),
+                         ("compaction", "post-compact", "ValueError", "claude-code-0123456789abcdef", "post-compact"))
+        self.assertEqual(errors(self.result_schema["$defs"]["failure"], failure, self.result_schema), [])
+        group = dict(hook=timing["hook"], host=timing["host"], runs=1, median_ms=51, p95_ms=51, last=timing["at"],
+                     outcomes={"lock-busy": 1})
+        self.assertEqual(errors(self.result_schema["$defs"]["hook-timing"], group, self.result_schema), [])
+
     def diagnostic_transition(self, stage, opportunistic=True):
         for name in ("failures", "hooks"):
             logger = diagnostics.Diagnostics(self.memory)

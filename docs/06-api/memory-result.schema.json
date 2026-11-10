@@ -1274,7 +1274,8 @@
             "prompt",
             "end-of-turn",
             "end",
-            "pre-compact"
+            "pre-compact",
+            "post-compact"
           ]
         },
         "host": {
@@ -1317,7 +1318,8 @@
             "prompt",
             "end-of-turn",
             "end",
-            "pre-compact"
+            "pre-compact",
+            "post-compact"
           ]
         },
         "host": {

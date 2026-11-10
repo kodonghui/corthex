@@ -186,8 +186,9 @@ class Deletion:
                 planned.update((5, path / (name + ".lock"), "log") for name in ("failures", "hooks", "usage"))
         for path in self.nodes:
             parts = path.relative_to(self.root).parts
-            if len(parts) == 4 and parts[0] == "projects" and parts[2] in ("raw", "injections"):
-                match = re.match("(" + LOG + r")\.(?:jsonl|lock)(?:\.|$)", path.name)
+            # A session's files in `raw`, `injections` and `compaction` change under its raw log lock.
+            if len(parts) == 4 and parts[0] == "projects" and parts[2] in ("raw", "injections", "compaction"):
+                match = re.match("(" + LOG + r")\.(?:jsonl?|lock)(?:\.|$)", path.name)
                 parent = path.parent if parts[2] == "raw" else path.parent.parent / "raw"
                 if match and parent in self.nodes:
                     planned.add((4, parent / (match[1] + ".lock"), "raw"))
