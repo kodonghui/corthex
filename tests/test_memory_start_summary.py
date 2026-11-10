@@ -597,8 +597,12 @@ class StartSummaryTest(unittest.TestCase):
                 return build(*args, **kwargs)
             late.clear()
             try:
+                # The reservation may use the start's whole five seconds: this test is about a deadline that passes
+                # while the summary is built, not about the reservation's quarter of a second, which a Windows
+                # runner with Python 3.8 once took longer than, leaving the line out.
                 with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
-                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)):
+                        mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)), \
+                        mock.patch.object(start_summary, 'RESERVE_SECONDS', 5):
                     return self.start()
             finally:
                 self.memory.pin = pin
