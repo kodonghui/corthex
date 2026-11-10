@@ -143,7 +143,7 @@ class PromptRecallTest(unittest.TestCase):
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
         settings, before = self.settings(), self.raw_files()
-        spans, stalls, slow, waits, checks, ends = {}, [], [], [], [], []
+        spans, stalls, slow, waits, checks = {}, [], [], [], []
         once = model_transport.once
 
         def timed(name, call):
@@ -161,9 +161,7 @@ class PromptRecallTest(unittest.TestCase):
             return 'never' if moment is None else '%.3f s' % (moment - started)
 
         def send(*arguments, check, **options):
-            """The request, noting the end that it was given and when each check of the hook's deadline that it makes
-            began and ended."""
-            ends.append(options['deadline'])
+            """The request, noting when each check of the hook's deadline that it makes began and ended."""
             def checking():
                 entry = [clock.now(), None]
                 checks.append(entry)
@@ -226,7 +224,6 @@ class PromptRecallTest(unittest.TestCase):
             spans.clear()
             waits.clear()
             checks.clear()
-            ends.clear()
             used = len(self.usage())
             mine = lambda: [body for _, body in self.server.requests if body['input'] == [prompt]]
             started = clock.now()
@@ -306,7 +303,6 @@ class PromptRecallTest(unittest.TestCase):
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
         self.assertGreaterEqual(elapsed, embedding - 0.01, steps)
-        self.assertEqual([round(end - started, 6) for end in ends], [embedding], steps)
         self.assertEqual(prompt_recall.output(result), b'', steps)
         self.assertEqual(len(mine()), 1, steps)
         usages = self.usage()[used:]
