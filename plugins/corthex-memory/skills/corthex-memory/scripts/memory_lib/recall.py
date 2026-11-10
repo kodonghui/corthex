@@ -5,13 +5,14 @@ counting characters in NFC. `rank` scores the current items of the session's
 project that have a vector in the search index: the cosine of the prompt's
 vector and the item's, plus 0.1 times the share of the prompt's identifiers
 that are among the item's words. It leaves out the pinned items that the
-session's latest start summary showed and the items that its last three
-prompts injected (TBL-011), and reads the files of the best items, so that an
-item that the index still holds as current but that is no longer current, or
-that a tombstone names, is never injected (REQ-037). The five best eligible
-items are the line's candidates, also below the threshold; those at or above
-it are injected, best first, and dropped from the end until the safe estimate
-of the whole block is under 600 tokens.
+session's latest start summary showed and the items that the last three prompts
+since that start injected (TBL-011), so that what a compaction may have taken
+out of the session can come back, and reads the files of the best items, so
+that an item that the index still holds as current but that is no longer
+current, or that a tombstone names, is never injected (REQ-037). The five best
+eligible items are the line's candidates, also below the threshold; those at or
+above it are injected, best first, and dropped from the end until the safe
+estimate of the whole block is under 600 tokens.
 
 It reads the index, the injection log and the item files without a lease, as
 stage 05 lets a reader, and writes nothing: the prompt hook prints the block
@@ -33,7 +34,7 @@ from . import base, clock, files, index_io, injection_log, item_types, locks, ra
 BOOST = 0.1        # the most that the prompt's identifiers add to a score
 ITEMS = injection_log.CANDIDATES  # the most items that one prompt injects, and the candidates of its line
 TOKENS = 600       # the block's safe estimate stays under this
-PROMPTS = 3        # the last prompts of the session whose injected items are left out
+PROMPTS = 3        # the last prompts since the session's latest start whose injected items are left out
 TERMS = 500        # identifiers per query, under SQLite's oldest limit of 999 variables
 EVERY = 512        # vectors scored between two looks at the deadline
 LOCK_MARGIN = 0.005  # seconds that SQLite's wait for a lock goes past the deadline
@@ -218,8 +219,11 @@ def _rows(connection, prompt):
 
 
 def _excluded(memory, root, host, session, deadline):
-    """The pinned items that the session's latest start showed and the items that its last three prompts injected.
+    """The pinned items that the session's latest start showed and the items that the last three prompts since that
+    start injected.
 
+    A start, as after a compaction, a clear or a resume, counts the prompts
+    again, since the session may no longer hold what they injected before it.
     A line that cannot be read is left out, as the last one can be while it is
     being appended; a log whose file is missing is read from its backup.
     """
@@ -240,7 +244,7 @@ def _excluded(memory, root, host, session, deadline):
         if value['session'] != session:
             continue
         if value['where'] == 'start':
-            start = value['items']
+            start, prompts = value['items'], []
         else:
             prompts.append(value['items'])
     excluded = set(start)
