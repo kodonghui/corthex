@@ -143,7 +143,7 @@ class PromptRecallTest(unittest.TestCase):
     def test_tc207_an_embedding_that_answers_after_two_seconds_ends_800_ms_after_the_start(self):
         self.three()
         settings, before = self.settings(), self.raw_files()
-        spans, stalls, waits, checks = {}, [], [], []
+        spans, stalls, slow, waits, checks = {}, [], [], [], []
         once = model_transport.once
 
         def timed(name, call):
@@ -210,12 +210,12 @@ class PromptRecallTest(unittest.TestCase):
         # end and take its own steps after it, such as the attempt's usage line, before the hook's deadline, 100 ms
         # later. On busy macOS runners the steps before the request took all of the 800 ms in two of three runs
         # (2026-11-09), and in #187's last run (2026-11-10) the runner woke the request's waits as much as 155 ms
-        # late, so that its end was noticed at 0.881 to 0.905 s, while its last check of the deadline took 1 ms or
-        # less and recall's steps after the last wake 14 to 35 ms, and recall ended at 0.905 to 0.933 s; one runner
-        # did so in four tries running. Recall is then late, as stage 06 says, and the case is tried again, up to `tries`
-        # times, saying when each step began and ended, how late the request's waits woke and when it last checked
-        # the deadline. The server answers each request after two seconds, and each try's prompt names the try, so
-        # that a request is counted only for its own try.
+        # late, the last one, asked to end at 0.76 to 0.80 s, at 0.881 to 0.905 s, while its last check of the
+        # deadline took 1 ms or less and recall's steps after the last wake 14 to 35 ms, and recall ended at 0.905 to
+        # 0.933 s; one runner did so in four tries running. Recall is then late, as stage 06 says, and the case is
+        # tried again, up to `tries` times, saying when each step began and ended, how late the request's waits woke
+        # and when it last checked the deadline. The server answers each request after two seconds, and each try's
+        # prompt names the try, so that a request is counted only for its own try.
         self.server.reply = slowly
         tries, hook, embedding = 10, hooks.SECONDS['prompt'], prompt_recall.EMBED_SECONDS
         for number in range(1, tries + 1):
@@ -264,11 +264,13 @@ class PromptRecallTest(unittest.TestCase):
                 # Only a late wake of the runner may make such a try late: had the request's last wait woken when it
                 # asked, recall would have ended in time, so its own steps after that wake, such as its checks of the
                 # deadline, the attempt's clean-up and its usage line, have to fit in the hook's last 100 ms after the
-                # request's end; in #187's late tries they took 14 to 35 ms. A try that needed more fails the case at
-                # once, as the case cannot tell a stall there from slow code.
+                # request's end; in #187's late tries they took 14 to 35 ms. The case cannot tell one stall of the
+                # runner there from slow code, so it allows one try whose steps needed more and fails at the second.
                 limit, began, woke = waits[-1]
-                self.assertLessEqual(elapsed - (woke - started), hook - max(embedding, began + limit - started),
-                                     "recall's own steps after the request's last wake took too long: " + stalls[-1])
+                if elapsed - (woke - started) > hook - max(embedding, began + limit - started):
+                    slow.append(stalls[-1])
+                self.assertLess(len(slow), 2, "recall's own steps after the request's last wake took too long in two "
+                                'tries: ' + '; '.join(slow))
                 # Recall is late with `deadline`, as stage 06 says for a deadline that passes before recall can rank,
                 # with no block, well before the server's answer, and with one usage line for the attempt: an
                 # attempt that the check ended has no code, and one that timed out before the check ended recall
@@ -298,13 +300,13 @@ class PromptRecallTest(unittest.TestCase):
         self.assertEqual((result.outcome, result.block, result.items, result.candidates, result.error),
                          ('late', '', (), (), 'timeout'), steps)
         self.assertLess(elapsed, 1.0, steps)
-        self.assertGreaterEqual(elapsed, 0.79, steps)
+        self.assertGreaterEqual(elapsed, embedding - 0.01, steps)
         self.assertEqual(prompt_recall.output(result), b'', steps)
         self.assertEqual(len(mine()), 1, steps)
         usages = self.usage()[used:]
         self.assertEqual([(usage['call'], usage['result'], usage.get('error')) for usage in usages],
                          [('embed-prompt', 'failed', 'timeout')], steps)
-        self.assertLess(usages[0]['total_ms'], 900, steps)
+        self.assertLess(usages[0]['total_ms'], hook * 1000, steps)
         # Recall writes nothing to the raw log, so the recorded prompt stays as it was.
         self.assertEqual(self.raw_files(), before)
         self.assertTrue(self.log(result, ident('e')))
