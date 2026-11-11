@@ -1,4 +1,9 @@
-"""C1 retention phases; no provisioning or worker/start integration."""
+"""Raw log and diagnostic log retention phases; no provisioning or worker/start integration.
+
+`retain_project` serves either store format: the curation record's progress is
+read and written through `raw_rewrite.progress_io`. A format-2 project's other
+records expire in `c2_retention`, which calls it first (TASK-117).
+"""
 from datetime import datetime, timedelta, timezone
 import re
 import stat
@@ -88,6 +93,7 @@ def _markers(memory, candidates, surviving, check, deadline):
 def _orphans(memory, root, log, candidates, deadline):
     """Retry owned markers after a previous raw deletion and failed callback."""
     path = root / "raw" / (log + ".jsonl")
+    read_progress, write_progress = raw_rewrite.progress_io(memory)
     with memory.lease(root / "layer.lock", "layer", deadline):
         with memory.lease(path.with_suffix(".lock"), "raw", deadline):
             guarded = curation.guard(memory, root, deadline)
@@ -97,18 +103,18 @@ def _orphans(memory, root, log, candidates, deadline):
                     raise locks.LostLock()
                 guarded()
             absent()
-            progress = curation.read(memory, root, deadline)
+            progress = read_progress(memory, root, deadline)
             if log not in progress["logs"]:
                 return 0
             # Never claim an old count covers seqs in a subsequently recreated file.
             if progress["logs"].get(log, 0):
                 absent()
                 progress["logs"][log] = 0
-                curation.write(memory, root, progress, deadline)
+                write_progress(memory, root, progress, deadline)
             removed = _markers(memory, candidates, frozenset(), absent, deadline)
             absent()
             progress["logs"].pop(log)
-            curation.write(memory, root, progress, deadline)
+            write_progress(memory, root, progress, deadline)
             return removed
 
 

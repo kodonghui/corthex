@@ -20,7 +20,7 @@ import xml.etree.ElementTree as ET
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import (clock, commands, fence_plan, forget_command, format2, item_types, revision_io, run_log,
-                        state_plan, state_types, undo_command, undo_effects, undo_plan)
+                        state_plan, state_types, undo_command, undo_effects, undo_plan, worker_launch)
 from test_memory_curator_answers import answer, change, quote
 import test_memory_consolidation_worker as merge_fixture
 import test_memory_curation_worker as worker_fixture
@@ -264,7 +264,10 @@ class UndoEffectsTest(Inverse, UndoStore, unittest.TestCase):
             context.record = {'device': DEVICE}
             return forget_command.forget(context)
         preview = command()
-        self.assertEqual(command(preview['confirm'])['outcome'], 'done')
+        # The confirmed forget's start of the memory worker (TASK-117) is recorded; no worker runs.
+        with mock.patch.object(worker_launch, 'launch') as launch:
+            self.assertEqual(command(preview['confirm'])['outcome'], 'done')
+        self.assertEqual(launch.call_count, 1)
 
     def test_tc365_a_forgotten_item_and_its_line_stay_forgotten_and_the_rest_is_undone(self):
         secret = 'my spare locker phrase'

@@ -17,7 +17,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, commands, forget_command, forget_plan, item_types, request_inputs, state_types
+from memory_lib import (clock, commands, forget_command, forget_plan, item_types, request_inputs, state_types,
+                        worker_launch)
 from test_memory_curator_answers import answer
 import test_memory_curation_worker as worker_fixture
 
@@ -56,6 +57,14 @@ class ForgetStore:
         self.root, self.memory = self.fixture.root, self.fixture.memory
         self.said, self.answered = self.fixture.one_turn(SAID, 'One script now serves the four hooks.')
         self.log = self.fixture.raw.name
+        # A confirmed forget starts the memory worker (TASK-117): the start is recorded, and no worker runs.
+        self.launches = []
+        def launch(memory, project, reason, deadline, logger, *, expected_device=None, **options):
+            self.launches.append((project, reason, expected_device, list(memory.held)))
+            return True
+        launcher = mock.patch.object(worker_launch, 'launch', side_effect=launch)
+        launcher.start()
+        self.addCleanup(launcher.stop)
 
     # The store
 
@@ -277,6 +286,8 @@ class ForgetTest(ForgetStore, unittest.TestCase):
             self.assertEqual(calls, [])
             done = self.command(decision['id'], code=stale['confirm'])
         self.assertEqual((done['outcome'], done['code']), ('done', 'ok'))
+        # Only the forget that was done starts the memory worker, once its lease is released (API-005).
+        self.assertEqual(self.launches, [('sample', 'skill', DEVICE, [])])
         ((plan, leases),) = calls
         self.assertEqual(plan.data, stale['data'])
         self.assertEqual(plan.selected, (decision['id'],))

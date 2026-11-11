@@ -1,0 +1,231 @@
+"""TC-434–437: the 0.3.0 activation's third step (TASK-117), the memory worker behind the version condition.
+
+The worker runs in this process through `worker_runtime.run`, as `scripts/worker.py`
+runs it, with the release that the code reads set to 0.2.1 or 0.3.0, since the plugin
+on `main` keeps its 0.2.x version until the release (TASK-051). Every request goes to
+the curation worker's local test server, with keys made up during the run; no provider
+is called.
+"""
+import contextlib
+from datetime import datetime, timedelta, timezone
+import json
+import os
+import sys
+import time
+import unittest
+from unittest import mock
+
+from _common import ROOT
+SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
+sys.path.insert(0, str(SCRIPTS))
+from memory_lib import (activation, base, commands, format2, injection_log, locks, raw_log, run_log, state_types,
+                        store, worker_launch, worker_runtime)
+import test_memory_curation_worker as worker_fixture
+from test_memory_curator_answers import answer, change, quote
+from test_memory_run_log import logged
+from test_memory_state_types import HISTORY
+
+DEVICE, AT, HOOKS = worker_fixture.DEVICE, worker_fixture.AT, worker_fixture.HOOKS
+UTC = timezone.utc
+
+
+def ago(days):
+    return base.utc_time(datetime.now(UTC) - timedelta(days=days))
+
+
+class WorkerActivationTest(unittest.TestCase):
+    """The worker on the curation worker's format-2 store, whose project `sample` is enabled."""
+
+    Fixture = worker_fixture.CurationWorkerTest
+    configure, layer, saved, one_turn = Fixture.configure, Fixture.layer, Fixture.saved, Fixture.one_turn
+    items, write, mark, progress, markers = (Fixture.items, Fixture.write, Fixture.mark, Fixture.progress,
+                                             Fixture.markers)
+
+    def setUp(self):
+        self.Fixture.setUp(self)
+        # Consolidation is due 7 days after memory was turned on; turned on now, it is not.
+        self.since = ago(0)
+        self.configure(projects={"sample": {"enabled": True, "since": self.since}})
+
+    def run_worker(self, reason="end-of-turn", release="0.3.0", expected=DEVICE):
+        with mock.patch.object(activation, "_release", [release]):
+            worker_runtime.run("sample", reason, expected, folder=self.folder)
+
+    def files(self, index=True):
+        return {path.relative_to(self.folder).as_posix(): path.read_bytes()
+                for path in self.folder.rglob("*") if path.is_file() and path.suffix != ".lock"
+                and (index or not path.name.startswith("index.db"))}
+
+    def failures(self):
+        return [(row["step"], row["error"]) for row in (
+            json.loads(line) for path in sorted((self.folder / "logs").glob("failures-*.jsonl"))
+            for line in path.read_bytes().splitlines())]
+
+    # TC-434
+
+    def test_tc434_below_0_3_0_and_on_stores_that_c2_does_not_read_the_worker_stays_c1(self):
+        said, _ = self.one_turn()
+        self.mark(said)
+        self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        # Below 0.3.0 the C1 gate refuses a format-2 store: nothing is sent or written.
+        before = self.files()
+        for reason in ("end-of-turn", "start"):
+            self.run_worker(reason, release="0.2.1")
+        self.assertEqual((self.server.requests, self.files()), ([], before))
+        # From 0.3.0 a store that a migration holds, a newer one and a mixed pair end the worker the same way.
+        header = format2.parse_store((self.folder / "store.json").read_bytes())
+        for label, primary, backup in (
+                ("migrating", dict(header, migrating={"from": 1, "to": 2, "started": AT}), None),
+                ("newer", dict(header, format=3), None),
+                ("mixed", None, dict(header, format=1, release="0.2.1"))):
+            with self.subTest(store=label):
+                if primary is not None:
+                    (self.folder / "store.json").write_text(json.dumps(primary), encoding="utf-8")
+                if backup is not None:
+                    (self.folder / "store.json.bak").write_bytes(base.json_bytes(backup, "TBL-001"))
+                before = self.files()
+                for reason in ("end-of-turn", "start"):
+                    self.run_worker(reason)
+                self.assertEqual((self.server.requests, self.files()), ([], before))
+                (self.folder / "store.json").write_bytes(format2.store_bytes(header))
+                if backup is not None:
+                    (self.folder / "store.json.bak").unlink()
+        # A format-1 store at 0.3.0 gets C1's retention, as at 0.2.1, and no request.
+        record = store.new_record("0.2.1")
+        (self.folder / "store.json").write_bytes(base.json_bytes(record, "TBL-001"))
+        log = raw_log.log_name("codex", "worker-activation-c1")
+        entries = [{"id": "e_" + str(seq).zfill(12), "seq": seq, "turn": seq, "at": ago(days), "host": "codex",
+                    "session": "worker-activation-c1", "kind": "prompt", "speaker": "user", "text": "turn %d" % seq}
+                   for seq, days in ((1, 101), (2, 99))]
+        (self.root / "raw" / (log + ".jsonl")).write_bytes(
+            b"".join(base.json_bytes(entry, "TBL-007", compact=True) for entry in entries))
+        (self.root / "curation.json").write_bytes(base.json_bytes(
+            {"logs": {log: 2}, "applies": 0, "recent": [], "consolidation": {"failures": 0}}, "TBL-009"))
+        self.run_worker("start", expected=record["device"])
+        kept = [json.loads(line)["seq"] for line in (self.root / "raw" / (log + ".jsonl")).read_bytes().splitlines()]
+        self.assertEqual((kept, self.server.requests), ([2], []))
+
+    # TC-435
+
+    def test_tc435_on_a_format_2_store_the_worker_curates_consolidates_and_keeps_the_index(self):
+        said, _ = self.one_turn()
+        self.mark(said)
+        self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        self.run_worker("end-of-turn")
+        (headers, body), = self.server.requests
+        self.assertEqual(headers["user-agent"], "corthex-memory/0.3.0")
+        (item,) = self.items().values()
+        self.assertEqual((item["kind"], item["status"]), ("decision", "current"))
+        self.assertEqual(self.markers(), [])
+        self.assertEqual(self.progress()["logs"], {self.raw.name: said["seq"] + 1})
+        self.assertTrue((self.root / "index.db").exists())
+        self.assertEqual(self.failures(), [])
+        # Below 0.3.0 the user agent names that release.
+        with mock.patch.object(activation, "_release", ["0.2.1"]):
+            from memory_lib import model_request
+            self.assertEqual(model_request.agent(), "corthex-memory/0.2.1")
+        # Another process's fresh curation lease ends the worker before anything is sent.
+        later, _ = self.one_turn("Name the script hook.py.", "The script is hook.py now.")
+        self.mark(later)
+        with self.holding(self.root / "curation.lock", "curation"):
+            self.run_worker("end-of-turn")
+        self.assertEqual(len(self.server.requests), 1)
+        # A store of another device ends it too.
+        self.run_worker("end-of-turn", expected="d_ffffffffffff")
+        self.assertEqual(len(self.server.requests), 1)
+        # Without the Anthropic memory key curation waits; the index is still kept.
+        with mock.patch.dict(os.environ, {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": ""}):
+            (self.root / "index.db").unlink()
+            self.run_worker("skill")
+        self.assertEqual(len(self.server.requests), 1)
+        self.assertTrue((self.root / "index.db").exists())
+        self.assertEqual(len(self.markers()), 1)
+
+    @contextlib.contextmanager
+    def holding(self, path, kind):
+        lease = locks.Lock(path, kind, DEVICE).acquire(time.monotonic() + 5)
+        try:
+            yield lease
+        finally:
+            lease.release()
+
+    # TC-436
+
+    def test_tc436_a_session_start_expires_each_format_2_record_by_its_own_time(self):
+        # A raw log whose last entry is 101 days old, and progress that counted it.
+        session = worker_fixture.Raw("worker-activation-retention")
+        session.entries = []
+        for days in (99, 99, 101):
+            session.add("prompt", "turn", at=ago(days))
+        (self.root / "raw" / (session.name + ".jsonl")).write_bytes(session.data())
+        progress = self.progress()
+        progress["logs"][session.name] = 3
+        (self.root / "curation.json").write_bytes(format2.curation_bytes(progress))
+        # Line history, a run log and an injection log, each with a record 101 days old and one 99.
+        history = [dict(HISTORY, at=ago(days), why="retained reason") for days in (101, 99)]
+        (self.root / "state-history.jsonl").write_bytes(b"".join(state_types.history_record_bytes(v) for v in history))
+        (self.root / "runs" / "r_0000000000a1.json").write_bytes(run_log.log_bytes(logged("r_0000000000a1", ended=ago(101))))
+        (self.root / "runs" / "r_0000000000a2.json").write_bytes(run_log.log_bytes(logged("r_0000000000a2", ended=ago(99))))
+        (self.root / "injections").mkdir()
+        injections = self.root / "injections" / (session.name + ".jsonl")
+        injections.write_bytes(b"".join(injection_log.line_bytes(
+            {"at": ago(days), "session": session.session, "where": "prompt", "items": [], "outcome": "below"})
+            for days in (101, 99)))
+        fence = progress["fence"]
+        # An end of a turn applies no retention.
+        before = self.files(index=False)
+        self.run_worker("end-of-turn")
+        self.assertEqual(self.files(index=False), before)
+        self.run_worker("start")
+        seqs = [json.loads(line)["seq"] for line in (self.root / "raw" / (session.name + ".jsonl")).read_bytes().splitlines()]
+        self.assertEqual(seqs, [1, 2])
+        after = self.progress()
+        self.assertEqual((after["logs"][session.name], after["fence"]), (2, fence))
+        self.assertEqual([json.loads(line)["at"] for line in
+                          (self.root / "state-history.jsonl").read_bytes().splitlines()], [history[1]["at"]])
+        self.assertEqual(sorted(path.name for path in (self.root / "runs").iterdir()), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
+        self.assertEqual(self.server.requests, [])
+
+    # TC-437
+
+    def test_tc437_a_confirmed_forget_starts_the_worker_which_curates_on_from_there(self):
+        said, _ = self.one_turn()
+        self.mark(said)
+        self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        self.run_worker("end-of-turn")
+        (item,) = self.items()
+        # The runner, with the project registered for a checkout, as the skill runs it.
+        home, checkout = self.folder.parent / "home", self.folder.parent / "checkout"
+        (home / ".corthex").mkdir(parents=True)
+        checkout.mkdir()
+        (home / ".corthex/projects.json").write_text(json.dumps(
+            {"projects": [{"name": "sample", "path": str(checkout)}]}), encoding="utf-8")
+        launches = []
+
+        def launch(memory, project, reason, deadline, logger, *, expected_device=None, **options):
+            launches.append((project, reason, expected_device, list(memory.held)))
+            return True
+
+        def forget(*argv):
+            value, _ = commands.run(["--folder", str(checkout), "forget", item] + list(argv))
+            return value
+        with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home),
+                                          "CORTHEX_MEMORY_HOME": str(self.folder)}), \
+                mock.patch.object(activation, "_release", ["0.3.0"]), \
+                mock.patch.object(worker_launch, "launch", side_effect=launch):
+            preview = forget()
+            self.assertEqual((preview["outcome"], launches), ("confirm", []))
+            done = forget("--confirm", preview["confirm"])
+        self.assertEqual(done["outcome"], "done")
+        # Only the forget that was done starts the worker, with `skill` and the store's device, after its lease.
+        self.assertEqual(launches, [("sample", "skill", DEVICE, [])])
+        self.assertEqual(self.items(), {})
+        # The worker that it starts finds nothing more to curate and sends nothing.
+        self.run_worker("skill")
+        self.assertEqual((len(self.server.requests), self.failures()), (1, []))
+
+
+if __name__ == "__main__":
+    unittest.main()
