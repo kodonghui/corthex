@@ -8,6 +8,9 @@ from pathlib import Path
 from . import base, clock, commands, configuration, curation, diagnostics, files, locks, model_access, projects, store
 from .worker_support import BoundDiagnostics, PathFence
 
+# The folders that `on` makes in a project's folder, each after the folder that holds it; setup makes them too.
+PROJECT_FOLDERS = ("raw", "unprocessed", "notices", "injections", "layer", "layer/items", "layer/tombstones")
+
 CONSENT = """CORTHEX memory, consent version 1.
 
 - When memory is on for a project, this device records your prompts and the agent's final answers in sessions that work in that project's folders, after removing secrets and the text you mark with <private>. Tool calls, tool results and files are not recorded.
@@ -99,8 +102,7 @@ def _project_files(context, check, existed, report):
     memory.fence.check(root)
     existed = existed or root.exists()
     for path in (memory.folder / "logs", memory.folder / "projects", root,
-                 *(root / name for name in ("raw", "unprocessed", "notices", "injections", "layer",
-                                             "layer/items", "layer/tombstones"))):
+                 *(root / name for name in PROJECT_FOLDERS)):
         check()
         memory.fence.check(path)
         base.private_directory(path)

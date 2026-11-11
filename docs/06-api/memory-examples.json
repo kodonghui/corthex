@@ -1073,6 +1073,26 @@
           ]
         }
       },
+      "open-entry": {
+        "command": "open",
+        "outcome": "done",
+        "code": "ok",
+        "say": "1 entry of this device, with its text.",
+        "data": {
+          "project": "corthex",
+          "items": [],
+          "entries": [
+            {
+              "entry": "e_5h2j8n3p0r6t",
+              "log": "claude-code-3f9a0c41d2e87b65",
+              "speaker": "user",
+              "said": "2026-10-24T13:01:09.120Z",
+              "text": "Keep the raw logs on this machine; [forgotten] was never meant for memory.",
+              "whole": true
+            }
+          ]
+        }
+      },
       "pin-no-room": {
         "command": "pin",
         "outcome": "refused",
@@ -1164,7 +1184,7 @@
         "command": "delete-project",
         "outcome": "confirm",
         "code": "ok",
-        "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin. Sync is off, so other devices keep theirs.",
+        "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin, and turns memory off for it. A curation that runs for it now stops and applies nothing; the usage log keeps its lines. Sync is off, so other devices keep theirs.",
         "data": {
           "project": "corthex",
           "deleted": {
@@ -1285,7 +1305,7 @@
         "data": {
           "project": "corthex",
           "at": "/workspace/corthex",
-          "script": "#!/bin/sh\nset -eu\npython3 - <<'CORTHEX_MEMORY_SETUP'\n# Writes the project list, the store record, the memory configuration and the project's folder where they are missing.\nCORTHEX_MEMORY_SETUP\n"
+          "script": "#!/bin/sh\n# CORTHEX memory setup for a temporary device: the project corthex, from corthex-memory 0.3.0.\n# It writes the project list, the memory store record, the memory configuration with the consent\n# given on the device that printed it, and the project's folder, each only where it is missing.\n# It holds no key: put CORTHEX_MEMORY_ANTHROPIC_API_KEY and CORTHEX_MEMORY_OPENAI_API_KEY\n# in the environment's secret settings.\nset -eu\npython=\nIFS=:\nset -f\nfor folder in ${PATH-}; do\n  if [ \"${folder#/}\" != \"$folder\" ] && [ -f \"$folder/python3\" ] && [ -x \"$folder/python3\" ]; then\n    python=$folder/python3\n    break\n  fi\ndone\nset +f\nunset IFS\nif [ -z \"$python\" ]; then\n  echo 'CORTHEX memory setup needs python3, Python 3.8 or later, in an absolute folder on PATH.' >&2\n  exit 1\nfi\n\"$python\" -I - <<'CORTHEX_MEMORY_SETUP'\nimport sys\n# The program, with the project, its folder, the release and this device's memory configuration among its values.\nCORTHEX_MEMORY_SETUP\n"
         }
       },
       "repair-asks": {

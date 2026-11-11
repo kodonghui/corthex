@@ -51,14 +51,42 @@ class PurgeTest(unittest.TestCase):
         self.assertEqual(value["data"]["deleted"], dict(items=0, entries=0, usage=0))
         self.assertFalse(self.memory.exists())
 
-    def test_tc095_changed_count_sync_and_expired_codes_never_force(self):
+    def test_tc095_the_recorded_answer_and_a_usage_line_keep_the_code(self):
+        # #112: the user's answer is recorded, and a model call adds a usage line, between the preview and the yes.
+        self.enable()
+        self.hook("prompt", prompt="delete all memory on this device")
+        preview, _ = self.cli("purge", instant=1200)
+        self.assertEqual(preview["data"]["deleted"], dict(items=0, entries=1, usage=0))
+        self.hook("prompt", prompt="yes")
+        (self.memory / "logs/usage-2026-11.jsonl").write_text('{"call": "curate"}\n', encoding="utf-8")
+        value, status = self.yes(preview)
+        self.assertEqual((value["outcome"], value["code"], status), ("done", "ok", 0))
+        self.assertEqual(value["data"], dict(preview["data"], deleted=dict(items=0, entries=2, usage=1)))
+        self.assertFalse(self.memory.exists())
+
+    def test_tc095_changed_scope_counts_that_cannot_be_verified_sync_and_expired_codes_never_force(self):
         self.enable()
         no_force = "from memory_lib import locks\nold=locks.Lock.acquire\ndef acquire(self,*a,**kw):\n if kw.get('force'):raise AssertionError()\n return old(self,*a,**kw)\nlocks.Lock.acquire=acquire"
-        first, _ = self.cli("purge", instant=1200)
-        self.hook("prompt")
-        changed, _ = self.yes(first, patch=no_force)
-        self.assertEqual(changed["code"], "confirm-stale")
-        self.assertEqual(changed["data"]["deleted"]["entries"], 1)
+        for path, key, value in (("projects/other", "projects", ["demo", "other"]),
+                                 ("projects/demo/layer/items/i_7f3k2m9q4x1v.json", "items", None),
+                                 ("projects/demo/raw/stray.bak", "entries", None),
+                                 ("logs/usage-2026-11.bak", "usage", None)):
+            with self.subTest(changed=key):
+                # Each change on its own, from the same store.
+                preview, _ = self.cli("purge", instant=1200)
+                changed = self.memory / path
+                if key == "projects":
+                    changed.mkdir()
+                else:
+                    changed.write_bytes(b"{}")
+                stale, _ = self.yes(preview, patch=no_force)
+                if key == "projects":
+                    changed.rmdir()
+                else:
+                    changed.unlink()
+                shown = stale["data"]["projects"] if key == "projects" else stale["data"]["deleted"][key]
+                self.assertEqual((stale["code"], shown), ("confirm-stale", value))
+        changed, _ = self.cli("purge", instant=1200)
         config = self.memory / "configuration.json"
         document = json.loads(config.read_bytes())
         document["sync"] = dict(address="https://memory.example.test/gateway", branch="main")
@@ -69,6 +97,20 @@ class PurgeTest(unittest.TestCase):
         expired, _ = self.yes(synced, instant=2400, patch=no_force)
         self.assertEqual(expired["code"], "confirm-stale")
         self.assertEqual(self.snapshot(), before)
+
+    def test_tc095_a_change_while_the_leases_are_taken_over_answers_a_code_that_holds(self):
+        self.enable()
+        preview, _ = self.cli("purge", instant=1200)
+        # A project appears after the code matched and before the look under the leases.
+        patch = ("from memory_lib import locks\nold=locks.Lock.acquire\ndef acquire(self,*a,**kw):\n"
+                 " if kw.get('force') and self.path.name=='store.lock':(self.path.parent/'projects'/'other').mkdir()\n"
+                 " return old(self,*a,**kw)\nlocks.Lock.acquire=acquire")
+        stale, _ = self.yes(preview, patch=patch)
+        self.assertEqual((stale["outcome"], stale["code"], stale["data"]["projects"]), ("confirm", "confirm-stale", ["demo", "other"]))
+        self.assertTrue((self.memory / "store.json").is_file())
+        value, status = self.yes(stale)
+        self.assertEqual((value["outcome"], value["code"], status), ("done", "ok", 0))
+        self.assertFalse(self.memory.exists())
 
     def test_unknown_opaque_header_never_opens_payload_and_yes_deletes_folder(self):
         self.enable()

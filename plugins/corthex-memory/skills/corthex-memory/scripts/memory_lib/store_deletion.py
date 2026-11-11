@@ -212,7 +212,7 @@ class Deletion:
         except (OSError, UnsafePath):
             return False
 
-    def apply(self, expected):
+    def apply(self, bound):
         try:
             for _, path, kind in self.plan():
                 self.check()
@@ -227,9 +227,10 @@ class Deletion:
                 self.active.append(lease)
                 self.check()
             fresh = self.preview()
-            if fresh != expected:
+            current = _bound(fresh)
+            if current != bound:
                 self.context.supplied = "stale"
-                return self.context.confirm(fresh, _say(fresh), lambda: None)
+                return self.context.confirm(fresh, _say(fresh), lambda: None, bound=current)
             held = {lease.path for lease in self.active}
             # Remove recovery sources before retiring the header. Its absence
             # becomes an owned, checked state; no guard is disabled afterward.
@@ -237,7 +238,7 @@ class Deletion:
             headers += [self.root / "store.json"] if self.pin is not None else []
             for path in headers:
                 if not self.unlink(path):
-                    return self.left(expected, [path])
+                    return self.left(fresh, [path])
                 if path.name == "store.json":
                     self.retired = True
                     self.context.record = None  # No after-delete diagnostic recovery.
@@ -265,7 +266,7 @@ class Deletion:
         left.update(p for p, identity in self.nodes.items() if identity[2] != stat.S_IFDIR)
         left.update(self.blocked)
         if left or self.nodes:
-            return self.left(expected, left or self.nodes)
+            return self.left(fresh, left or self.nodes)
         self.check()
         if _identity(self.root.parent.lstat()) != self.parent:
             raise locks.LostLock()
@@ -277,11 +278,19 @@ class Deletion:
             pass
         if _identity(self.root.parent.lstat()) != self.parent:
             raise locks.LostLock()
-        return commands.result("purge", expected, "Memory on this device was deleted. Any sync remote and other devices keep their copies.")
+        return commands.result("purge", fresh, "Memory on this device was deleted. Any sync remote and other devices keep their copies.")
 
     def left(self, data, paths):
         data = dict(data, left=sorted(p.relative_to(self.root).as_posix() or "." for p in paths))
         return commands.result("purge", data, "Some files remain. Close programs holding the listed files, then delete those paths inside the shown memory folder by hand or run purge again. Any sync remote and other devices keep their copies.", "failed", "files-left")
+
+
+def _bound(data):
+    """What the code covers: all but the counts of raw log entries and usage lines, which recording, the user's
+    own answer among it, and model calls keep adding to (#112); whether each can be counted stays, as `say` warns."""
+    deleted = data["deleted"]
+    return dict(folder=data["folder"], projects=data["projects"], items=deleted["items"], sync=data["sync"],
+                counted=[deleted["entries"] is not None, deleted["usage"] is not None])
 
 
 def _say(data):
@@ -296,4 +305,5 @@ def purge(context):
         return commands.result("purge", data, "There is no memory folder on this device to delete.", "nothing")
     deletion = Deletion(context)
     data = deletion.preview()
-    return context.confirm(data, _say(data), lambda: deletion.apply(data))
+    bound = _bound(data)
+    return context.confirm(data, _say(data), lambda: deletion.apply(bound), bound=bound)

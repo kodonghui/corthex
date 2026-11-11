@@ -1,7 +1,7 @@
 """TASK-091: the start summary's memory part from the curated layer, and its step 7.
 
-TC-198 to TC-204 and TC-350, and the start summary's lines of TC-120, TC-148,
-TC-170 and TC-196, on made-up format-2 stores, with keys made up during the
+TC-198 to TC-204, TC-350 and TC-404, and the start summary's lines of TC-120,
+TC-148, TC-170 and TC-196, on made-up format-2 stores, with keys made up during the
 run. Nothing calls the module before the 0.3.0 activation, so these are direct
 module results: the hook's output, timing line and exit code remain for the
 activation.
@@ -18,7 +18,7 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import (clock, configuration, conflict_counts, curation_triggers, format2, injection_log,
+from memory_lib import (clock, configuration, conflict_counts, curation_triggers, files, format2, injection_log,
                         item_types, locks, raw_log, start_memory, start_summary, state_types)
 import test_memory_curation_worker as worker_fixture
 
@@ -155,17 +155,20 @@ class StartSummaryTest(unittest.TestCase):
             '- The curation record was made again from the raw log, so some turns may be curated twice and '
             'merged later.',
             start_memory.REFERENCE,
+            # A pin's line ends with its deciding quote's entry, and a line that cites an entry with it (SPEC-148).
             'Pinned:\n'
-            '- %s | decision | user decision | 2026-11-04 | Keep one script holds.\n'
-            '- %s | preference | user | 2026-11-04 | Prefer short names holds.' % (first['id'], second['id']),
+            '- %s | decision | user decision | 2026-11-04 | Keep one script holds. | reread: %s\n'
+            '- %s | preference | user | 2026-11-04 | Prefer short names holds. | reread: %s' % (
+                first['id'], self.said['id'], second['id'], self.said['id']),
             'Current state:\n'
             '- Goal: Ship the start summary. (%s)\n'
             '- Decision in force: One script serves the hooks. (%s)\n'
-            '- Work in progress: The notices of stage 06.\n'
+            '- Work in progress: The notices of stage 06. | reread: %s\n'
             '- Blocker: Windows sharing. (%s)\n'
             '- Next action: Write the tests. (%s)\n'
             '- Next action: Tag the release. (%s, %s, %s)' % (
-                goal['id'], rule['id'], extra['id'], extra['id'], first['id'], second['id'], goal['id'])]))
+                goal['id'], rule['id'], self.said['id'], extra['id'], extra['id'], first['id'], second['id'],
+                goal['id'])]))
         self.assertEqual(part.pins, (first['id'], second['id']))
         self.assertLess(len(part.text.encode('utf-8')), 8000)
         self.assertEqual(json.dumps(part.text).count(self.environment['CORTHEX_MEMORY_ANTHROPIC_API_KEY']), 0)
@@ -179,10 +182,11 @@ class StartSummaryTest(unittest.TestCase):
         self.layer([rule], lines)
         self.assertEqual(self.memory_part(self.start()).split('\n\n')[-1],
                          'Current state:\n'
-                         '- Dead end: Polling the raw lock in a loop hangs on Windows.\n'
+                         '- Dead end: Polling the raw lock in a loop hangs on Windows. | reread: %s\n'
                          '- Blocker: Windows sharing. (%s)\n'
                          '- Done when: the hook check passes on Windows. (%s)\n'
-                         '- Next action: Write the hook check. (%s)' % (rule['id'], rule['id'], rule['id']))
+                         '- Next action: Write the hook check. (%s)' % (self.said['id'], rule['id'], rule['id'],
+                                                                        rule['id']))
 
     def test_a_pin_or_line_that_is_not_current_or_valid_is_not_shown(self):
         kept, old, new = self.item('Kept'), self.item('Old'), self.item('New')
@@ -208,7 +212,8 @@ class StartSummaryTest(unittest.TestCase):
         part = self.start()
         self.assertEqual(part.pins, (kept['id'],))
         rows = self.memory_part(part).split('\n\n')
-        self.assertEqual(rows[2], 'Pinned:\n- %s | decision | user decision | 2026-11-04 | Kept holds.' % kept['id'])
+        self.assertEqual(rows[2], 'Pinned:\n- %s | decision | user decision | 2026-11-04 | Kept holds. | reread: %s' % (
+            kept['id'], self.said['id']))
         self.assertEqual(rows[3], 'Current state:\n- Decision in force: Rests on the new decision. (%s)' % new['id'])
 
     def test_without_a_layer_or_its_files_or_after_the_projects_memory_was_deleted_memory_holds_nothing(self):
@@ -250,6 +255,203 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual(shown, tuple(value['id'] for value in items[20 - len(shown):]))   # the oldest pins go
         self.after(part)
         self.assertEqual(self.injections()[0]['items'], list(shown))
+
+    # SPEC-148: where to read a source again (TC-404)
+
+    def quoting(self, words, **fields):
+        """An item whose deciding quote is these words, from a turn of its own."""
+        said, _ = self.raw.turn('We said ' + words + ', and a few more words around it.', 'Done.')
+        self.write()
+        value = self.saved(said, words, kind=fields.pop('kind', 'fact'))
+        value.update(title='Quoted item', text='The quoted item.')
+        value.update(fields)
+        return value
+
+    def test_tc404_a_blocker_shows_its_entry_then_the_commit_and_path_of_its_item_s_quote_and_no_other_word(self):
+        value = self.quoting('the lock fix 3f9a0c4 touched tests/test_memory_locks.py twice')
+        blocker = line('blockers', 1, 'Dead end: Polling the raw lock in a loop hangs.', [value['id'], self.said['id']])
+        self.layer([value], [blocker])
+        self.pins(pin(value, AT))
+        part = self.start()
+        memory = self.memory_part(part)
+        rows = memory.split('\n\n')
+        self.assertEqual(rows[2], 'Pinned:\n- %s | fact | user | 2026-11-04 | The quoted item. | reread: %s, '
+                                  '3f9a0c4, tests/test_memory_locks.py' % (value['id'], value['quotes'][0]['entry']))
+        self.assertEqual(rows[3], 'Current state:\n- Dead end: Polling the raw lock in a loop hangs. (%s) | reread: %s, '
+                                  '3f9a0c4, tests/test_memory_locks.py' % (value['id'], self.said['id']))
+        for word in ('lock fix', 'touched', 'twice', 'more words'):
+            self.assertNotIn(word, memory)
+        self.assertEqual(part.pins, (value['id'],))
+
+    def test_tc404_past_the_room_pointers_go_from_the_last_line_back_before_any_line(self):
+        value = self.quoting('see docs/05-erd/memory.md')
+        pointed = ' | reread: %s, docs/05-erd/memory.md' % self.said['id']
+        lines = [line('next', n, 'Step %02d %s' % (n, 'x' * 60), [self.said['id'], value['id']]) for n in range(30)]
+        self.layer([value], lines)
+        part = self.start()
+        memory = self.memory_part(part)
+        rows = memory.split('\n\n')[2].split('\n')[1:]
+        self.assertEqual(len(rows), 30)  # every line stays, and no line is counted as left out
+        self.assertNotIn('Left out for room', memory)
+        kept = [row.endswith(pointed) for row in rows]
+        self.assertEqual(kept, sorted(kept, reverse=True))  # the pointers went from the last line back
+        self.assertGreater(sum(kept), 0)
+        self.assertLess(sum(kept), 30)
+        self.assertLessEqual(len(memory.encode('utf-8')), 4000)
+        self.assertLess(len(part.text.encode('utf-8')), 8000)
+        # With more lines than the room holds without pointers, every pointer has gone before a line goes.
+        more = [line('next', n, 'Step %02d %s' % (n, 'x' * 60), [self.said['id'], value['id']]) for n in range(60)]
+        self.layer([value], more)
+        memory = self.memory_part(self.start())
+        self.assertNotIn(' | reread: ', memory)
+        self.assertRegex(memory, r'Left out for room: \d+ current state lines and 0 pinned items\.\Z')
+        self.assertLessEqual(len(memory.encode('utf-8')), 4000)
+
+    def test_the_start_summary_reads_at_most_30_item_files_for_pointers_besides_the_items_it_already_read(self):
+        values = [self.quoting('see d/file%02d.md' % n) for n in range(40)]
+        # The five pinned items are read for their pins, so their lines' pointers need no other read.
+        lines = [line('progress', n, 'W%02d.' % n, [value['id']]) for n, value in enumerate(values)]
+        self.layer(values, lines)
+        self.pins(*(pin(value, AT) for value in values[:5]))
+        read = []
+        real = start_summary._read
+
+        def counted(memory, path, deadline):
+            read.append(path.name)
+            return real(memory, path, deadline)
+        with mock.patch.object(start_summary, '_read', counted):
+            memory = self.memory_part(self.start())
+        state = memory.split('\n\n')[3].split('\n')[1:]
+        self.assertEqual([row.endswith(' | reread: d/file%02d.md' % n) for n, row in enumerate(state)],
+                         [True] * 35 + [False] * 5)
+        self.assertEqual(sum(name.endswith('.json') and name.startswith('i_') for name in read), 35)
+        pinned = memory.split('\n\n')[2].split('\n')[1:]
+        self.assertTrue(all(row.endswith(', d/file%02d.md' % n) for n, row in enumerate(pinned)), pinned)
+
+    def test_a_cited_item_is_looked_at_once_however_many_lines_cite_it(self):
+        values = [self.quoting('see d/file%02d.md' % n) for n in range(31)]
+        damaged, folder, gone = self.quoting('see d/damaged.md'), self.quoting('see d/folder.md'), 'i_000000000009'
+        lines = [line('progress', n, 'W%02d.' % n, [gone, folder['id'], damaged['id'], value['id']])
+                 for n, value in enumerate(values)]
+        self.layer(values + [damaged, folder], lines)
+        items = self.root / 'layer/items'
+        (items / (damaged['id'] + '.json')).write_bytes(b'{')
+        (items / (folder['id'] + '.json')).unlink()
+        (items / (folder['id'] + '.json')).mkdir()
+        read, looked = [], []
+        real, check = start_summary._read, self.memory.fence.check
+
+        def counted(memory, path, deadline):
+            read.append(path.name)
+            return real(memory, path, deadline)
+
+        def checked(path, *args, **kwargs):
+            looked.append(os.path.basename(str(path)))
+            return check(path, *args, **kwargs)
+        with mock.patch.object(start_summary, '_read', counted), \
+                mock.patch.object(self.memory.fence, 'check', side_effect=checked):
+            memory = self.memory_part(self.start())
+        state = memory.split('\n\n')[2].split('\n')[1:]
+        # The missing item, the folder and the damaged item take one of the 30 reads each, whatever the lines that
+        # cite them, so 27 lines get their own item's pointer.
+        self.assertEqual([row.endswith(') | reread: d/file%02d.md' % n) for n, row in enumerate(state)],
+                         [True] * 27 + [False] * 4)
+        self.assertNotIn(' | reread: ', ''.join(state[27:]))
+        self.assertEqual([looked.count(name + '.json') for name in (gone, folder['id'])], [1, 1])
+        self.assertEqual(read.count(damaged['id'] + '.json'), 1)
+        self.assertEqual(sum(name.endswith('.json') and name.startswith('i_') for name in read), 28)
+
+    def test_a_cited_item_whose_place_cannot_be_looked_at_gives_no_pointer(self):
+        good, refused = self.quoting('see d/good.md'), self.quoting('see d/refused.md')
+        self.layer([good, refused], [line('progress', 1, 'Work.', [refused['id'], good['id']])])
+        check, place = self.memory.fence.check, refused['id'] + '.json'
+        tries = []
+
+        def looking(path, *args, **kwargs):
+            if os.path.basename(str(path)) == place:
+                tries.append(True)
+                raise PermissionError(13, 'refused')
+            return check(path, *args, **kwargs)
+        # Elsewhere a refusal is not tried again; on Windows it is, for `files._retry`'s second at most.
+        for windows in (False, True):
+            tries.clear()
+            with mock.patch.object(files, '_WINDOWS', windows), \
+                    mock.patch.object(self.memory.fence, 'check', side_effect=looking):
+                part = self.start()
+            self.assertEqual(part.outcome, 'ok')
+            state = self.memory_part(part).split('\n\n')[2].split('\n')[1:]
+            self.assertEqual(state, ['- Work in progress: Work. (%s, %s) | reread: d/good.md' % (refused['id'],
+                                                                                                 good['id'])])
+            self.assertEqual(len(tries) > 1, windows)
+
+    def test_the_reads_for_pointers_end_before_the_deadline_and_the_summary_goes_out_without_them(self):
+        first, held, later = (self.quoting('see d/%s.md' % name) for name in ('first', 'held', 'later'))
+        self.layer([first, held, later], [line('progress', n, 'Work %d.' % n, [value['id']])
+                                          for n, value in enumerate((first, held, later))])
+        settings = self.memory.configuration(deadline=clock.now() + 10)
+        read, place = self.memory.fence.read, held['id'] + '.json'
+
+        def replacing(path, deadline):
+            """Windows refuses every read of one item, as while workers keep replacing it."""
+            if path.name == place:
+                raise PermissionError(13, 'The process cannot access the file', str(path))
+            return read(path, deadline)
+        with mock.patch.object(start_summary.files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=replacing):
+            started = clock.now()
+            part = start_summary.compose(self.memory, 'sample', BASE, started + 1.0, settings=settings,
+                                         environment=dict(self.environment), now=WHEN, zone=UTC)
+            took = clock.now() - started
+        # The held item's read waits until 0.3 seconds before the start hook's one second, and then no item is read
+        # for a pointer: the summary goes out with every line, and only the item read before has its pointer.
+        state = self.memory_part(part).split('\n\n')[2].split('\n')[1:]
+        self.assertEqual(state, ['- Work in progress: Work 0. (%s) | reread: d/first.md' % first['id'],
+                                 '- Work in progress: Work 1. (%s)' % held['id'],
+                                 '- Work in progress: Work 2. (%s)' % later['id']])
+        self.assertLess(took, 1.0)
+
+    def test_a_cited_item_that_cannot_be_read_or_is_not_current_gives_no_pointer(self):
+        good = self.quoting('see d/good.md')
+        bad = [self.quoting('see d/bad%d.md' % n) for n in range(4)]
+        withdrawn = self.quoting('see d/withdrawn.md', status='withdrawn')
+        other = self.quoting('see d/other.md')  # another item, whose record one cited item's file holds
+        cited = bad + [withdrawn, self.quoting('see d/gone.md')]
+        lines = [line('progress', n, 'Work %d.' % n, [value['id'], good['id']]) for n, value in enumerate(cited)]
+        self.layer([good, withdrawn] + bad, lines)  # the last cited item has no file
+        items = self.root / 'layer/items'
+        (items / (bad[0]['id'] + '.json')).write_bytes(b'{')
+        (items / (bad[1]['id'] + '.json')).write_bytes(item_types.item_bytes(other))
+        (items / (bad[2]['id'] + '.json')).write_bytes(json.dumps(dict(bad[2], quotes=[])).encode('utf-8') + b'\n')
+        (items / (bad[3]['id'] + '.json')).unlink()
+        (items / (bad[3]['id'] + '.json')).mkdir()  # a folder in the item's place is not read
+        part = self.start()
+        memory = self.memory_part(part)
+        state = memory.split('\n\n')[2].split('\n')[1:]
+        self.assertEqual([row.split(' (')[0] for row in state], ['- Work in progress: Work %d.' % n for n in range(6)])
+        self.assertTrue(all(row.endswith(') | reread: d/good.md') for row in state), state)
+        for words in ('bad', 'other', 'withdrawn', 'gone'):
+            self.assertNotIn('d/' + words, memory)
+        outside = self.folder.parent / 'outside.json'
+        outside.write_bytes(item_types.item_bytes(bad[0]))
+        (items / (bad[0]['id'] + '.json')).unlink()
+        try:
+            os.symlink(str(outside), str(items / (bad[0]['id'] + '.json')))
+        except (OSError, NotImplementedError):
+            self.skipTest('symbolic links are not available')
+        state = self.memory_part(self.start()).split('\n\n')[2].split('\n')[1:]
+        self.assertEqual(state[0], '- Work in progress: Work 0. (%s, %s) | reread: d/good.md' % (bad[0]['id'], good['id']))
+
+    def test_the_compaction_brief_shows_no_pointer(self):
+        value = self.quoting('see d/brief.md and 3f9a0c4')
+        self.layer([value], [line('goal', 1, 'Ship the pointers.', [self.said['id'], value['id']]),
+                             line('next', 1, 'Write the tests.', [value['id']])])
+        self.assertIn(' | reread: ', self.memory_part(self.start()))
+        from memory_lib import compaction_brief
+        text = compaction_brief.text(start_summary.layer_view(self.memory, self.root, clock.now() + 5,
+                                                              decisions=False).lines)
+        self.assertIn('- Goal: Ship the pointers.', text)
+        for word in ('reread', 'd/brief.md', '3f9a0c4', self.said['id'], value['id']):
+            self.assertNotIn(word, text)
 
     # SPEC-022
 
@@ -582,27 +784,34 @@ class StartSummaryTest(unittest.TestCase):
         self.assertEqual((len(rows), rows[-1], part.reserved), (3, '2 more notices are in the memory status.', None))
         self.assertEqual(self.counts(), {value['id']: 0})
 
-    def test_a_reserved_showing_goes_out_when_the_deadline_passes_while_the_summary_is_built(self):
+    def test_a_reserved_showing_goes_out_when_the_deadline_passes_after_the_summary_is_built(self):
         value, newer, older = self.candidate()
         self.layer([newer, older], candidates=[value])
         counts = self.root / 'notices' / conflict_counts.NAME
         counts.write_bytes(conflict_counts.counts_bytes({value['id']: 0}))
-        build, now, late, pin = start_memory.build_summary, clock.now, [], self.memory.pin
+        build, now, late, reserved, pin = start_memory.build_summary, clock.now, [], [], self.memory.pin
         reserve = conflict_counts.reserve
 
-        def start(replaced=False):
+        def start(replaced=False, reservation=True):
             def building(*args, **kwargs):
-                late.append(True)   # from here on the clock reads a minute later: the deadline has passed
-                if replaced:
-                    self.memory.pin = 'another store'
+                # Without a reservation to wait for, the clock reads a minute later from the summary on: the deadline
+                # has passed.
+                if not reservation:
+                    late.append(True)
                 return build(*args, **kwargs)
 
             def reserving(memory, root, candidate, deadline):
-                # The reservation may use the start's five seconds: this test is about a deadline that passes while
+                reserved.append(True)
+                # The reservation may use the start's five seconds: this test is about a deadline that passes after
                 # the summary is built, not about the reservation's quarter of a second, which a Windows runner with
-                # Python 3.8 once took longer than, leaving the line out. The check after the build keeps its bound.
-                return reserve(memory, root, candidate, clock.now() + 5)
+                # Python 3.8 once took longer than, leaving the line out. The check after it keeps its bound.
+                value = reserve(memory, root, candidate, clock.now() + 5)
+                late.append(True)   # from here on the clock reads a minute later: the deadline has passed
+                if replaced:
+                    self.memory.pin = 'another store'
+                return value
             late.clear()
+            reserved.clear()
             try:
                 with mock.patch.object(start_summary.start_memory, 'build_summary', side_effect=building), \
                         mock.patch.object(clock, 'now', side_effect=lambda: now() + (60 if late else 0)), \
@@ -611,16 +820,20 @@ class StartSummaryTest(unittest.TestCase):
             finally:
                 self.memory.pin = pin
         part = start()
-        # The reservation used up a showing, so the summary goes out with its line.
+        # The summary, built before the reservation, goes out with the line, since the reservation used up a showing.
         self.assertEqual((part.outcome, part.reserved, self.counts()), ('ok', value['id'], {value['id']: 1}))
         self.assertEqual(self.notices(part)[0][:12], 'Memory items')
         # The store is still checked: one replaced meanwhile gives the line about an internal error.
         part = start(replaced=True)
         self.assertEqual((part.outcome, type(part.error), self.counts()),
                          ('error', locks.LostLock, {value['id']: 2}))
+        # The summary and its pointers' item reads come before the reservation (SPEC-148), so a deadline that passes
+        # while it is built uses up no showing.
+        part = start(reservation=False)
+        self.assertEqual((part.outcome, part.reserved, self.counts()), ('deadline', None, {value['id']: 2}))
         # Without a reservation, the same lateness gives the line about the deadline.
         counts.write_bytes(conflict_counts.counts_bytes({value['id']: 3}))
-        self.assertEqual(start().outcome, 'deadline')
+        self.assertEqual(start(reservation=False).outcome, 'deadline')
 
     # TBL-011
 
