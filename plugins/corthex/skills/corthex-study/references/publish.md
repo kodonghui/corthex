@@ -15,8 +15,8 @@ Before the page goes out:
 - One self-contained HTML file: styles, scripts and data inline, figures as inline SVG, and libraries only from sources the host allows.
 - Colours as theme tokens, with a dark theme. Running text about 65 characters wide. Korean text with `word-break: keep-all` and `overflow-wrap: break-word`.
 - Code and long tables behind toggles or in their own scroll box.
-- Publish with the host's page tool when it has one, and keep the same address for revisions, with a short label for each version. Without one, deliver the file.
-- With a page tool that keeps pages private, a published page is private until it is shared, and then one link away from anyone. When the tool cannot keep a page private, ask before the first publish. On the page, cite the learner's files by paths relative to their material, never by home paths, and leave out other people's names and contact details. Keep course captures, an instructor's own words, the learner's personal questions, names, email addresses, local paths and private links out of anything meant to be shared. When the learner wants a public version, make it separately, with new examples and the real API names, and ask before publishing it.
+- Publish with the host's page tool when it keeps pages private until they are shared, and keep the same address for revisions, with a short label for each version. Otherwise, deliver the file.
+- A private page is one link away from anyone once it is shared. On the page, cite the learner's files by paths relative to their material, never by home paths, and leave out other people's names and contact details. Keep course captures, an instructor's own words, the learner's personal questions, names, email addresses, local paths and private links out of anything meant to be shared. When the learner wants a public version, make it separately, with new examples and the real API names, and ask before publishing it.
 
 ## Records
 
@@ -34,7 +34,7 @@ The record makes the study document findable later. Write it where the profile's
 - Upload the standalone HTML file and embed it in a toggle at the end, named for the original, so that the page itself stays with the record.
 - Escape `~` and `*` that should stay literal, write math only in equation blocks, and use backticks for code.
 - Before you replace the body, look for blocks and comments the learner added, and keep them or ask first. Keep the existing image and file blocks' sources instead of uploading them again. A search-and-replace edit may not find media blocks; to swap one, replace the body.
-- Keep a file that holds an upload header or token in the session's scratch folder, readable by its owner only. Never print it, and delete it right after the upload.
+- Delete temporary upload files after use. Keep a file that holds an upload header or token in the session's scratch folder, readable by its owner only. Never print it, and delete it right after the upload.
 
 ### A folder
 

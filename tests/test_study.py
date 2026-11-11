@@ -34,11 +34,10 @@ class StudySkillTest(unittest.TestCase):
         self.assertIn("an upload header or token in the session's scratch folder, readable by its owner only", publish)
 
     def test_a_page_others_can_read_waits_for_the_learner(self):
-        self.assertIn("needs the learner's yes first", read_text(SKILL / "SKILL.md"))
-        self.assertIn(
-            "When the tool cannot keep a page private, ask before the first publish",
-            read_text(SKILL / "references" / "publish.md"),
-        )
+        self.assertIn("published only with the learner's yes", read_text(SKILL / "SKILL.md"))
+        publish = read_text(SKILL / "references" / "publish.md")
+        self.assertIn("when it keeps pages private until they are shared", publish)
+        self.assertIn("make it separately, with new examples and the real API names, and ask before publishing it", publish)
 
     def test_records_follow_the_profile_and_reuse_the_row(self):
         skill = read_text(SKILL / "SKILL.md")
