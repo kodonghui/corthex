@@ -26,7 +26,7 @@ from memory_lib import state_edits, state_types
 import test_memory_state_edits as edits_fixture
 from test_memory_curator_answers import AT, DEVICE, LATER, LOG, answer, change, quote, saved
 from test_memory_fence_plan import PROGRESS
-from test_memory_state_edits import changed, edits, ident, row
+from test_memory_state_edits import added, changed, edits, ident, row
 
 RUN = 'r_0123456789ad'
 EPOCH = PROGRESS['fence']['epoch']
@@ -177,6 +177,20 @@ class RunLogFlowTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             run_log.log_bytes(log)
 
+    def test_a_line_added_before_its_parts_first_line_is_logged_below_position_zero(self):
+        # Found by the installed-host check (TASK-099): the log refused the negative position and the run went unlisted.
+        fixture = self.fixture
+        rule, tabs = fixture.decision(), fixture.decision(fixture.turns.say('user', 'Tabs, not spaces.'))
+        first = row(ident('s', '1'), 'decisions', 0, 'One script serves the hooks.', [rule['id']])
+        fixture.write_state(first)
+        applied, result, log, written, notes = self.apply(
+            answer(state=edits(add=[added('decisions', 'Tabs, not spaces.', [tabs['id']])])), [rule, tabs])
+        self.assertEqual((applied, written, notes), (None, [True], []))
+        (entry,) = run_log.read(self.project, RUN)['lines']
+        self.assertEqual((entry['op'], entry['before'], entry['after']),
+                         ('added', [], ['decisions', -1, '', first['id']]))
+        self.assertEqual(run_log.listed(self.project, fixture.progress(), DEVICE, when=LATER, days=100), [log])
+
     def test_tc382_a_whole_looking_first_apply_after_a_failed_second_write_is_not_selectable(self):
         fixture = self.fixture
         rule = fixture.decision()
@@ -303,7 +317,11 @@ class RunLogRecordTest(unittest.TestCase):
                 ('changed', [], ['next', 0, '', ''], None, False), ('cut', ['next', 0, '', ''], ['next', 0, '', ''], None, False),
                 ('changed', ['next', 0, ident('s', '2'), ''], ['next', 1, '', ''], [EPOCH, 8, line, 'a' * 64], False),
                 ('changed', ['next', 0, '', ''], ['next', 1, '', ''], ['f' * 32, 9, line, 'a' * 64], False),
-                ('changed', ['later', 0, '', ''], ['next', 1, '', ''], None, False)):
+                ('changed', ['later', 0, '', ''], ['next', 1, '', ''], None, False),
+                ('added', [], ['next', -3, '', ident('s', '2')], None, True),
+                ('added', [], ['next', 2.0, '', ''], None, True),
+                ('added', [], ['next', 0.5, '', ''], None, False), ('added', [], ['next', True, '', ''], None, False),
+                ('added', [], ['next', '0', '', ''], None, False)):
             entry = dict(base, op=op, before=before, after=after, history=history)
             value = run_log.start(RUN, 'curate', AT, DEVICE)
             effects = run_log.lines([dict(entry, history=None if history is None else tuple(history),
