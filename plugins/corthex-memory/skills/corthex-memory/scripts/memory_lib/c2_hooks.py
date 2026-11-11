@@ -2,9 +2,9 @@
 
 `hooks.run` finds the kind of store from its two store records, as the command
 runner does, once the running release is 0.3.0 or later. A format-2 store gets
-the format-2 binding (`c2_store.CommandStore`), whose gate pins the store record
-that it read, and these steps; a format-1 store, and every store below 0.3.0,
-keeps C1's hooks, which record and do nothing more. A store that a migration
+the hooks' format-2 binding (`c2_store.HookStore`), whose gate pins the store
+record that it read, and these steps; a format-1 store, and every store below
+0.3.0, keeps C1's hooks, which record and do nothing more. A store that a migration
 holds, of a newer format or damaged refuses as the kind says, before any record
 is read or restored, so that its start summary names what is wrong.
 
@@ -24,6 +24,8 @@ Network and SQLite modules load only for recall, from `prompt_recall`.
 """
 from . import activation, clock, locks
 
+# The window of the deletion of a compaction check whose line was printed (API-002 step 8), after the print.
+CLEAR_SECONDS = 0.25
 # What a store that the hooks do not read refuses, by its kind.
 REFUSED = {activation.MIGRATING: "store-migrating", activation.NEWER: "store-newer",
            activation.DAMAGED: "store-damaged"}
@@ -32,18 +34,21 @@ REFUSED = {activation.MIGRATING: "store-migrating", activation.NEWER: "store-new
 def bind(memory, deadline):
     """The binding and logger for the kind of store at `memory.folder`, and whether it is of format 2.
 
-    A missing folder, and a format-1 store, keep C1's binding and its gate.
+    The two store records are read as C1's hooks read them, following links and
+    with one attempt also after the deadline, so that a missing folder and a
+    format-1 store keep C1's binding and its gate unchanged. A format-2 store
+    gets `c2_store.HookStore`, whose path fence then refuses a link inside the
+    store, as every C2 step does.
     """
     from . import c2_store, diagnostics, files, store, worker_support
     if not memory.folder.exists():
         return memory, diagnostics.Diagnostics(memory), False
-    fence = worker_support.PathFence(memory.folder)
-    kind = activation.store_kind(fence.root, lambda path: files._retry(lambda: fence.read(path, deadline), deadline))
+    kind = activation.store_kind(memory.folder, lambda path: files._retry(path.read_bytes, deadline))
     if kind in REFUSED:
         raise store.StoreUnavailable(REFUSED[kind])
     if kind != activation.FORMAT_2:
         return memory, diagnostics.Diagnostics(memory), False
-    bound = c2_store.CommandStore(fence)
+    bound = c2_store.HookStore(worker_support.PathFence(memory.folder))
     return bound, bound.logger, True
 
 
@@ -78,31 +83,45 @@ def prompt(frame, text, record):
                                   settings=frame.configuration)
     late, failed = result.outcome == "late", result.outcome == "failed"
     if late or failed:
-        note(frame, result.error, "recall")  # A late recall's line carries its code, so no second line.
+        note(frame, result.error, "recall")  # A late recall's line carries its code.
     frame.late, busy, pending = None, False, None
     try:
-        # A check not yet read when the deadline passes, or whose lock stays busy, waits for the next prompt.
+        # A check not yet read when the deadline passes, or whose lock stays busy, waits for the next prompt;
+        # with no check there is nothing to wait, as in Codex, where no check is written.
         if clock.now() >= deadline:
-            late, frame.late = True, "compaction"
+            if compaction_check.waiting(memory, project, host, session):
+                late, frame.late = True, "compaction"
         else:
             pending = compaction_check.pending(memory, project, host, session, deadline)
     except locks.LockBusy:
-        busy = True
+        if clock.now() >= deadline:
+            late, frame.late = True, "compaction"
+        else:
+            busy = True
     except Exception as error:
         note(frame, error, "compaction")
         failed = True
     data = prompt_recall.output(result, compaction_check.line(pending.missing) if pending else None)
+    printed = False
     if data:
-        frame.output.write(data)
-        frame.output.flush()
-        if pending:
-            try:
-                compaction_check.clear(memory, project, host, session, pending, deadline)
-            except locks.LockBusy:
-                pass  # The check stays, and the next prompt shows its line again.
-            except Exception as error:
-                note(frame, error, "compaction")
-                failed = True
+        try:
+            frame.output.write(data)
+            frame.output.flush()
+            printed = True
+        except Exception as error:
+            note(frame, error, "recall")
+            failed = True
+    if printed and pending:
+        try:
+            # The deletion has its own short window after the print, as the start hook's step 7 has, so that a
+            # line that was printed is not shown again because the hook's deadline passed meanwhile.
+            compaction_check.clear(memory, project, host, session, pending,
+                                   max(deadline, clock.now() + CLEAR_SECONDS))
+        except locks.LockBusy:
+            busy = True  # The check stays, and the next prompt shows its line again.
+        except Exception as error:
+            note(frame, error, "compaction")
+            failed = True
     try:
         prompt_recall.log(memory, project, host, session, result, entry=entry)
     except Exception as error:
@@ -138,8 +157,12 @@ def compaction(frame):
         result = compaction_brief.compose(memory, project, host, deadline, settings=frame.configuration)
         data = compaction_brief.output(result)
         if data:
-            frame.output.write(data)
-            frame.output.flush()
+            try:
+                frame.output.write(data)
+                frame.output.flush()
+            except Exception as error:
+                note(frame, error, "compaction")
+                return "error"
     else:
         from . import compaction_check
         result = compaction_check.check(memory, project, host, frame.event["session_id"],

@@ -25,10 +25,18 @@ HOST_PROMPTS_VERSION = "host-prompts-2"
 
 
 def read_input(stream, hook):
+    return check_input(parse_input(stream), hook)
+
+
+def parse_input(stream):
+    """The hook's input as JSON, before `check_input` checks its fields."""
     raw = stream.read() if not stream.isatty() else b""
     if raw.startswith(b"\xef\xbb\xbf"):
         raw = raw[3:]
-    event = store.json_document(raw)
+    return store.json_document(raw)
+
+
+def check_input(event, hook):
     if not isinstance(event, dict) or event.get("hook_event_name") != EVENTS.get(hook, COMPACTION.get(hook)):
         raise ValueError("bad-input")
     session = event.get("session_id")
@@ -192,13 +200,19 @@ def run(hook, started, incoming, output):
     notices = []
     early = None
     if hook in COMPACTION:
-        # In Codex the compaction hooks end once they have told the host, before any store read (API-155, API-156).
+        # In Codex the compaction hooks end once they have told the host, before any store read and before the
+        # input's fields are checked, since Codex gives PostCompact no `compact_summary` (API-155, API-156).
         try:
-            early = read_input(incoming, hook)
+            early = parse_input(incoming)
         except (OSError, ValueError, TypeError, RecursionError) as error:
             early = error
-        if isinstance(early, dict) and host_for(early) == "codex":
+        if host_for(early if isinstance(early, dict) else {}) == "codex":
             return
+        if not isinstance(early, Exception):
+            try:
+                early = check_input(early, hook)
+            except (ValueError, TypeError) as error:
+                early = error
     format2 = False
     try:
         try:

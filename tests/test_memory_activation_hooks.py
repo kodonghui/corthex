@@ -8,6 +8,7 @@ block; the stores are made up, and keys are made up during the run.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -27,6 +28,8 @@ SESSION = "fixture-activation-117"
 LOG = raw_log.log_name("claude-code", SESSION)
 NAMES = {"start": "SessionStart", "prompt": "UserPromptSubmit", "end-of-turn": "Stop", "end": "SessionEnd",
          "pre-compact": "PreCompact", "post-compact": "PostCompact"}
+# The hook's clock 5 seconds on: every whole-hook deadline has passed before the hook reads anything.
+LATE = "from memory_lib import clock\n_now = clock.now\nclock.now = lambda: _now() + 5"
 SUMMARY = "## Objective\nShip the hooks.\n## Established facts\nThe tests pass.\n## Remaining plan\nTag it.\n"
 
 
@@ -132,6 +135,12 @@ class HookActivationTest(unittest.TestCase):
         return {path.relative_to(self.folder).as_posix(): path.read_bytes()
                 for path in self.folder.rglob("*") if path.is_file()}
 
+    def link(self, link, target, directory=False):
+        try:
+            os.symlink(str(target), str(link), target_is_directory=directory)
+        except (OSError, NotImplementedError):
+            self.skipTest("symbolic links are not available")
+
     # TC-429
 
     def test_tc429_below_0_3_0_and_on_stores_that_c2_does_not_read_the_hooks_stay_c1(self):
@@ -179,6 +188,47 @@ class HookActivationTest(unittest.TestCase):
         self.assertFalse(self.check_file().exists())
         self.assertEqual(self.started(), [["sample", "start", record["device"]]] * 2)
 
+    def test_tc429_a_late_hook_still_records_and_a_format_1_store_keeps_c1_links(self):
+        # A hook that reaches its gates after its whole deadline records on format 2, and only the C2 steps are cut.
+        for hook, outcome in (("prompt", "ok"), ("end-of-turn", "deadline"), ("end", "deadline")):
+            before = len(self.entries())
+            self.assertEqual(self.run_hook(hook, patch=LATE), b"", hook)
+            self.assertEqual((len(self.entries()) - before, self.timings()[-1]), (1, (hook, outcome)), hook)
+        self.assertEqual(self.failures(), [("trigger", "deadline", "end-of-turn"), ("trigger", "deadline", "end")])
+        # Recording also attempts the raw lock once its 50 ms window has passed.
+        window = "from memory_lib import raw_log\nraw_log.RECORD_SECONDS = 0.0"
+        self.assertEqual(self.run_hook("end", patch=window), b"")
+        self.assertEqual((self.entries()[-1]["kind"], self.timings()[-1]), ("end", ("end", "ok")))
+        # A format-1 store records a late hook at 0.3.0 as at 0.2.1, also through a link to its store record.
+        record = store.new_record("0.2.1")
+        real = self.folder.parent / "store-record.json"
+        real.write_bytes(base.json_bytes(record, "TBL-001"))
+        (self.folder / "store.json").unlink()
+        self.link(self.folder / "store.json", real)
+        (self.root / "curation.json").write_bytes(base.json_bytes(
+            {"logs": {}, "applies": 0, "recent": [], "consolidation": {"failures": 0}}, "TBL-009"))
+        found = {}
+        for release in ("0.2.1", "0.3.0"):
+            before, timed = len(self.entries()), len(self.timings())
+            for hook in ("prompt", "end-of-turn", "end"):
+                self.assertEqual(self.run_hook(hook, release=release, patch=LATE), b"")
+            text = self.context(self.run_hook("start", release=release), "SessionStart")
+            found[release] = (len(self.entries()) - before, self.timings()[timed:], text)
+        self.assertEqual(found["0.3.0"], found["0.2.1"])
+        self.assertEqual(found["0.3.0"][:2], (4, [("prompt", "ok"), ("end-of-turn", "ok"), ("end", "ok"),
+                                                  ("start", "ok")]))
+
+    def test_tc429_on_a_format_2_store_recording_refuses_a_link_inside_the_store(self):
+        outside = self.folder.parent / "outside-raw"
+        shutil.move(str(self.root / "raw"), str(outside))
+        self.link(self.root / "raw", outside, directory=True)
+        before = {path.name: path.read_bytes() for path in outside.iterdir()}
+        for hook in ("prompt", "end"):
+            self.assertEqual(self.run_hook(hook), b"")
+        self.assertEqual({path.name: path.read_bytes() for path in outside.iterdir()}, before)
+        self.assertEqual(self.timings(), [("prompt", "error"), ("end", "error")])
+        self.assertEqual([failure[:2] for failure in self.failures()], [("record", "lost-lock")] * 2)
+
     # TC-430
 
     def test_tc430_the_start_hook_shows_the_start_summary_and_deletes_the_notices_it_showed(self):
@@ -203,6 +253,18 @@ class HookActivationTest(unittest.TestCase):
         self.assertIn("Pinned:", self.context(self.run_hook("start"), "SessionStart"))
         self.assertEqual([entry["kind"] for entry in self.entries()], ["start"])
         self.assertEqual(self.timings()[-1], ("start", "left-out"))
+        # Without consent at the release's version the memory part is C1's, the consent notice alone, and nothing
+        # is written: the notice stays, and no line is recorded or logged.
+        stored = self.notice("rebuilt.json", kind="rebuilt")
+        self.configure(consent=None)
+        before = self.files()
+        text = self.context(self.run_hook("start"), "SessionStart")
+        memory = text[text.index("## Memory"):]
+        self.assertIn("Memory records nothing on this device until the user consents", memory)
+        for shown in ("Pinned:", "Current state:", "made again from the raw log"):
+            self.assertNotIn(shown, memory)
+        self.assertEqual(self.files(), before)
+        self.assertTrue(stored.exists())
 
     # TC-431
 
@@ -255,6 +317,25 @@ class HookActivationTest(unittest.TestCase):
         self.assertTrue(self.check_file().exists())
         self.assertEqual(self.timings()[-1], ("prompt", "deadline"))
         self.assertEqual(self.failures()[-2:], [("recall", "deadline", "prompt"), ("compaction", "deadline", "prompt")])
+        # With no check to read, a late prompt names only recall's code.
+        self.check_file().unlink()
+        self.assertEqual(self.run_hook("prompt", patch=slow), b"")
+        self.assertEqual(self.failures()[-2:], [("compaction", "deadline", "prompt"), ("recall", "deadline", "prompt")])
+        # While another process holds the session's raw lock the check stays, and the outcome is lock-busy.
+        self.check_file().write_bytes(compaction_check.check_bytes({"at": AT, "missing": ["done"]}))
+        held = ("from memory_lib import compaction_check, locks\n"
+                "def pending(*a, **k):\n    raise locks.LockBusy()\n"
+                "compaction_check.pending = pending")
+        self.assertEqual(self.run_hook("prompt", patch=held), b"")
+        self.assertTrue(self.check_file().exists())
+        self.assertEqual(self.timings()[-1], ("prompt", "lock-busy"))
+        # A deadline that passes once the check was read, before the print, still deletes the printed check.
+        past = ("from memory_lib import clock, compaction_check\nline = compaction_check.line\n"
+                "def late(parts):\n    _now = clock.now\n    clock.now = lambda: _now() + 1\n    return line(parts)\n"
+                "compaction_check.line = late")
+        text = self.context(self.run_hook("prompt", patch=past), "UserPromptSubmit")
+        self.assertEqual(text, compaction_check.line(("done",)))
+        self.assertFalse(self.check_file().exists())
 
     # TC-432
 
@@ -305,10 +386,13 @@ class HookActivationTest(unittest.TestCase):
         whole = SUMMARY + "## Changes\nhooks.py\n## Checks\npass\n## Dead ends\nnone\nDone when: tagged.\n"
         self.assertEqual(self.run_hook("post-compact", self.event("post-compact", compact_summary=whole)), b"")
         self.assertFalse(self.check_file().exists())
-        # In Codex both end before reading the store: nothing is printed or written, not even a timing line.
+        # In Codex both end before reading the store: nothing is printed or written, not even a timing line,
+        # also for Codex's PostCompact input, which has no compact_summary.
         before = self.files()
-        for hook in ("pre-compact", "post-compact"):
-            self.assertEqual(self.run_hook(hook, codex=True), b"")
+        summaryless = self.event("post-compact", turn_id="turn-1")
+        del summaryless["compact_summary"]
+        for hook, event in (("pre-compact", None), ("post-compact", None), ("post-compact", summaryless)):
+            self.assertEqual(self.run_hook(hook, event, codex=True), b"")
         self.assertEqual(self.files(), before)
         # A check hook without a summary is bad input, and writes no check.
         event = self.event("post-compact")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quiet entry point for the four CORTHEX memory hooks."""
+"""Quiet entry point for the four CORTHEX memory hooks, and from release 0.3.0 the two compaction hooks."""
 
 import time
 

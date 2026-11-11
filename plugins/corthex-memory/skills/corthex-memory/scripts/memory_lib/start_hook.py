@@ -2,8 +2,8 @@
 
 Below release 0.3.0, and for a format-1 store, this is C1's: the memory part
 holds only the consent notice, with no model or item access. From 0.3.0 a
-format-2 store's memory part comes from `start_summary` (TASK-091), which reads
-the curated layer, and once it is printed `start_summary.after` deletes the
+format-2 store's memory part, with consent, comes from `start_summary`
+(TASK-091), which reads the curated layer, and once it is printed `start_summary.after` deletes the
 stored notices that it showed and appends the start's injection log line.
 """
 import json
@@ -72,7 +72,8 @@ class Start:
             return self._fixed(notices[0]), outcome
         if not wants_memory:
             return text, outcome
-        if self.format2:
+        if self.format2 and settings.consented():
+            # Without consent at the release's version the memory part is C1's, the consent notice alone.
             return self._summary(registered, host, frame, outcome)
         timeout = start_memory.Notice("unreadable", "Memory could not be read in time.")
         try:
