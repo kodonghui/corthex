@@ -84,6 +84,8 @@ REASON = re.compile(r"--reason (\S+)")
 MODEL_PATH = re.compile(r"/v1/(messages|responses)(\?|$)")
 SAMPLE_SECONDS = 2.0 if os.name == "nt" else 0.5
 RANKED = ("injected", "below")
+# A state answer that keeps the state as it is: five empty parts (state-2).
+KEEP_STATE = {"state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}}
 
 
 def stage(repository, output):
@@ -123,6 +125,11 @@ def vector(text):
 
 def event(kind, **data):
     return ("event: " + kind + "\ndata: " + json.dumps(dict(type=kind, **data), ensure_ascii=False) + "\n\n").encode("utf-8")
+
+
+def request_kind(value):
+    """The kind of a memory request: curate, merge or state."""
+    return ET.fromstring(value["messages"][0]["content"]).get("kind")
 
 
 def curate_stream(answer):
@@ -173,17 +180,20 @@ class MemoryServer:
                                     "usage": {"prompt_tokens": 9 * len(data), "total_tokens": 9 * len(data)}}
                         row["kind"] = "embeddings"
                         return outer.send(self, json.dumps(document).encode("utf-8"), 200, "application/json")
-                    row["kind"] = "curate"
+                    row["kind"] = request_kind(value)
                     row["decisions"] = outer.decisions(value)
                     row["content"] = value["messages"][0]["content"]
                     answer = outer.answer(value)
-                    row["titles"] = [change["title"] for change in answer["changes"]]
+                    row["answer"] = answer if isinstance(answer, dict) else "stream"
+                    row["titles"] = [change["title"] for change in (answer.get("changes") or answer.get("merges") or [])
+                                     ] if isinstance(answer, dict) else []
                     row["holding"] = outer.holding
                     if outer.holding:
                         outer.held.set()
                         row["released"] = outer.gate.wait(HOLD_SECONDS)
                     row["answered"] = time.time()
-                    return outer.send(self, curate_stream(answer), 200, "text/event-stream")
+                    body = answer if isinstance(answer, bytes) else curate_stream(answer)
+                    return outer.send(self, body, 200, "text/event-stream")
                 except (OSError, ValueError, KeyError, TypeError) as error:
                     row["error"] = repr(error)
 
@@ -207,6 +217,12 @@ class MemoryServer:
         root = ET.fromstring(value["messages"][0]["content"])
         return [(entry.get("id"), entry.get("speaker"), entry.text or "") for entry in root.iter("entry")]
 
+    @staticmethod
+    def items(value):
+        """The request's items, as {id: title}."""
+        root = ET.fromstring(value["messages"][0]["content"])
+        return {item.get("id"): item.findtext("title") or "" for item in root.iter("item")}
+
     def decisions(self, value):
         return [marker for _, _, _, marker in self.marked(value)]
 
@@ -221,6 +237,11 @@ class MemoryServer:
         return found
 
     def answer(self, value):
+        kind = request_kind(value)
+        if kind == "merge":
+            return {"merges": [], "conflicts": []}
+        if kind == "state":
+            return KEEP_STATE
         changes, added = [], []
         for ident, _, _, marker in self.marked(value):
             changes.append({"action": "add", "targets": [], "kind": "decision",
@@ -365,7 +386,7 @@ class Hosts:
         self.keys = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": "MARKERANTHROPIC" + secrets.token_hex(16),
                      "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
         # The command lines read stay here, out of the report: a crash writes the report as it stands.
-        self.lines = []
+        self.lines, self.count = [], 0
         self.report = {"release": RELEASE, "store": self.store_kind(), "installs": {}, "sessions": [],
                        "command_lines": 0}
 
@@ -442,7 +463,9 @@ class Hosts:
     def session(self, host, exe, prompt, extra=None, label=None):
         env = self.environment(host)
         env.update(extra or {})
-        log = self.out / host / ("requests-%d.jsonl" % len(self.report["sessions"]))
+        # Each session has its own request log: the mock appends, and the bodies are read back per session.
+        number, self.count = self.count, self.count + 1
+        log = self.out / host / ("requests-%d.jsonl" % number)
         self.mock.log = log
         if host == "claude":
             args = [exe, "-p", prompt, "--output-format", "json"]
@@ -454,7 +477,7 @@ class Hosts:
         started = time.time()
         done = hookcheck.run(args, env, self.demo, timeout=180)
         ended = time.time()
-        (self.out / host / ("output-%d.txt" % len(self.report["sessions"]))).write_text(
+        (self.out / host / ("output-%d.txt" % number)).write_text(
             hookcheck.scrub_mock_key(done["stdout"] + "\n--- stderr ---\n" + done["stderr"],
                                      env.get("ANTHROPIC_API_KEY") or env.get("MOCK_KEY")), encoding="utf-8")
         self.mock.log = None

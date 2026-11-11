@@ -123,3 +123,30 @@ jobs:
           name: windows-recall-timing
           path: ${{ runner.temp }}/recall-timing/c2-recall-timing/report.json
           retention-days: 7
+
+  # TASK-101's replays of the C2 walks with a scripted curator, in their own job for time.
+  walk-replay:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - name: Install Claude Code and Codex
+        shell: cmd
+        run: call npm install -g @anthropic-ai/claude-code@2.1.310 @openai/codex@0.164.0
+      - name: C2 walk replays in both installed hosts, scripted curator (TC-263 to TC-269, TC-357, TC-374 to TC-377)
+        shell: cmd
+        run: python .github\hook-check\c2_walk_replay.py "%RUNNER_TEMP%\walk-replay"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-walk-replay
+          path: ${{ runner.temp }}/walk-replay/c2-walk-replay/report.json
+          retention-days: 7
