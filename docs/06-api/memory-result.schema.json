@@ -1947,7 +1947,7 @@
           }
         },
         "sync": {
-          "description": "on: a project tombstone goes to the sync remote.",
+          "description": "on: the memory configuration holds sync settings. Until a release syncs (C3), no project tombstone goes anywhere, and a sync remote and other devices keep their copies.",
           "$ref": "#/$defs/on-off"
         },
         "left": {
