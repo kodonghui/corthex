@@ -333,7 +333,8 @@ class CompactionCheckTest(unittest.TestCase):
             self.pending()
         self.assertFalse(self.path().exists())
         self.assertIsNone(self.pending())
-        # So is one that the system refuses to read.
+        # So is one that the system refuses to read. On Windows a refusal is read again as another process's hold
+        # until the deadline, which gives LockBusy and leaves the check for a later prompt (`files.fence_read`).
         self.check(summary('Objective'))
         read = self.memory.fence.read
 
@@ -341,7 +342,12 @@ class CompactionCheckTest(unittest.TestCase):
             if Path(path).name == self.path().name:
                 raise PermissionError(13, 'refused')
             return read(path, *args, **kwargs)
-        with mock.patch.object(self.memory.fence, 'read', side_effect=refused), self.assertRaises(PermissionError):
+        with mock.patch.object(files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=refused), self.assertRaises(locks.LockBusy):
+            self.pending(seconds=0.3)
+        self.assertTrue(self.path().exists())
+        with mock.patch.object(files, '_WINDOWS', False), \
+                mock.patch.object(self.memory.fence, 'read', side_effect=refused), self.assertRaises(PermissionError):
             self.pending()
         self.assertFalse(self.path().exists())
         # And so is one nested too deeply for the JSON reader, here and in another session's place.
