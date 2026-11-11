@@ -13,9 +13,9 @@ show what the hooks, the worker and the commands do with those answers, and
 never what a model or an agent would say; each case stays partial until its
 walk is qualified.
 
-Each prompt is passed on the command line, so nothing is pasted into an
-interactive session: TC-376 here shows only what the hooks and the curator
-receive for such a prompt. The hooks run through `measure_hook.py`, which
+Each prompt is passed on the command line, or on stdin when it has several
+lines, so nothing is pasted into an interactive session: TC-376 here shows
+only what the hooks and the curator receive for such a prompt. The hooks run through `measure_hook.py`, which
 saves each hook's input, and what the host's model received is read apart as
 the start summary and the recall block.
 
@@ -349,7 +349,7 @@ class Walk:
             got = prompts.get(text, [])
             keys = sorted({key for value in got for key in value})
             self.step("TC-376", host + ": the prompt hook's input keys", keys)
-            # A prompt passed on the command line: the hook sees the text as typed, with nothing about pasting.
+            # A prompt passed on the command line or stdin: the hook sees the text as typed, with nothing about pasting.
             self.check("TC-376", host + ": the prompt hook got the passed text unchanged, with no key about pasting",
                        [value.get("prompt") for value in got] == [text] and
                        not any("paste" in key.lower() for key in keys), {"prompt hooks": len(got)})

@@ -466,15 +466,20 @@ class Hosts:
         number, self.count = self.count, self.count + 1
         log = self.out / host / ("requests-%d.jsonl" % number)
         self.mock.log = log
+        stdin = ""
         if host == "claude":
             args = [exe, "-p", prompt, "--output-format", "json"]
         else:
+            # On Windows `codex` is an npm .cmd shim, and cmd.exe ends an argument at its first line break:
+            # a prompt of several lines goes in on stdin, which `codex exec -` reads as the prompt.
+            if "\n" in prompt:
+                prompt, stdin = "-", prompt
             args = [exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-hook-trust",
                     prompt]
         sampler = Sampler(self.memory)
         sampler.start()
         started = time.time()
-        done = hookcheck.run(args, env, folder or self.demo, timeout=180)
+        done = hookcheck.run(args, env, folder or self.demo, stdin=stdin, timeout=180)
         ended = time.time()
         (self.out / host / ("output-%d.txt" % number)).write_text(
             hookcheck.scrub_mock_key(done["stdout"] + "\n--- stderr ---\n" + done["stderr"],
