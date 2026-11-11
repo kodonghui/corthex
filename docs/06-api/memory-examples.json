@@ -1073,6 +1073,26 @@
           ]
         }
       },
+      "open-entry": {
+        "command": "open",
+        "outcome": "done",
+        "code": "ok",
+        "say": "1 entry of this device, with its text.",
+        "data": {
+          "project": "corthex",
+          "items": [],
+          "entries": [
+            {
+              "entry": "e_5h2j8n3p0r6t",
+              "log": "claude-code-3f9a0c41d2e87b65",
+              "speaker": "user",
+              "said": "2026-10-24T13:01:09.120Z",
+              "text": "Keep the raw logs on this machine; [forgotten] was never meant for memory.",
+              "whole": true
+            }
+          ]
+        }
+      },
       "pin-no-room": {
         "command": "pin",
         "outcome": "refused",

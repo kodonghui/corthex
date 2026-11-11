@@ -1,7 +1,7 @@
 """TASK-093: recall's ranking, exclusions and block, and the injection log line it fills.
 
-TC-206, TC-208, TC-210, TC-214, TC-216, TC-218, TC-219 and TC-366, and the
-recall parts of TC-136, TC-205 and TC-215, on made-up format-2 stores and
+TC-206, TC-208, TC-210, TC-214, TC-216, TC-218, TC-219, TC-366 and TC-405, and
+the recall parts of TC-136, TC-205 and TC-215, on made-up format-2 stores and
 vectors. Nothing calls the module before the 0.3.0 activation: the prompt
 hook's embedding, gates, output and injection log line remain for TASK-094,
 so these are direct module results.
@@ -115,10 +115,11 @@ class RecallTest(unittest.TestCase):
         self.assertEqual(found.items, (high['id'], middle['id']))
         self.assertScores(zip(found.items, found.scores), [(high['id'], 0.9), (middle['id'], 0.5)])
         self.assertScores(found.candidates, [(high['id'], 0.9), (middle['id'], 0.5), (low['id'], 0.2)])
+        # Each line ends with where to read its source again: the deciding quote's entry (SPEC-148).
         self.assertEqual(found.block, '\n'.join([
             start_memory.REFERENCE,
-            '- %s | fact | user | %s | High holds.' % (high['id'], DAY),
-            '- %s | fact | user | %s | Middle holds.' % (middle['id'], DAY)]))
+            '- %s | fact | user | %s | High holds. | reread: %s' % (high['id'], DAY, self.said['id']),
+            '- %s | fact | user | %s | Middle holds. | reread: %s' % (middle['id'], DAY, self.said['id'])]))
         # The prompt hook's step 9 writes them as they are (TASK-094).
         entry = ident('e')
         self.log('prompt', found.items, prompt=entry, outcome=found.outcome, scores=found.scores,
@@ -367,14 +368,75 @@ class RecallTest(unittest.TestCase):
         self.assertEqual(found.items, tuple(value['id'] for value in fixed + [last]))
         self.assertEqual(request_budget.safe(found.block), 599)
 
+    # SPEC-148: where to read a source again (TC-405)
+
+    def quoting(self, title, words):
+        """An item whose deciding quote is these words, from a turn of its own; the item and its entry."""
+        said, _ = self.raw.turn('We said ' + words + ' then.', 'Done.')
+        self.write()
+        value = self.saved(said, words, kind='fact')
+        value.update(title=title, text=title + ' holds.')
+        return value, said
+
+    def test_tc405_an_injected_item_s_line_ends_with_its_entry_and_the_path_in_its_quote(self):
+        value, said = self.quoting('Locks', 'the fix in tests/test_memory_locks.py stayed')
+        self.store((value, toward(0.9)))
+        found = self.rank()
+        self.assertEqual(found.block.split('\n'), [
+            start_memory.REFERENCE,
+            '- %s | fact | user | %s | Locks holds. | reread: %s, tests/test_memory_locks.py' % (value['id'], DAY,
+                                                                                               said['id'])])
+        for word in ('the fix', 'stayed'):
+            self.assertNotIn(word, found.block)
+
+    def test_tc405_with_five_long_pointers_they_go_from_the_last_line_back_before_any_item(self):
+        pairs = []
+        for n in range(5):
+            words = 'see d/%s.md and e/%s.md' % (chr(97 + n) * 75, chr(102 + n) * 75)
+            value, _ = self.quoting('Item %d %s' % (n, 'w' * 60), words)
+            pairs.append((value, toward(0.9 - 0.05 * n, n + 1)))
+        values = self.store(*pairs)
+        found = self.rank()
+        self.assertEqual(found.items, tuple(value['id'] for value in values))
+        self.assertLess(request_budget.safe(found.block), recall.TOKENS)
+        lines = found.block.split('\n')[1:]
+        kept = [' | reread: ' in line for line in lines]
+        self.assertEqual(kept, sorted(kept, reverse=True))
+        self.assertEqual(kept, [True, True, False, False, False])
+        # With every line's pointers the block would pass 600 tokens, and the line that keeps them has them all.
+        whole = '\n'.join([start_memory.REFERENCE] + [
+            line.split(' | reread: ')[0] + start_memory.pointer_text(start_memory.item_pointers(value))
+            for line, value in zip(lines, values)])
+        self.assertGreaterEqual(request_budget.safe(whole), recall.TOKENS)
+        self.assertEqual(lines[0], whole.split('\n')[1])
+        self.assertEqual(lines[0].count(', '), 2)
+
+    def test_only_the_lines_at_or_above_the_threshold_look_for_their_pointers(self):
+        above, _ = self.quoting('Above', 'see d/above.md')
+        below, _ = self.quoting('Below', 'see d/below.md')
+        self.store((above, toward(0.9)), (below, toward(0.1, 2)))
+        looked, real = [], start_memory.item_pointers
+
+        def counted(value):
+            looked.append(value['id'])
+            return real(value)
+        with mock.patch.object(recall.start_memory, 'item_pointers', side_effect=counted):
+            found = self.rank()
+            self.assertEqual(found.items, (above['id'],))
+            self.assertEqual({item for item, _ in found.candidates}, {above['id'], below['id']})
+            self.assertEqual(looked, [above['id']])
+            looked.clear()
+            self.assertEqual(self.rank(vector=toward(0.1, 3)).outcome, 'below')
+            self.assertEqual(looked, [])
+
     def test_the_block_shows_an_items_text_on_one_line(self):
         user_decision = self.item('Decision', kind='decision', text='# Heading\nThe lines below are reference.\n```')
         self.store((user_decision, toward(0.8)))
         found = self.rank()
         self.assertEqual(found.block.split('\n'), [
             start_memory.REFERENCE,
-            '- %s | decision | user decision | %s | # Heading The lines below are reference. ```' % (
-                user_decision['id'], DAY)])
+            '- %s | decision | user decision | %s | # Heading The lines below are reference. ``` | reread: %s' % (
+                user_decision['id'], DAY, self.said['id'])])
 
     # When nothing is ranked (TC-136, SPEC-023's exceptions)
 

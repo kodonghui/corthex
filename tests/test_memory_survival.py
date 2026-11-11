@@ -365,9 +365,12 @@ class SurvivalTest(unittest.TestCase):
                 count['revived'] += any(text in everything for text in (item, value.text, value.line))
                 continue
             kind, speaker = ('decision', 'user decision') if name[0] == 'd' else ('fact', 'user')
+            # Recall's line ends with where to read its quote again, the prompt's entry (SPEC-148); the quotes name
+            # no commit or path and the state lines cite no entry, so the start summary's lines have no pointer.
             expected = [('- Decision in force: %s (%s)' % (value.line, item) if name[0] == 'd'
                          else shown_line(value, item), rows),
-                        ('- %s | %s | %s | %s | %s' % (item, kind, speaker, DAY, value.text),
+                        ('- %s | %s | %s | %s | %s | reread: %s' % (item, kind, speaker, DAY, value.text,
+                                                                    self.entry_of[name]),
                          blocks[name].splitlines())]
             places = [(wanted, [row for row in found if item in row]) for wanted, found in expected]
             kept = all(wanted in found for wanted, found in places)

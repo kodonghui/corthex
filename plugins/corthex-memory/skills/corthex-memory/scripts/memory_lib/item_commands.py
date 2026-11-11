@@ -28,23 +28,36 @@ the curator, whose worker recovers an interrupted write before it reads, `open`
 reads around what such a write left: a tombstone is its file, or its backup
 when the file is gone, as the start summary reads it, other names in the
 tombstones' folder, such as temporary copies, are skipped, and the items that
-stay are read as `list` reads them. Only `--around` reads the tombstones, once
-for the command and only when a named item quotes this device's entries, so a
-tombstone that cannot be read fails only such an `open`, while `open` without
-`--around`, like `list`, sees only the names in their folder; the items that
-stay are read at most once, for both the pending ranges and the closest
-lines. An argument that names no item of the project, or names
-one that a tombstone names, is `item-not-found`, with the arguments in
-`missing`, the closest lines of the item list in `matches` and the items that
-the other arguments name. An entry ID is missing too until TASK-112 opens
-entries.
+stay are read as `list` reads them. Only `--around` and an entry ID read the
+tombstones, once for the command: `--around` when a named item quotes this
+device's entries, and an entry ID when a raw log's bytes hold it. So a
+tombstone that cannot be read fails only such an `open`, while any other
+`open`, like `list`, sees only the names in their folder; the items that stay
+are read at most once, for both the pending ranges and the closest lines.
+
+`open` of an entry ID shows the entry, as a pointer of injected memory names
+it (SPEC-148, TASK-112): from this device's raw logs of the project, a prompt
+or an answer within the retention period, with its raw log, speaker and time
+and the first 2,000 characters of its text, each range that a forget or a
+pending tombstone names shown as [forgotten], as around a quote, and whether
+the text is whole: not when `open` cut it, nor when the recording had cut it
+(TBL-007 `cut`). Only the raw logs whose bytes hold a named entry's ID are
+read as entries, each once, also when a quote's words around it read it
+first; a raw log that goes while it is read is skipped, and one that a link
+reaches raises, as an item record does. An argument that names no item of
+the project and no such entry, or an
+item that a tombstone names, is `item-not-found`, with the arguments in
+`missing`, the closest lines of the item list in `matches` and the items and
+entries that the other arguments name.
 
 A project without a folder, or whose memory is being deleted, has no items. An
 item record that cannot be read, or that a link reaches, raises, which the
 runner reports as `internal`, as it does for forget and undo.
 """
-from . import base, clock, commands, curation_worker, curator_document, files, forget_plan, history_recovery
-from . import item_io, item_types, locks, request_inputs, run_listing, run_log
+import stat
+
+from . import base, clock, commands, curation_worker, curator_document, diagnostics, files, forget_plan
+from . import history_recovery, item_io, item_types, locks, request_inputs, run_listing, run_log
 
 # The commands' shared lock wait, within one bound for the whole read.
 WAIT, SECONDS = 10.0, 60.0
@@ -52,6 +65,9 @@ WAIT, SECONDS = 10.0, 60.0
 ARGUMENT, AROUND = 200, 2000
 FORGOTTEN = curator_document.FORGOTTEN
 MISSING = 'No item of this project has an ID in data.missing; data.matches holds the closest lines of the item list.'
+MISSING_ENTRIES = ('No item of this project and no entry that this device holds has an ID in data.missing; '
+                   'data.matches holds the closest lines of the item list.')
+TURNS = ('prompt', 'answer')  # the raw entries that have a speaker and a text
 
 
 def _read(context, read):
@@ -153,18 +169,35 @@ def _take(pieces, size, backwards):
     return ''.join(reversed(taken) if backwards else taken)
 
 
-def around(entry, quote, size):
-    """(before, after): up to `size` characters of the entry's text on each side of the quote, as `open` shows them."""
-    text = entry.get('text') or ''
+def _ranges(entry):
+    """The entry's forgotten ranges, sorted, those that touch or overlap made one."""
     ranges = []
     for start, end in sorted((int(start), int(end)) for start, end in entry.get('forgotten', ())):
         if ranges and start <= ranges[-1][1]:
             ranges[-1][1] = max(ranges[-1][1], end)
         else:
             ranges.append([start, end])
+    return ranges
+
+
+def around(entry, quote, size):
+    """(before, after): up to `size` characters of the entry's text on each side of the quote, as `open` shows them."""
+    text = entry.get('text') or ''
+    ranges = _ranges(entry)
     start, end = min(int(quote['start']), len(text)), min(int(quote['end']), len(text))
     return (_take(_pieces(text, ranges, 0, start), size, True),
             _take(_pieces(text, ranges, end, len(text)), size, False))
+
+
+def entry_line(entry, log):
+    """A raw entry as `open` shows it (open-entry): the first 2,000 characters of its text, a forgotten range one
+    [forgotten] mark that is never cut, and `whole`, false when `open` cut the text or the recording had cut it
+    (TBL-007 `cut`)."""
+    text = entry['text']
+    pieces = _pieces(text, _ranges(entry), 0, len(text))
+    shown = _take(pieces, AROUND, False)
+    return {'entry': entry['id'], 'log': log, 'speaker': entry['speaker'], 'said': entry['at'], 'text': shown,
+            'whole': 'cut' not in entry and len(shown) == sum(len(piece) for piece, _ in pieces)}
 
 
 def _quote(quote, entries, device, cutoff, size):
@@ -240,28 +273,99 @@ def _pending(memory, root, deadline, read, items):
             for log in sorted({quote['log'] for stone in stones for quote in stone['quotes']})}
 
 
-def _entries(root, read, pending):
-    """log -> its entries by ID, from this device's raw log of the project; none once retention deleted it.
+def _entries(memory, root, read, pending):
+    """(entries, found): `entries(log)` gives the log's entries by ID, from this device's raw log of the project, none
+    once retention deleted it, and `found` holds the logs read so far, log -> entries by ID.
 
     `pending()` gives the ranges that pending tombstones name, log -> entry ID
     -> ranges (`_pending`), and is called once, when the first entry is wanted.
+    An ID that two entries of a log hold gives the first, as `_raw_entries`
+    finds it, and anything but a folder in `raw`'s place holds no entry, as
+    there; a link raises, as the fence refuses it.
     """
-    found, ranges = {}, []
+    found, ranges, folder = {}, [], []
 
     def entries(log):
         if log not in found:
+            if not folder:
+                info = memory.fence.check(root / 'raw')
+                folder.append(info is not None and stat.S_ISDIR(info.st_mode))
+            if not folder[0]:
+                found[log] = {}
+                return found[log]
             if not ranges:
                 ranges.append(pending())
+            held = {}
             try:
-                found[log] = {entry['id']: entry
-                              for entry in request_inputs.entries(root, log, read, ranges[0].get(log, {}))}
+                for entry in request_inputs.entries(root, log, read, ranges[0].get(log, {})):
+                    held.setdefault(entry['id'], entry)
             except FileNotFoundError:
-                found[log] = {}
+                held = {}
+            found[log] = held
         return found[log]
-    return entries
+    return entries, found
 
 
-def _open_say(items, size):
+def _raw_entries(memory, root, names, read, pending, cutoff, deadline, check, parsed):
+    """entry ID -> (raw log, entry) for each of `names` that this device's raw logs of the project hold as a prompt
+    or an answer within the retention period, its `forgotten` with the ranges that pending tombstones name.
+
+    The logs go in name order, and only one whose bytes hold a named ID that
+    is not found yet is read as entries; an entry ID that two logs hold is
+    found in the first. `parsed` holds the logs already read as entries with
+    the same ranges, log -> entries by ID, which are not read again. Anything
+    but a folder in `raw`'s place or a file under a raw log's name, such as a
+    folder there, holds no entry, and neither does a log that goes while it
+    is read, as retention can delete it; a link raises, as the fence refuses
+    it.
+    """
+    folder = root / 'raw'
+    info = memory.fence.check(folder) if names else None
+    if info is None or not stat.S_ISDIR(info.st_mode):
+        return {}
+    found = {}
+    for path in sorted(files._retry(lambda: list(folder.iterdir()), deadline)):
+        log = path.name[:-len('.jsonl')] if path.name.endswith('.jsonl') else ''
+        left = [name for name in names if name not in found]
+        if not left:
+            break
+        if not diagnostics.LOG.fullmatch(log):
+            continue
+        check()
+        if log in parsed:
+            held = parsed[log].values()
+        else:
+            info = files._retry(lambda: memory.fence.check(path), deadline)
+            if info is None or not stat.S_ISREG(info.st_mode):
+                continue
+            try:
+                data = read(path)
+            except FileNotFoundError:
+                continue
+            if not any(name.encode('ascii') in data for name in left):
+                continue
+            held = request_inputs.entries(root, log, lambda _: data, pending().get(log, {}))
+        for entry in held:
+            if entry['id'] in left and entry['id'] not in found and entry['kind'] in TURNS and entry['at'] >= cutoff:
+                found[entry['id']] = (log, entry)
+    return found
+
+
+def _entries_say(entries):
+    cut = sum(not line['whole'] for line in entries)
+    if len(entries) == 1:
+        return '1 entry of this device, with its text%s.' % (', which is cut' if cut else '')
+    return '%d entries of this device, with their texts%s.' % (len(entries), '; %d of them cut' % cut if cut else '')
+
+
+def _open_say(items, size, entries=None):
+    if not items and entries:
+        return _entries_say(entries)
+    said = _items_say(items, size)
+    return said + ' ' + _entries_say(entries) if entries else said
+
+
+def _items_say(items, size):
     count, quotes = len(items), sum(len(value['quotes']) for value in items)
     here = sum(quote['held'] == 'here' for value in items for quote in value['quotes'])
     them = 'it' if quotes == 1 else 'them'
@@ -289,32 +393,47 @@ def open_items(context, *, when=None):
             size is not None and (type(size) is not int or not 0 <= size <= AROUND)):
         return commands.common_result('open', 'usage')
     names = list(dict.fromkeys(names))  # each name once, in the order first named
+    wanted = [name for name in names if item_types.ENTRY.fullmatch(name)]
     cutoff = run_log._cutoff(base.utc_time(when), context.configuration.values['retention']['days'])[0]
 
     def read(memory, root, deadline, check):
-        staying = []
+        staying, ranges = [], []
 
         def items():
             # The items that stay, read at most once, for the pending ranges and the closest lines.
             if not staying:
                 staying.append(_items(memory, root, deadline, check))
             return staying[0]
+
+        def pending():
+            # The ranges that pending tombstones name, read at most once, for the words around quotes and entries.
+            if not ranges:
+                ranges.append(_pending(memory, root, deadline, reader, items))
+            return ranges[0]
         values = {name: _item(memory, root, name, deadline, check) for name in names}
         reader = run_listing._reader(memory, deadline)
-        # Only the words around a quote show the ranges that pending tombstones name.
-        pending = dict if size is None else lambda: _pending(memory, root, deadline, reader, items)
-        entries = _entries(root, reader, pending)
+        # Only the words around a quote and an entry's text show the ranges that pending tombstones name.
+        entries, parsed = _entries(memory, root, reader, dict if size is None else pending)
         shown = [opened(value, entries, memory.device, cutoff, size) for value in values.values() if value is not None]
-        missing = [name for name, value in values.items() if value is None]
+        # The words around quotes read a log's entries with the pending ranges too, so an entry ID uses them.
+        raw = _raw_entries(memory, root, wanted, reader, pending, cutoff, deadline, check,
+                           {} if size is None else parsed)
+        held = [entry_line(raw[name][1], raw[name][0]) for name in wanted if name in raw]
+        missing = [name for name, value in values.items() if value is None and name not in raw]
         lines = [run_listing.list_line(value) for value in listed(items())] if missing else []
-        return shown, missing, lines
+        return shown, held, missing, lines
     try:
-        shown, missing, lines = _read(context, read) or ([], names, [])
+        shown, held, missing, lines = _read(context, read) or ([], [], names, [])
     except locks.LockBusy:
         return commands.common_result('open', 'lock-busy')
     data = {'project': project, 'items': shown}
+    if wanted:
+        data['entries'] = held
     if not missing:
-        return commands.result('open', data, _open_say(shown, size))
+        return commands.result('open', data, _open_say(shown, size, held))
     data.update(missing=missing, matches=forget_plan.closest(lines, missing))
-    say = MISSING + (' data.items holds the %d found.' % len(shown) if shown else '')
+    found = ['data.items holds the %d found' % len(shown)] if shown else []
+    if held:
+        found.append('data.entries holds the %d found' % len(held))
+    say = (MISSING_ENTRIES if wanted else MISSING) + (' ' + ' and '.join(found) + '.' if found else '')
     return commands.result('open', data, say, 'refused', 'item-not-found')

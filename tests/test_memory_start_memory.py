@@ -157,6 +157,185 @@ class StartMemoryTest(unittest.TestCase):
         self.assertIn("가" * 200, result.text)
         self.assertNotIn("...", result.text)
 
+    # SPEC-148: where to read a source again (TASK-112)
+
+    def test_stage06_pointer_examples_match_both_documents(self):
+        decided = item(text="Keep raw logs on the device; only the curated layer is synced.", kind="decision",
+                       speaker="user")
+        decided["id"] = "i_7f3k2m9q4x1v"
+        decided["quotes"][0].update(entry="e_5h2j8n3p0r6t", words="the ERD in docs/05-erd/memory.md says so")
+        cited = {"entry": "e_0a1b2c3d4e5f", "words": "after 3f9a0c4 in tests/test_memory_locks.py."}
+        dead = dict(state(1, "blockers", "Dead end: Polling the raw lock in a loop hangs on Windows."),
+                    cites=["i_2b8d0w5n6c3r", "e_8m1k4r7t2w5y"])
+        lines = [summary.item_line(decided, UTC) + summary.pointer_text(summary.item_pointers(decided)),
+                 summary.state_line(dead) + summary.pointer_text(summary.line_pointers(dead, {"i_2b8d0w5n6c3r": cited}.get))]
+        for name in ("memory.md", "memory.ko.md"):
+            doc = (ROOT / "docs/06-api" / name).read_text(encoding="utf-8")
+            example = doc.split("| reread: e_5h2j8n3p0r6t", 1)[0].rsplit("```text\n", 1)[1] + "| reread: e_5h2j8n3p0r6t"
+            example += doc.split("| reread: e_5h2j8n3p0r6t", 1)[1].split("\n```", 1)[0]
+            self.assertEqual(example.split("\n"), lines)
+
+    def test_a_word_is_a_commit_or_a_path_only_in_its_exact_form(self):
+        words = ("Run 3f9a0c4, then 0123456789abcdef0123456789abcdef01234567 (40) but not 3f9a0c, "
+                 "0123456789abcdef0123456789abcdef012345678, deadbeef, 1234567, 3F9A0C4 or 3f9a0c4g. "
+                 "Read docs/05-erd/memory.md: \"tests/test_a.py\" [x/y.cfg] {u/v.js} <w/x.go>; 'q/r.txt' y/z.rs! "
+                 "a/.env ./run.sh? not a/b, a/b/, x/y.toolong99, http://h/a.md, https://h/b.md, a/b., Makefile, "
+                 "x/y.m-d, 가/나.md, a/b.한글 or a b/c.py　d/e.py")
+        self.assertEqual(list(summary.named(words)), [
+            "3f9a0c4", "0123456789abcdef0123456789abcdef01234567", "docs/05-erd/memory.md", "tests/test_a.py",
+            "x/y.cfg", "u/v.js", "w/x.go", "q/r.txt", "y/z.rs", "a/.env", "./run.sh", "가/나.md", "b/c.py",
+            "d/e.py"])
+        # An unpaired surrogate becomes U+FFFD, as in an item's text, so a pointer always encodes.
+        self.assertEqual(list(summary.named("\ud800/x.md")), ["�/x.md"])
+
+    def test_markdown_marks_a_line_number_and_a_following_particle_are_not_part_of_a_pointer(self):
+        words = ("Fixed in `plugins/x/recall.py` and **docs/x.md**, see src/a.py:42, src/b.py:42-50. and "
+                 "src/c.py:3:7; plugins/y/start.py를 고쳤고 커밋 a4ab96e에서 문서/설계.md의 표를 바꿨습니다 "
+                 "(`3f9a0c4`). Not 1.5/2.0, v1.2/v1.3, 2026/11.04, logs/run.1, src/**/*.py, a/b.py:x, a/b.py-1, "
+                 "a4ab96ex or a/b.toolong99를")
+        self.assertEqual(list(summary.named(words)), [
+            "plugins/x/recall.py", "docs/x.md", "src/a.py", "src/b.py", "src/c.py", "plugins/y/start.py", "a4ab96e",
+            "문서/설계.md", "3f9a0c4"])
+
+    def test_a_mention_a_bracket_or_quotation_mark_of_any_script_and_a_table_s_bar_end_a_word(self):
+        words = ("fix @plugins/x/recall.py now; “src/a.py”를 고침 （src/b.py） 「abc1234」 ‘deadbeef1’ 【docs/x.md】 "
+                 "《a/b.md》 see src/c.py... | docs/d.md| a.py|b/e.py src/f.py#L42 --config=a/g.json "
+                 "src/h.py、src/i.py。 경로：src/j.py src/k.py！ x/l.py?!")
+        self.assertEqual(list(summary.named(words)), [
+            "plugins/x/recall.py", "src/a.py", "src/b.py", "abc1234", "deadbeef1", "docs/x.md", "a/b.md", "src/c.py",
+            "docs/d.md", "b/e.py", "src/f.py", "a/g.json", "src/h.py", "src/i.py", "src/j.py", "src/k.py", "x/l.py"])
+
+    def test_a_path_ends_at_its_first_extension_that_a_character_that_is_not_ascii_follows(self):
+        # What follows, even when it holds another "/", is not part of the path.
+        words = "src/a.py와docs/b.md src/c.py에서/x docs/v1.x/d.md a/b.c/e.py 문서/f.md를/g a/b.한글/h"
+        self.assertEqual(list(summary.named(words)), ["src/a.py", "src/c.py", "docs/v1.x/d.md", "a/b.c/e.py",
+                                                      "문서/f.md"])
+
+    def test_a_git_range_names_both_of_its_commits(self):
+        words = ("regressed in 5feb73a..a8d6bf9, see abc1234...def5678를 and e8b8714.. but 1234567..abcdef1 has one; "
+                 "not deadbee..cafe123x or 3f9a0c4....a8d6bf9")
+        self.assertEqual(list(summary.named(words)), ["5feb73a", "a8d6bf9", "abc1234", "def5678", "e8b8714",
+                                                      "abcdef1"])
+
+    def test_the_entry_id_pattern_matches_the_raw_log_s_and_the_item_types(self):
+        # The start hook keeps its own copy, as of the item ID, so that it imports no more than it needs.
+        from memory_lib import base, item_types, raw_log
+        values = [base.new_id("e") for _ in range(200)] + [
+            "e_0123456789ab", "e_0123456789AB", "e_0123456789a", "e_0123456789abc", "e_0123456789ai",
+            "e_0123456789al", "e_0123456789ao", "e_0123456789au", "i_0123456789ab", "e_0123456789ab\n"]
+        for value in values:
+            found = {bool(pattern.match(value)) for pattern in (summary.ENTRY_ID, raw_log.ENTRY_ID, item_types.ENTRY)}
+            self.assertEqual(found, {bool(raw_log.ENTRY_ID.fullmatch(value))}, value)
+
+    def test_pointers_are_three_at_most_each_once_within_80_bytes_without_a_control_bar_or_backtick(self):
+        long = "d/" + "a" * 75 + ".md"
+        self.assertEqual(len(long.encode("utf-8")), 80)
+        wide = "d/" + "가" * 25 + ".md"  # 2 + 75 + 3 = 80 bytes
+        values = ["e_5h2j8n3p0r6t", long + "x", "d/a|b.md", "d/a`b.md", "d/a\x07b.md", "e_5h2j8n3p0r6t", long,
+                  "d/" + "가" * 26 + ".md", wide]
+        self.assertEqual(summary.pointers(values), ("e_5h2j8n3p0r6t", long, wide))
+        taken = []
+
+        def lazily():
+            for value in ("a/b.md", "c/d.md", "e/f.md", "g/h.md"):
+                taken.append(value)
+                yield value
+        self.assertEqual(summary.pointers(lazily()), ("a/b.md", "c/d.md", "e/f.md"))
+        self.assertEqual(taken, ["a/b.md", "c/d.md", "e/f.md"])  # a line with three reads no further source
+
+    def test_a_pointer_holds_no_format_character(self):
+        # A direction mark or a zero-width character would show another path than the pointer's bytes.
+        values = ["docs/‮gnp.py", "src/a​.py", "d/‍b.md", "d/­c.md", "﻿d/e.md", "src/a.py"]
+        self.assertEqual(summary.pointers(values), ("src/a.py",))
+        self.assertEqual(summary.pointers(summary.named("see src/a​.py and docs/b.md")), ("docs/b.md",))
+        self.assertEqual(summary.pointer_text(()), "")
+        self.assertEqual(summary.pointer_text(("a/b.md", "3f9a0c4")), " | reread: a/b.md, 3f9a0c4")
+
+    def test_a_line_points_to_its_entries_first_then_to_its_items_quotes_item_by_item(self):
+        first, second = item(1), item(2)
+        quotes = {first["id"]: {"words": "see a/one.md and 3f9a0c4"}, second["id"]: {"words": "b/two.md 3f9a0c4"}}
+        asked = []
+
+        def quote(value):
+            asked.append(value)
+            return quotes.get(value)
+        line = state(cites=[first["id"], "e_5h2j8n3p0r6t", "i_000000000009", second["id"], "e_0a1b2c3d4e5f"])
+        self.assertEqual(summary.line_pointers(line, quote), ("e_5h2j8n3p0r6t", "e_0a1b2c3d4e5f", "a/one.md"))
+        self.assertEqual(asked, [first["id"]])
+        asked.clear()
+        line = state(cites=[first["id"], "i_000000000009", second["id"]])
+        self.assertEqual(summary.line_pointers(line, quote), ("a/one.md", "3f9a0c4", "b/two.md"))
+        self.assertEqual(asked, [first["id"], "i_000000000009", second["id"]])
+        # An item's line: its deciding quote's entry, then its words; another quote of the item gives none.
+        value = dict(item(3), quotes=[{"entry": "e_5h2j8n3p0r6t", "words": "the d/x.py file", "speaker": "user",
+                                       "said": "2026-10-24T12:00:00.000Z"},
+                                      {"entry": "e_0a1b2c3d4e5f", "words": "y/z.py", "speaker": "user",
+                                       "said": "2026-10-24T12:00:00.000Z"}])
+        self.assertEqual(summary.item_pointers(value), ("e_5h2j8n3p0r6t", "d/x.py"))
+
+    def test_pointers_go_from_the_last_line_back_before_any_line_and_are_not_counted(self):
+        pins = [item(n, "pin %d" % n) for n in range(2)]
+        rows = [state(10 + n, "next", "Step %d" % n, n) for n in range(4)]
+        table = {value["id"]: ("e_5h2j8n3p0r6t", "d/" + "p" * 60 + ".md") for value in pins + rows}
+        asked = []
+
+        def reread(value):
+            asked.append(value["id"])
+            return table[value["id"]]
+        whole = summary.build_summary("Base", pins=pins, state=rows, zone=UTC, reread=reread)
+        self.assertEqual(memory_part(whole).count(" | reread: e_5h2j8n3p0r6t, d/"), 6)
+        # A pinned item is asked for with its record and a state line with its value, in the block's order.
+        self.assertEqual(asked, [value["id"] for value in pins + rows])
+        bare = summary.build_summary("Base", pins=pins, state=rows, zone=UTC)
+        self.assertNotIn("reread", bare.text)
+        # The memory part, its heading included, without pointers, and what each line's pointers add to it.
+        room = len(("## Memory\n\n" + memory_part(bare)).encode("utf-8"))
+        cost = len(summary.pointer_text(table[pins[0]["id"]]).encode("utf-8"))
+        seen = []
+        for kept in range(6, -1, -1):
+            # A base that leaves the memory part just the room for `kept` lines' pointers.
+            base = "b" * (summary.SUMMARY_BYTES - 2 - (room + cost * kept))
+            asked.clear()
+            shown = summary.build_summary(base, pins=pins, state=rows, zone=UTC, reread=reread)
+            text = memory_part(shown)
+            pointed = [line for line in text.split("\n") if " | reread: " in line]
+            seen.append(len(pointed))
+            # The lines that keep their pointers are the first ones of the block, pins first, and once the room
+            # left could hold no pointer, no line's pointers are asked for.
+            ordered = [line for line in text.split("\n") if line.startswith("- ")]
+            self.assertEqual(pointed, ordered[:len(pointed)])
+            self.assertEqual(asked, [value["id"] for value in pins + rows][:kept])
+            self.assertNotIn("Left out for room", text)
+            self.assertEqual(shown.pins, tuple(value["id"] for value in pins))
+            self.assertTrue(shown.text.startswith(base + "\n\n"))
+        self.assertEqual(seen, [6, 5, 4, 3, 2, 1, 0])
+        # Once every pointer is gone, lines go as they do without pointers, and the same lines and pins show; then
+        # no pointer is asked for.
+        for size in range(summary.SUMMARY_BYTES - 2 - room - 200, summary.SUMMARY_BYTES - 2 - room + 400, 37):
+            base = "b" * size
+            asked.clear()
+            pointed = summary.build_summary(base, pins=pins, state=rows, zone=UTC, reread=reread)
+            plain = summary.build_summary(base, pins=pins, state=rows, zone=UTC)
+            self.assertEqual(pointed.pins, plain.pins)
+            if "Left out for room" in plain.text:
+                self.assertEqual(pointed.text, plain.text)
+                self.assertEqual(asked, [])
+        # With room for two lines' pointers and a half, the third line's are asked for, do not fit, and no later
+        # line's are asked for.
+        base = "b" * (summary.SUMMARY_BYTES - 2 - (room + cost * 2 + cost // 2))
+        asked.clear()
+        text = memory_part(summary.build_summary(base, pins=pins, state=rows, zone=UTC, reread=reread))
+        self.assertEqual(sum(" | reread: " in line for line in text.split("\n")), 2)
+        self.assertEqual(asked, [value["id"] for value in pins + rows][:3])
+        # A line without pointers takes no room, so the lines after it still get theirs.
+        table[pins[1]["id"]] = ()
+        base = "b" * (summary.SUMMARY_BYTES - 2 - (room + cost * 2))
+        text = memory_part(summary.build_summary(base, pins=pins, state=rows, zone=UTC, reread=reread))
+        pointed = [line for line in text.split("\n") if " | reread: " in line]
+        self.assertEqual(len(pointed), 2)
+        self.assertIn(" | pin 0 | reread: ", pointed[0])
+        self.assertIn(": Step 0 | reread: ", pointed[1])
+
     def test_tc054_seven_notices_follow_table_order_and_count_two_left(self):
         kinds = ("pin-dropped", "temporary", "sync-unreachable", "retention", "key", "consent", "stopped")
         notices = [summary.Notice(kind, kind + ".") for kind in kinds]

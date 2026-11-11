@@ -1,10 +1,11 @@
 """TASK-094: recall for a prompt as the prompt hook runs it for a format-2 store (API-002 steps 5, 7 and 9).
 
-TC-205, TC-207, TC-209, TC-211, TC-212, TC-213, TC-215, TC-217 and TC-220 at
-the direct boundary, on made-up format-2 stores. Every embedding request goes
-to a local test server, with keys made up during the run; no provider is
-called. Nothing calls the module before the 0.3.0 activation, so the hook's
-own reading of its input, recording, timing line and exit stay C1's until then.
+TC-205, TC-207, TC-209, TC-211, TC-212, TC-213, TC-215, TC-217, TC-220 and
+TC-405 at the direct boundary, on made-up format-2 stores. Every embedding
+request goes to a local test server, with keys made up during the run; no
+provider is called. Nothing calls the module before the 0.3.0 activation, so the
+hook's own reading of its input, recording, timing line and exit stay C1's until
+then.
 """
 from datetime import timezone
 import json
@@ -22,7 +23,7 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import (clock, locks, model_client, model_embed, model_transport, model_usage, prompt_recall, raw_log,
-                        recall, start_memory)
+                        recall, request_budget, start_memory)
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
 
@@ -38,8 +39,8 @@ class PromptRecallTest(unittest.TestCase):
     configure, layer, saved, one_turn, items, write, usage = (
         Fixture.configure, Fixture.layer, Fixture.saved, Fixture.one_turn, Fixture.items, Fixture.write,
         Fixture.usage)
-    item, index, vectors, store, settings, lines = (
-        Ranking.item, Ranking.index, Ranking.vectors, Ranking.store, Ranking.settings, Ranking.lines)
+    item, index, vectors, store, settings, lines, quoting = (
+        Ranking.item, Ranking.index, Ranking.vectors, Ranking.store, Ranking.settings, Ranking.lines, Ranking.quoting)
 
     def setUp(self):
         self.Fixture.setUp(self)
@@ -93,8 +94,8 @@ class PromptRecallTest(unittest.TestCase):
         self.assertScores(result.candidates, [(high['id'], 0.9), (middle['id'], 0.5), (low['id'], 0.2)])
         self.assertEqual(result.block, '\n'.join([
             start_memory.REFERENCE,
-            '- %s | fact | user | %s | High holds.' % (high['id'], DAY),
-            '- %s | fact | user | %s | Middle holds.' % (middle['id'], DAY)]))
+            '- %s | fact | user | %s | High holds. | reread: %s' % (high['id'], DAY, self.said['id']),
+            '- %s | fact | user | %s | Middle holds. | reread: %s' % (middle['id'], DAY, self.said['id'])]))
         # One request, with the configured model and length, the memory key and the prompt alone.
         (headers, body), = self.server.requests
         self.assertEqual(body, {'model': MODEL, 'input': [QUESTION], 'dimensions': DIMS, 'encoding_format': 'float'})
@@ -126,6 +127,31 @@ class PromptRecallTest(unittest.TestCase):
         line = self.lines()[1]
         self.assertEqual((line['outcome'], line['items'], line['candidates']),
                          ('below', [], [{'item': low['id'], 'score': again.candidates[0][1]}]))
+
+    # SPEC-148: where to read a source again, through the prompt's embedding (TC-405)
+
+    def test_tc405_a_recalled_item_s_line_ends_with_its_entry_and_the_path_in_its_quote(self):
+        value, said = self.quoting('Locks', 'the fix in tests/test_memory_locks.py stayed')
+        self.store((value, toward(0.9)))
+        result = self.recall()
+        self.assertEqual(result.outcome, 'injected')
+        line = '- %s | fact | user | %s | Locks holds. | reread: %s, tests/test_memory_locks.py' % (value['id'], DAY,
+                                                                                                  said['id'])
+        self.assertEqual(result.block, '\n'.join([start_memory.REFERENCE, line]))
+        printed = json.loads(prompt_recall.output(result))['hookSpecificOutput']['additionalContext']
+        self.assertEqual(printed.split('\n')[-1], line)
+        self.assertNotIn('stayed', printed)
+
+    def test_tc405_recalled_items_with_long_pointers_lose_them_from_the_last_line_back_and_all_stay(self):
+        pairs = []
+        for n in range(5):
+            words = 'see d/%s.md and e/%s.md' % (chr(97 + n) * 75, chr(102 + n) * 75)
+            pairs.append((self.quoting('Item %d %s' % (n, 'w' * 60), words)[0], toward(0.9 - 0.05 * n, n + 1)))
+        values = self.store(*pairs)
+        result = self.recall()
+        self.assertEqual(result.items, tuple(item['id'] for item in values))
+        self.assertLess(request_budget.safe(result.block), recall.TOKENS)
+        self.assertEqual([' | reread: ' in row for row in result.block.split('\n')[1:]], [True, True, False, False, False])
 
     def test_the_block_is_printed_in_ascii_and_nothing_is_printed_without_one(self):
         value = self.item('Korean', text='훅은 한 스크립트가 맡습니다.')

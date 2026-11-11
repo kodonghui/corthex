@@ -1605,8 +1605,15 @@
             "$ref": "#/$defs/open-item"
           }
         },
+        "entries": {
+          "description": "From release 0.3.0, with an entry ID among the arguments: each entry named that this device's raw logs of the project hold, in the order named.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/open-entry"
+          }
+        },
         "missing": {
-          "description": "With item-not-found: the arguments that name no item of the project.",
+          "description": "With item-not-found: the arguments that name no item of the project and no entry that this device holds.",
           "type": "array",
           "items": {
             "$ref": "#/$defs/argument"
@@ -1712,6 +1719,41 @@
         "after": {
           "description": "With --around: the entry's text after the quote.",
           "type": "string"
+        }
+      }
+    },
+    "open-entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry",
+        "log",
+        "speaker",
+        "said",
+        "text",
+        "whole"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/entry-id"
+        },
+        "log": {
+          "$ref": "#/$defs/log"
+        },
+        "speaker": {
+          "$ref": "#/$defs/speaker"
+        },
+        "said": {
+          "$ref": "#/$defs/time"
+        },
+        "text": {
+          "description": "The entry's first 2,000 characters, each forgotten range one [forgotten] mark.",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "whole": {
+          "description": "false when the text was cut.",
+          "type": "boolean"
         }
       }
     },

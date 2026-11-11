@@ -11,8 +11,10 @@ out of the session can come back, and reads the files of the best items, so
 that an item that the index still holds as current but that is no longer
 current, or that a tombstone names, is never injected (REQ-037). The five best
 eligible items are the line's candidates, also below the threshold; those at or
-above it are injected, best first, and dropped from the end until the safe
-estimate of the whole block is under 600 tokens.
+above it are injected, best first, each line ending with where to read its
+source again (SPEC-148), and until the safe estimate of the whole block is
+under 600 tokens the lines' pointers go, from the last line back, and then the
+items from the end.
 
 It reads the index, the injection log and the item files without a lease, as
 stage 05 lets a reader, and writes nothing: the prompt hook prints the block
@@ -85,9 +87,15 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
         excluded = _excluded(memory, root, host, session, deadline)
         scored = _scores(rows, hits, identifiers, point, dims, excluded, deadline)
         candidates = _candidates(memory, root / 'layer', scored, deadline, zone)
-        lines = [(item, score, line) for item, score, line in candidates if score >= threshold]
+        # Only the lines at or above the threshold look for their pointers.
+        lines = [[item, score, line, start_memory.pointer_text(start_memory.item_pointers(value))]
+                 for item, score, line, value in candidates if score >= threshold]
         while lines and request_budget.safe(_block(lines)) >= TOKENS:
-            lines.pop()
+            pointed = [kept for kept in lines if kept[3]]
+            if pointed:
+                pointed[-1][3] = ''  # the pointers go before the items, from the last line back (SPEC-148)
+            else:
+                lines.pop()
         memory.check(deadline)
     except locks.LockBusy:
         return Recall('late')
@@ -95,11 +103,11 @@ def rank(memory, project, host, session, prompt, vector, deadline, *, settings=N
         if not _late(error, deadline):
             raise
         return Recall('late')
-    shown = tuple((item, score) for item, score, _ in candidates)
+    shown = tuple((item, score) for item, score, _, _ in candidates)
     if not lines:
         return Recall('below', candidates=shown)
-    return Recall('injected', _block(lines), tuple(item for item, _, _ in lines),
-                  tuple(score for _, score, _ in lines), shown)
+    return Recall('injected', _block(lines), tuple(item for item, _, _, _ in lines),
+                  tuple(score for _, score, _, _ in lines), shown)
 
 
 def ready(memory, project, deadline, *, settings=None):
@@ -282,7 +290,8 @@ def _scores(rows, hits, identifiers, point, dims, excluded, deadline):
 
 
 def _candidates(memory, folder, scored, deadline, zone):
-    """[(item, score, line)] of the five best items whose files say they are current and that no tombstone names."""
+    """[(item, score, line, record)] of the five best items whose files say they are current and that no tombstone
+    names; `record` gives where to read the item's source again (SPEC-148)."""
     forgotten = _forgotten(memory, folder)
     found = []
     for item, score in scored:
@@ -298,7 +307,7 @@ def _candidates(memory, folder, scored, deadline, zone):
             raise ValueError('item file name differs from its ID')
         line = start_memory.item_line(value, zone) if value['status'] == 'current' else None
         if line is not None:
-            found.append((item, score, line))
+            found.append((item, score, line, value))
     return found
 
 
@@ -317,4 +326,4 @@ def _forgotten(memory, folder):
 
 def _block(lines):
     """The recall block: the first line about reference material and the item lines, nothing before or after."""
-    return '\n'.join([start_memory.REFERENCE] + [line for _, _, line in lines])
+    return '\n'.join([start_memory.REFERENCE] + [line + more for _, _, line, more in lines])

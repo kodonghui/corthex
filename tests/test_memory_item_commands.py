@@ -1,7 +1,7 @@
-"""TASK-040: the list and open commands (API-020, API-022; SPEC-025, SPEC-020).
+"""TASK-040: the list and open commands (API-020, API-022; SPEC-025, SPEC-020); TASK-112: open of a raw entry.
 
-TC-223, TC-227 and TC-228, and the open part of TC-222, at the handlers'
-boundary, on made-up format-2 stores. The runner parses both commands but hands
+TC-223, TC-227, TC-228 and TC-406, and the open part of TC-222, at the
+handlers' boundary, on made-up format-2 stores. The runner parses both commands but hands
 them to no handler before the 0.3.0 activation, which a test checks, so these
 are the handlers' own results, called as the runner will call them.
 """
@@ -17,8 +17,8 @@ from unittest import mock
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
-from memory_lib import clock, commands, files, forget_plan, item_commands, item_types, raw_log, run_listing
-from memory_lib import history_recovery, worker_support
+from memory_lib import clock, commands, files, forget_plan, item_commands, item_types, raw_log, request_inputs
+from memory_lib import history_recovery, run_listing, worker_support
 import test_memory_commands as commands_fixture
 import test_memory_curation_worker as worker_fixture
 import test_memory_recall as recall_fixture
@@ -466,12 +466,18 @@ class ItemCommandsTest(unittest.TestCase):
                                          'matches': forget_plan.closest(lines, [made_up, foreign['id']])})
         self.assertEqual(found['data']['matches'], lines)
         self.assertEqual(found['say'], item_commands.MISSING)
-        # The found items come with the missing ones; a forgotten item and an entry ID name no item.
-        mixed = self.open(kept['id'], forgotten['id'], entry, 'raw logs')
-        self.assertEqual((mixed['code'], mixed['data']['missing']), ('item-not-found', [forgotten['id'], entry,
+        # The found items come with the missing ones; a forgotten item and an entry ID that names no entry of this
+        # device name nothing, while an entry that this device holds opens (TASK-112).
+        unknown = ident('e')
+        mixed = self.open(kept['id'], forgotten['id'], unknown, 'raw logs', entry)
+        self.assertEqual((mixed['code'], mixed['data']['missing']), ('item-not-found', [forgotten['id'], unknown,
                                                                                        'raw logs']))
         self.assertEqual([line['item'] for line in mixed['data']['items']], [kept['id']])
-        self.assertEqual(mixed['say'], item_commands.MISSING + ' data.items holds the 1 found.')
+        self.assertEqual([line['entry'] for line in mixed['data']['entries']], [entry])
+        self.assertEqual(mixed['say'], item_commands.MISSING_ENTRIES +
+                         ' data.items holds the 1 found and data.entries holds the 1 found.')
+        alone = self.open(unknown)
+        self.assertEqual((alone['data']['entries'], alone['say']), ([], item_commands.MISSING_ENTRIES))
         self.assertEqual(self.snapshot(), before)
         # A name that is not an item ID never reaches a file, not even another project's.
         sneaky = '../../../other/layer/items/' + foreign['id']
@@ -480,6 +486,194 @@ class ItemCommandsTest(unittest.TestCase):
         # Another project's own items are its own.
         theirs = self.open(foreign['id'], project='other')
         self.assertEqual((theirs['code'], theirs['data']['items'][0]['item']), ('ok', foreign['id']))
+
+    # SPEC-148: open of a raw entry (TC-406)
+
+    def test_tc406_open_shows_an_entry_that_this_device_holds_with_at_most_2000_characters_of_its_text(self):
+        secret, pending = 'a private remark', 'another private remark'
+        text = 'Before ' + secret + ' then keep the hooks and ' + pending + ' after.'
+        long, answer = self.raw.turn('x' * 1990 + 'y' * 1010, 'Done.')
+        marked, _ = self.raw.turn(text, 'Noted.')
+        start = text.index(secret)
+        # A forget's rewrite filled the first range; the second is a stopped forget's tombstone.
+        marked['text'] = text[:start] + '\ufffd' * len(secret) + text[start + len(secret):]
+        marked['forgotten'] = [[start, start + len(secret)]]
+        self.write()
+        self.tombstone(self.saved(marked, pending))
+        unknown = ident('e')
+        found = self.open(self.said['id'], long['id'], marked['id'], answer['id'], unknown, self.said['id'])
+        self.assertEqual((found['outcome'], found['code']), ('refused', 'item-not-found'))
+        self.assertEqual((found['data']['items'], found['data']['missing']), ([], [unknown]))
+        entries = found['data']['entries']
+        self.assertEqual(entries[0], {'entry': self.said['id'], 'log': self.raw.name, 'speaker': 'user',
+                                      'said': self.said['at'], 'text': self.said['text'], 'whole': True})
+        self.assertEqual([(line['entry'], line['speaker'], line['whole']) for line in entries[1:]], [
+            (long['id'], 'user', False), (marked['id'], 'user', True), (answer['id'], 'agent', True)])
+        self.assertEqual(entries[1]['text'], 'x' * 1990 + 'y' * 10)
+        self.assertEqual(entries[2]['text'], 'Before [forgotten] then keep the hooks and [forgotten] after.')
+        self.assertEqual(entries[3]['text'], 'Done.')
+        for words in (secret, pending):
+            self.assertNotIn(words, json.dumps(found))
+        self.assertEqual(found['say'], item_commands.MISSING_ENTRIES + ' data.entries holds the 4 found.')
+        held = self.open(self.said['id'], long['id'])
+        self.assertEqual((held['code'], held['say']), ('ok', '2 entries of this device, with their texts; 1 of them '
+                                                       'cut.'))
+        self.assertEqual(self.open(long['id'])['say'], '1 entry of this device, with its text, which is cut.')
+        self.assertEqual(self.open(answer['id'])['say'], '1 entry of this device, with its text.')
+
+    def test_an_entry_that_the_recording_cut_is_not_whole(self):
+        # A text cut when it was recorded (TBL-007 `cut`, SPEC-002) is not whole however short it is.
+        cut, _ = self.raw.turn('The first part of a long prompt', 'Done.')
+        cut['cut'] = 600000
+        self.write()
+        found = self.open(cut['id'])
+        self.assertEqual([(line['text'], line['whole']) for line in found['data']['entries']],
+                         [('The first part of a long prompt', False)])
+        self.assertEqual(found['say'], '1 entry of this device, with its text, which is cut.')
+
+    def test_a_forgotten_range_at_the_2000th_character_is_left_out_rather_than_cut(self):
+        said, _ = self.raw.turn('a' * 1995 + 'private words' + 'b', 'Done.')
+        said['text'] = 'a' * 1995 + '\ufffd' * len('private words') + 'b'
+        said['forgotten'] = [[1995, 1995 + len('private words')]]
+        self.write()
+        line = self.open(said['id'])['data']['entries'][0]
+        self.assertEqual((line['text'], line['whole']), ('a' * 1995, False))
+        self.assertEqual(item_commands.entry_line(dict(said, text='a' * 1989 + '\ufffd' * 5 + 'b',
+                                                        forgotten=[[1989, 1994]]), self.raw.name)['text'],
+                         'a' * 1989 + '[forgotten]')
+
+    def test_an_entry_that_is_a_boundary_past_retention_or_with_its_item_found_is_named_once(self):
+        value = self.saved(self.said, HOOKS)
+        self.layer([value])
+        self.configure(retention={'days': 7})
+        said = datetime.strptime(self.said['at'], '%Y-%m-%dT%H:%M:%S.%fZ').replace(tzinfo=timezone.utc)
+        boundary = self.raw.entries[0]['id']
+        found = self.open(value['id'], self.said['id'], boundary, when=said + timedelta(days=7))
+        self.assertEqual(found['data']['missing'], [boundary])  # a session boundary has no speaker and no text
+        self.assertEqual(([line['item'] for line in found['data']['items']],
+                          [line['entry'] for line in found['data']['entries']]), ([value['id']], [self.said['id']]))
+        # Past the retention period the entry is gone for `open`, as retention deletes it next (SPEC-025).
+        late = self.open(self.said['id'], when=said + timedelta(days=7, seconds=1))
+        self.assertEqual((late['code'], late['data']['entries'], late['data']['missing']),
+                         ('item-not-found', [], [self.said['id']]))
+
+    def test_only_the_raw_logs_that_hold_a_named_entry_s_id_are_read_as_entries(self):
+        other = worker_fixture.Raw('other-session-112')
+        theirs, _ = other.turn('Another session.', 'Yes.')
+        (self.root / 'raw' / (other.name + '.jsonl')).write_bytes(other.data())
+        (self.root / 'raw' / (self.raw.name + '.lock')).write_bytes(b'')
+        # A folder under a raw log's name holds no entry and is not read.
+        (self.root / 'raw' / (worker_fixture.Raw('folder-session-112').name + '.jsonl')).mkdir()
+        before = self.snapshot()
+        with mock.patch.object(request_inputs, 'entries', wraps=request_inputs.entries) as parsed:
+            found = self.open(theirs['id'])
+            self.assertEqual(([line['log'] for line in found['data']['entries']], parsed.call_count), ([other.name], 1))
+            # An ID that no log holds takes the scan through every log, the folder too, and parses none of them.
+            unknown = ident('e')
+            missing = self.open(theirs['id'], unknown)
+            self.assertEqual(([line['entry'] for line in missing['data']['entries']], missing['data']['missing'],
+                              parsed.call_count), ([theirs['id']], [unknown], 2))
+            # Without an entry ID no raw log is read as entries.
+            self.open(ident('i'))
+            self.assertEqual(parsed.call_count, 2)
+        self.assertEqual(self.snapshot(), before)
+        # The words around a quote and an entry ID in one `open` read the quote's log as entries once.
+        value = self.saved(self.said, HOOKS)
+        self.layer([value])
+        with mock.patch.object(request_inputs, 'entries', wraps=request_inputs.entries) as parsed:
+            together = self.open(value['id'], self.said['id'], around=10)
+        self.assertEqual(([line['item'] for line in together['data']['items']],
+                          [line['entry'] for line in together['data']['entries']],
+                          [call.args[1] for call in parsed.call_args_list]),
+                         ([value['id']], [self.said['id']], [self.raw.name]))
+        self.assertEqual(together['data']['items'][0]['quotes'][0]['held'], 'here')
+
+    def test_a_raw_log_that_goes_while_open_reads_it_holds_no_entry(self):
+        # Retention can delete a raw log between its look and its read, while `open` holds only the layer lease.
+        path = self.root / 'raw' / (self.raw.name + '.jsonl')
+        read = run_listing._reader
+
+        def reader(memory, deadline):
+            real = read(memory, deadline)
+
+            def gone(target):
+                if target == path:
+                    path.unlink()
+                return real(target)
+            return gone
+        with mock.patch.object(run_listing, '_reader', reader):
+            found = self.open(self.said['id'])
+        self.assertEqual((found['code'], found['data']['entries'], found['data']['missing']),
+                         ('item-not-found', [], [self.said['id']]))
+
+    def test_an_id_that_a_raw_log_holds_twice_opens_its_first_entry_with_or_without_the_words_around_a_quote(self):
+        # A later line under the same ID, as a replayed append can leave it, which the entry parser keeps by its seq.
+        seq = self.raw.entries[-1]['seq'] + 1
+        self.raw.entries.append(dict(self.said, seq=seq, turn=seq, text=HOOKS + ' was said again, later.'))
+        self.write()
+        self.assertEqual([entry['text'] for entry in request_inputs.entries(self.root, self.raw.name)
+                          if entry['id'] == self.said['id']], [self.said['text'], HOOKS + ' was said again, later.'])
+        value = self.saved(self.said, HOOKS)
+        self.layer([value])
+        alone = self.open(self.said['id'])
+        self.assertEqual([line['text'] for line in alone['data']['entries']], [self.said['text']])
+        together = self.open(value['id'], self.said['id'], around=10)
+        self.assertEqual(together['data']['entries'], alone['data']['entries'])
+        quote = together['data']['items'][0]['quotes'][0]
+        self.assertEqual((quote['held'], quote['after']), ('here', self.said['text'][len(HOOKS):][:10]))
+
+    def test_a_raw_folder_that_is_a_file_holds_no_entry(self):
+        value = self.saved(self.said, HOOKS)
+        self.layer([value])
+        raw = self.root / 'raw'
+        for path in raw.iterdir():
+            path.unlink()
+        raw.rmdir()
+        raw.write_bytes(self.raw.data())
+        found = self.open(self.said['id'])
+        self.assertEqual((found['outcome'], found['code'], found['data']['entries'], found['data']['missing']),
+                         ('refused', 'item-not-found', [], [self.said['id']]))
+        # An item whose quote this device wrote is shown, its entry deleted, with or without the words around it.
+        for size in (None, 10):
+            with self.subTest(around=size):
+                both = self.open(value['id'], self.said['id'], around=size)
+                self.assertEqual((both['code'], [line['item'] for line in both['data']['items']],
+                                  both['data']['items'][0]['quotes'][0]['held'], both['data']['entries'],
+                                  both['data']['missing']),
+                                 ('item-not-found', [value['id']], 'deleted', [], [self.said['id']]))
+
+    def test_a_raw_log_that_windows_refuses_to_look_at_for_a_moment_is_looked_at_again(self):
+        # The curator's rewrite of a raw log can leave it delete-pending on Windows for a moment.
+        path = self.root / 'raw' / (self.raw.name + '.jsonl')
+        check, refused = self.memory.fence.check, []
+
+        def looking(target, *args, **kwargs):
+            if target == path and not refused:
+                refused.append(True)
+                raise PermissionError(13, 'refused')
+            return check(target, *args, **kwargs)
+        with mock.patch.object(files, '_WINDOWS', True), \
+                mock.patch.object(self.memory.fence, 'check', side_effect=looking):
+            found = self.open(self.said['id'])
+        self.assertEqual((refused, [line['entry'] for line in found['data']['entries']]), ([True], [self.said['id']]))
+
+    def test_a_raw_log_that_a_link_reaches_raises_as_an_item_record_does(self):
+        other = worker_fixture.Raw('other-session-112')
+        theirs, _ = other.turn('Another session.', 'Yes.')
+        (self.root / 'raw' / (other.name + '.jsonl')).write_bytes(other.data())
+        path = self.root / 'raw' / (self.raw.name + '.jsonl')
+        outside = self.folder.parent / 'outside.jsonl'
+        outside.write_bytes(path.read_bytes())
+        path.unlink()
+        try:
+            os.symlink(str(outside), str(path))
+        except (OSError, NotImplementedError):
+            self.skipTest('symbolic links are not available')
+        # Whichever log holds the named entry, the scan reads the linked one's bytes no further than the fence.
+        for name in (self.said['id'], theirs['id'] if other.name > self.raw.name else self.said['id']):
+            with self.assertRaises(worker_support.UnsafePath):
+                self.open(name)
+        self.assertEqual(outside.read_bytes(), self.raw.data())
 
     def test_matches_are_the_lines_most_like_the_missing_arguments(self):
         kept = dated(self.item('Keep the raw logs on this device'), '2026-10-01')

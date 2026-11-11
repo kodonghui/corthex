@@ -6,15 +6,16 @@ that are still current, oldest pin first, and the current state's lines that
 the validity view keeps (TBL-013), within the start hook's deadline. It reads
 without the layer lease and writes nothing to the curated layer, and of the
 item files it reads only those that the summary needs: the pinned items, the
-items that decision lines cite and the two items of a conflict candidate. A
-file that another process is replacing on Windows is read again within the
-deadline. The one lease it takes is the notice-counter lease (TBL-010): once
-the conflict line fits among the notices, it reserves one showing of the
-oldest eligible candidate, within a quarter of a second. A reservation that
-fails leaves the line out and counts nothing, unless it failed after its move,
-which uses up that showing as a stop before the output does; one that holds
-goes out with the summary, also when the deadline passes while the summary is
-built.
+items that decision lines cite, the two items of a conflict candidate and, for
+where to read the lines' sources again (SPEC-148), at most 30 other items that
+the lines cite. A file that another process is replacing on Windows is read
+again within the deadline. The one lease it takes is the notice-counter lease
+(TBL-010): once the conflict line fits among the notices, it reserves one
+showing of the oldest eligible candidate, within a quarter of a second. A
+reservation that fails leaves the line out and counts nothing, unless it failed
+after its move, which uses up that showing as a stop before the output does;
+one that holds goes out with the summary, also when the deadline passes while
+the summary is built.
 
 When the deadline passes, the memory part is the one line `Memory could not
 be read in time.`, and when anything else fails it is the line about an
@@ -34,19 +35,28 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import os
 import re
+import stat
 
 from . import (base, clock, conflict_counts, conflict_types, curation, curation_triggers, files, format2,
-               history_recovery, injection_log, item_types, locks, model_access, start_memory, state_types)
+               history_recovery, injection_log, item_types, locks, model_access, start_memory, state_types,
+               worker_support)
 
 Notice = start_memory.Notice
-LayerView = namedtuple('LayerView', 'read current lines')
+LayerView = namedtuple('LayerView', 'read current lines known')
 WEEK = timedelta(days=7)
 STORED = {'curation-failed.json': 'curation-failed', 'consolidation-failed.json': 'consolidation-failed',
           'rebuilt.json': 'rebuilt'}
 PINNED = re.compile(r'pin-(i_' + format2._DIGITS + r')\.json\Z')
 PIN_KINDS = ('pin-moved', 'pin-dropped', 'pin-restored', 'pin-removed')
 TITLE_BYTES = 40
+POINTER_READS = 30  # the most item files that the summary reads only for the lines' pointers (SPEC-148)
+# What makes a cited item unreadable for a pointer, which it then does not give; a replaced store still ends the
+# memory part, and so does the deadline, which `compose` checks after the summary.
+UNREADABLE = (OSError, ValueError, UnicodeError, RecursionError, worker_support.UnsafePath)
 RESERVE_SECONDS = 0.25  # the conflict reservation: its wait for the notice-counter lease and its write
+# The reads for pointers end this long before the deadline, which leaves the summary its checks and the reservation
+# its wait; an item not read by then gives no pointer.
+POINTER_MARGIN = 0.3
 STEP_SECONDS = 1.0   # step 7's reads and deletions, after the summary is printed
 TIMEOUT = Notice('unreadable', 'Memory could not be read in time.')
 _read = files.fence_read  # reads without a lease: again on a Windows sharing violation, until the deadline
@@ -111,19 +121,24 @@ def compose(memory, project, base_text, deadline, *, settings=None, environment=
         notices = _lasting(memory, root, settings, deadline, environment, now, zone)
         stored = _stored(memory, root, deadline)
         notices.extend(notice for notice, _, _ in stored)
-        pins, lines, conflict = _layer(memory, root, deadline)
-        reserved = None
+        pins, lines, conflict, reread = _layer(memory, root, deadline)
+        reserved = summary = None
         if conflict is not None:
             line, candidate = conflict
             notices.append(line)
             if any(shown is line for shown in start_memory.fitting(notices)[0]):
+                # The summary is built before the reservation, with the item reads that its pointers need, so that
+                # a deadline in those reads uses up no showing that no summary shows.
+                summary = start_memory.build_summary(base_text, notices, pins, lines, zone=zone, reread=reread)
                 memory.check(deadline)
                 if conflict_counts.reserve(memory, root, candidate,
                                            min(deadline, clock.now() + RESERVE_SECONDS)) is None:
                     notices.pop()
+                    summary = None
                 else:
                     reserved = candidate
-        summary = start_memory.build_summary(base_text, notices, pins, lines, zone=zone)
+        if summary is None:
+            summary = start_memory.build_summary(base_text, notices, pins, lines, zone=zone, reread=reread)
         # A reserved showing is used up, so it goes out even when the deadline passed while the summary was
         # built; the store is still checked.
         memory.check(deadline if reserved is None else max(deadline, clock.now() + RESERVE_SECONDS))
@@ -264,7 +279,8 @@ def _said(value):
 
 
 def _layer(memory, root, deadline):
-    """(pinned items, oldest pin first; the state lines that the validity view keeps; the conflict line).
+    """(pinned items, oldest pin first; the state lines that the validity view keeps; the conflict line; what
+    finds a pinned item's or a line's pointers, `_pointers`, or None).
 
     The conflict line is (notice, candidate ID) for the oldest eligible
     candidate whose two items are current, or None. A project without a layer,
@@ -273,20 +289,69 @@ def _layer(memory, root, deadline):
     """
     view = layer_view(memory, root, deadline)
     if view is None:
-        return (), (), None
-    read, current, lines = view
+        return (), (), None, None
+    read, current, lines, known = view
     pins = item_types.parse_pins(read('pins.json'))['pins']
     pinned = start_memory.pinned(pins, current)
     conflicts = conflict_types.parse_conflicts(read('conflicts.json'))
     total = len(conflict_types.open_candidates(conflicts))
     counts = conflict_counts.read(memory, root, deadline) if total else None
+    conflict = None
     for candidate in conflict_counts.eligible(conflicts, counts):
         pair = [current(item) for item in candidate['items']]
         if None not in pair:
             text = CONFLICT % (pair[0]['id'], _title(pair[0]['title']), pair[1]['id'], _title(pair[1]['title']),
                                total)
-            return tuple(pinned), tuple(lines), (Notice('conflict', text), candidate['id'])
-    return tuple(pinned), tuple(lines), None
+            conflict = (Notice('conflict', text), candidate['id'])
+            break
+    return tuple(pinned), tuple(lines), conflict, _pointers(memory, root, pinned, current, known, deadline)
+
+
+def _pointers(memory, root, pinned, current, known, deadline):
+    """`reread(value)`: where to read a pinned item's or a state line's sources again (SPEC-148), found only when
+    `build_summary` asks, which it does in the block's order for the lines whose pointers fit.
+
+    A pinned item's record gives its deciding quote. A cited item is looked
+    at once, however many lines cite it: an item already read gives its
+    deciding quote as it is, and of the others the first 30 that the lines
+    need are read, until 0.3 seconds before the deadline (POINTER_MARGIN).
+    A cited item that cannot be read by then, or that is not current, gives
+    no pointer, as does one whose place cannot be looked at, after
+    `files._retry`'s wait on Windows. Anything but a file in an item's place,
+    such as a folder, which Windows refuses to read until the deadline, gives
+    none without a read.
+    """
+    pins = {value['id'] for value in pinned}
+    quotes, reads, until = {}, [POINTER_READS], deadline - POINTER_MARGIN
+
+    def look(item):
+        if not known(item):
+            if not reads[0] or clock.now() >= until:
+                return None
+            reads[0] -= 1
+            path = root / 'layer' / 'items' / (item + '.json')
+            try:
+                info = files._retry(lambda: memory.fence.check(path), until)
+            except UNREADABLE:
+                return None
+            if info is None or not stat.S_ISREG(info.st_mode):
+                return None
+        try:
+            value = current(item, until)
+        except UNREADABLE + (locks.LockBusy,):  # a read still waiting when the reads for pointers end gives none
+            return None
+        return None if value is None else value['quotes'][0]
+
+    def quote(item):
+        if item not in quotes:
+            quotes[item] = look(item)
+        return quotes[item]
+
+    def reread(value):
+        if value['id'] in pins:
+            return start_memory.item_pointers(value)
+        return start_memory.line_pointers(value, quote)
+    return reread
 
 
 def layer_view(memory, root, deadline, *, decisions=True):
@@ -294,9 +359,11 @@ def layer_view(memory, root, deadline, *, decisions=True):
     (TBL-017); the compaction brief (TASK-113) reads the state lines through it too.
 
     `read(name)` reads a layer file within the deadline, a missing one as
-    empty; `current(item)` is the item's record while it is current and no
-    tombstone names it, else None; `lines` are the state lines that the
-    validity view keeps (TBL-013). It reads the tombstones, the state and its
+    empty; `current(item, until=None)` is the item's record while it is
+    current and no tombstone names it, else None, read by `until` when that
+    comes before the deadline; `lines` are the state lines that the
+    validity view keeps (TBL-013); `known(item)` is whether `current` has its
+    answer without reading a file. It reads the tombstones, the state and its
     removals, and of the item files only those that decision lines cite. With
     `decisions` false it reads no item file and gives no `current`: the
     decision lines, whose validity needs their items, are left out, and the
@@ -317,13 +384,14 @@ def layer_view(memory, root, deadline, *, decisions=True):
     private, forgotten = _tombstones(memory, folder, root.name, deadline)
     cache = {}
 
-    def current(item):
+    def current(item, until=None):
         """The item while it is current and no tombstone names it, else None."""
         if item in forgotten:
             return None
         if item not in cache:
+            path = folder / 'items' / (item + '.json')
             try:
-                value = item_types.parse_item(_read(memory, folder / 'items' / (item + '.json'), deadline))
+                value = item_types.parse_item(_read(memory, path, deadline if until is None else min(deadline, until)))
             except FileNotFoundError:
                 value = None
             if value is not None and value['id'] != item:
@@ -332,11 +400,14 @@ def layer_view(memory, root, deadline, *, decisions=True):
         value = cache[item]
         return value if value is not None and value['status'] == 'current' else None
 
+    def known(item):
+        return item in forgotten or item in cache
+
     if not decisions:
         current = None
     lines = _lines(state_types.parse_state(read('state.json')), state_types.parse_removed(read('state-removed.json')),
                    private, current)
-    return LayerView(read, current, lines)
+    return LayerView(read, current, lines, known)
 
 
 def _lines(state, removed, private, current):
