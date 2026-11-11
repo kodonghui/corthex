@@ -1184,7 +1184,7 @@
         "command": "delete-project",
         "outcome": "confirm",
         "code": "ok",
-        "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin. Sync is off, so other devices keep theirs.",
+        "say": "This deletes the memory of corthex on this device: 14 items, 212 raw log entries and 1 pin, and turns memory off for it. A curation that runs for it now stops and applies nothing; the usage log keeps its lines. Sync is off, so other devices keep theirs.",
         "data": {
           "project": "corthex",
           "deleted": {
