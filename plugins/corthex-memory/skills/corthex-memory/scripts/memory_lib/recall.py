@@ -20,8 +20,8 @@ It reads the index, the injection log and the item files without a lease, as
 stage 05 lets a reader, and writes nothing: the prompt hook prints the block
 and appends the injection log line (TASK-094). The index's check and its rows
 come from one read, and a file that another process is replacing on Windows
-is read again within the deadline, as the start summary reads. Nothing calls
-this module before the 0.3.0 activation.
+is read again within the deadline, as the start summary reads. From release
+0.3.0 the prompt hook reaches it through `prompt_recall`, for a format-2 store.
 """
 from collections import Counter
 from dataclasses import dataclass

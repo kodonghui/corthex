@@ -25,15 +25,16 @@ outcome, the injected items and their scores and the candidates, also when
 nothing is injected. The line names the prompt's raw entry when the prompt was
 recorded; a prompt that recording leaves out is still recalled (SPEC-006).
 
-Nothing calls this module before the 0.3.0 activation, when the prompt hook
-uses it for format-2 stores; until then the installed prompt hook keeps C1
-behaviour.
+From release 0.3.0 the prompt hook uses it for a format-2 store
+(`c2_hooks.prompt`), and SQLite and the request modules load only once the key
+and the threshold are there; below 0.3.0, and for any other store, the prompt hook
+keeps C1 behaviour.
 """
 from dataclasses import dataclass
 import json
 import struct
 
-from . import injection_log, locks, model_access, model_embed, recall as ranking
+from . import injection_log, locks, model_access
 
 EMBED_SECONDS = 0.8  # the prompt's embedding request ends this long after the hook's start (API-010)
 RANKED = ('injected', 'below')
@@ -68,6 +69,8 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
     values = settings.values['recall']
     if values.get('threshold') is None:
         return Result('no-threshold')
+    # SQLite and the request modules load only once recall can run.
+    from . import model_embed, recall as ranking
     skipped = ranking.skipped(prompt, values['skip'])
     if skipped is not None:
         return Result(skipped)

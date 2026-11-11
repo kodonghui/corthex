@@ -25,13 +25,15 @@ retention leaves them. Nothing of the summary goes into a file, a log line or
 a request.
 
 `pending`, `line` and `clear` are the prompt hook's steps 6 to 8: the
-session's check, read under its raw log lock; the line that names its missing
+session's check, read under its raw log lock, or with `waiting` whether it has
+one, without the lock; the line that names its missing
 parts; and the check's deletion under the same lock once the line is printed,
 only while the file still holds the bytes that were read, so that a check
 that a later compaction wrote stays for the next prompt.
 
-Nothing calls this module before the 0.3.0 activation, when the PostCompact
-entry joins `hooks/hooks.json` and the prompt hook adds the line.
+From release 0.3.0 the compaction check hook calls `check`, and the prompt
+hook `pending`, `line` and `clear`, for a format-2 store (`c2_hooks`); the
+PostCompact entry joins `hooks/hooks.json` with the release.
 """
 import contextlib
 from dataclasses import dataclass
@@ -306,6 +308,11 @@ def _age(memory, path, copies, deadline):
     return (datetime.fromtimestamp(max(times), timezone.utc), None) if times else None
 
 
+def waiting(memory, project, host, session):
+    """Whether the session has a check in its place, without a lock; a link or a folder there raises UnsafePath."""
+    return _file(memory, _place(memory, project, host, session)[2]) is not None
+
+
 def pending(memory, project, host, session, deadline):
     """API-002 step 6: the session's check as a Pending, or None; read under the session's raw log lock.
 
@@ -319,7 +326,7 @@ def pending(memory, project, host, session, deadline):
     root, log, path = _place(memory, project, host, session)
     if _file(memory, path) is None:
         return None
-    with _locked(memory, root, log, path, deadline, 'recall') as guard:
+    with _locked(memory, root, log, path, deadline, 'compaction') as guard:
         guard()
         try:
             data = files.fence_read(memory, path, deadline)
@@ -338,7 +345,7 @@ def clear(memory, project, host, session, shown, deadline):
     later compaction wrote stays for the next prompt. True when it was deleted.
     """
     root, log, path = _place(memory, project, host, session)
-    with _locked(memory, root, log, path, deadline, 'recall') as guard:
+    with _locked(memory, root, log, path, deadline, 'compaction') as guard:
         try:
             if files.fence_read(memory, path, deadline) != shown.data:
                 return False

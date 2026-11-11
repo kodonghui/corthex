@@ -10,8 +10,8 @@ that the session's latest start showed and the items that the last three
 prompts since that start injected (SPEC-023, TASK-093). The file is named as
 the session's raw log file (TBL-007) and is written in a left-out folder too,
 where no raw log is, by one append under that raw log file's lock. Retention
-deletes lines by their own time (SPEC-009). Nothing writes it before the 0.3.0
-activation.
+deletes lines by their own time (SPEC-009). The start and prompt hooks write
+it from release 0.3.0, for a format-2 store.
 """
 import math
 

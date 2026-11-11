@@ -1,7 +1,8 @@
 """SPEC-010 curation triggers for the end-of-turn and session end hooks (API-003, API-004).
 
-Not wired: no hook calls this module until the C2 hooks are connected, so
-installed C1 behaviour is unchanged. A hook calls `start` after it recorded its
+From release 0.3.0 the hooks call it for a format-2 store (`c2_hooks.trigger`,
+TASK-117); below it, and for any other store, no hook does, so C1's behaviour is
+unchanged. A hook calls `start` after it recorded its
 entry and released the raw lease. The check lists the project's `unprocessed/`
 folder and reads the curation record (TBL-009) without a lease; it opens no raw
 log and writes nothing (TBL-008). A met trigger starts the memory worker through

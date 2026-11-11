@@ -7,7 +7,8 @@ and is never restored: when it is missing, damaged or unreadable, or names no
 count for a candidate, that candidate counts as shown three times. A lost
 write or an older copy can therefore never show a candidate again, and
 closing, reopening or removing an individual notice never lowers a count.
-Nothing here is wired to a hook or command before the 0.3.0 activation.
+From release 0.3.0 the start hook reaches it through the start summary, and
+the item changes through `item_io`, for a format-2 store.
 """
 import json
 import os

@@ -212,6 +212,9 @@ class RawLog:
     def __init__(self, memory_store, project, host, session):
         folder = base.project_folder_name(project)
         self.store, self.project = memory_store, project
+        # The hooks' format-2 binding (c2_store.HookStore, from release 0.3.0) takes the raw lock and checks the
+        # log's paths through its path fence, so that a link inside the store is refused, as C2 refuses it.
+        self.fenced = getattr(memory_store, "FENCED_RAW", False) is True
         self.host, self.session, self.log = host, session, log_name(host, session)
         root = self.store.folder / "projects" / folder
         self.path = root / "raw" / (self.log + ".jsonl")
@@ -295,7 +298,10 @@ class RawLog:
                 header = self.store.record(report, deadline=deadline, recording=True)
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
-            lock = locks.Lock(self.path.with_suffix(".lock"), "raw", header["device"])
+            if self.fenced:
+                lock = self.store._lock(self.path.with_suffix(".lock"), "raw", header["device"])
+            else:
+                lock = locks.Lock(self.path.with_suffix(".lock"), "raw", header["device"])
             lock.acquire(deadline, at_least_once=True)
         except locks.LockBusy:
             report("lock-busy", None)
@@ -304,6 +310,9 @@ class RawLog:
         try:
             def check():
                 lock.check()
+                if self.fenced:
+                    self.store._path_check(self.path)
+                    self.store._path_check(self.markers)
                 if self.logger._stamp(record_path) != stamp:
                     raise locks.LostLock()
                 lock.check()

@@ -119,7 +119,7 @@ class NativeCompatibilityGateTest(unittest.TestCase):
             copy = self.lifecycle.paced_package(ROOT, output) / "plugins/corthex-memory"
             report = json.loads((output / "lifecycle-instrumentation.json").read_bytes())
             self.assertTrue(report["original_children_unchanged"])
-            self.assertEqual(len(report["candidate_sha256s"]), 130)
+            self.assertEqual(len(report["candidate_sha256s"]), 132)
             for name in ("format2", "fence_plan", "c2_store", "revision_io", "item_types", "item_plan", "item_io", "state_types", "history_io", "history_recovery", "state_plan", "state_io", "history_retention", "migration_plan", "migration_inventory", "maintenance_owner", "model_access", "model_usage", "model_stream", "model_wire", "model_transport", "maintenance_identity", "migration_intent", "model_prompts", "model_request", "model_client", "maintenance_journal", "migration_headers", "migration_header_resume", "migration_initialize", "migration_initialize_resume", "migration_finalize",
                          "migration_final_headers", "migration_finalize_resume", "migration_driver", "migration_command",
                          "index_io", "model_count", "model_embed", "curation_triggers", "curation_rebuild", "request_budget", "run_log",
@@ -129,7 +129,7 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                          "prompt_recall", "conflicts_command", "item_commands", "search_command",
                          "pin_command", "resume_command", "c2_status", "injection_retention",
                          "compaction_brief", "compaction_check", "setup_command",
-                         "delete_project_command", "activation"):
+                         "delete_project_command", "activation", "c2_hooks"):
                 module = "skills/corthex-memory/scripts/memory_lib/" + name + ".py"
                 self.assertEqual(report["candidate_sha256s"][module],
                                  hashlib.sha256((ROOT/"plugins/corthex-memory"/module).read_bytes()).hexdigest())
