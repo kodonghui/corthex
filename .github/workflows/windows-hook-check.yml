@@ -89,6 +89,10 @@ jobs:
         if: ${{ !cancelled() }}
         shell: cmd
         run: python tests/bench_memory_redaction.py --samples 10
+      - name: C2 at 0.3.0 in both installed hosts against local servers (TC-253 to TC-255, TC-257)
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\c2_hosts.py "%RUNNER_TEMP%\hook-check"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -96,4 +100,25 @@ jobs:
           path: |
             ${{ runner.temp }}/hook-check
             !${{ runner.temp }}/hook-check/**/codex-home/tmp/arg0-*/**
+          retention-days: 7
+
+  # TC-256 runs the installed prompt hook 600 times; its own job keeps the hook job within its time.
+  recall-timing:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: The prompt hook's time with 1,000, 5,000 and 20,000 items (TC-256)
+        shell: cmd
+        run: python .github\hook-check\c2_recall_timing.py "%RUNNER_TEMP%\recall-timing"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-recall-timing
+          path: ${{ runner.temp }}/recall-timing/c2-recall-timing/report.json
           retention-days: 7
