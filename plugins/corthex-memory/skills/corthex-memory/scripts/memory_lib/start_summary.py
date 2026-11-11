@@ -29,6 +29,7 @@ Nothing calls this module before the 0.3.0 activation, when the start hook
 uses it for format-2 stores; until then the installed start hook keeps C1
 behaviour. The notices about sync (SPEC-026, SPEC-027) come with sync in C3.
 """
+from collections import namedtuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import os
@@ -38,6 +39,7 @@ from . import (base, clock, conflict_counts, conflict_types, curation, curation_
                history_recovery, injection_log, item_types, locks, model_access, start_memory, state_types)
 
 Notice = start_memory.Notice
+LayerView = namedtuple('LayerView', 'read current lines')
 WEEK = timedelta(days=7)
 STORED = {'curation-failed.json': 'curation-failed', 'consolidation-failed.json': 'consolidation-failed',
           'rebuilt.json': 'rebuilt'}
@@ -269,10 +271,42 @@ def _layer(memory, root, deadline):
     or whose memory was deleted (TBL-017), shows nothing from it; a layer file
     that is missing counts as empty.
     """
+    view = layer_view(memory, root, deadline)
+    if view is None:
+        return (), (), None
+    read, current, lines = view
+    pins = item_types.parse_pins(read('pins.json'))['pins']
+    pinned = start_memory.pinned(pins, current)
+    conflicts = conflict_types.parse_conflicts(read('conflicts.json'))
+    total = len(conflict_types.open_candidates(conflicts))
+    counts = conflict_counts.read(memory, root, deadline) if total else None
+    for candidate in conflict_counts.eligible(conflicts, counts):
+        pair = [current(item) for item in candidate['items']]
+        if None not in pair:
+            text = CONFLICT % (pair[0]['id'], _title(pair[0]['title']), pair[1]['id'], _title(pair[1]['title']),
+                               total)
+            return tuple(pinned), tuple(lines), (Notice('conflict', text), candidate['id'])
+    return tuple(pinned), tuple(lines), None
+
+
+def layer_view(memory, root, deadline, *, decisions=True):
+    """A LayerView of a project's curated layer, or None for a project without one or whose memory was deleted
+    (TBL-017); the compaction brief (TASK-113) reads the state lines through it too.
+
+    `read(name)` reads a layer file within the deadline, a missing one as
+    empty; `current(item)` is the item's record while it is current and no
+    tombstone names it, else None; `lines` are the state lines that the
+    validity view keeps (TBL-013). It reads the tombstones, the state and its
+    removals, and of the item files only those that decision lines cite. With
+    `decisions` false it reads no item file and gives no `current`: the
+    decision lines, whose validity needs their items, are left out, and the
+    other parts' lines, which no item's status decides, are as the validity
+    view keeps them.
+    """
     folder = root / 'layer'
     if memory.fence.check(folder) is None or any(
             name == 'deleted.json' or name.startswith('deleted.json.') for name in os.listdir(str(folder))):
-        return (), (), None
+        return None
 
     def read(name):
         try:
@@ -298,26 +332,18 @@ def _layer(memory, root, deadline):
         value = cache[item]
         return value if value is not None and value['status'] == 'current' else None
 
+    if not decisions:
+        current = None
     lines = _lines(state_types.parse_state(read('state.json')), state_types.parse_removed(read('state-removed.json')),
                    private, current)
-    pins = item_types.parse_pins(read('pins.json'))['pins']
-    pinned = start_memory.pinned(pins, current)
-    conflicts = conflict_types.parse_conflicts(read('conflicts.json'))
-    total = len(conflict_types.open_candidates(conflicts))
-    counts = conflict_counts.read(memory, root, deadline) if total else None
-    for candidate in conflict_counts.eligible(conflicts, counts):
-        pair = [current(item) for item in candidate['items']]
-        if None not in pair:
-            text = CONFLICT % (pair[0]['id'], _title(pair[0]['title']), pair[1]['id'], _title(pair[1]['title']),
-                               total)
-            return tuple(pinned), tuple(lines), (Notice('conflict', text), candidate['id'])
-    return tuple(pinned), tuple(lines), None
+    return LayerView(read, current, lines)
 
 
 def _lines(state, removed, private, current):
-    """The state lines that the validity view keeps, each decision that they cite checked with `current`."""
+    """The state lines that the validity view keeps, each decision that they cite checked with `current`; without a
+    `current`, no decision line."""
     cited = sorted({cite for line in state['lines'] if line['part'] == 'decisions'
-                    for cite in line['cites'] if item_types.ITEM.fullmatch(cite)})
+                    for cite in line['cites'] if item_types.ITEM.fullmatch(cite)}) if current is not None else ()
     items = {}
     for item in cited:
         value = current(item)

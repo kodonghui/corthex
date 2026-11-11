@@ -15,10 +15,10 @@ from contextlib import contextmanager
 from . import base, configuration, files, locks, projects, store
 from . import clock
 
-HOOKS = {"start", "prompt", "end-of-turn", "end"}
+HOOKS = {"start", "prompt", "end-of-turn", "end", "pre-compact"}
 HOSTS = {"claude-code", "codex"}
 STEPS = {"record", "recall", "summary", "trigger", "curate", "consolidate", "embed",
-         "sync", "retention", "index", "restore", "skill"}
+         "sync", "retention", "index", "restore", "skill", "compaction"}
 OUTCOMES = {"ok", "left-out", "no-answer", "lock-busy", "deadline", "error"}
 CODES = {"bad-input", "unknown-host", "no-project-list", "project-clash", "lock-busy",
          "deadline", "damaged-line", "future-entry", "restored", "redaction", "worker-start",
