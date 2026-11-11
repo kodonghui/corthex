@@ -33,13 +33,17 @@ def recipes(intent,directories):
             if source['family']=='progress' and source['project']==project and source['name'] not in {'curation.json','curation.json.bak'}:
                 operations.append(('temporary',root+'/'+source['name'],None))
         operations += [('file',root+'/'+name,progress) for name in ('curation.json.bak','curation.json')]
-        records=[('layer/state.json',state_types.state_bytes({'lines':[]})),
-                 ('layer/state-removed.json',state_types.removed_bytes({'removed':[]})),
-                 ('layer/pins.json',item_types.pins_bytes({'pins':[]})),
-                 ('layer/item-list.txt',item_types.item_list_bytes([])),
-                 ('state-history.jsonl',b''),('layer/conflicts.json',journal._bytes({'candidates':[]}))]
-        operations += [('file',root+'/'+name,raw) for name,raw in records]
+        operations += [('file',root+'/'+name,raw) for name,raw in first_records()]
     return tuple(operations)
+
+
+def first_records():
+    """A C2 project's first records besides its curation record, by path in its folder; setup writes them too."""
+    return (('layer/state.json',state_types.state_bytes({'lines':[]})),
+            ('layer/state-removed.json',state_types.removed_bytes({'removed':[]})),
+            ('layer/pins.json',item_types.pins_bytes({'pins':[]})),
+            ('layer/item-list.txt',item_types.item_list_bytes([])),
+            ('state-history.jsonl',b''),('layer/conflicts.json',journal._bytes({'candidates':[]})))
 
 
 def _recipes(prefix):

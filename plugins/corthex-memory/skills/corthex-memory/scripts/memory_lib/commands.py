@@ -13,6 +13,7 @@ import hashlib
 import json
 import sys
 import time
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -111,6 +112,18 @@ def number_between(low, high=None):
     return parse
 
 
+def device_folder(value):
+    """`setup --at`: the project's folder on the temporary device, an absolute POSIX path (API-031)."""
+    if (not value.startswith("/") or len(value) > 1000 or
+            any(unicodedata.category(character) == "Cc" for character in value)):
+        raise UsageError()
+    try:
+        value.encode("utf-8")
+    except UnicodeError:
+        raise UsageError() from None
+    return value
+
+
 def parser():
     root = Parser(prog="memory.py")
     root.add_argument("--folder", default=argparse.SUPPRESS)
@@ -142,7 +155,7 @@ def parser():
         if name == "retention":
             part.add_argument("days", type=number_between(1, 3650))
         if name == "setup":
-            part.add_argument("--at", required=True)
+            part.add_argument("--at", required=True, type=device_folder)
         if name == "sync":
             modes = part.add_subparsers(dest="mode", required=True)
             for mode in ("on", "off", "now"):
