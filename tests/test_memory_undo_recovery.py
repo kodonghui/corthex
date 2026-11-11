@@ -19,6 +19,7 @@ import sys
 import types
 import unittest
 from unittest import mock
+import xml.etree.ElementTree as ET
 
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
@@ -28,6 +29,7 @@ from test_memory_curator_answers import answer, change, quote
 import test_memory_curation_worker as worker_fixture
 from test_memory_state_edits import added, changed, edits, removal
 from test_memory_undo import COUNTS, DEVICE, HOOKS, SAID, UndoStore
+import test_memory_consolidation_worker as merge_fixture
 import test_memory_undo_effects as effects
 
 # The first undo of TC-386, then the undo of an undo; retention then counts from EXPIRY.
@@ -80,6 +82,37 @@ class MergeUndoneAgainTest(effects.MergeStore, unittest.TestCase):
                                 for entry in log['statuses']),
                          sorted([(merge.first['id'], 'current', 'superseded'),
                                  (merge.second['id'], 'current', 'superseded'), (merged, 'undone', 'current')]))
+
+
+class ReplacedThenMergedTest(effects.MergeStore, unittest.TestCase):
+    """TC-364 on a merge of an item that had replaced another: the undo of its undo leaves that chain again."""
+
+    def test_tc364_an_item_replaced_by_a_merged_item_does_not_keep_the_merge_from_coming_back(self):
+        first = self.item('decision', 'Keep raw logs on the device')
+        claim = self.item('fact', 'Raw logs go to the server', speaker='agent')
+        second = self.item('decision', 'Raw logs stay on this device', saved=merge_fixture.LATER)
+        # The user's correction had replaced the agent's claim with the second decision before the merge.
+        claim.update(status='superseded', superseded_by=second['id'], changed=merge_fixture.LATER)
+        self.layer([first, claim, second])
+        groups = merge_fixture.merges(merge_fixture.merge([first, second], [(first, 1), (second, 1)],
+                                                          title='Raw logs'))
+        self.server.reply = lambda number, body: groups if ET.fromstring(
+            body['messages'][0]['content']).get('kind') == 'merge' else merge_fixture.shorter()
+        self.assertEqual(self.consolidate().reason, 'done')
+        merge = self.progress()['recent'][0]['run']
+        statuses = {name: undo_effects._status(value) for name, value in self.items().items()}
+        (merged,) = [name for name, value in statuses.items() if value['status'] == 'current']
+        # The merge leaves a chain: the claim is replaced by the second decision, which the merged item replaces.
+        self.assertEqual(statuses[claim['id']], {'status': 'superseded', 'superseded_by': second['id']})
+        self.assertEqual(statuses[second['id']], {'status': 'superseded', 'superseded_by': merged})
+        undo = self.undo(merge, stamp=FIRST)
+        self.assertEqual({name: value['status'] for name, value in self.items().items()},
+                         {first['id']: 'current', claim['id']: 'superseded', second['id']: 'current',
+                          merged: 'undone'})
+        preview = self.command(undo)
+        self.assertEqual((preview['data'].get('changes'), preview['data']['kept']), (dict(COUNTS, statuses=3), []))
+        self.undo(undo, stamp=AGAIN)
+        self.assertEqual({name: undo_effects._status(value) for name, value in self.items().items()}, statuses)
 
 
 class UndoneAgainTest(effects.Inverse, UndoStore, unittest.TestCase):

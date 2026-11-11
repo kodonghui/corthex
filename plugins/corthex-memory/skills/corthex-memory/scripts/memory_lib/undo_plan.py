@@ -347,6 +347,18 @@ class _Planner:
         status = self._status_after(name, reversed_)
         return status is not None and status['status'] == 'current'
 
+    def _replaced(self, name, reversed_):
+        """Whether the item, after the inverse, is superseded and its replacements end at a current item."""
+        seen = set()
+        status = self._status_after(name, reversed_)
+        while status is not None and status['status'] == 'superseded' and name not in seen:
+            seen.add(name)
+            name = status.get('superseded_by')
+            status = self._status_after(name, reversed_) if name else None
+            if status is not None and status['status'] == 'current':
+                return True
+        return False
+
     def _layout(self, reversed_):
         """The physical lines after the inverse: ID -> (part, pos, cites)."""
         layout = {name: (line['part'], line['pos'], line['cites']) for name, line in self.physical.items()}
@@ -391,13 +403,16 @@ class _Planner:
                 continue
             for item in sorted(stopping.intersection(line['cites'])):
                 found.append(('item:' + item, self._later(key)))
-        # An item that stays is not replaced by an item that stops being current.
+        # An item that stays is not replaced by an item that stops being current, unless that item is then
+        # replaced in turn, through its replacements, by a current one: a merge of an item that had replaced
+        # another leaves that chain, so undoing the undo of the merge leaves it again (SPEC-145).
         for name, value in sorted(self.s.items.items()):
             key = 'item:' + name
             if key in reversed_ and key not in self.still:
                 continue
-            if value['status'] == 'superseded' and value.get('superseded_by') in stopping:
-                found.append(('item:' + value['superseded_by'], self._later(key)))
+            after = value.get('superseded_by')
+            if value['status'] == 'superseded' and after in stopping and not self._replaced(after, reversed_):
+                found.append(('item:' + after, self._later(key)))
         # A line whose place the inverse changes is not next to a line that a later change placed.
         layout = self._layout(reversed_)
         before = state_plan._placements(list(self.s.lines))
