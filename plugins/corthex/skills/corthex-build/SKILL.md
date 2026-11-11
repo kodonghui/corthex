@@ -4,7 +4,7 @@ description: CORTHEX stages 10 to 12, building and testing. Use when breaking th
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # Building and testing

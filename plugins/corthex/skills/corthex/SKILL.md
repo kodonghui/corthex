@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # CORTHEX
@@ -56,6 +56,7 @@ In long sessions, before and after a compaction and when work moves to another s
 | 13 Presentation | `corthex-present` |
 | Meetings, decisions and progress records, at any stage | `corthex-record` |
 | The craft of screens, motion and video, with its checks: in stages 08, 09 and 13, or on its own | `corthex-uxui` |
+| Study documents that teach one learning question in depth, at any stage or on its own | `corthex-study` |
 
 Every stage follows one six-slot contract: inputs, outputs, human view, sync, human checkpoints and trace IDs. See [references/stage-contract.md](references/stage-contract.md). A project may skip stages or start in the middle; say which inputs are then missing.
 

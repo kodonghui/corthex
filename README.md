@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.9.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.3.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.10.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.3.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -77,11 +77,12 @@ For an authorized server, the core entry and stage skills read agent work once p
 | `corthex-present` | 13 | script, scene table and slides for the presentation |
 | `corthex-record` | any | minutes, decision log, progress records and retrospectives |
 | `corthex-uxui` | 08, 09, 13, or on its own | turn design words into named parts and numbers for screens, motion and video, and measure line breaks, contrast, target size, flashes and loudness before showing the result |
+| `corthex-study` | any, or on its own | turn one learning question into a study page and a record: read your material, check primary sources, run code or a measured experiment, and write it plainly enough for a high-school student |
 | `corthex-hub` | all, in `corthex-nexus` | see every project's stages, checks and trace links on one page, and record each stage's progress |
 
 ## Profile and projects
 
-- `~/.corthex/profile.json` holds how to address you, your language, where records go and what to ask about first. The `corthex` skill offers to create it. It never holds secrets.
+- `~/.corthex/profile.json` holds how to address you, your language, where records and study documents go, and what to ask about first. The `corthex` skill offers to create it. It never holds secrets.
 - `.corthex/project.json` in each product repository says, stage by stage, where people look at the work (`human`), where the text source lives (`source`) and which side wins when they differ (`truth`).
 - `~/.corthex/projects.json` lists the projects on one machine.
 - `~/.corthex/hub/` holds the hub's snapshots, the progress you recorded and the page, when `corthex-nexus` is installed.
