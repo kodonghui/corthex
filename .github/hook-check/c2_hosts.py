@@ -184,7 +184,6 @@ class MemoryServer:
                     row["decisions"] = outer.decisions(value)
                     row["content"] = value["messages"][0]["content"]
                     answer = outer.answer(value)
-                    row["answer"] = answer if isinstance(answer, dict) else "stream"
                     row["titles"] = [change["title"] for change in (answer.get("changes") or answer.get("merges") or [])
                                      ] if isinstance(answer, dict) else []
                     row["holding"] = outer.holding
@@ -460,7 +459,7 @@ class Hosts:
                                          "steps": hookcheck.install_steps(exe, env, self.demo, steps)}
         return exe
 
-    def session(self, host, exe, prompt, extra=None, label=None):
+    def session(self, host, exe, prompt, extra=None, label=None, folder=None):
         env = self.environment(host)
         env.update(extra or {})
         # Each session has its own request log: the mock appends, and the bodies are read back per session.
@@ -475,7 +474,7 @@ class Hosts:
         sampler = Sampler(self.memory)
         sampler.start()
         started = time.time()
-        done = hookcheck.run(args, env, self.demo, timeout=180)
+        done = hookcheck.run(args, env, folder or self.demo, timeout=180)
         ended = time.time()
         (self.out / host / ("output-%d.txt" % number)).write_text(
             hookcheck.scrub_mock_key(done["stdout"] + "\n--- stderr ---\n" + done["stderr"],

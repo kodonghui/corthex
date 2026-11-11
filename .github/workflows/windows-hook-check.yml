@@ -148,5 +148,8 @@ jobs:
         if: always()
         with:
           name: windows-walk-replay
-          path: ${{ runner.temp }}/walk-replay/c2-walk-replay/report.json
+          path: |
+            ${{ runner.temp }}/walk-replay/c2-walk-replay/report.json
+            ${{ runner.temp }}/walk-replay/c2-walk-replay/*/output-*.txt
+            ${{ runner.temp }}/walk-replay/c2-walk-replay/inputs/**
           retention-days: 7
