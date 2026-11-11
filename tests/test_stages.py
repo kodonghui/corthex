@@ -163,7 +163,7 @@ class StageContractTest(unittest.TestCase):
 
     def test_entry_skill_routes_every_stage(self):
         entry = read_text(SKILLS / "corthex" / "SKILL.md")
-        for skill in STAGE_SKILLS + ["corthex-record", "corthex-uxui"]:
+        for skill in STAGE_SKILLS + ["corthex-record", "corthex-uxui", "corthex-study"]:
             self.assertIn("`%s`" % skill, entry)
 
     def test_contract_lists_every_stage(self):

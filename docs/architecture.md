@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.9.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.10.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -32,6 +32,7 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   └── assets/              example profile.json and project.json
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
 │   │       ├── corthex-record/          minutes, decisions, progress and handoffs, retrospectives
+│   │       ├── corthex-study/           study documents: one question researched, run, published and recorded
 │   │       └── corthex-uxui/            craft for screens, motion and video
 │   │           ├── references/          names, values, video, checks and their sources
 │   │           └── scripts/             two read-only checks: page-check.js in the page, media-check.py with FFmpeg
@@ -102,15 +103,16 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 | `corthex-present` | 13 presentation |
 | `corthex-record` | minutes, decisions, progress records and handoffs, and retrospectives, at any stage |
 | `corthex-uxui` | the craft of screens, motion and video, with its checks: in 08, 09 and 13, or on its own |
+| `corthex-study` | study documents that teach one learning question in depth, at any stage or on its own |
 
 `corthex-nexus` adds one more skill, `corthex-hub` (see [Project hub](#project-hub)).
 
-- **Nine skills, not one per stage.** Hosts show every skill's description in each session, and Codex caps that first list at 2% of the context window (8,000 characters when the window is unknown). Grouping keeps the list short. The details of each stage sit in `references/` and are read only when needed. `corthex-uxui` is a skill of its own rather than part of a stage skill: its craft and checks serve stages 08, 09 and 13, and also screen and video work outside a CORTHEX project, which only a description of its own lets the host find.
+- **Ten skills, not one per stage.** Hosts show every skill's description in each session, and Codex caps that first list at 2% of the context window (8,000 characters when the window is unknown). Grouping keeps the list short. The details of each stage sit in `references/` and are read only when needed. `corthex-uxui` is a skill of its own rather than part of a stage skill: its craft and checks serve stages 08, 09 and 13, and also screen and video work outside a CORTHEX project, which only a description of its own lets the host find. `corthex-study` stands alone for the same reason: requests to study something come inside and outside a project, and the host finds the skill for them only through a description of its own.
 - **Names start with `corthex-`** so they stay distinct when a skill is used outside the plugin. Inside the plugin, both hosts show them as `corthex:<skill>`.
 - **Frontmatter is portable.** Skills use only the fields of the Agent Skills format (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`), because claude.ai uploads and the Skills API reject host-specific fields. Bodies stay under 500 lines, and links stay inside the skill's own folder, one level deep.
 - **Skill text is English.** Replies follow the language in the user's profile.
 
-Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again.
+Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again. With `corthex-study`, Claude Code 2.1.322, with the plugin loaded through `--plugin-dir`, reports about 1,480 tokens for the ten, against about 1,320 for the nine on the same version; its description is about 550 characters, and Codex was not measured.
 
 ## Working principles
 
