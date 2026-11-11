@@ -446,6 +446,15 @@ class InterfacesTest(unittest.TestCase):
         self.assertIn(["The compaction brief hook", "500 ms"], [row[:2] for row in deadlines])
         self.assertIn(["The compaction check hook", "300 ms"], [row[:2] for row in deadlines])
 
+    def test_the_hooks_file_of_release_0_3_0_waits_beside_hooks_json(self):
+        # TASK-117: the release makes it hooks/hooks.json; no host loads it before.
+        hooks = ROOT / "plugins/corthex-memory/hooks"
+        staged, current = load_json(hooks / "hooks-0.3.0.json"), load_json(hooks / "hooks.json")
+        added = json.loads(code_block(self.doc, "Release 0.3.0 adds these entries to `hooks/hooks.json`", "json"))
+        self.assertEqual(staged, dict(current, hooks=dict(current["hooks"], **added["hooks"])))
+        self.assertEqual(sorted(path.name for path in hooks.iterdir()), ["hooks-0.3.0.json", "hooks.json"])
+        self.assertIn("`hooks/hooks-0.3.0.json`, a name that no host loads", self.doc)
+
 
 if __name__ == "__main__":
     unittest.main()

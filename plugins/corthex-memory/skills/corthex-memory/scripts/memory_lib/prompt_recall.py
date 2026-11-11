@@ -25,9 +25,9 @@ outcome, the injected items and their scores and the candidates, also when
 nothing is injected. The line names the prompt's raw entry when the prompt was
 recorded; a prompt that recording leaves out is still recalled (SPEC-006).
 
-Nothing calls this module before the 0.3.0 activation, when the prompt hook
-uses it for format-2 stores; until then the installed prompt hook keeps C1
-behaviour.
+From release 0.3.0 the prompt hook uses it for a format-2 store
+(`c2_hooks.prompt`); below 0.3.0, and for any other store, the prompt hook
+keeps C1 behaviour.
 """
 from dataclasses import dataclass
 import json

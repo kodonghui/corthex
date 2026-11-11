@@ -26,9 +26,10 @@ that the summary showed, unless a later notice of the same name replaced it
 meanwhile, and appends the start's line to the session's injection log
 (TBL-011).
 
-Nothing calls this module before the 0.3.0 activation, when the start hook
-uses it for format-2 stores; until then the installed start hook keeps C1
-behaviour. The notices about sync (SPEC-026, SPEC-027) come with sync in C3.
+From release 0.3.0 the start hook uses it for a format-2 store
+(`start_hook.Start`); below 0.3.0, and for any other store, the start hook
+keeps C1 behaviour. The notices about sync (SPEC-026, SPEC-027) come with sync
+in C3.
 """
 from collections import namedtuple
 from dataclasses import dataclass

@@ -21,9 +21,9 @@ the layer only, and writes nothing.
 the brief's first line and never with `{`, so that Claude Code takes it as
 text and not as hook JSON.
 
-Nothing calls this module before the 0.3.0 activation, when the PreCompact
-entry joins `hooks/hooks.json` and the hook prints `output` and appends its
-timing line (step 6); until then no installed hook runs at a compaction.
+From release 0.3.0 the compaction brief hook calls it for a format-2 store
+(`c2_hooks.compaction`), prints `output` and appends its timing line (step 6);
+the PreCompact entry joins `hooks/hooks.json` with the release.
 """
 from dataclasses import dataclass
 

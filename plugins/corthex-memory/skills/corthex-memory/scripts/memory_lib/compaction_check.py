@@ -30,8 +30,9 @@ parts; and the check's deletion under the same lock once the line is printed,
 only while the file still holds the bytes that were read, so that a check
 that a later compaction wrote stays for the next prompt.
 
-Nothing calls this module before the 0.3.0 activation, when the PostCompact
-entry joins `hooks/hooks.json` and the prompt hook adds the line.
+From release 0.3.0 the compaction check hook calls `check`, and the prompt
+hook `pending`, `line` and `clear`, for a format-2 store (`c2_hooks`); the
+PostCompact entry joins `hooks/hooks.json` with the release.
 """
 import contextlib
 from dataclasses import dataclass
