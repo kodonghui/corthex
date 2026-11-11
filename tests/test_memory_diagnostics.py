@@ -201,6 +201,39 @@ class MemoryDiagnosticsTest(StoreCase):
         if os.name != "nt":
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_the_compaction_brief_hook_writes_its_failure_and_timing_lines(self):
+        # TASK-113: the brief hook's lines, from the 0.3.0 activation: the hook `pre-compact` and the step
+        # `compaction` (TBL-004, TBL-005), which the status reads through the result schema.
+        deadline = memory_clock.now() + 2
+        self.assertTrue(self.logger.failure("deadline", "compaction", deadline, hook="pre-compact",
+                                            host="claude-code", project="sample", when=self.when))
+        self.assertTrue(self.logger.timing("pre-compact", "claude-code", 501, "deadline", deadline, when=self.when))
+        failure, = files.read_jsonl(self.root / "logs/failures-2026-10-27.jsonl")
+        timing, = files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")
+        self.assertEqual((failure["step"], failure["hook"], timing["hook"]), ("compaction", "pre-compact", "pre-compact"))
+        self.assertEqual(errors(self.result_schema["$defs"]["failure"], failure, self.result_schema), [])
+        # The status's group of these timing lines.
+        group = dict(hook=timing["hook"], host=timing["host"], runs=1, median_ms=501, p95_ms=501, last=timing["at"],
+                     outcomes={"deadline": 1})
+        self.assertEqual(errors(self.result_schema["$defs"]["hook-timing"], group, self.result_schema), [])
+
+    def test_the_compaction_check_hook_writes_its_failure_and_timing_lines(self):
+        # TASK-114: the check hook's lines, from the 0.3.0 activation: the hook `post-compact` and the step
+        # `compaction`, with the raw log's name for an unreadable old check (TBL-004, TBL-005).
+        deadline = memory_clock.now() + 2
+        self.assertTrue(self.logger.failure(ValueError("unreadable"), "compaction", deadline, hook="post-compact",
+                                            host="claude-code", project="sample", log="claude-code-0123456789abcdef",
+                                            when=self.when))
+        self.assertTrue(self.logger.timing("post-compact", "claude-code", 51, "lock-busy", deadline, when=self.when))
+        failure, = files.read_jsonl(self.root / "logs/failures-2026-10-27.jsonl")
+        timing, = files.read_jsonl(self.root / "logs/hooks-2026-10-27.jsonl")
+        self.assertEqual((failure["step"], failure["hook"], failure["error"], failure["log"], timing["hook"]),
+                         ("compaction", "post-compact", "ValueError", "claude-code-0123456789abcdef", "post-compact"))
+        self.assertEqual(errors(self.result_schema["$defs"]["failure"], failure, self.result_schema), [])
+        group = dict(hook=timing["hook"], host=timing["host"], runs=1, median_ms=51, p95_ms=51, last=timing["at"],
+                     outcomes={"lock-busy": 1})
+        self.assertEqual(errors(self.result_schema["$defs"]["hook-timing"], group, self.result_schema), [])
+
     def diagnostic_transition(self, stage, opportunistic=True):
         for name in ("failures", "hooks"):
             logger = diagnostics.Diagnostics(self.memory)

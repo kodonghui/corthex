@@ -18,16 +18,16 @@ injected and the result carries what the hook's failure log notes.
 Recording comes before recall (step 4) and recall writes only the usage log,
 so the prompt goes on whatever recall does (REQ-035).
 
-`output` is step 7's line: the hook's JSON, with the block as its added
-context, or nothing when nothing is injected. `log` is step 9: the injection
-log line with recall's outcome, the injected items and their scores and the
-candidates, also when nothing is injected. The line names the prompt's raw
-entry when the prompt was recorded; a prompt that recording leaves out is
-still recalled (SPEC-006).
+`output` is step 7's line: the hook's JSON, with the compaction check's line
+(TASK-114), the block or both as its added context, the line first, or nothing
+when there is neither. `log` is step 9: the injection log line with recall's
+outcome, the injected items and their scores and the candidates, also when
+nothing is injected. The line names the prompt's raw entry when the prompt was
+recorded; a prompt that recording leaves out is still recalled (SPEC-006).
 
 Nothing calls this module before the 0.3.0 activation, when the prompt hook
 uses it for format-2 stores; until then the installed prompt hook keeps C1
-behaviour. The compaction check's line before the block is TASK-114's.
+behaviour.
 """
 from dataclasses import dataclass
 import json
@@ -99,11 +99,16 @@ def recall(memory, project, host, session, prompt, started, deadline, *, setting
     return Result(found.outcome, found.block, found.items, found.scores, found.candidates)
 
 
-def output(result):
-    """API-002 step 7: the hook's one JSON line, in ASCII, with the block as added context; b'' without one."""
-    if not result.block:
+def output(result, line=None):
+    """API-002 step 7: the hook's one JSON line, in ASCII, with the added context; b'' without any.
+
+    The context is the compaction check's `line`, when there is one, then a
+    blank line and the recall block, when there is one (TASK-114).
+    """
+    context = '\n\n'.join(part for part in (line, result.block) if part)
+    if not context:
         return b''
-    value = {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': result.block}}
+    value = {'hookSpecificOutput': {'hookEventName': 'UserPromptSubmit', 'additionalContext': context}}
     return json.dumps(value, ensure_ascii=True).encode('ascii') + b'\n'
 
 
