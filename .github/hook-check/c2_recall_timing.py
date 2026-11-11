@@ -9,12 +9,16 @@ worker's step 6 (`index_worker.keep`) builds the search index and embeds them
 against a local server that answers each embedding at once; no provider is
 called and the keys are made up for the run.
 
-For each number of items and each host, the installed prompt hook runs N times
-(100 by default), each as the first prompt of its own session, with the
-host's own input fields (`host-inputs.json`) and the environment variable by
-which the hook knows that host. Each run is timed from outside, from just
-before the process is created until it has exited, so the interpreter's start
-is included; the host's own launch of the command is not. The injection log
+For each number of items and each host, the staged package's prompt hook
+(`plugins/corthex-memory/scripts/hook.py`, the file that both hosts install)
+runs N times (100 by default), each as the first prompt of its own session,
+with the host's own input fields (`host-inputs.json`) and the environment
+variable by which the hook knows that host. It runs as each host would run
+it, but without the host: the hosts are not started, and the hook is not
+their installed copy. Each run is timed from outside, from just before the
+process is created until it has exited, so the interpreter's start is
+included; the host's own launch of the command is not. TC-256 says "in each
+host", so this is a partial reading of it, which the report says. The injection log
 gives recall's outcome for each run: `injected` and `below` mean that recall
 ranked every item; any other outcome is counted and listed.
 
@@ -46,6 +50,7 @@ SIZES = (1000, 5000, 20000)
 SAMPLES = 100
 TARGET_MS = 1000.0
 RANKED = ("injected", "below")
+READING = "partial: the staged prompt hook run directly with each host's input, not through the hosts"
 VOCABULARY = ["word%04d" % number for number in range(3000)]
 PROMPT = ("지난 결정을 다시 확인하고 싶습니다. Which of word0007, word0042 and word1234 did we choose "
           "for the release checks, and why?")
@@ -188,7 +193,8 @@ def main():
             "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
     os.environ.update(keys, CORTHEX_MEMORY_ANTHROPIC_BASE_URL=server.url, CORTHEX_MEMORY_OPENAI_BASE_URL=server.url)
     report = {"system": platform.system(), "machine": platform.machine(), "python": platform.python_version(),
-              "release": c2_hosts.RELEASE, "samples": samples, "target_ms": TARGET_MS, "sizes": {}}
+              "release": c2_hosts.RELEASE, "samples": samples, "target_ms": TARGET_MS, "reading": READING,
+              "sizes": {}}
     try:
         store = Store(plugin, home)
         rng = random.Random(256)
@@ -222,7 +228,7 @@ def main():
                 size, host, value["median_ms"], value["p95_ms"], value["max_ms"],
                 "holds" if value["under_target"] else "does NOT hold", json.dumps(value["outcomes"]),
                 "" if good else "; exits " + json.dumps(value["exits"])))
-    text.append("TC-256: %s" % ("FAIL" if failed else "measured"))
+    text.append("TC-256: %s (%s)" % ("FAIL" if failed else "measured", READING))
     print("\n".join(text))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:

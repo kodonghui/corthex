@@ -28,13 +28,20 @@ answered at once, and the host's model answers only once that worker has let
 the project go. From then on the memory server holds each curate request until
 the host process has exited, then answers with the turn's decision and an item
 for the agent's answer; the worker that the trigger started must then apply
-them (TC-253). While a request is held, the processes' command lines are read. Both memory
-keys are markers, which must reach the server and appear in no file of the
-memory store and in no command line (TC-254). Then Claude Code runs once
+them, and its run log must list each of the items it added (TC-253).
+
+While a session runs and its request is held, the processes' command lines are
+read, every half second (every two on Windows, where reading them is slow).
+Both memory keys are markers, which must reach the server and appear in no
+file of the memory store and in no command line (TC-254). The case also needs
+evidence that it looked: for each host, a prompt whose recall ranked the items
+(`injected` or `below` in the injection log), and in each session a reading of
+the command lines that showed the memory worker. Then Claude Code runs once
 more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257).
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
-except a lock that stayed busy, which the summary lists.
+except a lock that stayed busy, which the summary lists. The report keeps the
+number of command lines read, never the lines.
 It writes report.json and prints a summary, and exits 1 when a case fails.
 """
 from datetime import datetime, timezone
@@ -74,6 +81,9 @@ DECISIONS = (
 HOST_NAMES = {"claude": "claude-code", "codex": "codex"}
 WORDS = re.compile(r"[0-9A-Za-z가-힣._-]+")
 REASON = re.compile(r"--reason (\S+)")
+MODEL_PATH = re.compile(r"/v1/(messages|responses)(\?|$)")
+SAMPLE_SECONDS = 2.0 if os.name == "nt" else 0.5
+RANKED = ("injected", "below")
 
 
 def stage(repository, output):
@@ -245,14 +255,21 @@ class MemoryServer:
 
 
 def command_lines():
-    """Every process's command line that this user can read, as the system lists them."""
+    """Every process's command line that this user can read, as the system lists them; raises when it cannot."""
     if os.name == "nt":
-        done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                               "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"],
-                              capture_output=True, timeout=120)
+        args = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"]
     else:
-        done = subprocess.run(["ps", "-axww", "-o", "args="], capture_output=True, timeout=60)
-    return done.stdout.decode("utf-8", "replace").splitlines()
+        args = ["ps", "-axww", "-o", "args="]
+    done = subprocess.run(args, capture_output=True, timeout=120 if os.name == "nt" else 60)
+    lines = done.stdout.decode("utf-8", "replace").splitlines()
+    if done.returncode != 0 or not lines:
+        raise subprocess.SubprocessError("%s exited %d with %d lines" % (args[0], done.returncode, len(lines)))
+    return lines
+
+
+def workers(lines):
+    return [text for text in lines if "scripts/worker.py" in text.replace("\\", "/")]
 
 
 def configure(home, turns):
@@ -308,6 +325,29 @@ def settled(home, titles, timeout=SETTLE_SECONDS):
     return {"applied": False, "seconds": round(time.time() - started, 2), "missing": sorted(missing)}
 
 
+def runs_saved(home):
+    """The items that each curation's run log (TBL-121) lists as saved, by item: the run's ID."""
+    found = {}
+    for path in (home / ".corthex/corthex-memory/projects/demo/runs").glob("*.json"):
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if value.get("kind") == "curate":
+            for item in value.get("saved", []):
+                found[item] = value["id"]
+    return found
+
+
+def prompt_injections(home):
+    """The injection log's prompt lines (TBL-007), as (host, outcome); each file is named after its host."""
+    rows = []
+    for path in sorted((home / ".corthex/corthex-memory/projects/demo/injections").glob("*.jsonl")):
+        host = "codex" if path.name.startswith("codex-") else "claude"
+        for text in path.read_text(encoding="utf-8").splitlines():
+            value = json.loads(text)
+            if value.get("where") == "prompt":
+                rows.append((host, value.get("outcome")))
+    return rows
+
+
 def model_bodies(log):
     if not log.exists():
         return []
@@ -324,26 +364,40 @@ class Hosts:
         self.home, self.demo = hookcheck.prepare(out / "shared")
         self.keys = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": "MARKERANTHROPIC" + secrets.token_hex(16),
                      "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
+        # The command lines read stay here, out of the report: a crash writes the report as it stands.
+        self.lines = []
         self.report = {"release": RELEASE, "store": self.store_kind(), "installs": {}, "sessions": [],
-                       "command_lines": []}
+                       "command_lines": 0}
+
+    def mask(self, text):
+        for key in self.keys.values():
+            text = text.replace(key, "<marker>")
+        return text
 
     def after_start_worker(self, path, model):
-        """The host's model answers once the worker that the start hook launched has let the project go.
+        """The host's model answers once the worker that the start hook launched has ended.
 
         Each session start launches the worker (API-001), which holds the project's curation lease while it
         runs and may curate the prompt that the prompt hook marked; a trigger at the end of the turn finds that
-        lease fresh and starts none (SPEC-012). Waiting until the lease has been gone for QUIET seconds lets
-        the triggers of the turn's end start their own, whose curate requests the memory server then holds.
+        lease fresh and starts none (SPEC-012). Waiting until the lease has been gone for QUIET seconds and no
+        `--reason start` worker runs lets the triggers of the turn's end start their own, whose curate
+        requests the memory server then holds. Only a model request waits; the mock answers anything else.
         """
-        lock = self.home / ".corthex/corthex-memory/projects/demo/curation.lock"
-        started = quiet = time.time()
-        while time.time() - started < 60:
-            if lock.exists():
-                quiet = time.time()
-            elif time.time() - quiet >= QUIET:
-                break
-            time.sleep(0.1)
-        self.memory.hold()
+        if MODEL_PATH.search(path):
+            lock = self.home / ".corthex/corthex-memory/projects/demo/curation.lock"
+            started = quiet = time.time()
+            while time.time() - started < 60:
+                if lock.exists():
+                    quiet = time.time()
+                elif time.time() - quiet >= QUIET:
+                    try:
+                        if not any("--reason start" in text for text in workers(command_lines())):
+                            break
+                    except (OSError, subprocess.SubprocessError):
+                        pass
+                    quiet = time.time() - QUIET + 0.5
+                time.sleep(0.1)
+            self.memory.hold()
         return hookcheck.Mock.stream(path, model)
 
     def store_kind(self):
@@ -430,16 +484,25 @@ class Hosts:
         result["held_after_exit"] = bool(held and waiting and not self.memory.gate.is_set())
         result["held_sent_before_exit"] = bool(waiting) and waiting[0]["at"] <= result["ended"]
         self.memory.release()
-        result["settled"] = settled(self.home, [title for row in waiting for title in row["titles"]])
+        titles = {title for row in waiting for title in row["titles"]}
+        result["settled"] = settled(self.home, sorted(titles))
         result["decision"] = settled(self.home, ["Decision " + marker], timeout=5)["applied"]
+        # The run log must list each item that the held answers added (TBL-121): a log that the worker could
+        # not write leaves the run unlisted and notes the failure, which the lock-busy exception must not hide.
+        added = [ident for ident, value in items(self.home).items() if value.get("title") in titles]
+        logged = runs_saved(self.home)
+        result["run_logged"] = {"items": len(added), "unlisted": [ident for ident in added if ident not in logged],
+                                "runs": sorted({logged[ident] for ident in added if ident in logged})}
         result["curate_requests"] = {"answered at once": len(curate) - len(waiting), "held": len(waiting)}
         result["curate_decisions"] = [row.get("decisions") for row in curate]
         rows = hook_rows(self.home, HOST_NAMES[host], result["started"], result["ended"])
         result["hooks"] = {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
-        result["workers"] = sampler.workers
+        result["workers"] = [self.mask(text) for text in sampler.workers]
         result["reasons"] = sorted({match for text in sampler.workers for match in REASON.findall(text)})
         result["expected_reason"] = "end-of-turn" if turns == 1 else "end"
-        self.report["command_lines"].extend(sampler.lines)
+        result["command_reads"] = {"reads": sampler.reads, "lines": len(sampler.lines),
+                                   "errors": [self.mask(text) for text in sampler.errors[:5]]}
+        self.lines.extend(sampler.lines)
         # The curator's line for the earlier decision, which only the start summary or recall can carry.
         earlier = [line(DECISIONS[number - 1][2])] if number else []
         result["shows_earlier"] = {text: any(text in body for body in result["bodies"]) for text in earlier}
@@ -455,7 +518,9 @@ class Hosts:
         self.memory.release()
         result = self.session("claude", exe, "DEC-DELTA-tag 태그 접두어를 다시 알려 주세요. 짧게 답해 주세요.",
                               extra={"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"}, label="scrub")
-        result.pop("sampler").stop()
+        sampler = result.pop("sampler")
+        sampler.stop()
+        self.lines.extend(sampler.lines)
         bodies = result.pop("bodies")
         time.sleep(3)
         sent = [row for row in self.memory.requests[before:]]
@@ -474,33 +539,42 @@ class Hosts:
         for name, key in self.keys.items():
             stored = [path.relative_to(self.home).as_posix() for path in store_files(self.home)
                       if key.encode("utf-8") in path.read_bytes()]
-            lines = sum(1 for line in self.report["command_lines"] if key in line)
+            lines = sum(1 for line in self.lines if key in line)
             sent = sum(1 for row in self.memory.requests if key in json.dumps(row["headers"]))
             found[name] = {"files_with_marker": stored, "command_lines_with_marker": lines, "requests_with_key": sent}
         self.report["keys"] = found
-        self.report["command_lines"] = len(self.report["command_lines"])
+        self.report["command_lines"] = len(self.lines)
+        # The recall half of the case: each host's prompt hook ranked the items with the OpenAI key.
+        recalls = {}
+        for host, outcome in prompt_injections(self.home):
+            recalls.setdefault(host, {}).setdefault(outcome, 0)
+            recalls[host][outcome] += 1
+        self.report["recalls"] = recalls
         return found
 
 
 class Sampler(threading.Thread):
-    """Reads the processes' command lines every half second while it runs, keeping the memory worker's."""
+    """Reads the processes' command lines every SAMPLE_SECONDS while it runs, keeping the memory worker's."""
 
     def __init__(self, memory):
         super().__init__(daemon=True)
-        self.lines, self.workers, self.halt = [], [], threading.Event()
+        self.lines, self.workers, self.errors, self.halt = [], [], [], threading.Event()
+        self.reads = 0
         self.memory = memory
 
     def run(self):
         while not self.halt.is_set():
             try:
                 found = command_lines()
-            except (OSError, subprocess.SubprocessError):
+                self.reads += 1
+            except (OSError, subprocess.SubprocessError) as error:
+                self.errors.append(repr(error))
                 found = []
             self.lines.extend(found)
-            for line in found:
-                if "scripts/worker.py" in line.replace("\\", "/") and line not in self.workers:
+            for line in workers(found):
+                if hookcheck.short(line, 400) not in self.workers:
                     self.workers.append(hookcheck.short(line, 400))
-            self.halt.wait(0.5)
+            self.halt.wait(SAMPLE_SECONDS)
 
     def stop(self, after=0.0):
         if after:
@@ -521,6 +595,9 @@ def verdicts(report):
             "trigger started the worker": value["expected_reason"] in value["reasons"],
             "worker held after the host ended": value["held_after_exit"],
             "held results applied after release": value["settled"]["applied"],
+            "run log lists the applied items": value["run_logged"]["items"] > 0 and
+            not value["run_logged"]["unlisted"],
+            "command lines read, with the worker": value["command_reads"]["reads"] > 0 and bool(value["workers"]),
             "decision curated": value["decision"],
             "earlier decision shown": all(value["shows_earlier"].values()),
         }
@@ -532,14 +609,23 @@ def verdicts(report):
     blocking = [row for row in report.get("failures", []) if row.get("error") != "lock-busy"]
     tc253 = bool(per) and not blocking and all(
         v["exit"] and v["four hooks ok"] and v["trigger started the worker"] and
-        v["worker held after the host ended"] and v["held results applied after release"] for v in per.values())
-    tc254 = bool(keys) and all(not v["files_with_marker"] and not v["command_lines_with_marker"] and
-                               v["requests_with_key"] > 0 for v in keys.values())
+        v["worker held after the host ended"] and v["held results applied after release"] and
+        v["run log lists the applied items"] for v in per.values())
+    # TC-254 needs evidence that it looked: a ranked recall in each host, and command lines read in each
+    # session while the memory worker ran.
+    recalls = report.get("recalls", {})
+    recalled = {host: sum(count for outcome, count in recalls.get(host, {}).items() if outcome in RANKED)
+                for host in HOST_NAMES}
+    tc254 = (bool(keys) and all(not v["files_with_marker"] and not v["command_lines_with_marker"] and
+                                v["requests_with_key"] > 0 for v in keys.values()) and
+             all(recalled.values()) and report.get("command_lines", 0) > 0 and bool(per) and
+             all(v["command lines read, with the worker"] for v in per.values()))
     tc255 = bool(per) and all(v["earlier decision shown"] and v["decision curated"] for v in per.values())
     scrub = report.get("scrub", {})
     tc257 = bool(scrub) and scrub.get("exit") == 0 and (
         scrub["keys_reached_hooks"] or (scrub["notice"] and not scrub["memory_requests"]))
     return {"sessions": per, "triggers": triggers, "hooks_ok": hooks_ok, "blocking_failures": blocking,
+            "ranked recalls": recalled,
             "TC-253": tc253, "TC-254": tc254, "TC-255": tc255, "TC-257": tc257,
             "TC-257 observed": "keys reached the hooks" if scrub.get("keys_reached_hooks") else
             "keys kept from the hooks" if scrub else "not run"}
@@ -570,6 +656,9 @@ def main():
     finally:
         if hosts is not None:
             hosts.memory.close()
+            report["command_lines"] = len(hosts.lines)
+            if "crash" in report:
+                report["crash"] = hosts.mask(report["crash"])
             report["memory_requests"] = [{key: row.get(key) for key in ("path", "kind", "decisions", "released",
                                                                          "content", "error")}
                                          for row in hosts.memory.requests]
@@ -587,6 +676,8 @@ def main():
             text.append("%s: %s" % (label, ", ".join("%s %s" % (k, "yes" if v else "NO") for k, v in value.items())))
         text.append("workers seen, by reason: " + json.dumps(report["verdicts"]["triggers"]))
         text.append("keys: " + json.dumps(report.get("keys", {})))
+        text.append("command lines read: %d; ranked recalls by host: %s" % (
+            report.get("command_lines", 0), json.dumps(report["verdicts"]["ranked recalls"])))
         text.append("TC-257: " + report["verdicts"]["TC-257 observed"] + "; " + json.dumps(
             {key: report["scrub"].get(key) for key in ("notice", "memory_requests", "recalled")}))
         text.append("failure log: " + json.dumps(report.get("failures", [])))

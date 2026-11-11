@@ -67,7 +67,10 @@ jobs:
       - name: Bubblewrap for Claude Code's subprocess scrub (TC-257)
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         run: |
-          sudo apt-get install -y bubblewrap
+          if ! command -v bwrap >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y bubblewrap
+          fi
           # Ubuntu 24.04 keeps unprivileged user namespaces from bubblewrap unless this is off.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: C2 at 0.3.0 in both installed hosts against local servers (TC-253 to TC-255, TC-257)
@@ -80,9 +83,10 @@ jobs:
           path: |
             ${{ runner.temp }}/memory-hook-check
             !${{ runner.temp }}/memory-hook-check/**/codex-home/tmp/arg0-*/**
+            !${{ runner.temp }}/memory-hook-check/c2-hosts/source/**
           retention-days: 7
 
-  # TC-256 runs the installed prompt hook 600 times; its own job keeps the hook job within its time.
+  # TC-256 runs the staged prompt hook 600 times; its own job keeps the hook job within its time.
   recall-timing:
     strategy:
       fail-fast: false

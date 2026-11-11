@@ -100,9 +100,10 @@ jobs:
           path: |
             ${{ runner.temp }}/hook-check
             !${{ runner.temp }}/hook-check/**/codex-home/tmp/arg0-*/**
+            !${{ runner.temp }}/hook-check/c2-hosts/source/**
           retention-days: 7
 
-  # TC-256 runs the installed prompt hook 600 times; its own job keeps the hook job within its time.
+  # TC-256 runs the staged prompt hook 600 times; its own job keeps the hook job within its time.
   recall-timing:
     runs-on: windows-latest
     timeout-minutes: 40
