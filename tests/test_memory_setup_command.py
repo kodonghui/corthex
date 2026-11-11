@@ -130,6 +130,18 @@ class SetupHandlerTest(unittest.TestCase):
         # A reserved name keeps its folder name on every system.
         self.assertIn('"folder":"con_"', setup_command.script('con', '/w', '0.3.0', {'consent': {'at': AT, 'version': 1}}))
 
+    def test_the_shell_part_runs_no_command_substitution_and_the_api_example_shows_it(self):
+        text = setup_command.script('corthex', '/workspace/corthex', '0.3.0', {'consent': {'at': AT, 'version': 1}})
+        mark = "<<'%s'\n" % setup_command.DELIMITER
+        shell = text.split(mark, 1)[0]
+        # macOS's /bin/sh is bash 3.2, which misreads some text inside a command substitution.
+        self.assertNotIn('$(', shell)
+        self.assertNotIn('`', shell)
+        example = json.loads((ROOT / 'docs/06-api/memory-examples.json').read_text(encoding='utf-8'))
+        example = example['result']['valid']['setup']['data']
+        self.assertEqual((example['project'], example['at']), ('corthex', '/workspace/corthex'))
+        self.assertEqual(example['script'].split(mark, 1)[0], shell)
+
     def test_the_runner_takes_only_an_absolute_posix_folder(self):
         for at in ('workspace/sample', '~/sample', 'C:\\work', '', '/a\nb', '/a\tb', '/' + 'a' * 1000,
                    '/a\udcff'):
@@ -282,7 +294,6 @@ class SetupScriptTest(unittest.TestCase):
                                                          '--expect-device', record['device']])
 
     def test_a_store_without_a_format_2_record_stops_the_script_before_it_writes_anything(self):
-        self.store.mkdir(parents=True)
         cases = (('holds files without a store record', {'logs/failures.jsonl': b''}),
                  ('format 1', {'store.json': base.json_bytes(store.new_record('0.2.1'), 'TBL-001')}),
                  ('damaged', {'store.json': b'{"format": 2'}),
@@ -295,6 +306,10 @@ class SetupScriptTest(unittest.TestCase):
                  ('a link in the record\'s place', {'store.json.bak': b''}))
         for name, contents in cases:
             with self.subTest(name):
+                # Each case starts from an empty store, also after the one before it failed.
+                if self.store.exists():
+                    shutil.rmtree(str(self.store))
+                self.store.mkdir(parents=True)
                 for relative, data in contents.items():
                     (self.store / relative).parent.mkdir(parents=True, exist_ok=True)
                     (self.store / relative).write_bytes(data)
@@ -311,8 +326,6 @@ class SetupScriptTest(unittest.TestCase):
                 self.assertIn('CORTHEX memory setup stopped: the memory store %s holds files without a format-2 '
                               'store record; nothing was written' % self.store, done.stderr)
                 self.assertEqual(tree(self.home), before)
-                shutil.rmtree(str(self.store))
-                self.store.mkdir()
 
     def test_an_existing_format_2_store_keeps_its_records_and_gains_the_project(self):
         device = 'd_0123456789ab'
@@ -360,7 +373,10 @@ class SetupScriptTest(unittest.TestCase):
                  ('a damaged list', b'{"projects": [', None, [list_note]))
         for name, listed, kept, expected in cases:
             with self.subTest(name):
-                registry.parent.mkdir(exist_ok=True)
+                # Each case starts from an empty home, also after the one before it failed.
+                if registry.parent.exists():
+                    shutil.rmtree(str(registry.parent))
+                registry.parent.mkdir()
                 if isinstance(listed, bytes):
                     registry.write_bytes(listed)
                 else:
@@ -377,10 +393,10 @@ class SetupScriptTest(unittest.TestCase):
                 self.assertEqual(done.stderr.splitlines(), expected)
                 self.assertEqual({path: path.read_bytes() for path in before}, before)
                 self.assertTrue((self.root / 'curation.json').is_file())
-                shutil.rmtree(str(self.home / '.corthex'))
         # A list that a link names, as the plugin reads it, and a configuration that only its backup
         # holds, as the plugin restores it, carry the project: no note.
-        self.home.joinpath('.corthex').mkdir()
+        shutil.rmtree(str(registry.parent))
+        registry.parent.mkdir()
         elsewhere = self.base / 'projects.json'
         elsewhere.write_text(json.dumps(named), encoding='utf-8')
         registry.symlink_to(elsewhere)
@@ -412,6 +428,9 @@ class SetupScriptTest(unittest.TestCase):
         for name, contents in (('torn backup', {'store.json': good, 'store.json.bak': b'{"format": 2'}),
                                ('torn record', {'store.json': b'{"format": 2', 'store.json.bak': good})):
             with self.subTest(name):
+                # Each case starts from an empty home, also after the one before it failed.
+                if (self.home / '.corthex').exists():
+                    shutil.rmtree(str(self.home / '.corthex'))
                 self.store.mkdir(parents=True)
                 for relative, data in contents.items():
                     (self.store / relative).write_bytes(data)
@@ -421,7 +440,6 @@ class SetupScriptTest(unittest.TestCase):
                 self.assertEqual({relative: (self.store / relative).read_bytes() for relative in contents}, contents)
                 self.assertTrue((self.store / 'configuration.json').is_file())
                 self.assertTrue((self.root / 'curation.json').is_file())
-                shutil.rmtree(str(self.home / '.corthex'))
 
     def test_temporary_files_that_a_stopped_run_left_are_not_files_of_a_store(self):
         self.store.mkdir(parents=True)

@@ -51,6 +51,8 @@ DEVICE, TIME, EPOCH = 'd_000000000000', '1970-01-01T00:00:00.000Z', '0' * 32
 # The folders of a project whose files are its memory, besides its first records: all that `on` and the
 # setup make but `notices`, `injections` and `layer`, as a test keeps them.
 HOLDING = ('raw', 'unprocessed', 'layer/items', 'layer/tombstones', 'runs')
+# The shell part runs no command substitution, so the PATH walk sets `python` at the top level: macOS's /bin/sh,
+# bash 3.2, misreads some text inside `$(...)`, such as a case pattern's unmatched `)`.
 SHELL = """#!/bin/sh
 # CORTHEX memory setup for a temporary device: the project {project}, from corthex-memory {release}.
 # It writes the project list, the memory store record, the memory configuration with the consent
@@ -58,15 +60,17 @@ SHELL = """#!/bin/sh
 # It holds no key: put CORTHEX_MEMORY_ANTHROPIC_API_KEY and CORTHEX_MEMORY_OPENAI_API_KEY
 # in the environment's secret settings.
 set -eu
-python=$(
-  IFS=:
-  set -f
-  for folder in ${{PATH-}}; do
-    case "$folder" in
-    /*) if [ -f "$folder/python3" ] && [ -x "$folder/python3" ]; then printf '%s\\n' "$folder/python3"; break; fi ;;
-    esac
-  done
-)
+python=
+IFS=:
+set -f
+for folder in ${{PATH-}}; do
+  if [ "${{folder#/}}" != "$folder" ] && [ -f "$folder/python3" ] && [ -x "$folder/python3" ]; then
+    python=$folder/python3
+    break
+  fi
+done
+set +f
+unset IFS
 if [ -z "$python" ]; then
   echo 'CORTHEX memory setup needs python3, Python 3.8 or later, in an absolute folder on PATH.' >&2
   exit 1
