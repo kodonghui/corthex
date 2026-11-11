@@ -98,25 +98,25 @@ These rows list every code applicable to each command, including invalid-home ov
 
 | Command | Codes |
 | --- | --- |
-| `on` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `no-project-list`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `off` | `configuration-invalid`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `status` | `configuration-invalid`, `internal`, `lock-busy`, `no-store`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `resume` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `list` | `configuration-invalid`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `search` | `configuration-invalid`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `open` | `configuration-invalid`, `internal`, `item-not-found`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `pin` | `configuration-invalid`, `internal`, `item-not-current`, `item-not-found`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `pin-no-room`, `store-damaged`, `store-newer`, `usage` |
-| `unpin` | `configuration-invalid`, `internal`, `item-not-found`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `forget` | `configuration-invalid`, `confirm-stale`, `internal`, `item-not-found`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `delete-project` | `configuration-invalid`, `confirm-stale`, `files-left`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `on` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `off` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `status` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-store`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `resume` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `list` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `search` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `open` | `configuration-invalid`, `internal`, `item-not-found`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `pin` | `configuration-invalid`, `internal`, `item-not-current`, `item-not-found`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `pin-no-room`, `store-damaged`, `store-newer`, `usage` |
+| `unpin` | `configuration-invalid`, `internal`, `item-not-found`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `forget` | `configuration-invalid`, `confirm-stale`, `internal`, `item-not-found`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `delete-project` | `configuration-invalid`, `confirm-stale`, `files-left`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
 | `purge` | `configuration-invalid`, `confirm-stale`, `files-left`, `internal`, `lock-busy`, `ok`, `usage` |
-| `leave-out` | `configuration-invalid`, `folder-outside`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `retention` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `no-store`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `setup` | `configuration-invalid`, `internal`, `lock-busy`, `no-consent`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `repair` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `ok`, `store-newer`, `usage` |
-| `conflicts` | `configuration-invalid`, `conflict-not-found`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `runs` | `configuration-invalid`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
-| `undo` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `run-not-found`, `store-damaged`, `store-newer`, `usage` |
+| `leave-out` | `configuration-invalid`, `folder-outside`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `retention` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-needed`, `no-store`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `setup` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-consent`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `repair` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-needed`, `ok`, `store-newer`, `usage` |
+| `conflicts` | `configuration-invalid`, `conflict-not-found`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `runs` | `configuration-invalid`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `store-damaged`, `store-newer`, `usage` |
+| `undo` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-needed`, `no-project-list`, `no-store`, `not-enabled`, `not-in-project`, `ok`, `run-not-found`, `store-damaged`, `store-newer`, `usage` |
 | `migrate` | `configuration-invalid`, `confirm-stale`, `internal`, `lock-busy`, `migration-blocked`, `migration-stopped`, `no-store`, `ok`, `store-damaged`, `store-newer`, `usage` |
 
 - `ok`: check `outcome`; `confirm` waits, `nothing` is a no-op or an empty answer, and only `done` reports the completed action.
@@ -124,6 +124,7 @@ These rows list every code applicable to each command, including invalid-home ov
 - `no-store`: use `on` only when the user wants memory. Status returns `nothing`; purge and repair use their own no-op behavior. Do not create a store as a read-side fix.
 - `store-newer`: update the plugin; do not downgrade or repair an opaque store. Purge is the explicit whole-folder exception and still asks first. The format-2 headers that a stopped migration leaves do not refuse `migrate`; it answers `store-newer` only for a header of a format after 2.
 - `store-damaged`: explain that repair can propose a new store record. Do not rewrite it directly or reset configuration.
+- `migration-needed`: the memory store has not moved to this release's format, or its move stopped part way. Explain that `migrate` moves it after asking. Until then a store that has not moved keeps recording, and only the commands of curated memory (`resume`, `list`, `search`, `open`, `pin`, `unpin`, `forget`, `delete-project`, `conflicts`, `runs` and `undo`) wait for it; after a move that stopped, every command but `purge` and `migrate` waits.
 - `configuration-invalid`: name the safe reported field. An invalid `CORTHEX_MEMORY_HOME` is refused by every command, with no fallback to a different folder. Status can report a schema-invalid configuration; purge and repair have narrow configuration exemptions, not permission to fix its fields.
 - `no-project-list` or `not-in-project`: use the core corthex skill to help register or select the intended project. A clash needs a specific project choice; do not guess one or change the registry as a memory side effect.
 - `not-enabled`: explain that the project's memory is off. `on` bypasses this gate; `off` on an already disabled project is `nothing`.

@@ -121,7 +121,8 @@ class Deletion:
             shown = str(self.root)
         data = dict(folder=shown, projects=None, deleted=dict(items=None, entries=None, usage=None), sync="unknown")
         try:
-            header = store._record(self.read(self.root / "store.json"))
+            # From release 0.3.0 a format-2 store is read as one too (TASK-117).
+            header = self.context.header(self.read(self.root / "store.json"))
         except (OSError, ValueError, UnicodeError, store.StoreUnavailable):
             return data  # An opaque layout is not interpreted as empty C1 data.
         if self.context.record and header["device"] != self.context.record["device"]:
@@ -159,7 +160,11 @@ class Deletion:
             if len(parts) >= 5 and parts[0] == "projects" and parts[2:4] == ("layer", "items"):
                 items.append(path)
         data["projects"] = sorted(names) if complete else None
-        data["deleted"] = dict(items=0 if complete and items_known and not items else None,
+        if header["format"] == 2:
+            items_count = self.items() if complete and items_known else None
+        else:
+            items_count = 0 if complete and items_known and not items else None
+        data["deleted"] = dict(items=items_count,
                                entries=self.count(raw, True) if complete and raw_known else None,
                                usage=self.count(usage) if usage_known else None)
         try:
@@ -171,6 +176,18 @@ class Deletion:
         except (OSError, ValueError, UnicodeError, configuration.ConfigurationInvalid):
             pass
         return data
+
+    def items(self):
+        """A format-2 store's items that no tombstone names, counted by their files as delete-project counts them."""
+        from .delete_project_command import _ids
+        named = {"items": {}, "tombstones": {}}
+        for path, identity in self.nodes.items():
+            parts = path.relative_to(self.root).parts
+            if (len(parts) == 5 and parts[0] == "projects" and parts[2] == "layer" and parts[3] in named
+                    and identity[2] == stat.S_IFREG):
+                named[parts[3]].setdefault(parts[1], set()).add(path.name)
+        return sum(len(_ids(names) - _ids(named["tombstones"].get(project, ())))
+                   for project, names in named["items"].items())
 
     def plan(self):
         planned = {(0, self.root / "store.lock", "store")}

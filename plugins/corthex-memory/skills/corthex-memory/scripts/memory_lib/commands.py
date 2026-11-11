@@ -6,6 +6,10 @@ It owns the operation's locks and rechecks store identity, project state and the
 preview under them before applying;
 lock() supplies the shared ten-second wait, ordering and lease checks. No command
 effects or public test switches live in this framework.
+
+From release 0.3.0 (the activation, TASK-117) the runner also parses the
+commands in LATER, finds the kind of memory store before its gates and binds a
+format-2 store with c2_store.CommandStore; below it every path stays C1's.
 """
 
 import argparse
@@ -18,37 +22,49 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import base, clock, command_result, configuration, diagnostics, locks, projects, store
+from . import activation, base, c2_store, clock, command_result, configuration, diagnostics, locks, projects, store
 
+# The commands that every release parses; the 0.3.0 activation adds LATER.
 COMMANDS = tuple("on off status resume list search open pin unpin forget delete-project "
                  "purge leave-out retention sync setup repair".split())
 ALL = frozenset(COMMANDS)
-# `migrate`, a store command that joins COMMANDS at the 0.3.0 activation, takes no project either.
-PROJECT = ALL - {"status", "purge", "retention", "sync", "repair", "migrate"}
+LATER = ("conflicts", "runs", "undo", "migrate")
+EVERY = ALL | frozenset(LATER)
+# `migrate` is a store command: it takes no project either.
+PROJECT = EVERY - {"status", "purge", "retention", "sync", "repair", "migrate"}
 CHANGES = ALL - {"status", "list", "search", "open", "setup"}
-# migrate (API-154) and undo (API-153) ask first but stay out of COMMANDS until the 0.3.0 activation.
+# migrate (API-154) and undo (API-153) ask first; the runner parses them from release 0.3.0 on.
 ASKS = frozenset("on resume forget delete-project purge retention sync repair migrate undo".split())
+# The commands that read or change curated memory: from release 0.3.0 a format-1 store
+# refuses them with `migration-needed` until `migrate` moves it to format 2.
+CURATED = frozenset("resume list search open pin unpin forget delete-project conflicts runs undo".split())
 # The common command-code applicability table, including the on/off exceptions.
 # Invalid CORTHEX_MEMORY_HOME precedes the store and overrides the schema row.
+# `migrate` passes none of the gates: its handler reads the store itself (stage 06).
 COMMON = {
-    "usage": (ALL | {"none"}, "refused"),
-    "no-store": (ALL - {"on", "purge", "repair"}, "refused"),
-    "store-newer": (ALL - {"purge", "migrate"}, "refused"),
-    "store-damaged": (ALL - {"purge", "repair"}, "refused"),
-    "configuration-invalid": (ALL - {"status", "purge", "repair"}, "refused"),
+    "usage": (EVERY | {"none"}, "refused"),
+    "no-store": (EVERY - {"on", "purge", "repair"}, "refused"),
+    "store-newer": (EVERY - {"purge", "migrate"}, "refused"),
+    "store-damaged": (EVERY - {"purge", "repair"}, "refused"),
+    "migration-needed": (EVERY - {"purge", "migrate"}, "refused"),
+    "configuration-invalid": (EVERY - {"status", "purge", "repair"}, "refused"),
     "no-project-list": (PROJECT, "refused"),
     "not-in-project": (PROJECT, "refused"),
     "not-enabled": (PROJECT - {"on"}, "refused"),
     # Every reader can need a write lease to restore a backup. Ordinary reads
     # acquire no lock; effect handlers use lock() only for changing commands.
-    "lock-busy": (ALL, "failed"),
-    "internal": (ALL | {"none"}, "failed"),
+    "lock-busy": (EVERY, "failed"),
+    "internal": (EVERY | {"none"}, "failed"),
 }
+# The common codes that only the runner of release 0.3.0 or later gives.
+FROM_C2 = frozenset(("migration-needed",))
 MESSAGES = {
     "usage": "The command or arguments are not valid. Use a documented memory command and its arguments.",
     "no-store": "There is no memory store on this device. Turn memory on for a project first.",
     "store-newer": "This memory store needs a newer plugin. Update the plugin before using it.",
     "store-damaged": "The store record cannot be read. Repair it after reviewing the proposed change.",
+    "migration-needed": ("This memory store has not moved to this release's format, or its move stopped part way. "
+                         "The migrate command moves it after asking."),
     "configuration-invalid": "The memory configuration is not valid. Correct the reported field before trying again.",
     "no-project-list": "The project list cannot be read. The corthex skill can add or repair it.",
     "not-in-project": "This folder does not identify one project. The corthex skill can update the project list.",
@@ -92,6 +108,15 @@ class _DiagnosticStore(store.MemoryStore):
         return super().record(*args, precondition=check, **kwargs)
 
 
+def diagnostic_store(memory, device, format=1):
+    """A store for best-effort diagnostics, bound to the operation's readable device and the store's format."""
+    if format == 2:
+        bound = c2_store.CommandStore(memory.fence)
+        bound.expected = device
+        return bound
+    return _DiagnosticStore(memory, device)
+
+
 class Parser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, add_help=False, allow_abbrev=False, **kwargs)
@@ -125,12 +150,13 @@ def device_folder(value):
     return value
 
 
-def parser():
+def parser(c2=False):
+    """The command parser; with `c2`, release 0.3.0 or later, it parses the commands in LATER too."""
     root = Parser(prog="memory.py")
     root.add_argument("--folder", default=argparse.SUPPRESS)
     sub = root.add_subparsers(dest="command", required=True)
     kinds = ("decision", "preference", "lesson", "reference", "fact")
-    for name in COMMANDS:
+    for name in COMMANDS + (LATER if c2 else ()):
         part = sub.add_parser(name)
         part.add_argument("--folder", default=argparse.SUPPRESS)
         if name in ASKS and name != "sync":
@@ -140,6 +166,12 @@ def parser():
         if name in ("list", "search"):
             part.add_argument("--kind", choices=kinds)
             part.add_argument("--limit", type=number_between(1), default=200 if name == "list" else 20)
+        if name == "conflicts":
+            part.add_argument("--dismiss")
+        if name == "runs":
+            part.add_argument("--limit", type=number_between(1, 200), default=10)
+        if name == "undo":
+            part.add_argument("run")
         if name == "search":
             part.add_argument("words")
             part.add_argument("--words-only", action="store_true")
@@ -169,12 +201,12 @@ def parser():
     return root
 
 
-def command_name(argv):
+def command_name(argv, c2=False):
     # Skip only the documented leading global option, never guess from a value.
     rest = list(argv)
     while rest and (rest[0] == "--folder" or rest[0].startswith("--folder=")):
         rest = rest[2:] if rest[0] == "--folder" else rest[1:]
-    return rest[0] if rest and rest[0] in ALL else "none"
+    return rest[0] if rest and rest[0] in (EVERY if c2 else ALL) else "none"
 
 
 def canonical(value):
@@ -234,6 +266,17 @@ class Context:
     project: object = None
     store_error: object = None
     configuration_error: object = None
+    # The kind of store that the runner found from release 0.3.0 on (activation); None below it.
+    kind: object = None
+
+    @property
+    def format(self):
+        """The store format that the handlers read and write: 2 for a format-2 store, or a new one, from 0.3.0."""
+        return 2 if self.kind in (activation.FORMAT_2, activation.NONE) else 1
+
+    def header(self, data):
+        """Parse store record bytes as the store's format; another format or a migration refuses without restoring."""
+        return c2_store.parse_header(data) if self.format == 2 else store._record(data)
 
     def confirm(self, data, say, apply, code="ok", bound=None):
         """Ask without calling apply; a mismatch always returns a fresh preview.
@@ -279,21 +322,47 @@ def _gates(context):
         if context.record and notes:
             try:
                 from .worker_support import BoundDiagnostics
-                logger = BoundDiagnostics(_DiagnosticStore(context.memory, context.record["device"]))
+                logger = BoundDiagnostics(diagnostic_store(context.memory, context.record["device"], context.format))
                 for error, count in notes:
                     logger.failure(error, "restore", clock.now() + 10, count=count)
             except Exception:
                 pass  # A diagnostic failure never replaces the gate's result.
 
 
+def _kind_gate(context):
+    """From release 0.3.0: what the kind of store refuses before any record is read, or None."""
+    kind, command = context.kind, context.command
+    if kind == activation.NEWER and command != "purge":
+        return common_result(command, "store-newer")
+    if kind == activation.MIGRATING and command != "purge":
+        return common_result(command, "migration-needed")
+    if kind == activation.DAMAGED and command not in ("purge", "repair"):
+        return common_result(command, "store-damaged")
+    return None
+
+
 def _read_gates(context, report):
     command, memory = context.command, context.memory
+    if command == "migrate":
+        # Its handler reads the store itself: a format-1 gate could restore a header during a migration.
+        return None
+    if context.kind is not None:
+        answer = _kind_gate(context)
+        if answer is not None:
+            return answer
+        if context.kind == activation.DAMAGED:
+            # Only purge and repair, which take no project, get here: neither record can be read in its own
+            # format, and a format-1 gate would read a format-2 record of a mixed pair as a newer store.
+            context.store_error = "store-damaged"
+            return None
     try:
         context.record = memory.record(report, deadline=clock.now() + 10)
     except store.StoreUnavailable as error:
-        context.store_error = error.code
-        if command in COMMON[error.code][0]:
-            return common_result(command, error.code)
+        # A format-2 binding meets a migration that began after the store's kind was found.
+        code = "migration-needed" if error.code == "store-migrating" else error.code
+        context.store_error = code
+        if command in COMMON[code][0]:
+            return common_result(command, code)
     except OSError:
         if command != "purge":
             raise
@@ -301,6 +370,10 @@ def _read_gates(context, report):
     if context.record:
         if isinstance(memory, _DiagnosticStore):
             memory.device = context.record["device"]
+        elif isinstance(memory, c2_store.CommandStore):
+            memory.expected = context.record["device"]
+        if context.kind == activation.FORMAT_1 and command in CURATED:
+            return common_result(command, "migration-needed")
         try:
             context.configuration = memory.configuration(report, deadline=clock.now() + 10)
         except configuration.ConfigurationInvalid as error:
@@ -312,9 +385,10 @@ def _read_gates(context, report):
                 raise
             context.configuration_error = "unreadable"
         except store.StoreUnavailable as error:
-            context.record, context.store_error = None, error.code
-            if command in COMMON[error.code][0]:
-                return common_result(command, error.code)
+            code = "migration-needed" if error.code == "store-migrating" else error.code
+            context.record, context.store_error = None, code
+            if command in COMMON[code][0]:
+                return common_result(command, code)
     if context.configuration is None and command == "on":
         context.configuration = configuration.prepare({})
     if command in PROJECT or command == "status":
@@ -335,12 +409,44 @@ def _read_gates(context, report):
     return None
 
 
+def _handlers(c2, kind):
+    """The handlers of this release: C1's, and from release 0.3.0 C2's, with C2's status for a format-2 store."""
+    from . import enablement, status, recording_exclusions, retention_settings, store_deletion, store_repair
+    handlers = {"on": enablement.on, "off": enablement.off, "status": status.status,
+                "leave-out": recording_exclusions.leave_out, "retention": retention_settings.retention,
+                "purge": store_deletion.purge, "repair": store_repair.repair}
+    if c2:
+        from . import (c2_status, conflicts_command, delete_project_command, forget_command, item_commands,
+                       migration_command, pin_command, resume_command, run_listing, search_command, setup_command,
+                       undo_command)
+        handlers.update({
+            "resume": resume_command.resume, "list": item_commands.list_items, "search": search_command.search,
+            "open": item_commands.open_items, "pin": pin_command.pin, "unpin": pin_command.unpin,
+            "forget": forget_command.forget, "delete-project": delete_project_command.delete_project,
+            "setup": setup_command.setup, "conflicts": conflicts_command.conflicts, "runs": run_listing.runs,
+            "undo": undo_command.undo, "migrate": migration_command.migrate})
+        if kind == activation.FORMAT_2:
+            handlers["status"] = c2_status.status
+    return handlers
+
+
+def _store_kind(memory):
+    """The kind of store, read through the root that the runner pinned; none when it found no folder."""
+    fence = getattr(memory, "fence", None)
+    if fence is None:
+        return activation.NONE
+    deadline = clock.now() + 10
+    from . import files
+    return activation.store_kind(fence.root, lambda path: files._retry(lambda: fence.read(path, deadline), deadline))
+
+
 def run(argv, handlers=None):
     """Return the result and status; handler registration is internal Python only."""
-    command, context, unimplemented = command_name(argv), None, False
+    c2 = activation.c2()
+    command, context, unimplemented = command_name(argv, c2), None, False
     failed_validation = False
     try:
-        args = vars(parser().parse_args(argv))
+        args = vars(parser(c2).parse_args(argv))
         command = args.pop("command")
         supplied = args.pop("confirm", None)
         folder = args["folder"] if "folder" in args else Path.cwd()
@@ -355,13 +461,17 @@ def run(argv, handlers=None):
             memory = _DiagnosticStore(memory, None)  # Pin the existing root before gate recovery.
         if command == "purge" and store_deletion.protect(base.memory_home()) != memory.folder:
             raise locks.LostLock()
-        context = Context(command, args, supplied, memory)
+        found = _store_kind(memory) if c2 else None
+        if found == activation.FORMAT_2 and command not in ("purge", "migrate"):
+            # Purge deletes any store as C1 does; migrate reads the store itself.
+            memory = c2_store.CommandStore(memory.fence)
+        context = Context(command, args, supplied, memory, kind=found)
         answer = _gates(context)
         if answer is None:
+            if isinstance(memory, c2_store.CommandStore) and context.record is not None:
+                memory.bind(context.record, context.configuration, clock.now() + 10)
             if handlers is None:
-                from . import enablement, status, recording_exclusions, retention_settings, store_deletion, store_repair
-                handlers = {"on": enablement.on, "off": enablement.off, "status": status.status,
-                            "leave-out": recording_exclusions.leave_out, "retention": retention_settings.retention, "purge": store_deletion.purge, "repair": store_repair.repair}
+                handlers = _handlers(c2, found)
             handler = (handlers or {}).get(command)
             if handler is None:
                 unimplemented = True
@@ -390,7 +500,7 @@ def run(argv, handlers=None):
             if context is not None and context.record is not None and not isinstance(error, locks.LostLock):
                 try:
                     from .worker_support import BoundDiagnostics
-                    memory = _DiagnosticStore(context.memory, context.record["device"])
+                    memory = diagnostic_store(context.memory, context.record["device"], context.format)
                     BoundDiagnostics(memory).failure(kind, "skill", clock.now() + 10,
                                                      project=context.project.name if context.project else None)
                 except Exception:

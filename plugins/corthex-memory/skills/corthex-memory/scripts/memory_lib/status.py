@@ -8,7 +8,7 @@ import re
 import stat
 from urllib.parse import urlsplit
 
-from . import base, clock, commands, command_result, configuration, diagnostics, files, locks
+from . import activation, base, clock, commands, command_result, configuration, diagnostics, files, locks
 from . import model_access, projects, reading, redaction, retention, status_access, store
 from .worker_support import BoundDiagnostics
 
@@ -314,4 +314,9 @@ def _status(context, reader):
     if reader.unreadable:
         data["unreadable"] = sorted(reader.unreadable)
     reader.memory.check()
-    return commands.result("status", _private(data), "Memory status from local recording metadata; model curation is not active in C1.")
+    say = "Memory status from local recording metadata; model curation is not active in C1."
+    if context.kind == activation.FORMAT_1:
+        # From release 0.3.0 a format-1 store keeps C1 recording until `migrate` moves it (TASK-117).
+        say = ("Memory status from local recording metadata. This store still uses the C1 format: it records, but "
+               "curation and recall start only after the migrate command moves it, which asks first.")
+    return commands.result("status", _private(data), say)
