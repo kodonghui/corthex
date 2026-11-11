@@ -32,7 +32,7 @@ Write the sentence a careful native speaker would write. When the document is no
 
 ### Korean
 
-When `language` is `ko`, use polite speech (해요체 unless the profile says otherwise) and address the reader as the profile's `address_as`. Pure Korean (순한국말) is not the goal: keep a term that Korean sources use, including an English or Sino-Korean one, and explain it. Replace these patterns, which come from coining words or from translating English word for word:
+When `language` is `ko`, use polite speech (해요체 unless the learner's rules say otherwise; the profile has no field for it) and address the reader as the profile's `address_as`. Pure Korean (순한국말) is not the goal: keep a term that Korean sources use, including an English or Sino-Korean one, and explain it. Replace these patterns, which come from coining words or from translating English word for word:
 
 | Instead of | Write |
 | --- | --- |

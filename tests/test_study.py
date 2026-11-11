@@ -1,4 +1,4 @@
-"""Checks that the corthex-study skill keeps its rules for keys, records and claim tags."""
+"""Checks that the corthex-study skill keeps its rules for keys, records, standard terms and claim tags."""
 
 import unittest
 
