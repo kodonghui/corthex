@@ -122,8 +122,8 @@ class ActivationTest(unittest.TestCase):
                 bound = isinstance(context.memory, c2_store.CommandStore)
                 self.assertEqual(bound, command not in ("purge", "migrate"))
                 if command != "migrate":
-                    self.assertEqual(context.record["device"] if context.record else None,
-                                     None if command == "purge" else header["device"])
+                    # Purge keeps C1's binding, and reads the record's device through the format-2 one.
+                    self.assertEqual(context.record["device"], header["device"])
 
     def test_tc426_each_kind_of_store_gets_its_answer(self):
         made = self.turn_on("0.2.0")
@@ -139,34 +139,76 @@ class ActivationTest(unittest.TestCase):
         migrating = dict(made, format=2, release="0.3.0", migrating={"from": 1, "to": 2, "started": made["made"]})
         newer = dict(made, format=3)
         mixed = dict(made, format=2, release="0.3.0")
+        elsewhere = dict(mixed, device="d_0123456789ab")
+        everything = set(ARGV)
         cases = (("migrating", migrating, None, {"purge", "migrate"}, "migration-needed"),
                  ("migrating backup", made, migrating, {"purge", "migrate"}, "migration-needed"),
                  ("newer", newer, None, {"purge", "migrate"}, "store-newer"),
                  ("mixed", mixed, made, {"purge", "repair", "migrate"}, "store-damaged"),
-                 ("unreadable", None, None, {"purge", "repair", "migrate"}, "store-damaged"))
+                 ("unreadable", None, None, {"purge", "repair", "migrate"}, "store-damaged"),
+                 # A backup that cannot be read, or of another device, beside a format-2 record hides nothing, as
+                 # for format 1: a repair whose last step failed can leave either.
+                 ("format 2, torn backup", mixed, b"{", everything, None),
+                 ("format 2, another device's backup", mixed, elsewhere, everything, None))
         for label, primary, backup, reaching, refusal in cases:
             if primary is None:
                 (self.root / "store.json").write_bytes(b"{")
             else:
                 (self.root / "store.json").write_text(json.dumps(primary), encoding="utf-8")
             if backup is not None:
-                (self.root / "store.json.bak").write_text(json.dumps(backup), encoding="utf-8")
+                (self.root / "store.json.bak").write_bytes(
+                    backup if isinstance(backup, bytes) else json.dumps(backup).encode("utf-8"))
             for command, (code, reached, context) in self.answers().items():
                 with self.subTest(kind=label, command=command):
                     if command in reaching:
                         self.assertEqual((code, reached), ("lock-busy", True))
-                        if command == "repair":
+                        if command == "repair" and refusal == "store-damaged":
                             self.assertIsNone(context.record)
                     else:
                         self.assertEqual((code, reached), (refusal, False))
             if (self.root / "store.json.bak").exists():
                 (self.root / "store.json.bak").unlink()
+        # A migration that begins after the kind was found meets C1's gate, which reads it as a newer store.
+        (self.root / "store.json").write_text(json.dumps(migrating), encoding="utf-8")
+        found = activation.store_kind
+        for command in ("status", "list", "purge"):
+            kinds = []
+            def raced(root, read):
+                kinds.append(found(root, read))
+                return activation.FORMAT_1 if len(kinds) == 1 else kinds[-1]
+            with self.subTest(race=command), mock.patch.object(activation, "store_kind", raced):
+                code, reached, context = self.answers()[command]
+                self.assertEqual((code, reached), ("lock-busy", True) if command == "purge"
+                                 else ("migration-needed", False))
+        # And so does one that begins between the format-2 binding's gates and its pin.
+        (self.root / "store.json").write_text(json.dumps(mixed), encoding="utf-8")
+        refuse = mock.patch.object(c2_store.CommandStore, "bind",
+                                   side_effect=store.StoreUnavailable("store-migrating"))
+        with refuse:
+            self.assertEqual(self.answers()["list"][:2], ("migration-needed", False))
         # A format-1 backup restores a store record that cannot be read, as C1's gate does.
         (self.root / "store.json").write_bytes(b"{")
         (self.root / "store.json.bak").write_bytes(original)
         code, reached, context = self.answers()["status"]
         self.assertEqual((code, context.kind), ("lock-busy", activation.FORMAT_1))
         self.assertEqual((self.root / "store.json").read_bytes(), original)
+        # On a format-1 store the commands of curated memory pass the configuration and project gates first.
+        outside = self.folder / "outside"
+        outside.mkdir()
+        with release("0.3.0"):
+            value, _ = commands.run(["--folder", str(outside), "list"])
+            self.assertEqual(value["code"], "not-in-project")
+            self.assertEqual(self.run_command("off")["outcome"], "done")
+            self.assertEqual(self.run_command("list")["code"], "not-enabled")
+            settings = self.root / "configuration.json"
+            kept = settings.read_bytes()
+            settings.write_bytes(b"[]")
+            self.assertEqual(self.run_command("list")["code"], "configuration-invalid")
+            settings.write_bytes(kept)
+            # Purge deletes a store whose records cannot be opened, as below 0.3.0.
+            (self.root / "store.json.bak").mkdir()
+            self.assertEqual(self.answers()["purge"][:2], ("lock-busy", True))
+            (self.root / "store.json.bak").rmdir()
         # Without a memory folder, `on` gets a format-2 store and the others C1's gates.
         shutil.rmtree(str(self.root))
         for command, (code, reached, context) in self.answers().items():
@@ -210,8 +252,10 @@ class ActivationTest(unittest.TestCase):
                              ("confirm", ["demo"], 1))
             self.assertEqual(self.run_command("delete-project")["data"]["deleted"]["items"], 1)
             self.assertEqual(json.loads((self.root / "store.json").read_text(encoding="utf-8")), header)
+            # Its code binds the record's device, as a format-1 purge's does.
+            self.assertEqual(self.confirmed("purge")["outcome"], "done")
+            self.assertFalse(self.root.exists())
         # A format-1 store keeps C1's status, which says that migrate comes first.
-        shutil.rmtree(str(self.root))
         self.turn_on("0.2.0")
         with release("0.2.1"):
             below = self.run_command("status")["say"]
@@ -239,6 +283,25 @@ class ActivationTest(unittest.TestCase):
             self.assertEqual((value["outcome"], value["data"]["phase"]), ("done", "migrated"))
             self.assertEqual(json.loads((self.root / "store.json").read_text(encoding="utf-8"))["format"], 2)
             self.assertEqual(self.run_command("list")["outcome"], "nothing")
+            # Once the migration finished, both records lost get a new format-2 record.
+            for name in activation.NAMED:
+                (self.root / name).write_bytes(b"{")
+            self.assertEqual(self.confirmed("repair")["code"], "ok")
+            self.assertEqual(json.loads((self.root / "store.json").read_text(encoding="utf-8"))["format"], 2)
+        # The preview names the new record's format, and its code binds it.
+        shutil.rmtree(str(self.root))
+        self.turn_on("0.2.0")
+        (self.root / "store.json").write_bytes(b"{")
+        with release("0.3.0"):
+            asked = self.run_command("repair")
+            self.assertIn("format 1", asked["say"])
+            (self.root / "projects/demo/runs").mkdir()
+            again = self.run_command("repair", "--confirm", asked["confirm"])
+            self.assertEqual((again["outcome"], again["code"]), ("confirm", "confirm-stale"))
+            self.assertIn("format 2", self.run_command("repair")["say"])
+            self.assertEqual((self.root / "store.json").read_bytes(), b"{")
+        with release("0.2.1"):
+            self.assertNotIn("format", self.run_command("repair")["say"])
         # A format-2 store, a pair of different formats and a store without projects get a format-2 record.
         for label in ("format 2", "mixed", "no project"):
             shutil.rmtree(str(self.root))
@@ -258,6 +321,17 @@ class ActivationTest(unittest.TestCase):
                     self.assertNotEqual(record["device"], made["device"])
                     self.assertFalse((self.root / "store.json.bak").exists())
                     self.assertEqual(self.run_command("repair")["outcome"], "nothing")
+        # A migration that did not finish keeps its records lost: a new record would skip its finalization.
+        nonce = "0123456789abcdef0123456789abcdef"
+        folder = self.root / ".maintenance/format-1-to-2" / nonce
+        folder.mkdir(parents=True)
+        (folder / "plan.json").write_text(json.dumps({"nonce": nonce, "context": {
+            "device": record["device"], "made": record["made"], "release": "0.3.0"}}), encoding="utf-8")
+        (self.root / "store.json").write_bytes(b"{")
+        with release("0.3.0"):
+            self.assertEqual(self.run_command("repair")["code"], "migration-needed")
+            (folder / "migration-complete.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(self.run_command("repair")["outcome"], "confirm")
         # A migration that stopped is migrate's to finish, never repair's.
         migrating = dict(record, migrating={"from": 1, "to": 2, "started": record["made"]})
         (self.root / "store.json").write_text(json.dumps(migrating), encoding="utf-8")

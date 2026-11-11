@@ -248,6 +248,8 @@ def validate_result(value, command):
 
 
 def common_result(command, code, **data):
+    if code == "store-migrating":
+        code = "migration-needed"  # The format-2 binding's refusal of a store that a migration holds (TASK-117).
     say = MESSAGES[code]
     if data.get("field") == "CORTHEX_MEMORY_HOME":
         say = "CORTHEX_MEMORY_HOME must expand to an absolute path. No store was read or changed."
@@ -355,11 +357,15 @@ def _read_gates(context, report):
             # format, and a format-1 gate would read a format-2 record of a mixed pair as a newer store.
             context.store_error = "store-damaged"
             return None
+    reader = memory
+    if context.kind == activation.FORMAT_2 and command == "purge":
+        # Purge keeps C1's binding, which reads a format-2 record as a newer store; the record's device, which
+        # its confirmation binds as for format 1, comes from the format-2 binding's read.
+        reader = c2_store.CommandStore(memory.fence)
     try:
-        context.record = memory.record(report, deadline=clock.now() + 10)
+        context.record = reader.record(report, deadline=clock.now() + 10)
     except store.StoreUnavailable as error:
-        # A format-2 binding meets a migration that began after the store's kind was found.
-        code = "migration-needed" if error.code == "store-migrating" else error.code
+        code = _refusal(context, error)
         context.store_error = code
         if command in COMMON[code][0]:
             return common_result(command, code)
@@ -372,10 +378,8 @@ def _read_gates(context, report):
             memory.device = context.record["device"]
         elif isinstance(memory, c2_store.CommandStore):
             memory.expected = context.record["device"]
-        if context.kind == activation.FORMAT_1 and command in CURATED:
-            return common_result(command, "migration-needed")
         try:
-            context.configuration = memory.configuration(report, deadline=clock.now() + 10)
+            context.configuration = reader.configuration(report, deadline=clock.now() + 10)
         except configuration.ConfigurationInvalid as error:
             context.configuration_error = error.field
             if command in COMMON["configuration-invalid"][0]:
@@ -385,7 +389,7 @@ def _read_gates(context, report):
                 raise
             context.configuration_error = "unreadable"
         except store.StoreUnavailable as error:
-            code = "migration-needed" if error.code == "store-migrating" else error.code
+            code = _refusal(context, error)
             context.record, context.store_error = None, code
             if command in COMMON[code][0]:
                 return common_result(command, code)
@@ -406,7 +410,29 @@ def _read_gates(context, report):
             enabled = context.configuration.values["projects"].get(context.project.name, {}).get("enabled", False)
             if command != "on" and not enabled:
                 return common_result(command, "not-enabled", project=context.project.name)
+    if context.kind == activation.FORMAT_1 and command in CURATED:
+        # After the store and project gates (stage 06): curated memory waits for `migrate`.
+        return common_result(command, "migration-needed")
     return None
+
+
+def _refusal(context, error):
+    """The code of a store refusal that a gate met.
+
+    From release 0.3.0 a migration that began after the kind was found is
+    `migration-needed`: the format-2 binding refuses it as `store-migrating`,
+    and C1's, which binds a format-1 store, as a newer store, so its kind is
+    found again.
+    """
+    if error.code == "store-migrating":
+        return "migration-needed"
+    if error.code == "store-newer" and context.kind not in (None, activation.NEWER):
+        try:
+            if _store_kind(context.memory) == activation.MIGRATING:
+                return "migration-needed"
+        except Exception:
+            pass  # The gate's own refusal stands.
+    return error.code
 
 
 def _handlers(c2, kind):
@@ -461,7 +487,13 @@ def run(argv, handlers=None):
             memory = _DiagnosticStore(memory, None)  # Pin the existing root before gate recovery.
         if command == "purge" and store_deletion.protect(base.memory_home()) != memory.folder:
             raise locks.LostLock()
-        found = _store_kind(memory) if c2 else None
+        try:
+            found = _store_kind(memory) if c2 else None
+        except OSError:
+            # Purge deletes a store whose records cannot be opened as C1 does (stage 06); C1's gate lets it.
+            if command != "purge":
+                raise
+            found = None
         if found == activation.FORMAT_2 and command not in ("purge", "migrate"):
             # Purge deletes any store as C1 does; migrate reads the store itself.
             memory = c2_store.CommandStore(memory.fence)
@@ -469,7 +501,12 @@ def run(argv, handlers=None):
         answer = _gates(context)
         if answer is None:
             if isinstance(memory, c2_store.CommandStore) and context.record is not None:
-                memory.bind(context.record, context.configuration, clock.now() + 10)
+                try:
+                    memory.bind(context.record, context.configuration, clock.now() + 10)
+                except store.StoreUnavailable as error:
+                    # The store changed after its gates: a migration began, or a record was replaced.
+                    answer = common_result(command, _refusal(context, error))
+        if answer is None:
             if handlers is None:
                 handlers = _handlers(c2, found)
             handler = (handlers or {}).get(command)

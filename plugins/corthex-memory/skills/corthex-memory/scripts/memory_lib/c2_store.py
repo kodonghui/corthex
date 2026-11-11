@@ -5,7 +5,11 @@ From release 0.3.0 the command runner binds a format-2 store with CommandStore
 fences, and real migrations; constructing this object neither migrates nor
 enables C2.
 """
-from . import configuration, files, format2, locks, store, worker_support
+from . import activation, configuration, files, format2, locks, store, worker_support
+
+# What a readable backup beside a format-2 store record refuses, by its kind.
+BACKUP_REFUSALS = {activation.FORMAT_1: 'store-damaged', activation.MIGRATING: 'store-migrating',
+                   activation.NEWER: 'store-newer'}
 
 
 def parse_header(data):
@@ -42,12 +46,16 @@ class C2Store(worker_support.WorkerStore):
 
         path = self.folder / 'store.json'
         try:
-            # A valid primary must not hide a format-1 automatic fallback.
+            # A valid primary must not hide a backup of another format or a migration, which the runner's kind
+            # finds damaged, migrating or newer (TASK-117). A backup that cannot be read, or of another device,
+            # hides nothing that restoring it could bring back here, so the record decides, as for format 1.
             # Unpublished header temps/quiescence are TASK-074's precondition.
             try:
-                parse(self.fence.read(path.with_name(path.name + '.bak'), deadline))
+                backup = activation.record_kind(self.fence.read(path.with_name(path.name + '.bak'), deadline))
             except FileNotFoundError:
-                pass
+                backup = None
+            if backup in BACKUP_REFUSALS:
+                raise store.StoreUnavailable(BACKUP_REFUSALS[backup])
             return self._read_record(path, parse, deadline, report,
                                      holding_lock=holding_lock, recording=recording)
         except (FileNotFoundError, ValueError, UnicodeError, files.RestoreNeeded):

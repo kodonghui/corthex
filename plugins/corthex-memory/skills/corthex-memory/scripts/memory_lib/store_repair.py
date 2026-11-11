@@ -5,6 +5,9 @@ treats a store record whose backup has the other format as damaged, as the
 runner does. A new store record then has the format of the projects' records:
 format 2 when a project's folder holds `runs`, which no C1 code path makes, or
 when there is no project's folder; otherwise format 1, which `migrate` accepts.
+The preview names that format and its code binds it. A store whose migration
+did not finish gets no new record, which would end the migration without its
+finalization: `repair` answers `migration-needed` and changes nothing.
 """
 import hashlib
 import os
@@ -14,6 +17,7 @@ from . import activation, base, c2_store, clock, commands, diagnostics, files, l
 from .worker_support import BoundDiagnostics, PathFence
 
 SAY = "The store record is missing or damaged and no readable backup can be restored. Confirm a new store record with a new device ID; all other memory, configuration and consent stay unchanged."
+FORMAT = " The new store record has format %d, the format of the projects' records."
 
 
 class Repair:
@@ -24,6 +28,7 @@ class Repair:
         self.notes = []
         # From release 0.3.0 the runner found the kind of store; below it this stays C1's.
         self.c2 = context.kind is not None
+        self.format = None
 
     def root_check(self):
         self.fence.check(self.root)
@@ -75,6 +80,7 @@ class Repair:
         if kind in (activation.NEWER, activation.MIGRATING):
             raise store.StoreUnavailable("store-newer" if kind == activation.NEWER else "migration-needed")
         if kind == activation.DAMAGED:
+            self.unfinished()
             return "broken", None, found[0]
         current = kinds[0] is not None
         return ("current" if current else "recover"), self.parse(found[0 if current else 1]), found[0]
@@ -84,6 +90,16 @@ class Repair:
         """A store record of either format, as the runner of release 0.3.0 reads it."""
         value = store.json_document(data)
         return c2_store.parse_header(data) if isinstance(value, dict) and value.get("format") == 2 else store._record(data)
+
+    def unfinished(self):
+        """Refuse a new record while a migration's record (stage 05) has not finished, or cannot be read."""
+        from . import migration_driver
+        try:
+            records = migration_driver._records(self.root)
+        except migration_driver.MigrationRefused:
+            records = None
+        if records is None or any("migration-complete.json" not in marks for _, _, marks in records):
+            raise store.StoreUnavailable("migration-needed")
 
     def data_format(self):
         """From release 0.3.0: the format of the projects' records, which a new store record must have."""
@@ -101,12 +117,25 @@ class Repair:
                 return 2
         return 1 if found else 2
 
+    def new_format(self):
+        """The format of a new store record: the projects' from release 0.3.0, found once per run; 1 below it."""
+        if self.format is None:
+            self.format = self.data_format() if self.c2 else 1
+        return self.format
+
     def candidate(self):
         """A new store record of this release with a new device ID, in the projects' format from release 0.3.0."""
-        if self.c2 and self.data_format() == 2:
+        if self.new_format() == 2:
             from . import enablement
             return enablement._new_record(2)
         return store.new_record(activation.release())
+
+    def ask(self, then):
+        """The preview of a new store record; from release 0.3.0 it names the record's format, which its code binds."""
+        if not self.c2:
+            return self.context.confirm({}, SAY, then)
+        number = self.new_format()
+        return self.context.confirm({}, SAY + FORMAT % number, then, bound={"format": number})
 
     def guard(self):
         self.root_check()
@@ -195,7 +224,7 @@ class Repair:
                 if state == "current":
                     return self.nothing(record)
                 if state == "broken":
-                    return self.context.confirm({}, SAY, lambda: self.write(candidate, original))
+                    return self.ask(lambda: self.write(candidate, original))
             finally:
                 self.lease = None
         return self.recover()
@@ -211,7 +240,7 @@ def repair(context):
             return operation.nothing(record)
         if state == "recover":
             return operation.recover()
-        return context.confirm({}, SAY, operation.apply)
+        return operation.ask(operation.apply)
     except store.StoreUnavailable as error:
         return commands.common_result("repair", error.code)
     finally:
