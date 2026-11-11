@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from . import base, configuration, files, locks, projects, store
 from . import clock
 
-HOOKS = {"start", "prompt", "end-of-turn", "end", "pre-compact"}
+HOOKS = {"start", "prompt", "end-of-turn", "end", "pre-compact", "post-compact"}
 HOSTS = {"claude-code", "codex"}
 STEPS = {"record", "recall", "summary", "trigger", "curate", "consolidate", "embed",
          "sync", "retention", "index", "restore", "skill", "compaction"}

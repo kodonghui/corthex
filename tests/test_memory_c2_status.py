@@ -308,6 +308,29 @@ class StatusTest(StatusStore, unittest.TestCase):
         self.assertEqual(data['failures'], [failure])
         self.assertEqual(data.get('unreadable', []), [])
 
+    def test_the_compaction_check_hook_s_timings_and_failures_are_shown_beside_the_other_hooks(self):
+        # TASK-114: from the 0.3.0 activation the check hook appends a timing line, hook `post-compact`, after each
+        # compaction in Claude Code (API-156 step 6), and notes its failures, such as an unreadable old check of
+        # another session, with the step `compaction` (TBL-004).
+        day = NOW.strftime('%Y-%m-%d')
+        logs = self.fixture.folder / 'logs'
+        rows = [dict(at='2026-11-12T11:00:0%d.000Z' % n, hook=hook, host='claude-code', ms=ms, outcome=outcome)
+                for n, (hook, ms, outcome) in enumerate((('post-compact', 12, 'ok'), ('pre-compact', 120, 'ok'),
+                                                          ('post-compact', 301, 'deadline'),
+                                                          ('post-compact', 60, 'lock-busy')))]
+        (logs / ('hooks-%s.jsonl' % day)).write_text(''.join(json.dumps(row) + '\n' for row in rows))
+        failure = dict(at='2026-11-12T11:00:00.000Z', step='compaction', hook='post-compact', host='claude-code',
+                       project='sample', error='JSONDecodeError', log='claude-code-0123456789abcdef')
+        (logs / ('failures-%s.jsonl' % day)).write_text(json.dumps(failure) + '\n')
+        data = self.status()['data']
+        self.assertEqual(data['hooks'], [
+            dict(hook='post-compact', host='claude-code', runs=3, median_ms=60, p95_ms=301,
+                 last='2026-11-12T11:00:03.000Z', outcomes={'ok': 1, 'deadline': 1, 'lock-busy': 1}),
+            dict(hook='pre-compact', host='claude-code', runs=1, median_ms=120, p95_ms=120,
+                 last='2026-11-12T11:00:01.000Z', outcomes={'ok': 1})])
+        self.assertEqual(data['failures'], [failure])
+        self.assertEqual(data.get('unreadable', []), [])
+
     def test_a_changed_store_record_stops_the_status(self):
         path = self.fixture.folder / 'store.json'
         good = path.read_bytes()
