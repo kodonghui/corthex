@@ -557,7 +557,9 @@ Claude Haiku 5.5의 더 높은 가격을 정하는 프롬프트 길이는 캐시
 python3 "<skill folder>/scripts/memory.py" <command> [arguments]
 ```
 
-Windows처럼 `python3`가 없는 곳에서는 그 대신 `python`이나 `py -3`을 씁니다. 스크립트는 자기 위치에서 플러그인의 라이브러리를 찾습니다. 모든 명령은 세션의 폴더인 `--folder <path>`(기본값은 작업 폴더)를 받으며, 훅처럼 프로젝트를 찾습니다(SPEC-001). 기억 전용 키는 자기 환경, 곧 도구의 환경에서 읽습니다. `status`, `purge`, `retention`, `sync`, `repair`를 뺀 모든 명령은 프로젝트에 대한 명령이고, 이 다섯은 기기 전체에 대해 일합니다. `status`는 폴더의 프로젝트가 있으면 그것도 보여 줍니다.
+Windows처럼 `python3`가 없는 곳에서는 그 대신 `python`이나 `py -3`을 씁니다. 스크립트는 자기 위치에서 플러그인의 라이브러리를 찾습니다. 모든 명령은 세션의 폴더인 `--folder <path>`(기본값은 작업 폴더)를 받으며, 훅처럼 프로젝트를 찾습니다(SPEC-001). 기억 전용 키는 자기 환경, 곧 도구의 환경에서 읽습니다. `status`, `purge`, `retention`, `sync`, `repair`, `migrate`를 뺀 모든 명령은 프로젝트에 대한 명령이고, 이 여섯은 기기 전체에 대해 일합니다. `status`는 폴더의 프로젝트가 있으면 그것도 보여 줍니다.
+
+0.3.0 활성화 전까지 스킬의 `SKILL.md`는 0.2.x 릴리스의 실행기가 처리기에 넘기는 명령만 말하는 C1의 것으로 남습니다. 마켓플레이스가 플러그인을 `main`에서 설치하기 때문입니다. 0.3.0 릴리스의 스킬은 어느 도구도 읽지 않는 이름인 `SKILL-0.3.0.md`로 그 옆에서 기다리고, 활성화가 이것을 스킬의 `SKILL.md`로 만듭니다(TASK-045). 이 스킬은 C3와 함께 오는 `sync`를 뺀 [명령](#명령)의 모든 명령을 [명령 결과](#명령-결과)가 각 명령에 주는 모든 코드와 함께 적고, 에이전트가 무엇이든 열기 전에 사용자의 말로 `search`를, 넓은 질문이면 `list`를 돌리며, `forget` 전에 기억이 지울 수 없는 것을 보여 주고, 바꾸기 전마다 묻고, 대화에서 키를 묻지 않게 합니다.
 
 저장소·설정·프로젝트 목록 gate 뒤 프로젝트 명령의 not-enabled 검사는 설정의 프로젝트 enabled 불리언을 쓰며 현재 동의까지 요구하는 helper를 쓰지 않습니다. On은 끈 프로젝트를 켜고 현재 동의를 받을 수 있도록 이 검사를 건너뜁니다. 동의가 없으면 기록과 전송은 계속 막히고 setup은 가져갈 동의가 없으면 거절하며 로컬 검색은 명세대로 단어를 쓸 수 있습니다. status의 프로젝트 찾기는 선택 사항이고 기기 상태 명령을 프로젝트 전용으로 바꾸지 않습니다.
 
@@ -1206,7 +1208,7 @@ D3 설계 상태: `superseded (D3, 2026-10-27)`. 이 절과 `sync` 설정·결�
 | --- | --- | --- | --- |
 | `usage` | `refused` | 모두 | 모르는 명령이나 인자. 명령을 모르면 `command`는 `none`. 종료 상태 2 |
 | `no-store` | `refused`, `status`에서는 `nothing` | `on`, `purge`, `repair`를 뺀 모두 | 아직 기억 폴더가 없음. `on`이 만듦 |
-| `store-newer` | `refused` | `purge`, `migrate`를 뺀 모두 | 기억 폴더가 더 새로운 판에서 옴 |
+| `store-newer` | `refused` | `purge`를 뺀 모두. `migrate`는 형식2보다 새로운 형식의 헤더에서만 받음 | 기억 폴더가 더 새로운 판에서 옴 |
 | `store-damaged` | `refused` | `purge`와 `repair`를 뺀 모두 | 기억 폴더 정보가 없거나 망가짐. `repair`가 새로 씀 |
 | `configuration-invalid` | `refused` | 스키마에 맞지 않는 설정은 `status`, `purge`, `repair`를 뺀 모두. 잘못된 `CORTHEX_MEMORY_HOME`은 모든 명령 | 기억 설정이 스키마에 맞지 않거나, `~`를 푼 `CORTHEX_MEMORY_HOME`이 절대 경로가 아님. `data.field`가 필드나 환경 변수를 알려 줍니다. 그것이 `CORTHEX_MEMORY_HOME`이면 `status`, `purge`, `repair`도 거절합니다. 처리할 저장소가 없으므로 어느 명령도 기본 폴더로 돌아가지 않고, 결과 스키마를 바꾸지 않고 `say`로 거절 이유를 말합니다 |
 | `no-project-list` | `refused` | 프로젝트에 대한 명령 | 프로젝트 목록이 없거나 읽을 수 없음 |

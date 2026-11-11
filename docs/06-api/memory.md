@@ -557,7 +557,9 @@ The memory skill, `skills/corthex-memory/`, tells the agent which command answer
 python3 "<skill folder>/scripts/memory.py" <command> [arguments]
 ```
 
-with `python` or `py -3` in place of `python3` where that is missing, as on Windows. The script finds the plugin's library from its own place. Every command takes `--folder <path>`, the session's folder, by default the working folder, and finds the project as the hooks do (SPEC-001). It reads the memory keys from its own environment, which is the host's. The commands for a project are all but `status`, `purge`, `retention`, `sync` and `repair`, which work for the whole device; `status` shows the folder's project when there is one.
+with `python` or `py -3` in place of `python3` where that is missing, as on Windows. The script finds the plugin's library from its own place. Every command takes `--folder <path>`, the session's folder, by default the working folder, and finds the project as the hooks do (SPEC-001). It reads the memory keys from its own environment, which is the host's. The commands for a project are all but `status`, `purge`, `retention`, `sync`, `repair` and `migrate`, which work for the whole device; `status` shows the folder's project when there is one.
+
+Until the 0.3.0 activation the skill's `SKILL.md` stays C1's, naming only the commands that the runner of release 0.2.x hands to a handler, because the marketplace installs the plugin from `main`. The skill of release 0.3.0 waits beside it as `SKILL-0.3.0.md`, a name that no host loads, and the activation makes it the skill's `SKILL.md` (TASK-045). It names every command in [Commands](#commands) but `sync`, which comes with C3, each with every code that the [command results](#command-results) give it, and has the agent run `search` with the user's words, or `list` for a broad question, before it opens anything, show before a `forget` what memory cannot remove, ask before each change and never ask for a key in the conversation.
 
 After the store, configuration and project-list gates, project commands use the configuration's project enabled boolean for the not-enabled check; they do not use a helper that also requires current consent. On bypasses this check so it can enable a disabled project and obtain current consent. Missing consent still blocks recording and sending, setup still refuses without consent to carry, and local search can use words without consent as specified. A status project's lookup is optional and does not turn the device-level status into a project-only command.
 
@@ -1206,7 +1208,7 @@ The `code` of a command's result besides `ok`; [memory-result.schema.json](memor
 | --- | --- | --- | --- |
 | `usage` | refused | all | Unknown command or arguments, with `command` `none` when the command is unknown; exit status 2 |
 | `no-store` | refused, or nothing for `status` | all but `on`, `purge` and `repair` | No memory store yet; `on` makes one |
-| `store-newer` | refused | all but `purge` and `migrate` | The memory store is from a newer release |
+| `store-newer` | refused | all but `purge`; `migrate` only for a header of a format after 2 | The memory store is from a newer release |
 | `store-damaged` | refused | all but `purge` and `repair` | The store record is missing or damaged; `repair` writes a new one |
 | `configuration-invalid` | refused | all but `status`, `purge` and `repair` for a schema-invalid configuration; every command for an invalid `CORTHEX_MEMORY_HOME` | The memory configuration fails its schema, or `CORTHEX_MEMORY_HOME` is not absolute after `~` expansion; `data.field` names the field or environment variable. When it is `CORTHEX_MEMORY_HOME`, `status`, `purge` and `repair` are also refused: there is no store to act on, no command falls back to the default folder, and `say` explains the refusal without changing the result schema |
 | `no-project-list` | refused | the commands for a project | The project list is missing or cannot be read |
