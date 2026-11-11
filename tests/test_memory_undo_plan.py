@@ -309,6 +309,37 @@ class UndoPlanTest(unittest.TestCase):
         self.assertEqual(plan.data['kept'], [{'target': 'item:' + self.b['id'], 'by': third['id'],
                                               'why': 'later-dependent-change'}])
 
+    def undone_merge(self):
+        """A merge of a and b, its undo, and a later run that replaces c with b; the undo's log."""
+        world = self.world
+        world.run(1, lambda w: [w.save(self.a), w.save(self.b), w.save(self.c)])
+        merged = dict(item(4), title='Both decisions')
+        second = world.run(2, lambda w: w.merge(merged, self.a['id'], self.b['id']), kind='consolidate')
+        undo = world.run(3, lambda w: [w.status(self.a['id'], 'current'), w.status(self.b['id'], 'current'),
+                                       w.status(merged['id'], 'undone')], kind='undo', undoes=second['id'])
+        later = world.run(4, lambda w: [w.status(self.c['id'], 'superseded', self.b['id'])])
+        return merged, undo, later
+
+    def test_an_item_that_a_later_change_replaced_with_an_item_that_the_inverse_supersedes_again_stays_so(self):
+        # Undoing the undo supersedes b by the merged item again, which is current then: c -> b -> merged is
+        # the chain that a merge of an item that had replaced another leaves, so nothing is kept (SPEC-145).
+        merged, undo, later = self.undone_merge()
+        plan = self.world.plan(undo)
+        self.assertEqual(kept(plan), {})
+        self.assertEqual(plan.items, {self.a['id']: {'status': 'superseded', 'superseded_by': merged['id']},
+                                      self.b['id']: {'status': 'superseded', 'superseded_by': merged['id']},
+                                      merged['id']: {'status': 'current'}})
+
+    def test_a_chain_whose_last_item_was_forgotten_keeps_the_group(self):
+        merged, undo, later = self.undone_merge()
+        self.world.forget(merged['id'])
+        plan = self.world.plan(undo)
+        self.assertEqual(plan.reversed, frozenset())
+        self.assertEqual(kept(plan)['item:' + merged['id']], ('forgotten', ''))
+        self.assertEqual({key: value[0] for key, value in kept(plan).items()},
+                         {'item:' + merged['id']: 'forgotten', 'item:' + self.a['id']: 'later-dependent-change',
+                          'item:' + self.b['id']: 'later-dependent-change'})
+
     # TC-383: dependent later pins and lines keep their group; independent groups are reversed
 
     def test_tc383_a_later_pin_or_decision_line_keeps_the_item_and_its_group(self):
