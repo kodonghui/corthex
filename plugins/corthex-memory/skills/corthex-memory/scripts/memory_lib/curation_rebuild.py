@@ -1,8 +1,9 @@
 """Make a lost curation record again (TBL-009) and replace a raw log's markers (TBL-008).
 
-Not wired: the worker (TASK-088) calls `rebuild` under its curation and layer
+The curation worker (TASK-088) calls `rebuild` under its curation and layer
 leases when neither the record nor its backup parses, and `replace_markers`
-after it applies; no hook or command reaches this module, so installed C1
+after it applies; from release 0.3.0 (TASK-117) the memory worker runs it for a
+format-2 store, and below 0.3.0 nothing reaches this module, so installed C1
 behaviour is unchanged.
 
 For each raw log file, the newest entry that an item quotes or a state line

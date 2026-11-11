@@ -118,12 +118,15 @@ def _orphans(memory, root, log, candidates, deadline):
             return removed
 
 
-def retain_project(memory, project, owner, deadline, when=None):
+def retain_project(memory, project, owner, deadline, when=None, *, moment=None):
     """Apply the configured age rule under the caller's tracked curation lease.
 
     The future count covers the first snapshots this invocation filters; it is
     not the status command's complete inventory. Concurrent suffix bytes stay
     unfiltered until a later maintenance pass, as required by the rewrite.
+    `moment` fixes only the cutoff's moment, as `c2_retention` shares one cutoff
+    across a project's records; without `when`, a future date is still checked
+    against the current clock, so a concurrent append is not a future clock.
     """
     root = memory.folder / "projects" / base.project_folder_name(project)
     if (owner not in memory.held or owner.path != root / "curation.lock" or
@@ -131,7 +134,7 @@ def retain_project(memory, project, owner, deadline, when=None):
         raise locks.LostLock()
     check = lambda: memory.check(deadline, memory.held)
     check()
-    now = _now(when)
+    now = _now(when if moment is None else moment)
     cutoff = now - timedelta(days=memory.config.values["retention"]["days"])
     totals = _totals()
     folder = root / "raw"

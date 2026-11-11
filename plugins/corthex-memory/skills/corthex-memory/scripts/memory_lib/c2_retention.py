@@ -15,10 +15,12 @@ cutoff fixed when the project's turn begins:
 
 A busy layer lease leaves the project's step 2 for the next start. A lost lease,
 the store's replacement or the phase's deadline stops the project and is raised
-to the worker. Any other error of one record family is noted for the failure
-log under the step `retention`, and the next family still runs. The line
-history's owner check reads the configuration again, so that a retention period
-that the user changed meanwhile keeps the history for the next start.
+to the worker. Any other error of one record family, a link that the path fence
+refuses included, is noted for the failure log under the step `retention`, and
+the next family still runs. The worker reads the configuration again before its
+sweep (`worker_runtime`), and the line history's owner check reads it once more,
+so that a retention period that the user changed meanwhile keeps the history for
+the next start.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,7 +31,7 @@ from . import run_log, worker_support
 
 @dataclass(frozen=True)
 class Retained:
-    raw: dict          # retention.retain_project's totals
+    raw: object        # retention.retain_project's totals, or None when the path fence refused the raw folder
     history: object    # history_retention's result, or None when it did not run
     runs: int          # run logs deleted
     injections: int    # injection log lines deleted
@@ -43,9 +45,18 @@ def retain_project(memory, project, owner, deadline, when=None):
         raise locks.LostLock()
     moment = when if when is not None else datetime.now(timezone.utc)
     days = memory.config.values["retention"]["days"]
-    raw = retention.retain_project(memory, project, owner, deadline, moment)
     history, runs, injections = None, 0, 0
-    if memory.fence.check(root / "layer") is None:
+    try:
+        # The cutoff is this moment's; future dates are checked against the clock unless `when` fixes it.
+        raw = retention.retain_project(memory, project, owner, deadline, when, moment=moment)
+    except worker_support.UnsafePath as error:
+        memory.note(error, step="retention")
+        raw = None
+    try:
+        if memory.fence.check(root / "layer") is None:
+            return Retained(raw, history, runs, injections)
+    except worker_support.UnsafePath as error:
+        memory.note(error, step="retention")
         return Retained(raw, history, runs, injections)
 
     def current(memory_, root_, context):
@@ -63,6 +74,8 @@ def retain_project(memory, project, owner, deadline, when=None):
         try:
             history = history_retention.retain_history(memory, root, deadline, when=moment, days=days,
                                                        history_precondition=current)
+        except worker_support.UnsafePath as error:
+            memory.note(error, step="retention")
         except (locks.LostLock, locks.LockBusy):
             raise
         except Exception as error:
@@ -71,6 +84,10 @@ def retain_project(memory, project, owner, deadline, when=None):
             try:
                 # These two families take the cutoff's moment as a TBL-121 time.
                 found = family(memory, root, deadline, when=base.utc_time(moment), days=days)
+            except worker_support.UnsafePath as error:
+                # A linked run or injection folder (UnsafePath is a LostLock) leaves only its own family.
+                memory.note(error, step="retention")
+                continue
             except (locks.LostLock, locks.LockBusy):
                 raise
             except Exception as error:

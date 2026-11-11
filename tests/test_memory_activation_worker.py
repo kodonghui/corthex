@@ -18,8 +18,8 @@ from unittest import mock
 from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (activation, base, commands, format2, injection_log, locks, raw_log, run_log, state_types,
-                        store, worker_launch, worker_runtime)
+from memory_lib import (activation, base, commands, format2, index_worker, injection_log, item_types, locks, raw_log,
+                        retention, run_log, state_types, store, worker_launch, worker_runtime)
 import test_memory_curation_worker as worker_fixture
 from test_memory_curator_answers import answer, change, quote
 from test_memory_run_log import logged
@@ -77,9 +77,12 @@ class WorkerActivationTest(unittest.TestCase):
         for label, primary, backup in (
                 ("migrating", dict(header, migrating={"from": 1, "to": 2, "started": AT}), None),
                 ("newer", dict(header, format=3), None),
-                ("mixed", None, dict(header, format=1, release="0.2.1"))):
+                ("mixed", None, dict(header, format=1, release="0.2.1")),
+                ("damaged", b'{"format": 2, "device"', None)):
             with self.subTest(store=label):
-                if primary is not None:
+                if isinstance(primary, bytes):
+                    (self.folder / "store.json").write_bytes(primary)
+                elif primary is not None:
                     (self.folder / "store.json").write_text(json.dumps(primary), encoding="utf-8")
                 if backup is not None:
                     (self.folder / "store.json.bak").write_bytes(base.json_bytes(backup, "TBL-001"))
@@ -111,13 +114,20 @@ class WorkerActivationTest(unittest.TestCase):
         said, _ = self.one_turn()
         self.mark(said)
         self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        # Memory was turned on 8 days ago, so consolidation is due after curation.
+        self.configure(projects={"sample": {"enabled": True, "since": ago(8)}})
         self.run_worker("end-of-turn")
         (headers, body), = self.server.requests
         self.assertEqual(headers["user-agent"], "corthex-memory/0.3.0")
         (item,) = self.items().values()
         self.assertEqual((item["kind"], item["status"]), ("decision", "current"))
         self.assertEqual(self.markers(), [])
-        self.assertEqual(self.progress()["logs"], {self.raw.name: said["seq"] + 1})
+        progress = self.progress()
+        self.assertEqual(progress["logs"], {self.raw.name: said["seq"] + 1})
+        # One decision item sends no merge and the state has no lines, so consolidation ends without a request.
+        self.assertEqual([record["kind"] for record in progress["recent"]], ["consolidate", "curate"])  # newest first
+        self.assertEqual((sorted(progress["consolidation"]), progress["consolidation"]["failures"]),
+                         (["failures", "last"], 0))
         self.assertTrue((self.root / "index.db").exists())
         self.assertEqual(self.failures(), [])
         # Below 0.3.0 the user agent names that release.
@@ -141,6 +151,32 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertTrue((self.root / "index.db").exists())
         self.assertEqual(len(self.markers()), 1)
 
+    def test_tc435_a_turn_marked_while_the_run_goes_on_is_curated_before_it_ends(self):
+        said, _ = self.one_turn()
+        self.mark(said)
+        later = []
+        self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        keep, kept = index_worker.keep, []
+
+        def marking(memory, project, owner, deadline, **options):
+            # A turn ends while step 6 runs; its trigger finds this run's lease fresh and starts no worker.
+            if not later:
+                turn, _ = self.one_turn("Name the script hook.py.", "The script is hook.py now.")
+                self.mark(turn)
+                later.append(turn)
+                self.server.answers.append(answer(change(quote(turn, "hook.py"), kind="decision")))
+                self.assertTrue(worker_launch._fresh(memory, project))
+            kept.append(project)
+            return keep(memory, project, owner, deadline, **options)
+        with mock.patch.object(index_worker, "keep", side_effect=marking):
+            self.run_worker("end-of-turn")
+        # The run curates it after step 6, keeps the index again, and ends once curation finds nothing more.
+        self.assertEqual((len(self.server.requests), self.markers(), len(kept)), (2, [], 2))
+        self.assertEqual(sorted(value["quotes"][0]["entry"] for value in self.items().values()),
+                         sorted([said["id"], later[0]["id"]]))
+        self.assertEqual(self.progress()["logs"], {self.raw.name: later[0]["seq"] + 1})
+        self.assertEqual(self.failures(), [])
+
     @contextlib.contextmanager
     def holding(self, path, kind):
         lease = locks.Lock(path, kind, DEVICE).acquire(time.monotonic() + 5)
@@ -151,8 +187,8 @@ class WorkerActivationTest(unittest.TestCase):
 
     # TC-436
 
-    def test_tc436_a_session_start_expires_each_format_2_record_by_its_own_time(self):
-        # A raw log whose last entry is 101 days old, and progress that counted it.
+    def aged(self):
+        """A raw log whose last entry is 101 days old, counted; line history, a run log and an injection log aged 101 and 99."""
         session = worker_fixture.Raw("worker-activation-retention")
         session.entries = []
         for days in (99, 99, 101):
@@ -171,14 +207,20 @@ class WorkerActivationTest(unittest.TestCase):
         injections.write_bytes(b"".join(injection_log.line_bytes(
             {"at": ago(days), "session": session.session, "where": "prompt", "items": [], "outcome": "below"})
             for days in (101, 99)))
-        fence = progress["fence"]
+        return session, history, injections
+
+    def seqs(self, session):
+        return [json.loads(line)["seq"] for line in (self.root / "raw" / (session.name + ".jsonl")).read_bytes().splitlines()]
+
+    def test_tc436_a_session_start_expires_each_format_2_record_by_its_own_time(self):
+        session, history, injections = self.aged()
+        fence = self.progress()["fence"]
         # An end of a turn applies no retention.
         before = self.files(index=False)
         self.run_worker("end-of-turn")
         self.assertEqual(self.files(index=False), before)
         self.run_worker("start")
-        seqs = [json.loads(line)["seq"] for line in (self.root / "raw" / (session.name + ".jsonl")).read_bytes().splitlines()]
-        self.assertEqual(seqs, [1, 2])
+        self.assertEqual(self.seqs(session), [1, 2])
         after = self.progress()
         self.assertEqual((after["logs"][session.name], after["fence"]), (2, fence))
         self.assertEqual([json.loads(line)["at"] for line in
@@ -187,6 +229,66 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(len(injections.read_bytes().splitlines()), 1)
         self.assertEqual(self.failures(), [])
         self.assertEqual(self.server.requests, [])
+
+    def test_tc436_a_start_curates_then_sweeps_and_an_append_meanwhile_is_not_a_future_entry(self):
+        session, _, _ = self.aged()
+        said, _ = self.one_turn()
+        self.mark(said)
+        self.server.answers = [answer(change(quote(said, HOOKS), kind="decision"))]
+        inventory, path = retention._inventory, self.root / "raw" / (session.name + ".jsonl")
+
+        def appending(*args, **options):
+            # A hook appends to the log after the project's cutoff was fixed and before the log is filtered.
+            if len(self.seqs(session)) == 3:
+                time.sleep(0.01)
+                with path.open("ab") as stream:
+                    stream.write(item_types._raw(session.add("prompt", "appended meanwhile", at=base.utc_time()))
+                                 + b"\n")
+            return inventory(*args, **options)
+        with mock.patch.object(retention, "_inventory", side_effect=appending):
+            self.run_worker("start")
+        self.assertEqual((len(self.server.requests), self.markers()), (1, []))
+        self.assertEqual(self.seqs(session), [1, 2, 4])
+        self.assertEqual(self.failures(), [])
+
+    def test_tc436_the_sweep_goes_by_the_period_set_when_it_runs(self):
+        session, _, injections = self.aged()
+        before = self.files(index=False)
+        curated = worker_runtime._curated
+
+        def raising(*args, **options):
+            # The user raises the period while the run curates, which may last an hour.
+            done = curated(*args, **options)
+            self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return done
+        with mock.patch.object(worker_runtime, "_curated", side_effect=raising):
+            self.run_worker("start")
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        after = self.files(index=False)
+        for path in (self.root / "state-history.jsonl", self.root / "runs" / "r_0000000000a1.json", injections):
+            name = path.relative_to(self.folder).as_posix()
+            self.assertEqual(after[name], before[name])
+        self.assertEqual(self.failures(), [])
+
+    def test_tc436_a_linked_run_folder_leaves_only_its_own_family(self):
+        session, history, injections = self.aged()
+        elsewhere = self.folder.parent / "elsewhere"
+        (self.root / "runs").rename(elsewhere)
+        try:
+            os.symlink(str(elsewhere), str(self.root / "runs"), target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest("symbolic links are not available: %s" % error)
+        outside = {path.name: path.read_bytes() for path in elsewhere.iterdir()}
+        swept = []
+        with mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # The other families still expire, the worker's later phases still run, and nothing outside changes.
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual([json.loads(line)["at"] for line in
+                          (self.root / "state-history.jsonl").read_bytes().splitlines()], [history[1]["at"]])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual({path.name: path.read_bytes() for path in elsewhere.iterdir()}, outside)
+        self.assertEqual((swept, self.failures()), ([1], [("retention", "lost-lock")]))
 
     # TC-437
 

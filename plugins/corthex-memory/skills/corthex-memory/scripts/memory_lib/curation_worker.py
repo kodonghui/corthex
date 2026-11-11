@@ -1,8 +1,9 @@
 """Curate a project's unprocessed turns: API-005 step 2 (SPEC-012, SPEC-014 to SPEC-018, SPEC-144; TASK-088).
 
-Not wired: `scripts/worker.py` calls `curate` under the project's curation
-lease from the 0.3.0 activation on. Until then no hook or command reaches this
-module, so installed C1 behaviour is unchanged.
+From release 0.3.0 (TASK-117) the memory worker, `scripts/worker.py`, calls
+`curate` for a format-2 store under the project's curation lease
+(`worker_runtime`); below 0.3.0 nothing reaches this module, so installed C1
+behaviour is unchanged.
 
 Each attempt reads the curation record, the curated layer and the unprocessed
 turns under the layer lease, and releases that lease while it counts and sends
