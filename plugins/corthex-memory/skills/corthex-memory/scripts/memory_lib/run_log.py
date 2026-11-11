@@ -66,7 +66,9 @@ def _place(value):
         raise ValueError('invalid run log place')
     part, pos, before, after = value
     curation._choice(part, set(state_types.PARTS))
-    format2._revision(pos)
+    # A line's position has no minimum (TBL-119): one added before a part's first line counts down.
+    if not state_types._integer(pos):
+        raise ValueError('invalid run log place')
     for neighbour in (before, after):
         if neighbour != '':
             format2._id(neighbour, state_types.LINE)
