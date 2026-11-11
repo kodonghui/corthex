@@ -2,7 +2,8 @@
 
 import unittest
 
-from _common import KEBAB, PLUGINS, SKILL_KEYS, load_json, local_links, read_text, skill_files, split_frontmatter
+from _common import (KEBAB, PLUGINS, SKILL_KEYS, load_json, local_links, read_text, skill_files, split_frontmatter,
+                     staged_skill_files)
 
 CORE_SKILLS = {
     "corthex", "corthex-discover", "corthex-define", "corthex-contract",
@@ -18,10 +19,10 @@ class SkillFormatTest(unittest.TestCase):
         self.assertEqual(names, CORE_SKILLS)
 
     def test_frontmatter(self):
-        for path in skill_files():
+        for path in skill_files() + staged_skill_files():
             plugin = path.parents[2]
             manifest = load_json(plugin / ".claude-plugin" / "plugin.json")
-            with self.subTest(skill=path.parent.name):
+            with self.subTest(skill=path.parent.name, file=path.name):
                 fields, body = split_frontmatter(read_text(path))
                 self.assertLessEqual(set(fields), SKILL_KEYS)
                 name = fields["name"]
@@ -49,19 +50,30 @@ class SkillFormatTest(unittest.TestCase):
         self.assertEqual(fields["license"], "a:b, http://x.y")
         self.assertEqual(fields["metadata"]["version"], "1.0")
 
+    def test_a_staged_skill_waits_beside_its_skill_for_a_later_release(self):
+        # The version change of that release makes it the skill's SKILL.md, with every version raised together.
+        for path in staged_skill_files():
+            manifest = load_json(path.parents[2] / ".claude-plugin" / "plugin.json")
+            with self.subTest(skill=path.parent.name, file=path.name):
+                self.assertTrue((path.parent / "SKILL.md").is_file())
+                staged = [int(part) for part in path.stem[len("SKILL-"):].split(".")]
+                self.assertGreater(staged, [int(part) for part in manifest["version"].split(".")])
+
     def test_names_are_unique(self):
         names = [path.parent.name for path in skill_files()]
         self.assertEqual(len(names), len(set(names)))
 
     def test_links_stay_inside_the_skill(self):
-        for path in skill_files():
+        for path in skill_files() + staged_skill_files():
             skill = path.parent
-            for doc in [path] + sorted(skill.glob("references/*.md")):
+            references = sorted(skill.glob("references/*.md")) if path.name == "SKILL.md" else []
+            for doc in [path] + references:
                 for target in local_links(read_text(doc)):
                     with self.subTest(doc=str(doc.relative_to(PLUGINS)), target=target):
                         resolved = (doc.parent / target).resolve()
                         self.assertTrue(resolved.exists(), "broken link")
-                        self.assertTrue(str(resolved).startswith(str(skill.resolve())), "link leaves the skill")
+                        inside = resolved == skill.resolve() or skill.resolve() in resolved.parents
+                        self.assertTrue(inside, "link leaves the skill")
 
 
 if __name__ == "__main__":

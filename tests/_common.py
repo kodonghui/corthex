@@ -40,6 +40,11 @@ def skill_files():
     return sorted(PLUGINS.glob("*/skills/*/SKILL.md"))
 
 
+def staged_skill_files():
+    """A skill of a later release, which waits beside its SKILL.md as SKILL-<version>.md, a name that no host loads."""
+    return sorted(path for path in PLUGINS.glob("*/skills/*/SKILL-*.md") if re.fullmatch(r"SKILL-\d+\.\d+\.\d+\.md", path.name))
+
+
 def _plain_ok(value):
     """Whether YAML reads this unquoted value as the same string."""
     if not value:

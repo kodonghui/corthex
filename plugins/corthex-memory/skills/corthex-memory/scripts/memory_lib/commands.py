@@ -23,7 +23,8 @@ from . import base, clock, command_result, configuration, diagnostics, locks, pr
 COMMANDS = tuple("on off status resume list search open pin unpin forget delete-project "
                  "purge leave-out retention sync setup repair".split())
 ALL = frozenset(COMMANDS)
-PROJECT = ALL - {"status", "purge", "retention", "sync", "repair"}
+# `migrate`, a store command that joins COMMANDS at the 0.3.0 activation, takes no project either.
+PROJECT = ALL - {"status", "purge", "retention", "sync", "repair", "migrate"}
 CHANGES = ALL - {"status", "list", "search", "open", "setup"}
 # migrate (API-154) and undo (API-153) ask first but stay out of COMMANDS until the 0.3.0 activation.
 ASKS = frozenset("on resume forget delete-project purge retention sync repair migrate undo".split())
