@@ -20,17 +20,18 @@ process is created until it has exited, so the interpreter's start is
 included; the host's own launch of the command is not. TC-256 says "in each
 host", so this is a partial reading of it, which the report says. The injection log
 gives recall's outcome for each run: `injected` and `below` mean that recall
-ranked every item; `late` means that the prompt's embedding missed its window
-(`prompt_recall.EMBED_SECONDS`, API-010), so recall gave up in time, as it is
-meant to; any other outcome is counted and listed.
+ranked every item; `late` means that recall gave up when its time ran out
+(API-010: the embedding's window or the hook's deadline, 0.9 seconds after its
+start), as it is meant to; any other outcome is counted and listed.
 
 It writes report.json and prints the median and 95th percentile by system,
-host and number of items. REQ-034 holds where each 95th percentile is under
-one second. Time is what the summary reports, not what the exit says: it
-exits 1 when a run fails, a run has no outcome, recall did not rank for a
-reason other than time, or more than one run in twenty was late, since then
-the percentiles no longer time recall; not when a percentile is over the
-target or a few runs were late, which the summary gives.
+host and number of items, with the outcomes. REQ-034 holds where each 95th
+percentile is under one second. Where more than one run in twenty was late,
+the line says so: the deadline then caps the percentile, which no longer
+times a whole recall. The exit is for what must not depend on the runner's
+speed: it exits 1 when a run fails, a run has no outcome, or an outcome is
+other than injected, below or late. Times and the share of late runs vary
+with the runner, so the summary reports them and they never fail the step.
 """
 from collections import Counter
 import json
@@ -170,8 +171,8 @@ def measure(plugin, home, demo, keys, url, host, samples):
     return {"samples": samples, "median_ms": round(statistics.median(times), 1),
             "p95_ms": round(percentile(times, 0.95), 1), "max_ms": round(max(times), 1),
             "under_target": percentile(times, 0.95) < TARGET_MS, "exits": dict(exits),
-            "outcomes": dict(found), "ranked": sum(found.values()) == samples and found["late"] * 20 <= samples and
-            all(name in RANKED + ("late",) for name in found.elements()),
+            "outcomes": dict(found), "capped": found["late"] * 20 > samples,
+            "ranked": sum(found.values()) == samples and all(name in RANKED + ("late",) for name in found.elements()),
             "outputs_with_context": injected}
 
 
@@ -230,9 +231,10 @@ def main():
                 continue
             good = value["ranked"] and set(value["exits"]) == {0}
             failed = failed or not good
-            text.append("%6s items, %-6s median %7.1f ms, p95 %7.1f ms, max %7.1f ms; REQ-034 %s; outcomes %s%s" % (
+            text.append("%6s items, %-6s median %7.1f ms, p95 %7.1f ms, max %7.1f ms; REQ-034 %s; outcomes %s%s%s" % (
                 size, host, value["median_ms"], value["p95_ms"], value["max_ms"],
                 "holds" if value["under_target"] else "does NOT hold", json.dumps(value["outcomes"]),
+                "; over 1 in 20 late, so the deadline caps the p95" if value["capped"] else "",
                 "" if good else "; exits " + json.dumps(value["exits"])))
     text.append("TC-256: %s (%s)" % ("FAIL" if failed else "measured", READING))
     print("\n".join(text))
