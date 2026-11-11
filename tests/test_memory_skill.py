@@ -57,7 +57,9 @@ class MemorySkillTest(unittest.TestCase):
         schema = json.loads((ROOT / "docs/06-api/memory-result.schema.json").read_bytes())
         branches = schema["$defs"]["data-of-each-command"]["else"]["anyOf"]
         for name in C1:
-            codes = {code for code, (allowed, _) in commands.COMMON.items() if name in allowed}
+            # The runner of release 0.2.x, which this skill describes, gives no code of the 0.3.0 activation.
+            codes = {code for code, (allowed, _) in commands.COMMON.items()
+                     if name in allowed and code not in commands.FROM_C2}
             codes.add("configuration-invalid")  # Invalid home overrides every store exemption.
             branch = next(x["properties"] for x in branches if x["properties"]["command"]["const"] == name)
             codes.update(branch["code"].get("enum", [branch["code"].get("const")]))
@@ -126,9 +128,9 @@ class MemorySkillC2Test(unittest.TestCase):
                 self.assertEqual(rows[name], expected[name])
                 branch = next(x["properties"] for x in branches if x["properties"]["command"]["const"] == name)
                 self.assertLessEqual(set(branch["code"].get("enum", [branch["code"].get("const")])), rows[name])
-                # The runner's common gates for the commands that it parses already; the rest join it at the activation.
-                if name in commands.ALL:
-                    self.assertLessEqual({code for code, (allowed, _) in commands.COMMON.items() if name in allowed}, rows[name])
+                # The common gates of the runner of release 0.3.0, which parses every command of C2.
+                self.assertIn(name, commands.EVERY)
+                self.assertLessEqual({code for code, (allowed, _) in commands.COMMON.items() if name in allowed}, rows[name])
         choose = section(text, "## Choose a command")
         for name in C2:
             self.assertRegex(choose, r"(?m)^\| `" + re.escape(name) + r"(?:[ `]|$)")

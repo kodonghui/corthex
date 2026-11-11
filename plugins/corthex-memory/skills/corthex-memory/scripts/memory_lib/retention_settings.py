@@ -1,4 +1,4 @@
-"""C1 device retention settings; previews never perform maintenance."""
+"""Device retention settings for either store format from release 0.3.0; previews never perform maintenance."""
 import copy
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -36,7 +36,7 @@ def _configuration(context):
                     fingerprint[0] = current
                 owner.check()
             def header(data):
-                value = store._record(data)
+                value = context.header(data)
                 if value["device"] != original["device"]:
                     raise locks.LostLock()
                 accepted[0] = data
@@ -61,7 +61,7 @@ def _configuration(context):
     finally:
         if context.record and notes:
             try:
-                logger = BoundDiagnostics(commands._DiagnosticStore(memory, context.record["device"]))
+                logger = BoundDiagnostics(commands.diagnostic_store(memory, context.record["device"], context.format))
                 for error, count in notes:
                     logger.failure(error, "restore", clock.now() + 10, count=count)
             except Exception:

@@ -1,15 +1,22 @@
-"""Confirmed C1 provisioning and project on/off; no network or background work."""
+"""Confirmed provisioning and project on/off; no network or background work.
+
+Below release 0.3.0 this is C1's, for a format-1 store. From 0.3.0 (TASK-117) a
+format-2 store gets its own records: the first `on` makes a format-2 store, and
+a project's new folder gets `runs` and the first records that a migration
+writes, with the format-2 curation record last.
+"""
 import copy
 import hashlib
-import json
 import os
-from pathlib import Path
 
-from . import base, clock, commands, configuration, curation, diagnostics, files, locks, model_access, projects, store
+from . import (activation, base, clock, commands, configuration, curation, diagnostics, files, format2, locks,
+               model_access, projects, store)
 from .worker_support import BoundDiagnostics, PathFence
 
 # The folders that `on` makes in a project's folder, each after the folder that holds it; setup makes them too.
 PROJECT_FOLDERS = ("raw", "unprocessed", "notices", "injections", "layer", "layer/items", "layer/tombstones")
+# What a format-2 project's folder holds besides them (TASK-117).
+FORMAT_2_FOLDERS = ("runs",)
 
 CONSENT = """CORTHEX memory, consent version 1.
 
@@ -101,8 +108,9 @@ def _project_files(context, check, existed, report):
     root = memory.folder / "projects" / base.project_folder_name(context.project.name)
     memory.fence.check(root)
     existed = existed or root.exists()
+    folders = PROJECT_FOLDERS + (FORMAT_2_FOLDERS if context.format == 2 else ())
     for path in (memory.folder / "logs", memory.folder / "projects", root,
-                 *(root / name for name in PROJECT_FOLDERS)):
+                 *(root / name for name in folders)):
         check()
         memory.fence.check(path)
         base.private_directory(path)
@@ -120,13 +128,30 @@ def _project_files(context, check, existed, report):
             try:
                 guard()
                 deadline = clock.now() + 10
-                files.read_record(path, curation.parse, report, holding_lock=True, check=guard,
-                                  deadline=deadline, reader=lambda candidate: memory.fence.read(candidate, deadline))
+                files.read_record(path, curation.parse if context.format == 1 else format2.parse_curation, report,
+                                  holding_lock=True, check=guard, deadline=deadline,
+                                  reader=lambda candidate: memory.fence.read(candidate, deadline))
             except FileNotFoundError:
                 if existed:
                     raise
+                if context.format == 2:
+                    from . import migration_initialize, migration_plan
+                    # A migration's first records of a new project, then its curation record last (as setup does).
+                    for name, data in migration_initialize.first_records():
+                        guard()
+                        files.replace_bytes(root / name, data, check=guard, path_check=memory.fence.check)
+                    files.replace_bytes(path, migration_plan.progress(None), check=guard, path_check=memory.fence.check)
+                    return
                 value = {"logs": {}, "applies": 0, "recent": [], "consolidation": {"failures": 0}}
                 files.write_json(path, value, "TBL-009", check=guard, path_check=memory.fence.check)
+
+
+def _new_record(format):
+    """A new store record of this release with a new device ID: format 2 from release 0.3.0 (TASK-117)."""
+    if format == 2:
+        value = dict(format=2, device=base.new_id("d"), made=base.utc_time(), release=activation.release())
+        return format2.parse_store(format2.store_bytes(value))
+    return store.new_record(activation.release())
 
 
 def _apply(context, enabled, confirmed=False):
@@ -136,8 +161,7 @@ def _apply(context, enabled, confirmed=False):
     report = lambda error, count=None: notes.append((error, count))
     try:
         if original is None:
-            release = json.loads((Path(__file__).resolve().parents[4] / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
-            first = store.new_record(release)
+            first = _new_record(context.format)
             created = _make_root(folder)
         memory = CommandStore(folder, fence)
         context.memory = memory
@@ -160,7 +184,7 @@ def _apply(context, enabled, confirmed=False):
                 lease.check()
             validated = [None]
             def header(data):
-                value = store._record(data)
+                value = context.header(data)
                 if original is not None and value["device"] != original["device"]:
                     raise locks.LostLock()
                 validated[0] = data
@@ -240,7 +264,8 @@ def _apply(context, enabled, confirmed=False):
     finally:
         if context.record and notes:
             try:
-                logger = BoundDiagnostics(commands._DiagnosticStore(context.memory, context.record["device"]))
+                logger = BoundDiagnostics(commands.diagnostic_store(context.memory, context.record["device"],
+                                                                    context.format))
                 for error, count in notes:
                     logger.failure(error, "restore", clock.now() + 10, count=count)
             except Exception:

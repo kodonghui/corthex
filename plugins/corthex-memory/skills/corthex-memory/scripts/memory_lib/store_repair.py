@@ -1,13 +1,23 @@
-"""Repair only an irrecoverable TBL-001; never provision or reset consent."""
-import hashlib
-import json
-import os
-from pathlib import Path
+"""Repair only an irrecoverable TBL-001; never provision or reset consent.
 
-from . import base, clock, commands, diagnostics, files, locks, store
+From release 0.3.0 (TASK-117) it reads a store record of either format and
+treats a store record whose backup has the other format as damaged, as the
+runner does. A new store record then has the format of the projects' records:
+format 2 when a project's folder holds `runs`, which no C1 code path makes, or
+when there is no project's folder; otherwise format 1, which `migrate` accepts.
+The preview names that format and its code binds it. A store whose migration
+did not finish gets no new record, which would end the migration without its
+finalization: `repair` answers `migration-needed` and changes nothing.
+"""
+import hashlib
+import os
+import stat
+
+from . import activation, base, c2_store, clock, commands, diagnostics, files, locks, store
 from .worker_support import BoundDiagnostics, PathFence
 
 SAY = "The store record is missing or damaged and no readable backup can be restored. Confirm a new store record with a new device ID; all other memory, configuration and consent stay unchanged."
+FORMAT = " The new store record has format %d, the format of the projects' records."
 
 
 class Repair:
@@ -16,6 +26,9 @@ class Repair:
         self.fence = getattr(self.memory, "fence", None) or PathFence(self.memory.folder)
         self.root, self.lease, self.pins = self.fence.root, None, {}
         self.notes = []
+        # From release 0.3.0 the runner found the kind of store; below it this stays C1's.
+        self.c2 = context.kind is not None
+        self.format = None
 
     def root_check(self):
         self.fence.check(self.root)
@@ -40,6 +53,8 @@ class Repair:
 
     def classify(self):
         """Pure last classification, including foreign-device recovery candidates."""
+        if self.c2:
+            return self.classify_kinds()
         self.pins, original = {}, None
         for name in ("store.json", "store.json.bak"):
             data, pin = self.read(self.root / name)
@@ -53,6 +68,74 @@ class Repair:
             if record is not None:
                 return ("current" if name == "store.json" else "recover"), record, original
         return "broken", None, original
+
+    def classify_kinds(self):
+        """From release 0.3.0: the classification by the kinds of both records, as the runner finds them."""
+        self.pins, found = {}, []
+        for name in activation.NAMED:
+            data, self.pins[name] = self.read(self.root / name)
+            found.append(data)
+        kinds = [None if data is None else activation.record_kind(data) for data in found]
+        kind = activation.combine(*kinds)
+        if kind in (activation.NEWER, activation.MIGRATING):
+            raise store.StoreUnavailable("store-newer" if kind == activation.NEWER else "migration-needed")
+        if kind == activation.DAMAGED:
+            self.unfinished()
+            return "broken", None, found[0]
+        current = kinds[0] is not None
+        return ("current" if current else "recover"), self.parse(found[0 if current else 1]), found[0]
+
+    @staticmethod
+    def parse(data):
+        """A store record of either format, as the runner of release 0.3.0 reads it."""
+        value = store.json_document(data)
+        return c2_store.parse_header(data) if isinstance(value, dict) and value.get("format") == 2 else store._record(data)
+
+    def unfinished(self):
+        """Refuse a new record while a migration's record (stage 05) has not finished, or cannot be read."""
+        from . import migration_driver
+        try:
+            records = migration_driver._records(self.root)
+        except migration_driver.MigrationRefused:
+            records = None
+        if records is None or any("migration-complete.json" not in marks for _, _, marks in records):
+            raise store.StoreUnavailable("migration-needed")
+
+    def data_format(self):
+        """From release 0.3.0: the format of the projects' records, which a new store record must have."""
+        projects, found = self.root / "projects", False
+        self.root_check()
+        if self.fence.check(projects) is None:
+            return 2
+        for path in sorted(files._retry(lambda: list(projects.iterdir()))):
+            info = self.fence.check(path)
+            if info is None or not stat.S_ISDIR(info.st_mode):
+                continue
+            found = True
+            runs = self.fence.check(path / "runs")
+            if runs is not None and stat.S_ISDIR(runs.st_mode):
+                return 2
+        return 1 if found else 2
+
+    def new_format(self):
+        """The format of a new store record: the projects' from release 0.3.0, found once per run; 1 below it."""
+        if self.format is None:
+            self.format = self.data_format() if self.c2 else 1
+        return self.format
+
+    def candidate(self):
+        """A new store record of this release with a new device ID, in the projects' format from release 0.3.0."""
+        if self.new_format() == 2:
+            from . import enablement
+            return enablement._new_record(2)
+        return store.new_record(activation.release())
+
+    def ask(self, then):
+        """The preview of a new store record; from release 0.3.0 it names the record's format, which its code binds."""
+        if not self.c2:
+            return self.context.confirm({}, SAY, then)
+        number = self.new_format()
+        return self.context.confirm({}, SAY + FORMAT % number, then, bound={"format": number})
 
     def guard(self):
         self.root_check()
@@ -93,7 +176,7 @@ class Repair:
             files._retry(remove)
         self.guard()
         data, pin = self.read(self.root / "store.json")
-        if pin != self.pins["store.json"] or store._record(data) != candidate:
+        if pin != self.pins["store.json"] or self.parse(data) != candidate:
             raise locks.LostLock()
         self.context.record = candidate
         return commands.result("repair", dict(device=candidate["device"]),
@@ -122,7 +205,9 @@ class Repair:
             return
         try:
             self.guard()
-            logger = BoundDiagnostics(commands._DiagnosticStore(self.memory, self.context.record["device"]))
+            record = self.context.record
+            logger = BoundDiagnostics(commands.diagnostic_store(self.memory, record["device"],
+                                                                2 if record["format"] == 2 else 1))
             for error, count in self.notes:
                 self.guard()
                 logger.failure(error, "skill", clock.now() + 10, count=count)
@@ -130,8 +215,7 @@ class Repair:
             pass  # Release notices never replace a completed result or adopt a new root.
 
     def apply(self):
-        version = json.loads((Path(__file__).resolve().parents[4] / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))["version"]
-        candidate = store.new_record(version)
+        candidate = self.candidate()
         with self.context.lock(self.root / "store.lock", "store", device=candidate["device"],
                                report=lambda error, count: self.notes.append((error, count))) as lease:
             self.lease = lease
@@ -140,7 +224,7 @@ class Repair:
                 if state == "current":
                     return self.nothing(record)
                 if state == "broken":
-                    return self.context.confirm({}, SAY, lambda: self.write(candidate, original))
+                    return self.ask(lambda: self.write(candidate, original))
             finally:
                 self.lease = None
         return self.recover()
@@ -156,7 +240,7 @@ def repair(context):
             return operation.nothing(record)
         if state == "recover":
             return operation.recover()
-        return context.confirm({}, SAY, operation.apply)
+        return operation.ask(operation.apply)
     except store.StoreUnavailable as error:
         return commands.common_result("repair", error.code)
     finally:

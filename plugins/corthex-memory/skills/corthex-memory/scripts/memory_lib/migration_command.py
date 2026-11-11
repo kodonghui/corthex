@@ -1,7 +1,7 @@
 """The migrate command (API-154): the TASK-074 maintenance-interval coordinator.
 
-The command runner does not accept it before the 0.3.0 activation, so an
-installed plugin keeps C1 behaviour. The coordinator never infers from
+The command runner accepts it from release 0.3.0 (the activation, TASK-117);
+below it an installed plugin keeps C1 behaviour. The coordinator never infers from
 processes or locks that other sessions are closed. Its facts are the user's
 yes to a preview bound to this exact store, the named header bytes that
 preview hashed with the supported C1 release they carry, and the configuration
@@ -10,17 +10,17 @@ change to any of them stops the migration, which then resumes from its
 durable records.
 """
 import hashlib
-import json
 import os
 from pathlib import Path
 import stat
 
-from . import base, clock, commands, configuration, locks, maintenance_identity, migration_driver
+from . import activation, base, clock, commands, configuration, locks, maintenance_identity, migration_driver
 from . import migration_finalize, migration_header_resume, migration_initialize, migration_intent
 from . import migration_inventory, store
 
 SUPPORTED_C1 = frozenset(('0.2.0', '0.2.1'))
-FIRST_C2 = (0, 3, 0)
+# The running release; tests replace this name.
+release = activation.release
 # One operation deadline that answers within a ten-minute host command limit.
 SECONDS = 540.0
 _LIMIT = 1 << 20
@@ -44,17 +44,17 @@ SAY = {
 }
 
 
-def release():
-    """The running plugin release, from the packaged manifest."""
-    manifest = Path(__file__).resolve().parents[4] / '.codex-plugin/plugin.json'
-    return json.loads(manifest.read_text(encoding='utf-8'))['version']
+def _supported(source, target):
+    """Whether a fresh migration accepts a format-1 header made by release `source` while `target` runs.
 
-
-def _c2(version):
-    try:
-        return tuple(int(part) for part in version.split('.')) >= FIRST_C2
-    except (AttributeError, ValueError):
-        return False
+    A supported C1 release made the store; or, from release 0.3.0, a repair of
+    a release no later than the running one wrote a new format-1 record over a
+    store whose projects only C1 code paths wrote (TASK-117).
+    """
+    if source in SUPPORTED_C1:
+        return True
+    numbers = activation.version(source)
+    return activation.c2(source) and numbers is not None and numbers <= activation.version(target)
 
 
 def _bytes(path, error):
@@ -118,7 +118,7 @@ def _preview(root, target):
     current = migration_driver.plan(root, release=target)
     if current.phase in ('complete', 'format-2'):
         return None, commands.result('migrate', dict(phase=current.phase, release=target), SAY['nothing'], 'nothing')
-    if not _c2(target):
+    if not activation.c2(target):
         return None, _blocked('unsupported-release')
     damaged = lambda: migration_driver.MigrationRefused('store-damaged')
     named = {name: _bytes(root / name, damaged) for name in migration_driver.NAMED}
@@ -126,7 +126,7 @@ def _preview(root, target):
     if not named:
         raise migration_driver.MigrationRefused('no-store')
     # The release is read from the very bytes the confirmation binds.
-    if current.phase == 'fresh' and any(_source_release(raw) not in SUPPORTED_C1 for raw in named.values()):
+    if current.phase == 'fresh' and any(not _supported(_source_release(raw), target) for raw in named.values()):
         return None, _blocked('unsupported-release')
     headers = {name: hashlib.sha256(raw).hexdigest() for name, raw in named.items()}
     reviewed = _configuration(root)
