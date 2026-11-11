@@ -140,7 +140,7 @@ When a project is registered or a stage is set up, the AI proposes the stage's d
 
 | File | Where | Holds |
 | --- | --- | --- |
-| `profile.json` | `~/.corthex/` on each machine | how to address the user, language, where records go, what to ask about first |
+| `profile.json` | `~/.corthex/` on each machine | how to address the user, language, where records and study documents go, what to ask about first |
 | `project.json` | `.corthex/` in each product repository, committed | name, team or personal, records, other repositories that hold sources, ID formats, and each stage's human view, source and truth |
 | `projects.json` | `~/.corthex/` on each machine | the projects on this machine and the local paths of their repositories |
 
