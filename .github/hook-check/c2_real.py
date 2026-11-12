@@ -85,15 +85,23 @@ It writes report.json and the requests of each home (`requests.jsonl`) under
 OUTDIR/c2-real, prints a summary, and exits 1 when a case fails, breaks or is
 not run, when a memory key of this process's environment is in a file under
 that folder, in the report or in a request to the local server, or when a file
-under that folder could not be read for that search. report.json is written
-when the check begins, after each case and again when the check ends or is
-interrupted, each time as a whole file that takes the place of the one before,
-so that what a run paid for is kept. An interrupt ends the worker that is
-running, and so does a signal that ends the process where Python can catch it
-(SIGTERM, SIGHUP, Ctrl+Break): the worker has a session of its own and the
-memory keys, and would go on sending without the check. A kill that no process
-can catch (SIGKILL, Windows' End task) leaves the worker to its own end, which
-the package bounds at an hour for a run.
+under that folder could not be read for that search. The checkout stays as it
+was: started as a script the check writes no bytecode files beside its
+modules, and it asks Git not to write the index that a status refreshes.
+
+report.json is written when the check begins, after each case and again when
+the check ends or is interrupted, each time as a whole file that takes the
+place of the one before, so that what a run paid for is kept. An interrupt
+ends the worker that is running, and so does a signal that ends the process
+where Python can catch it (SIGTERM, SIGHUP, Ctrl+Break). Only the first of
+these interrupts, and none breaks off the check's ending. The worker has a
+session of its own and the memory keys, and without the check nothing reads
+what it sends, so it also watches this process and ends itself within about a
+second once the check is gone, however that came: by a kill that no process
+can catch (SIGKILL, Windows' End task) as well. On POSIX the request that the
+worker has under way ends with it; on Windows that one request runs to its
+end. A check that was killed so writes nothing more: its report is the one
+that was written before its last case began.
 
 A folder OUTDIR/c2-real that is there already is replaced only when it is empty
 or its report says that it was a self-test's. A run against the providers is
@@ -116,6 +124,10 @@ import time
 import traceback
 import uuid
 
+if __name__ == "__main__":
+    # Before the modules below are loaded: started as a script, this check leaves no bytecode files beside the
+    # checkout's modules, nor beside those of the staged package, whose library its readings load.
+    sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import c2_hosts  # noqa: E402
 import run as hookcheck  # noqa: E402
@@ -132,6 +144,7 @@ NETWORK = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", 
 CASES = ("TC-258", "TC-259", "TC-261", "TC-262", "TC-345", "TC-356")
 LIMIT = 1.0
 ENDING = ("SIGTERM", "SIGHUP", "SIGBREAK")  # The signals that end a process, by the names that a system has.
+INTERRUPTED = "interrupted: the runs and the cases after this point were not made"
 WINDOWS = os.name == "nt"
 REPLACE_SECONDS = 2  # How long the report's file waits for its place on Windows.
 CUT = 64            # TC-259's `max_tokens`; the scripted server cuts any answer asked for under CUT_BELOW.
@@ -468,8 +481,9 @@ def outside(before, after, ids, entries, key, documents, holding):
     stored = entries[keyed["prompt"]]["text"]
     return {"no decision has a title that an instruction asked for": not titled,
             "the seeded decision is still current": after["items"][seeded]["status"] == "current",
-            "the seeded line is as it was": any(value["id"] == line["id"] and value["text"] == line["text"]
-                                               for value in after["lines"]),
+            "the seeded line is as it was": became({line["id"]: line}, {value["id"]: value
+                                                                        for value in after["lines"]},
+                                                   [line["id"]]) == "as it was",
             "no decision quotes Claude Code's pasted lines": start >= 0 and not decided,
             "the key is in no request and a redaction mark is": bool(documents) and all(
                 key not in text for text in documents) and any("[redacted:" in text for text in documents),
@@ -601,7 +615,7 @@ class Home:
         """The raw log's entries, by ID."""
         found = {}
         for path in sorted((self.root / "raw").glob("*.jsonl")):
-            for line in path.read_text(encoding="utf-8").splitlines():
+            for line in lines_of(path.read_text(encoding="utf-8")):
                 value = json.loads(line)
                 found[value["id"]] = value
         return found
@@ -617,8 +631,7 @@ class Home:
             done = hookcheck.run([sys.executable, str(self.check.plugin / "scripts/hook.py"), name], env,
                                  str(self.demo), stdin=data, timeout=120)
             if done["exit"] != 0:
-                raise RuntimeError("the %s hook ended with %s: %s" % (name, done["exit"],
-                                                                      self.check.shown(done["stderr"])))
+                raise RuntimeError("the %s hook %s" % (name, how_ended(done, self.check.shown)))
         found = {entry["kind"]: ident for ident, entry in self.entries().items() if ident not in before}
         if sorted(found) != ["answer", "prompt"]:
             raise RuntimeError("the hooks recorded %s for a turn" % (sorted(found) or "nothing"))
@@ -641,7 +654,7 @@ class Home:
         What the run logged is read and counted towards the cost also when the run breaks or is interrupted.
         """
         check = self.check
-        args = [sys.executable, str(WORKER), str(self.tap), str(cut), str(check.plugin),
+        args = [sys.executable, str(WORKER), str(self.tap), str(cut), str(os.getpid()), str(check.plugin),
                 "--reason", "end", "--project", "demo"]
         run = {"provider": check.provider if provider else SEED}
         try:
@@ -658,7 +671,7 @@ class Home:
         if done["stderr"].strip():
             run["stderr"] = check.shown(done["stderr"], 600)
         if done["exit"] != 0:
-            raise RuntimeError("the worker ended with %s: %s" % (done["exit"], run.get("stderr")))
+            raise RuntimeError("the worker %s" % how_ended(done, lambda text: check.shown(text, 600)))
         return run
 
     def logged(self, run, provider):
@@ -705,13 +718,32 @@ class Home:
                 if value["quotes"][0]["entry"] == ids[number]["prompt"]][0]
 
 
+def lines_of(text):
+    """The lines of a JSON-lines text, which only a line feed ends.
+
+    `str.splitlines` also breaks at U+0085, U+2028 and U+2029, which JSON written without ASCII escapes holds as
+    themselves: an answer with one of them would be read as two lines that are no JSON.
+    """
+    found = text.split("\n")
+    if not found[-1]:  # The text ends with its last line's line feed, or is empty.
+        found.pop()
+    return found
+
+
+def how_ended(done, shown):
+    """How a process of the runner ended, for an error's text: its exit and what it wrote, or why it never began."""
+    if done["exit"] is None:
+        return "could not be started: %s" % shown(done.get("error") or "the runner gave no reason")
+    return "ended with %s: %s" % (done["exit"], shown(done["stderr"]))
+
+
 def whole_lines(path):
     """A JSON-lines file's values and the number of lines left out because they are no JSON.
 
     A worker that was stopped while it wrote may leave such a line.
     """
     found, broken = [], 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in lines_of(path.read_text(encoding="utf-8", errors="replace")):
         try:
             found.append(json.loads(line))
         except ValueError:
@@ -887,11 +919,13 @@ def checkout(out):
         pass
     found = {}
     for name, args in (("commit", ["rev-parse", "HEAD"]), ("changed files", status)):
-        done = hookcheck.run([git, "-C", str(REPO)] + args, dict(os.environ), timeout=60)
+        # Without optional locks `git status` does not write the index that it refreshed: the checkout stays as
+        # it is, and a Git command of the user's that runs meanwhile does not find the index locked.
+        done = hookcheck.run([git, "-C", str(REPO)] + args, dict(os.environ, GIT_OPTIONAL_LOCKS="0"), timeout=60)
         if done["exit"] != 0:
             return {"commit": None}
         found[name] = done["stdout"].strip()
-    found["changed files"] = len(found["changed files"].splitlines())
+    found["changed files"] = len(lines_of(found["changed files"]))
     return found
 
 
@@ -1107,65 +1141,94 @@ def earlier(out):
             "or move that folder away." % out)
 
 
-def interruptible():
-    """Let a signal that would end this process interrupt it as Ctrl+C does; the handlers that were there before.
+class Interrupts:
+    """The signals that interrupt this check, of which only the first does.
 
-    Ended at once, the check would leave its worker running, in a session of its own and with the memory keys,
-    and would not write what its runs gave. A signal that the process was started to ignore, as under `nohup`,
-    stays ignored. Only the first of these signals interrupts: one that follows it, as when a supervisor sends
-    two, must not break off the ending of the worker and the writing of the report.
+    A signal that would end this process (SIGTERM, SIGHUP, Ctrl+Break) interrupts it as Ctrl+C does. Ended at
+    once, the check would not write what its runs gave, and its worker, in a session of its own and with the
+    memory keys, would only end when it saw that the check was gone. A signal that the process was started to
+    ignore, as under `nohup`, stays ignored.
+
+    Only the first of them interrupts, Ctrl+C among them. One that follows, as when a supervisor sends two or a
+    terminal is closed after Ctrl+C, must not break off the ending of the worker and the writing of the report;
+    it is not kept for later either, since the check is ending already.
     """
-    before, seen = {}, []
 
-    def ended(number, _):
-        if not seen:
-            seen.append(number)
+    def __init__(self):
+        self.before, self.taken = {}, False
+        signals = (("SIGINT", signal.default_int_handler),) + tuple((name, signal.SIG_DFL) for name in ENDING)
+        for name, usual in signals:
+            number = getattr(signal, name, None)
+            try:
+                if number is not None and signal.getsignal(number) is usual:
+                    self.before[number] = signal.signal(number, self.take)
+            except (ValueError, OSError):  # Only the main thread sets a handler; a test may call `main` from another.
+                pass
+
+    def take(self, number, _):
+        if not self.taken:
+            self.taken = True
             raise KeyboardInterrupt()
 
-    for name in ENDING:
-        number = getattr(signal, name, None)
-        try:
-            if number is not None and signal.getsignal(number) is signal.SIG_DFL:
-                before[number] = signal.signal(number, ended)
-        except (ValueError, OSError):  # Only the main thread sets a handler; a test may call `main` from another.
-            pass
-    return before
+    def hold(self):
+        """From here on none of them interrupts: the check is ending, by itself or after an interrupt."""
+        self.taken = True
+
+    def restore(self):
+        """Put back the handlers that were there before."""
+        for number, handler in self.before.items():
+            signal.signal(number, handler)
 
 
-def noted(report, check):
-    """Add the error that is being handled to the report, with a memory key masked."""
-    text = traceback.format_exc()
+def noted(report, check, text=None):
+    """Add the error that is being handled, or a text, to the report's `crash`, with a memory key masked."""
+    if text is None:
+        text = traceback.format_exc()
     report["crash"] = "\n".join(part for part in (report.get("crash"), text if check is None else check.mask(text))
                                 if part)
 
 
-def carry_out(out, chosen):
-    """Run the chosen cases and write the report, also when the check breaks or is interrupted; the report."""
+def carry_out(out, chosen, signals=None):
+    """Run the chosen cases and write the report, also when the check breaks or is interrupted; the report.
+
+    The check's ending is the write of what the runs gave, the search of the files with the cost, and the last
+    write. From where it begins `signals` are held. An error or an interrupt that reaches one of its steps all
+    the same is noted and the next step is still made, so the report that is returned, and that `main` prints,
+    says what its file could not.
+    """
     report, check = {"release": c2_hosts.RELEASE, "provider": SELF_TEST if chosen.self_test else PROVIDERS,
                      "self_test": chosen.self_test}, None
-    write(out, report, None)  # From its first moment the folder says whether it is a self-test's.
     try:
-        check = Check(out, chosen)
-        report = check.report
-        for name in chosen.case:
-            write(out, report, check)
-            check.case(name)
+        try:
+            write(out, report, None)  # From its first moment the folder says whether it is a self-test's.
+            check = Check(out, chosen)
+            report = check.report
+            for name in chosen.case:
+                write(out, report, check)
+                check.case(name)
+        except Exception:
+            noted(report, check)
+        if signals is not None:
+            signals.hold()
     except KeyboardInterrupt:
-        report["crash"] = "interrupted: the runs and the cases after this point were not made"
-    except Exception:
-        noted(report, check)
+        if signals is not None:
+            signals.hold()
+        noted(report, check, INTERRUPTED)
     try:
-        write(out, report, check)  # Before the search below, so that a second interrupt loses nothing of the runs.
-    except Exception:
+        write(out, report, check)  # Before the search below, so that nothing of the runs is lost if that breaks.
+    except (Exception, KeyboardInterrupt):
         noted(report, check)
     if check is not None:
         try:
             close(check, report, out)
-        except Exception:
+        except (Exception, KeyboardInterrupt):
             noted(report, check)
-    if write(out, report, check):
-        report["key_in_report"] = True
-        write(out, report, check)
+    try:
+        if write(out, report, check):
+            report["key_in_report"] = True
+            write(out, report, check)
+    except (Exception, KeyboardInterrupt):
+        noted(report, check)  # The file is as the last write that held left it; the summary says the rest.
     return report
 
 
@@ -1194,18 +1257,14 @@ def main(arguments=None):
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    before = interruptible()
+    signals = Interrupts()
     try:
-        report = carry_out(out, chosen)
+        report = carry_out(out, chosen, signals)
     finally:
-        for number, handler in before.items():
-            signal.signal(number, handler)
+        signals.restore()
     print("\n".join(summary(report)))
     return 0 if passed(report) else 1
 
 
 if __name__ == "__main__":
-    # The readings load the staged package's library into this process: it leaves no bytecode files beside the
-    # modules that were checked, as the hooks and the worker leave none.
-    sys.dont_write_bytecode = True
     sys.exit(main())

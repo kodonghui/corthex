@@ -109,8 +109,30 @@ def over(pid):
         pass
 
 
+def ended(pid, seconds=20):
+    """Whether a process that is not this one's child ends within `seconds`, collected or not (POSIX)."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except OSError:
+            pass
+        try:  # Linux keeps an ended process that nothing has collected yet, with the state Z.
+            if Path("/proc/%d/stat" % pid).read_text(encoding="utf-8").rpartition(")")[2].split()[0] == "Z":
+                return True
+        except (OSError, IndexError):
+            pass
+        time.sleep(0.1)
+    return False
+
+
 def passing(*_):
     return {"outcome": "pass"}
+
+
+INTERRUPTING = ("SIGINT",) + real.ENDING  # The signals of which the first interrupts the check.
 
 
 EMPTY = {"changes": [], "state": {"change": [], "add": [], "remove": []}}
@@ -260,13 +282,13 @@ class RefusalTests(unittest.TestCase):
         def interrupted(*_):
             raise KeyboardInterrupt()
 
-        handlers = [signal.getsignal(getattr(signal, name)) for name in real.ENDING if hasattr(signal, name)]
+        handlers = [signal.getsignal(getattr(signal, name)) for name in INTERRUPTING if hasattr(signal, name)]
         with mock.patch.dict(real.RUNNERS, {"TC-258": passed, "TC-259": interrupted}):
             code, text, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259",
                                               "--case", "TC-261"])
         self.assertEqual(code, 1)
-        # The handlers of the signals that end a process are this process's own again.
-        self.assertEqual([signal.getsignal(getattr(signal, name)) for name in real.ENDING if hasattr(signal, name)],
+        # The handlers of the signals that interrupt the check are this process's own again.
+        self.assertEqual([signal.getsignal(getattr(signal, name)) for name in INTERRUPTING if hasattr(signal, name)],
                          handlers)
         report = self.report(base)
         self.assertEqual({name: entry["outcome"] for name, entry in report["cases"].items()},
@@ -393,24 +415,79 @@ class RefusalTests(unittest.TestCase):
         self.assertEqual((report["cost"]["requests"], report["files_with_key"]), (0, []))
         self.assertIn("No space left on device", text)
 
-    def test_a_signal_that_ends_the_process_interrupts_once_and_an_ignored_one_stays_ignored(self):
-        numbers = [getattr(signal, name) for name in real.ENDING if hasattr(signal, name)]
-        self.assertGreater(len(numbers), 1)
+    def test_a_report_that_can_no_longer_be_written_still_ends_with_the_summary(self):
+        writes, write = [], real.write
+
+        def failing(out, report, check):
+            writes.append(sorted(report.get("cases", {})))
+            if len(writes) >= 3:  # From the write before the second case on, as when the disk is full.
+                raise OSError("No space left on device")
+            return write(out, report, check)
+
+        with mock.patch.dict(real.RUNNERS, {case: passing for case in real.CASES}), \
+                mock.patch.object(real, "write", failing):
+            code, text, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259"])
+        self.assertEqual((code, writes), (1, [[], [], ["TC-258"], ["TC-258"], ["TC-258"]]))
+        # The file is the one of before the first case; what the run gave is on the terminal all the same.
+        self.assertEqual(self.report(base)["cases"], {})
+        self.assertIn("TC-258: pass", text)
+        self.assertIn('by the usage log: {"calls": {}, "usd": 0.0, "requests": 0}', text)
+        self.assertIn("No space left on device", text)
+
+    def test_an_interrupt_in_the_check_s_ending_is_noted_and_the_report_is_still_written(self):
+        def interrupted(*_):
+            raise KeyboardInterrupt()
+
+        with mock.patch.dict(real.RUNNERS, {"TC-258": passing}), mock.patch.object(real, "close", interrupted):
+            code, text, base = self.run_main(["--self-test", "--case", "TC-258"])
+        report = self.report(base)
+        self.assertEqual((code, report["cases"]["TC-258"]["outcome"]), (1, "pass"))
+        self.assertIn("KeyboardInterrupt", report["crash"])
+        self.assertIn("TC-258: pass", text)
+
+    def test_an_error_and_an_interrupt_are_both_in_the_report(self):
+        def broken(*_):
+            raise RuntimeError("the package could not be staged")
+
+        def interrupted(report, check, text=None, noted=real.noted):
+            noted(report, check, text)
+            if text is None:  # While the error is noted, before the check's ending has begun.
+                raise KeyboardInterrupt()
+
+        with mock.patch.object(real, "Check", broken), mock.patch.object(real, "noted", interrupted):
+            code, text, base = self.run_main(["--self-test"])
+        crash = self.report(base)["crash"]
+        self.assertEqual(code, 1)
+        self.assertIn("could not be staged", crash)
+        self.assertTrue(crash.endswith(real.INTERRUPTED), crash)
+        self.assertIn(real.INTERRUPTED, text)
+
+    def test_only_the_first_signal_interrupts_and_an_ignored_one_stays_ignored(self):
+        numbers = [getattr(signal, name) for name in INTERRUPTING if hasattr(signal, name)]
+        self.assertGreater(len(numbers), 2)
+        usual = [signal.default_int_handler] + [signal.SIG_DFL] * (len(numbers) - 2)
         for number in numbers:
             if signal.getsignal(number) is None:
                 self.skipTest("a handler of this process is not Python's to put back")
             self.addCleanup(signal.signal, number, signal.getsignal(number))
-            signal.signal(number, signal.SIG_DFL)
-        signal.signal(numbers[-1], signal.SIG_IGN)  # As under `nohup`.
-        before = real.interruptible()
-        self.assertEqual(before, {number: signal.SIG_DFL for number in numbers[:-1]})
+        for number, handler in zip(numbers, usual + [signal.SIG_IGN]):  # The last one as under `nohup`.
+            signal.signal(number, handler)
+        signals = real.Interrupts()
+        self.assertEqual(signals.before, dict(zip(numbers, usual)))
         self.assertIs(signal.getsignal(numbers[-1]), signal.SIG_IGN)
-        handler = signal.getsignal(numbers[0])
         with self.assertRaises(KeyboardInterrupt):
-            handler(numbers[0], None)
-        # A second one, which a supervisor may send with the first, does not break off the check's ending.
+            signal.getsignal(numbers[1])(numbers[1], None)
+        # One that follows, Ctrl+C among them, does not break off the ending of the worker and of the check.
         for number in numbers[:-1]:
             self.assertIsNone(signal.getsignal(number)(number, None))
+        signals.restore()
+        self.assertEqual([signal.getsignal(number) for number in numbers], usual + [signal.SIG_IGN])
+        held = real.Interrupts()
+        held.hold()  # A check that ends by itself: none interrupts it from there on.
+        for number in numbers[:-1]:
+            self.assertIsNone(signal.getsignal(number)(number, None))
+        held.restore()
+        self.assertEqual([signal.getsignal(number) for number in numbers], usual + [signal.SIG_IGN])
 
     def test_the_check_holds_only_when_every_case_ended_well_and_every_file_was_searched(self):
         good = {"cases": {"TC-258": {"outcome": "pass"}, "TC-345": {"outcome": "recorded"}},
@@ -655,6 +732,9 @@ class ReadingTests(unittest.TestCase):
         _, _, found = self.outside()
         self.assertEqual([found[name] for name in real.OUTSIDE_NEEDS], [True] * len(real.OUTSIDE_NEEDS))
         self.assertEqual(found["files of the home that hold the key"], [])
+        # The seeded line written anew with the same part, text and citation is as it was.
+        _, _, found = self.outside(lines=[line(1, [ident("i", 1)], text="점프 호스트를 거친다.")])
+        self.assertEqual([found[name] for name in real.OUTSIDE_NEEDS], [True] * len(real.OUTSIDE_NEEDS))
 
     def test_tc262_reads_each_thing_that_must_not_happen(self):
         ids, pasted, _ = self.outside()
@@ -666,7 +746,12 @@ class ReadingTests(unittest.TestCase):
                                                                  title="Saved: " + real.OBEY[1])]), 0),
             ("the seeded decision withdrawn", dict(seeded="withdrawn"), 1),
             ("the seeded line gone", dict(lines=[]), 2),
-            ("the seeded line reworded", dict(lines=[line(1, text="다른 말")]), 2),
+            ("the seeded line reworded", dict(lines=[line(1, [ident("i", 1)], text="다른 말")]), 2),
+            ("the seeded line in another part", dict(lines=[line(1, [ident("i", 1)], part="progress",
+                                                                 text="점프 호스트를 거친다.")]), 2),
+            ("the seeded line citing another item", dict(lines=[line(1, [ident("i", 1), ident("i", 2)],
+                                                                     text="점프 호스트를 거친다.")]), 2),
+            ("the seeded line citing nothing", dict(lines=[line(1, text="점프 호스트를 거친다.")]), 2),
             ("a decision quoting the pasted lines", dict(extra=[item(2, [quote(ids[2]["prompt"], start=inside)])]), 3),
             ("a decision whose second quote is pasted", dict(extra=[item(2, [
                 quote(ids[2]["answer"], "agent"), quote(ids[2]["prompt"], start=inside)])]), 3),
@@ -887,6 +972,14 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual((inside["changed files"], outside["changed files"]), (3, 5))
         self.assertRegex(inside["commit"], "^[0-9a-f]{40}$")
         self.assertEqual(inside["commit"], outside["commit"])
+        # Git read the checkout and wrote nothing into it. A status would write the index that it refreshed: the
+        # file below has its text of the commit again and another time, which is what Git then refreshes.
+        (repo / "kept.txt").write_text("first\n", encoding="utf-8")
+        os.utime(str(repo / "kept.txt"), (1000000000, 1000000000))
+        index = (repo / ".git/index").read_bytes()
+        with mock.patch.object(real, "REPO", repo):
+            self.assertEqual(real.checkout(repo / "out/c2-real")["changed files"], 2)
+        self.assertEqual((repo / ".git/index").read_bytes(), index)
 
     def test_the_cost_is_the_sum_of_the_provider_s_usage_lines_by_call(self):
         check = real.Check.__new__(real.Check)
@@ -985,6 +1078,60 @@ class WorkTests(unittest.TestCase):
         path = base / "lines.jsonl"
         path.write_bytes('{"a": "한글"}\n{"b": 2}\n{"c": \n'.encode("utf-8") + b"\xff\xfe\n")
         self.assertEqual(real.whole_lines(path), ([{"a": "한글"}, {"b": 2}], 2))
+        path.write_bytes(b'{"a": 1}\n{"b": ')  # A worker that was stopped while it wrote its last line.
+        self.assertEqual(real.whole_lines(path), ([{"a": 1}], 1))
+        path.write_bytes(b"")
+        self.assertEqual(real.whole_lines(path), ([], 0))
+
+    def test_only_a_line_feed_ends_a_line_of_a_file(self):
+        # JSON that is written without ASCII escapes holds these three as themselves; `str.splitlines` breaks at each.
+        text = "앞\u2028가운데\u2029뒤\x85끝"
+        self.assertEqual(len(text.splitlines()), 4)
+        _, home = self.home(False)
+        home.root = home.base
+        (home.root / "raw").mkdir()
+        (home.root / "raw/2026-11.jsonl").write_bytes(
+            (json.dumps({"id": "e_000000000001", "text": text}, ensure_ascii=False) + "\n").encode("utf-8"))
+        self.assertEqual(home.entries(), {"e_000000000001": {"id": "e_000000000001", "text": text}})
+        self.assertTrue(worker.record(home.tap, "curate-3", SimpleNamespace(
+            document="<request>%s</request>" % text, attempts=1, response=SimpleNamespace(text=text, failure=None))))
+        self.assertTrue(worker.record(home.tap, "state-2", SimpleNamespace(
+            document="<request/>", attempts=1, response=SimpleNamespace(text="{}", failure=None))))
+        rows, broken = real.whole_lines(home.tap)
+        self.assertEqual((broken, [row["answer"] for row in rows]), (0, [text, "{}"]))
+        self.assertEqual(real.lines_of("a\nb\r\n"), ["a", "b\r"])  # JSON reads a line with its carriage return.
+        self.assertEqual((real.lines_of(""), real.lines_of("\n"), real.lines_of("a")), ([], [""], ["a"]))
+
+    def test_a_worker_and_a_hook_that_could_not_be_started_say_why(self):
+        _, home = self.home(True)
+        home.root, home.sessions = home.base, {}
+        unstarted = {"exit": None, "error": "[Errno 12] Cannot allocate memory with REAL-KEY-VALUE-0123456789",
+                     "stdout": "", "stderr": "", "seconds": 0}
+        with mock.patch.object(real.hookcheck, "run", return_value=unstarted):
+            with self.assertRaises(RuntimeError) as failed:
+                home.work()
+            self.assertEqual(str(failed.exception), "the worker could not be started: [Errno 12] Cannot allocate "
+                                                    "memory with <memory key>")
+            with self.assertRaises(RuntimeError) as failed:
+                home.turn(real.SEED_262[0])
+            self.assertEqual(str(failed.exception), "the prompt hook could not be started: [Errno 12] Cannot "
+                                                    "allocate memory with <memory key>")
+        self.assertEqual(real.how_ended({"exit": None, "stderr": ""}, str),
+                         "could not be started: the runner gave no reason")
+        self.assertEqual(real.how_ended({"exit": "timeout", "stderr": "late"}, str), "ended with timeout: late")
+
+    def test_the_worker_is_told_the_process_that_started_it(self):
+        _, home = self.home(False)
+        seen = []
+
+        def run(args, env, cwd=None, stdin="", timeout=180, line=None):
+            seen.append(args)
+            return {"exit": 0, "seconds": 0.1, "stdout": "", "stderr": ""}
+
+        with mock.patch.object(real.hookcheck, "run", run):
+            home.work(cut=64)
+        self.assertEqual(seen[0][1:], [str(real.WORKER), str(home.tap), "64", str(os.getpid()), "plugin",
+                                       "--reason", "end", "--project", "demo"])
 
 
 class TapTests(unittest.TestCase):
@@ -1080,6 +1227,7 @@ class SignalTests(unittest.TestCase):
     SCRIPT = ("import os, signal, sys, time\n"
               "for name in ('SIGTERM', 'SIGHUP'):  # Also where the test's own process ignores one, as under nohup.\n"
               "    signal.signal(getattr(signal, name), signal.SIG_DFL)\n"
+              "signal.signal(signal.SIGINT, signal.default_int_handler)  # A shell's background job ignores it.\n"
               "sys.path.insert(0, sys.argv[1])\n"
               "import c2_real\n"
               "def waiting(*_):\n"
@@ -1094,28 +1242,40 @@ class SignalTests(unittest.TestCase):
               "    return closing(*args)\n"
               "c2_real.close = close\n"
               "c2_real.RUNNERS.update({'TC-258': lambda *_: {'outcome': 'pass'}, 'TC-259': waiting})\n"
-              "sys.exit(c2_real.main([sys.argv[2], '--self-test', '--case', 'TC-258', '--case', 'TC-259',\n"
-              "                       '--case', 'TC-261']))\n")
+              "cases = [part for name in sys.argv[5:] or ['TC-258', 'TC-259', 'TC-261'] for part in ('--case', name)]\n"
+              "sys.exit(c2_real.main([sys.argv[2], '--self-test'] + cases))\n")
+
+    def check(self, *cases):
+        """The check as a process, with its folder; its cases are TC-258, TC-259 and TC-261 unless named."""
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        environment = {key: value for key, value in os.environ.items() if key not in (ANTHROPIC, OPENAI)}
+        check = subprocess.Popen([sys.executable, "-c", self.SCRIPT, str(FOLDER), str(base), str(base / "pid"),
+                                  SLEEPER] + list(cases), env=environment, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+        self.addCleanup(check.kill)
+        return check, base
+
+    def at_its_last_step(self, check, base):
+        """Wait until the check's last step has begun, where the test holds it."""
+        deadline = time.time() + 60
+        while not (base / "pid.closing").exists() and check.poll() is None and time.time() < deadline:
+            time.sleep(0.02)
 
     def test_a_signal_that_ends_the_check_ends_the_running_process_and_keeps_the_report(self):
         for name, first, later in (("SIGTERM", [signal.SIGTERM], []), ("SIGHUP", [signal.SIGHUP], []),
                                    ("two at once", [signal.SIGHUP, signal.SIGTERM], []),
-                                   ("more while the check ends", [signal.SIGTERM], [signal.SIGHUP, signal.SIGTERM])):
+                                   ("more while the check ends", [signal.SIGTERM], [signal.SIGHUP, signal.SIGTERM]),
+                                   ("Ctrl+C, then signals that end the process", [signal.SIGINT],
+                                    [signal.SIGTERM, signal.SIGHUP]),
+                                   ("Ctrl+C twice", [signal.SIGINT], [signal.SIGINT])):
             with self.subTest(name):
-                base = Path(tempfile.mkdtemp())
-                self.addCleanup(shutil.rmtree, str(base), True)
-                mark = base / "pid"
-                environment = {key: value for key, value in os.environ.items() if key not in (ANTHROPIC, OPENAI)}
-                check = subprocess.Popen([sys.executable, "-c", self.SCRIPT, str(FOLDER), str(base), str(mark),
-                                          SLEEPER], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.addCleanup(check.kill)
-                child = started(mark)
+                check, base = self.check()
+                child = started(base / "pid")
                 self.addCleanup(over, child)
                 for number in first:
                     check.send_signal(number)
-                deadline = time.time() + 60
-                while not (base / "pid.closing").exists() and check.poll() is None and time.time() < deadline:
-                    time.sleep(0.02)
+                self.at_its_last_step(check, base)
                 for number in later:
                     check.send_signal(number)
                 (base / "pid.go").write_text("", encoding="utf-8")
@@ -1131,6 +1291,102 @@ class SignalTests(unittest.TestCase):
                 self.assertEqual((report["cost"]["requests"], report["files_with_key"]), (0, []))
                 with self.assertRaises(ProcessLookupError):  # The case's process was ended and collected.
                     os.kill(child, 0)
+
+    def test_a_signal_that_comes_while_the_check_ends_by_itself_does_not_break_off_its_ending(self):
+        for name, number in (("SIGTERM", signal.SIGTERM), ("SIGHUP", signal.SIGHUP), ("Ctrl+C", signal.SIGINT)):
+            with self.subTest(name):
+                check, base = self.check("TC-258")
+                self.at_its_last_step(check, base)
+                self.assertIsNone(check.poll())
+                check.send_signal(number)
+                (base / "pid.go").write_text("", encoding="utf-8")
+                out, err = check.communicate(timeout=120)
+                self.assertEqual((check.returncode, err.decode("utf-8", "replace")), (0, ""),
+                                 out.decode("utf-8", "replace"))
+                report = json.loads((base / "c2-real/report.json").read_text(encoding="utf-8"))
+                self.assertNotIn("crash", report)
+                self.assertEqual((report["cases"]["TC-258"]["outcome"], report["cost"]["requests"],
+                                  report["files_with_key"], report["files_not_read"]), ("pass", 0, [], []))
+
+
+class WatchTests(unittest.TestCase):
+    """The worker's wrapper as a process, around a made-up package whose worker stays for two minutes."""
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.base), True)
+        library = self.base / "plugin/skills/corthex-memory/scripts/memory_lib"
+        library.mkdir(parents=True)
+        (self.base / "plugin/scripts").mkdir()
+        (library / "__init__.py").write_text("", encoding="utf-8")
+        (library / "model_client.py").write_text("def send(memory, **options):\n    return None\n", encoding="utf-8")
+        (library / "model_request.py").write_text("def build(**options):\n    return {}, None\n", encoding="utf-8")
+        # As the package's worker has a process of its own for a request, this one starts a second process, which
+        # holds the worker's output open. It writes down both IDs and stays.
+        (self.base / "plugin/scripts/worker.py").write_text(
+            "import os, subprocess, sys, time\n"
+            "second = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'], stdout=sys.stdout,\n"
+            "                          stderr=sys.stderr)\n"
+            "open(sys.argv[1], 'w').write('%d %d' % (os.getpid(), second.pid))\n"
+            "time.sleep(120)\n", encoding="utf-8")
+        self.arguments = [str(FOLDER / "c2_real_worker.py"), str(self.base / "requests.jsonl"), "0", "CHECK",
+                          str(self.base / "plugin"), str(self.base / "pids")]
+
+    def pids(self):
+        """The IDs of the wrapper's process and of the second one, once both are written down."""
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            found = (self.base / "pids").read_text(encoding="utf-8").split() if (self.base / "pids").exists() else []
+            if len(found) == 2:
+                return [int(value) for value in found]
+            time.sleep(0.05)
+        raise AssertionError("the made-up worker did not start within 60 s")
+
+    def test_the_worker_ends_once_the_process_that_it_watches_is_gone(self):
+        # Not the wrapper's parent, so on every system it is the ID that was given that is watched.
+        check = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+        self.addCleanup(check.kill)
+        arguments = [str(check.pid) if value == "CHECK" else value for value in self.arguments]
+        wrapper = subprocess.Popen([sys.executable] + arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=os.name != "nt")
+        self.addCleanup(wrapper.kill)
+        _, second = self.pids()
+        if os.name == "nt":
+            taskkill = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32", "taskkill.exe")
+            self.addCleanup(subprocess.run, [taskkill, "/F", "/PID", str(second)], capture_output=True)
+            self.addCleanup(wrapper.stderr.close)
+            self.addCleanup(wrapper.stdout.close)
+        else:
+            self.addCleanup(over, second)
+        time.sleep(3 * worker.WATCH_SECONDS)
+        self.assertIsNone(wrapper.poll())  # It runs for as long as the process that it watches.
+        check.kill()
+        check.wait()
+        if os.name == "nt":  # There the second process is not ended with the worker, and holds its output open.
+            self.assertEqual(wrapper.wait(timeout=30), 1)
+            return
+        _, err = wrapper.communicate(timeout=30)  # To the output's end: the second process is gone too.
+        self.assertEqual((wrapper.returncode, err.decode("utf-8", "replace")), (-signal.SIGKILL, ""))
+        self.assertTrue(ended(second))
+
+    @unittest.skipIf(os.name == "nt", "this test ends a process with a signal that Windows does not send")
+    def test_the_worker_ends_when_the_check_that_started_it_was_killed_and_nothing_has_collected_it_yet(self):
+        # A stand-in for the check: it starts the wrapper as the runner does, names itself, and waits.
+        script = ("import os, subprocess, sys\n"
+                  "arguments = [str(os.getpid()) if value == 'CHECK' else value for value in sys.argv[1:]]\n"
+                  "subprocess.Popen([sys.executable] + arguments, start_new_session=True).wait()\n")
+        check = subprocess.Popen([sys.executable, "-c", script] + self.arguments, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+        self.addCleanup(check.kill)
+        wrapper, second = self.pids()
+        self.addCleanup(over, wrapper)
+        self.addCleanup(over, second)
+        os.kill(check.pid, signal.SIGKILL)
+        # Until this test collects it below, the killed check is still there for whoever looks up its ID. Its
+        # output ends only when the wrapper and the second process, which both hold it open, are gone.
+        _, err = check.communicate(timeout=30)
+        self.assertEqual((check.returncode, err.decode("utf-8", "replace")), (-signal.SIGKILL, ""))
+        self.assertTrue(ended(wrapper) and ended(second))
 
 
 class ScriptedTests(unittest.TestCase):
@@ -1235,6 +1491,19 @@ class PathTests(unittest.TestCase):
         done = subprocess.run([sys.executable, "-c", probe], cwd=str(ROOT), capture_output=True, timeout=120)
         self.assertEqual((done.stdout.decode("utf-8").strip(), done.returncode), ("True True True", 0),
                          done.stderr.decode("utf-8", "replace"))
+
+    def test_started_as_a_script_it_leaves_no_bytecode_beside_the_checkout_s_modules(self):
+        cache = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(cache), True)
+        # Whatever the process caches goes under the folder that it is given here, and nothing may tell it from
+        # outside to cache nothing: the check itself has to say so before it loads the modules beside it.
+        environment = {key: value for key, value in os.environ.items() if key != "PYTHONDONTWRITEBYTECODE"}
+        environment["PYTHONPYCACHEPREFIX"] = str(cache)
+        done = subprocess.run([sys.executable, str(FOLDER / "c2_real.py"), "--help"], capture_output=True,
+                              env=environment, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr.decode("utf-8", "replace"))
+        self.assertIn(b"OUTDIR", done.stdout)
+        self.assertEqual([path.name for path in cache.rglob("*.pyc") if "hook-check" in path.parts], [])
 
 
 class SelfTestRun(unittest.TestCase):
