@@ -33,7 +33,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest", "macos-15-intel", "macos-latest"]') }}
+        # Linux is Ubuntu 24.04 by name: setup-python has no Python 3.8 for Ubuntu 26.04,
+        # which ubuntu-latest began to give these jobs on 2026-11-12.
+        os: ${{ fromJSON(github.event.pull_request.draft && '["ubuntu-24.04"]' || '["ubuntu-24.04", "windows-latest", "macos-15-intel", "macos-latest"]') }}
         python: ["3.8", "3.15"]
         share: [1, 2, 3]
         # Six lanes: both versions on Linux and Windows, and on macOS the older x64
