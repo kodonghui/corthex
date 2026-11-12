@@ -31,7 +31,7 @@ End each sticky the AI makes with a confidence label: `[sure]` when the user's w
 
 - **Step 0 · Prepare.** Start from the user's purpose, not from what is already built. Ask what the product is for, who it is for and what they want from it, and put the answer on the board in their own words, with your restatement beside it. Only then read the existing code and documents, as material for the later steps. Agree on the scope (what is in and what is out), the inputs, the parts of the product if there are several, and the way of working. Open the board in `link`, or ask before creating one. Put the legend and a scope note on the board, with the open questions numbered and a recommended answer for each; checkpoint 1 asks them.
 - **Step 1-a · Events.** Collect domain events: things that happened and that the business cares about, in the past tense, such as "Order placed". Each one changes data; leave out reads, searches and signing in. When people write events too, the AI puts the events it finds in the inputs in a separate strip of AI proposals, and people move the ones they accept out of it.
-- **Step 1-b · Timeline.** Order the events from left to right in time, one lane per flow. Merge events that mean the same thing under one name, and keep the other names for the glossary's Avoid column. Stack outcomes that depend on a condition, such as "Payment taken" and "Payment failed", one above the other. **Checkpoint 1: the timeline.**
+- **Step 1-b · Timeline.** Order the events from left to right in time, one lane per flow. Merge events that mean the same thing under one name, and keep the other names for the glossary's Avoid column. The name kept is the field's standard term, as people in the field write it in the document's language (in Korean often a loanword); a coined word goes to Avoid, never the standard term. Stack outcomes that depend on a condition, such as "Payment taken" and "Payment failed", one above the other. **Checkpoint 1: the timeline.**
 - **Step 2 · External systems.** Add each system outside the product that sends or receives an event, next to that event.
 - **Step 3 · Commands.** Add the command that causes each event, to its left, in the imperative, such as "Place order". When one command causes several events, mark them as one transaction candidate.
 - **Step 4 · Hotspots.** Add hotspots at any step, next to the sticky concerned, for open questions, risks, disagreements and every guess the AI made. In this step, collect them and fill gaps. Mark them; do not solve them now.
@@ -91,6 +91,7 @@ The user answers on the board or in the conversation. Read the board again befor
 - Every link to or from an external system names its relationship pattern.
 - A circle of synchronous calls between contexts is a hotspot.
 - A word that means different things in two contexts has a glossary row for each, with the difference stated.
+- Every glossary term is the field's standard term, as people in the field write it in the document's language, and no Avoid cell holds the standard term of its row. A coined word or a metaphor is not a term.
 - Every hotspot is answered, with where the answer came from, or kept open with what would answer it.
 - Screens, fields and other requirement-level details are not fixed here. Note them for stage 02.
 

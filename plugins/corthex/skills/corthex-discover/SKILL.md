@@ -4,7 +4,7 @@ description: CORTHEX stage 01, domain discovery. Use when the user runs or summa
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.10.1"
 ---
 
 # Domain discovery
@@ -32,7 +32,7 @@ This skill covers one stage. Its contract, ways of working, steps, checks and ou
 - A board is a picture of a conversation. Turn it into text, but keep its hotspots as questions, not as decisions.
 - Label the AI's confidence and keep checkpoint notes to the three bundles in the reference: guesses, two or three questions and, at checkpoints 2 and 3, core aggregate rules. Record the human participation.
 - Set the detail by context type; core contexts keep rule sources and Given–When–Then examples. For an addition to an existing product, use the changed-context procedure in the reference.
-- Use the glossary's words in every later stage. When a later stage needs a new term, add it here first.
+- Use the glossary's words in every later stage. When a later stage needs a new term, add it here first. Each term is the field's standard term; when one turns out to be a coined word, correct it here under its TERM ID instead of carrying it into later stages.
 
 ## Optional NEXUS work
 

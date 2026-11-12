@@ -154,6 +154,22 @@ class StageContractTest(unittest.TestCase):
         self.assertRegex(checks, r"Every aggregate.*at least one rule or a hotspot")
         self.assertRegex(checks, r"Every link to or from an external system.*relationship pattern")
 
+    def test_glossary_and_entry_summary_keep_standard_terms(self):
+        domain = read_text(SKILLS / "corthex-discover" / "references" / "01-domain.md")
+        checks = section(domain, "## Checks")
+        self.assertIn("Every glossary term is the field's standard term", checks)
+        self.assertIn("no Avoid cell holds the standard term of its row", checks)
+        self.assertIn("a coined word goes to Avoid, never the standard term", section(domain, "## Steps"))
+        discover = read_text(SKILLS / "corthex-discover" / "SKILL.md")
+        self.assertIn("correct it here under its TERM ID", discover)
+        summary = section(read_text(SKILLS / "corthex" / "SKILL.md"), "## 3. Work by the principles")
+        self.assertIn("Name things with the field's standard terms", summary)
+        principles = read_text(SKILLS / "corthex" / "references" / "principles.md")
+        for term in ("체크포인트", "버전", "테스트", "결정 사항"):
+            with self.subTest(term=term):
+                self.assertIn(term, principles)
+                self.assertIn(term, summary)
+
     def test_domain_confidence_labels_are_documented_for_steps_and_board(self):
         for reference in ("01-domain", "event-storming-board"):
             text = read_text(SKILLS / "corthex-discover" / "references" / (reference + ".md"))
