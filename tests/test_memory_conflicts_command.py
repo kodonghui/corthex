@@ -20,7 +20,7 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import (clock, commands, conflict_counts, conflicts_command, fence_plan, files, item_types,
-                        run_listing, run_log, start_summary, worker_support)
+                        run_listing, run_log, start_summary, worker_launch, worker_support)
 from test_memory_curator_answers import answer, change, quote
 import test_memory_curation_worker as worker_fixture
 import test_memory_forget as forget_fixture
@@ -141,8 +141,10 @@ class ConflictsStore:
         """The forget command's preview, then its yes; the result of the yes."""
         preview = self.forget_command(item)
         self.assertEqual((preview['outcome'], preview['code']), ('confirm', 'ok'))
-        done = self.forget_command(item, code=preview['confirm'])
-        self.assertEqual((done['outcome'], done['code']), ('done', 'ok'))
+        # The forget's start of the memory worker (TASK-117) is recorded; no worker runs.
+        with mock.patch.object(worker_launch, 'launch') as launch:
+            done = self.forget_command(item, code=preview['confirm'])
+        self.assertEqual((done['outcome'], done['code'], launch.call_count), ('done', 'ok', 1))
         return preview, done
 
     command = undo_command

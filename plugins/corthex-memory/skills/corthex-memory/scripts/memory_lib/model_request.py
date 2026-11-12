@@ -4,10 +4,19 @@ import json
 from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 
-from . import configuration, model_prompts, redaction
+from . import activation, configuration, model_prompts, redaction
 
 _LIMIT = 6*1024*1024
-AGENT = 'corthex-memory/0.2.1'
+
+
+def agent():
+    """`corthex-memory/<release>`, the release that the plugin's own manifest names (stage 06)."""
+    try:
+        return 'corthex-memory/' + activation.release()
+    except (OSError, ValueError, KeyError, TypeError):
+        return 'corthex-memory/unknown'
+
+
 _BASES = {'anthropic': ('CORTHEX_MEMORY_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
           'openai': ('CORTHEX_MEMORY_OPENAI_BASE_URL', 'https://api.openai.com')}
 _TAGS = frozenset('request state line items item title text conflicts conflict turns session turn entry quote'.split())
@@ -103,5 +112,5 @@ def build(*, config, instructions, source, schema, credentials, environment):
     if len(encoded) > _LIMIT or not credentials.safe(encoded):raise ValueError('unsafe memory request')
     headers = credentials.headers('anthropic')
     if headers is None:raise ValueError('dedicated memory API key missing')
-    headers.update({'anthropic-version':'2026-10-21','content-type':'application/json','user-agent':AGENT})
+    headers.update({'anthropic-version':'2026-10-21','content-type':'application/json','user-agent':agent()})
     return dict(url=url, headers=headers, body=body, schema=copy.deepcopy(schema)), sent

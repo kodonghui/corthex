@@ -1,7 +1,8 @@
 """TBL-011 retention: the injection log's lines go by their own time once past the retention period (SPEC-009).
 
 The holder of the project's layer lease calls `expire`, as it calls the run
-logs' expiry; nothing calls it before the 0.3.0 activation. The hooks append a
+logs' expiry: from release 0.3.0 (TASK-117), a session start's retention of a
+format-2 project (`c2_retention`); below 0.3.0 nothing calls it. The hooks append a
 session's lines under its raw log file's lock (TASK-091, TASK-094), so a file
 is read without that lock, with the leases checked before and after the read
 as publishing's reads are, and only a file that changes is read again, with

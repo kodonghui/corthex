@@ -1,8 +1,9 @@
 """Consolidate a project: API-005 step 3 (SPEC-019, SPEC-020, SPEC-012, SPEC-018, SPEC-144; TASK-089, TASK-090).
 
-Not wired: `scripts/worker.py` calls `consolidate` after `curation_worker.curate`,
-under the same curation lease, from the 0.3.0 activation on. Until then no
-hook or command reaches this module, so installed C1 behaviour is unchanged.
+From release 0.3.0 (TASK-117) the memory worker, `scripts/worker.py`, calls
+`consolidate` for a format-2 store after `curation_worker.curate`, under the
+same curation lease (`worker_runtime`); below 0.3.0 nothing reaches this
+module, so installed C1 behaviour is unchanged.
 
 A consolidation is due once `consolidation.due` has come (SPEC-015 sets it),
 or 7 days after the last consolidation ended or, before the first, after

@@ -1,8 +1,8 @@
 """The forget command (API-025; SPEC-035; TASK-097, TASK-098): its preview, confirmation and effects.
 
-The command runner does not hand `forget` to this handler before the 0.3.0
-activation, so an installed plugin keeps C1 behaviour; until then the tests
-call it as the runner will, after its gates, with the format-2 store binding.
+The command runner hands `forget` to this handler from release 0.3.0 (TASK-117),
+after its gates, with the format-2 store binding; below 0.3.0 an installed
+plugin keeps C1 behaviour.
 Under the project's layer lease, waiting for it as long as the other commands
 wait for theirs, it reads the items, tombstones, current state, pins,
 candidates, line history and the raw logs that the forgotten items quote, each
@@ -11,12 +11,14 @@ through the store's path fence. Without a code it returns the preview
 preview that it has just read under the same lease, so a missing item or any
 change to what the preview shows refuses the forget before anything is
 deleted; a code that matches applies the forget under the same lease
-(`forget_effects`). Starting the memory worker with `--reason skill` afterwards
-belongs to the runner's wiring of the 0.3.0 activation.
+(`forget_effects`). Once the lease is released, a forget that was done starts
+the memory worker with `--reason skill` (API-005), unless a fresh curation
+lease shows that a worker runs; a start that fails is noted in the failure log
+as `worker-start`, as after `resume`, and the forget stays done.
 """
 from . import base, clock, commands, conflict_types, curation_worker, files, forget_effects, forget_plan
 from . import history_io, history_recovery, item_types, locks, raw_rewrite, request_inputs, run_listing
-from . import state_types
+from . import state_types, worker_launch
 
 # The commands' shared lock wait, within one bound for the whole read.
 WAIT, SECONDS = 10.0, 60.0
@@ -138,7 +140,11 @@ def forget(context):
                 return _not_found(project, item, extra, missing, forget_plan.closest(lines, missing))
             plan, selected, earlier = _plan(memory, root, deadline, read, layer, project, item, extra, names)
             memory.check(deadline, memory.held)
-            return context.confirm(plan.data, forget_plan.say(plan),
-                                   lambda: _apply(memory, root, plan, selected, earlier, deadline))
+            answer = context.confirm(plan.data, forget_plan.say(plan),
+                                     lambda: _apply(memory, root, plan, selected, earlier, deadline))
     except locks.LockBusy:
         return commands.common_result('forget', 'lock-busy')
+    if answer['outcome'] == 'done':
+        # After the lease: the launcher starts no worker while this process holds a lease of the store.
+        worker_launch.launch(memory, project, 'skill', clock.now() + 10, memory.logger, expected_device=memory.device)
+    return answer

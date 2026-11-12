@@ -7,8 +7,10 @@ it writes curation progress. The reservation advances the mandatory run:<id>
 revision; this module never does, so a log that cannot be written leaves the
 apply in place, notes the failure, and leaves the run unlisted and unundoable.
 A log holds IDs, kinds, counters, times and hashes, never item, line or turn
-text. Nothing here is wired to a worker, hook or command: the curator adds
-its applies in TASK-088, consolidation in TASK-089 and undo in TASK-105 to 108.
+text. The curator adds its applies (TASK-088), consolidation its own
+(TASK-089) and undo reads them (TASK-105 to 108); from release 0.3.0 (TASK-117)
+the memory worker and the command runner reach them for a format-2 store, and a
+session start's retention expires them (`c2_retention`).
 """
 import copy
 from datetime import datetime, timedelta, timezone

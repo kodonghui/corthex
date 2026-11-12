@@ -1,4 +1,10 @@
-"""Guarded raw rewrites, without retention policy, provisioning or worker starts."""
+"""Guarded raw rewrites, without retention policy, provisioning or worker starts.
+
+The curation record's per-log progress (TBL-009) is read and written through
+`progress_io`: C1's record for a format-1 store, and for a format-2 store, from
+release 0.3.0 (TASK-117), the format-2 record through `revision_io`, which
+merges the `logs` field into the fresh record and keeps its fence.
+"""
 import contextlib
 import hashlib
 import itertools
@@ -14,6 +20,30 @@ RAW_LEASE_WAIT_SECONDS = 0.05
 
 class OversizedLine(RuntimeError):
     """Preserve an unsupported line; it is not safely disposable damage."""
+
+
+def progress_io(memory):
+    """(read, write) of the curation record's progress for the store that `memory` binds.
+
+    Both run under the project's curation and layer leases. The format-2 write
+    changes only `logs`, in the fresh record whose fence still matches the one
+    read, so that it never undoes a fence that a forget or an undo moved.
+    """
+    from . import c2_store
+    if not isinstance(memory, c2_store.C2Store):
+        return curation.read, curation.write
+    from . import fence_plan, revision_io
+    proofs = {}
+
+    def read(memory, root, deadline):
+        value = revision_io.read(memory, root, deadline)
+        proofs[root] = fence_plan.snapshot(value)
+        return value
+
+    def write(memory, root, value, deadline):
+        written = revision_io.update_progress(memory, root, proofs[root], {"logs": value["logs"]}, deadline)
+        proofs[root] = fence_plan.snapshot(written)
+    return read, write
 
 
 @dataclass(frozen=True)
@@ -109,10 +139,11 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
     if not isinstance(log, str) or not re.fullmatch(cleanup.LOG, log):
         raise ValueError("invalid raw log")
     path = root / "raw" / (log + ".jsonl")
+    read_progress, write_progress = progress_io(memory)
     with contextlib.ExitStack() as stack:
         stack.enter_context(memory.lease(root / "layer.lock", "layer", deadline))
         basic = curation.guard(memory, root, deadline)
-        progress = curation.read(memory, root, deadline)
+        progress = read_progress(memory, root, deadline)
         # JSONL damage never restores an older backup. Only a missing file can.
         if memory.fence.check(path) is None:
             with memory.lease(path.with_suffix(".lock"), "raw", deadline):
@@ -207,7 +238,7 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                     expected = None
                     staged_check()
                     progress["logs"][log] = lowered
-                    curation.write(memory, root, progress, deadline)
+                    write_progress(memory, root, progress, deadline)
                     staged_check()
                     current = acquire(raw)
                 # A completed concurrent tail is carried, never age-filtered.
@@ -277,7 +308,7 @@ def rewrite(memory, project, owner, log, keep, deadline, after=None):
                     after(result, basic)
             if deleted:
                 progress["logs"].pop(log, None)
-                curation.write(memory, root, progress, deadline)
+                write_progress(memory, root, progress, deadline)
             return result
         finally:
             stream.close()

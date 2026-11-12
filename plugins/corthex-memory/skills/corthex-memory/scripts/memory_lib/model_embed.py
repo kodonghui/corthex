@@ -140,7 +140,7 @@ def embed(memory, *, project, call, texts, config, check, deadline, still=None):
         raise ValueError('memory embedding request too large')
     model, dims = settings['models']['embedding'], settings['models']['dims']
     body = {'model': model, 'input': sent, 'dimensions': dims, 'encoding_format': 'float'}
-    headers.update({'content-type': 'application/json', 'user-agent': model_request.AGENT})
+    headers.update({'content-type': 'application/json', 'user-agent': model_request.agent()})
     wire = dict(url=url, headers=headers, body=body, provider='openai')
     limit = LIMITS[call]
     count, logged, result, failure = 0, [0], (), model_access.classify('openai', reason='timeout')

@@ -31,8 +31,9 @@ lease only while its item is still current, unchanged and not private, and the
 index still has the embedding model and vector length that made it; the vectors
 of a request already answered are kept on the device. A failed request is noted
 in the failure log with its code, and its items stay without a vector, found by
-words, until a later step 6; a lasting failure ends the step. Nothing calls this
-module before the 0.3.0 activation.
+words, until a later step 6; a lasting failure ends the step. From release
+0.3.0 (TASK-117) the memory worker calls `keep` for a format-2 store after
+consolidation (`worker_runtime`); below 0.3.0 nothing calls this module.
 """
 import contextlib
 from dataclasses import dataclass
