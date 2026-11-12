@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.10.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.10.1; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
