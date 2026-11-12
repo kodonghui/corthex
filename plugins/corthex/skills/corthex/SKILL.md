@@ -42,6 +42,8 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
 
+Name things with the field's standard terms, in titles and documents too, and explain a standard term where it first appears instead of replacing it with a coined word or a metaphor. In Korean, that is the term Korean practitioners write, often a loanword, such as 체크포인트, 버전, 테스트 or 결정 사항.
+
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
 
 When the work needs a desktop app, or a web page that the web search and fetch tools cannot open, follow [references/computer-and-web.md](references/computer-and-web.md): Aside for the web, with sign-ins and sign-ups through Aside Vault, and agent-desktop for desktop apps, before the host's computer use.
