@@ -241,6 +241,9 @@ class HookActivationTest(unittest.TestCase):
         memory = text[text.index("## Memory"):]
         self.assertIn("- The curation record was made again from the raw log", memory)
         self.assertIn("Pinned:\n- %s | decision |" % rule["id"], memory)
+        # The pinned line ends with where to read its source again (TASK-112, SPEC-148).
+        pinned = memory.split("Pinned:\n", 1)[1].split("\n", 1)[0]
+        self.assertRegex(pinned, r" \| reread: e_[0-9a-z]{12}$")
         self.assertIn("Current state:\n- Goal: Ship the start summary. (%s)\n- Next action: Write the hook tests."
                       % goal["id"], memory)
         self.assertFalse(shown.exists())
