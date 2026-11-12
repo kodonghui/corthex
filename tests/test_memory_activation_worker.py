@@ -18,8 +18,9 @@ from unittest import mock
 from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (activation, base, commands, format2, index_worker, injection_log, item_types, locks, raw_log,
-                        retention, run_log, state_types, store, worker_launch, worker_runtime)
+from memory_lib import (activation, base, c2_store, commands, consolidation_worker, format2, history_retention,
+                        index_worker, injection_log, item_types, locks, raw_log, retention, run_log, state_types,
+                        store, worker_launch, worker_runtime, worker_support)
 import test_memory_curation_worker as worker_fixture
 from test_memory_curator_answers import answer, change, quote
 from test_memory_run_log import logged
@@ -289,6 +290,237 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(len(injections.read_bytes().splitlines()), 1)
         self.assertEqual({path.name: path.read_bytes() for path in elsewhere.iterdir()}, outside)
         self.assertEqual((swept, self.failures()), ([1], [("retention", "lost-lock")]))
+
+    def run_logs(self):
+        return sorted(path.name for path in (self.root / "runs").iterdir())
+
+    def history_times(self):
+        return [json.loads(line)["at"] for line in (self.root / "state-history.jsonl").read_bytes().splitlines()]
+
+    def test_tc436_a_raw_step_that_fails_leaves_the_other_families_to_expire(self):
+        session, history, injections = self.aged()
+        with mock.patch.object(retention, "retain_project", side_effect=PermissionError("held open")):
+            self.run_worker("start")
+        # The raw log stays for the next start; the line history, run logs and injection logs still expire.
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual(self.history_times(), [history[1]["at"]])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [("retention", "PermissionError")])
+
+    def test_tc436_a_family_that_stays_busy_within_the_phase_leaves_the_next_family_to_run(self):
+        session, history, injections = self.aged()
+        # As when a lease or a read of the run logs outlasts its wait.
+        with mock.patch.object(run_log, "expire", side_effect=locks.LockBusy()):
+            self.run_worker("start")
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.history_times(), [history[1]["at"]])
+        self.assertEqual(self.run_logs(), ["r_0000000000a1.json", "r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
+
+    def layer_records(self, injections):
+        return len(self.history_times()), len(self.run_logs()), len(injections.read_bytes().splitlines())
+
+    def test_tc436_a_line_history_that_stays_busy_before_its_owner_check_leaves_the_others_to_expire(self):
+        session, history, injections = self.aged()
+        before = (self.root / "state-history.jsonl").read_bytes()
+        # As when the line history's own lease or read outlasts its wait, before its owner check.
+        with mock.patch.object(history_retention, "retain_history", side_effect=locks.LockBusy()):
+            self.run_worker("start")
+        # That check did not look, so the run logs and injection logs go by the period read before the sweep.
+        self.assertEqual((self.root / "state-history.jsonl").read_bytes(), before)
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
+
+    def unread_period(self, confirmed):
+        """A start whose line history's owner check cannot read the configuration after `confirmed` reads."""
+        session, history, injections = self.aged()
+        retain, read, inside = history_retention.retain_history, c2_store.C2Store.configuration, []
+
+        def history_step(*args, **options):
+            inside.append(0)
+            try:
+                return retain(*args, **options)
+            finally:
+                inside.pop()
+
+        def busy(memory, *args, **options):
+            # The read stays busy for its second, as while a new period is saved.
+            if inside:
+                inside[0] += 1
+                if inside[0] > confirmed:
+                    raise locks.LockBusy()
+            return read(memory, *args, **options)
+        with mock.patch.object(history_retention, "retain_history", side_effect=history_step), \
+                mock.patch.object(c2_store.C2Store, "configuration", autospec=True, side_effect=busy):
+            self.run_worker("start")
+        # The raw log went by the period read before the sweep. Nothing under the layer lease goes by a
+        # period that could not be read again: the three wait for the next start, quietly.
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.layer_records(injections), (2, 2, 2))
+        self.assertEqual(sorted(path.name for path in self.root.iterdir() if path.name.endswith(".tmp")), [])
+        self.assertEqual(self.failures(), [])
+
+    def test_tc436_a_period_that_the_owner_s_check_cannot_read_keeps_the_layer_records(self):
+        self.unread_period(confirmed=0)
+
+    def test_tc436_a_period_that_a_later_owner_s_check_cannot_read_keeps_the_layer_records(self):
+        # The line history reports a later check's busy read as its own failure, which came from that read.
+        self.unread_period(confirmed=1)
+
+    def test_tc436_a_period_changed_during_the_sweep_keeps_the_layer_records(self):
+        session, history, injections = self.aged()
+        retain = history_retention.retain_history
+
+        def raised(*args, **options):
+            # The user raises the period after the sweep read it and the raw log went by it.
+            self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return retain(*args, **options)
+        with mock.patch.object(history_retention, "retain_history", side_effect=raised):
+            self.run_worker("start")
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.layer_records(injections), (2, 2, 2))
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def test_tc436_a_file_that_a_family_refuses_leaves_the_others_and_the_sweep_to_run(self):
+        session, history, injections = self.aged()
+        path = self.root / "state-history.jsonl"
+        path.unlink()
+        path.mkdir()
+        swept = []
+        with mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # The line history reports what is no file as a lost lease, though the worker's leases and the
+        # store still hold: it is noted, and the other families and the later phases still run.
+        self.assertTrue(path.is_dir())
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual((swept, self.failures()), ([1], [("retention", "lost-lock")]))
+
+    def test_tc436_a_linked_layer_lease_file_leaves_the_sweep_to_run(self):
+        session, history, injections = self.aged()
+        elsewhere, lock = self.folder.parent / "layer-lock-elsewhere", self.root / "layer.lock"
+        elsewhere.write_bytes(b"")
+        if lock.exists():
+            lock.unlink()
+        try:
+            os.symlink(str(elsewhere), str(lock))
+        except (OSError, NotImplementedError) as error:
+            self.skipTest("symbolic links are not available: %s" % error)
+        swept = []
+        with mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # Nothing can take the layer lease, so the project's records wait: curation and retention each
+        # note the link, and the sweep goes on to the logs. The clean-up, which is C1's, ends the worker
+        # at such a link, as C1's rule says.
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual(self.layer_records(injections), (2, 2, 2))
+        self.assertEqual(elsewhere.read_bytes(), b"")
+        self.assertEqual(swept, [1])
+        self.assertEqual(self.failures(), [("curate", "lost-lock"), ("retention", "lost-lock"),
+                                           ("restore", "lost-lock")])
+
+    def test_tc436_without_its_layer_folder_a_project_still_expires_its_run_and_injection_logs(self):
+        session, history, injections = self.aged()
+        before = (self.root / "state-history.jsonl").read_bytes()
+        away = self.folder.parent / "layer-away"
+        (self.root / "layer").rename(away)
+        with mock.patch.object(worker_runtime, "_curated", return_value=True):
+            self.run_worker("start")
+        # The line history's owner check lists the layer folder: without it the history is kept and noted.
+        self.assertFalse((self.root / "layer").exists())
+        self.assertEqual((self.root / "state-history.jsonl").read_bytes(), before)
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def test_tc436_a_link_that_ends_the_starting_project_s_run_leaves_the_sweep_to_run(self):
+        session, history, injections = self.aged()
+        said, _ = self.one_turn()
+        self.mark(said)
+        elsewhere = self.folder.parent / "layer-elsewhere"
+        (self.root / "layer").rename(elsewhere)
+        try:
+            os.symlink(str(elsewhere), str(self.root / "layer"), target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest("symbolic links are not available: %s" % error)
+
+        def outside():
+            return {path.relative_to(elsewhere).as_posix(): path.read_bytes()
+                    for path in elsewhere.rglob("*") if path.is_file()}
+        before, swept = outside(), []
+        with mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # Curation ends at the link before anything is sent. The worker's lease and the store still hold,
+        # so the sweep runs: the line history waits for its layer folder, and the other families expire.
+        self.assertEqual((self.server.requests, len(self.markers())), ([], 1))
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(len(self.history_times()), 2)
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(outside(), before)
+        self.assertEqual((swept, self.failures()), ([1], [("curate", "lost-lock"), ("retention", "lost-lock")]))
+
+    def test_tc436_a_step_that_raises_a_refused_link_ends_the_run_and_leaves_the_sweep_to_run(self):
+        session, history, injections = self.aged()
+        swept = []
+        with mock.patch.object(consolidation_worker, "consolidate", side_effect=worker_support.UnsafePath()), \
+                mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # Step 3 raises the link where curation returns it as its reason: the run ends and the sweep runs.
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.layer_records(injections), (1, 1, 1))
+        self.assertEqual((swept, self.failures()), ([1], [("consolidate", "lost-lock")]))
+
+    def test_tc436_a_store_record_that_cannot_be_looked_at_ends_the_worker_under_the_step_s_name(self):
+        session, history, injections = self.aged()
+        stamp, state, swept = worker_support.BoundDiagnostics._stamp, [], []
+
+        def consolidate(*args, **options):
+            state.append("ended")
+            raise worker_support.UnsafePath()
+
+        def held_open(logger, *args, **options):
+            # The look at the store record right after the step ended is refused once.
+            if state == ["ended"]:
+                state.append("refused")
+                raise PermissionError("held open")
+            return stamp(logger, *args, **options)
+        with mock.patch.object(consolidation_worker, "consolidate", side_effect=consolidate), \
+                mock.patch.object(worker_support.BoundDiagnostics, "_stamp", autospec=True, side_effect=held_open), \
+                mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        self.assertEqual(state, ["ended", "refused"])
+        self.assertEqual(swept, [])
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual(self.failures(), [("consolidate", "lost-lock"), ("consolidate", "PermissionError")])
+
+    def test_tc436_a_replaced_store_ends_the_worker_before_the_sweep(self):
+        session, history, injections = self.aged()
+        said, _ = self.one_turn()
+        self.mark(said)
+        from memory_lib import curation_worker
+        curate, swept = curation_worker.curate, []
+
+        def replaced(*args, **options):
+            # The store record is replaced by a copy of itself while the run goes on.
+            record = self.folder / "store.json"
+            copy = record.with_name("store.json.copy")
+            copy.write_bytes(record.read_bytes())
+            os.replace(str(copy), str(record))
+            return curate(*args, **options)
+        with mock.patch.object(curation_worker, "curate", side_effect=replaced), \
+                mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        self.assertEqual((self.server.requests, len(self.markers()), swept), ([], 1, []))
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual((len(self.history_times()), len(self.run_logs()), len(injections.read_bytes().splitlines())),
+                         (2, 2, 2))
 
     # TC-437
 

@@ -7,10 +7,14 @@ store first, as the command runner and the hooks do. A format-2 store gets the
 format-2 binding (`c2_store.C2Store`) and, under the initial project's lease,
 curation, consolidation and the search index (steps 2, 3 and 6) within one run
 of `RUN_SECONDS`, curation looking again after steps 3 and 6 for turns marked
-meanwhile; at a session start the configuration is read again, and every
-project's retention then covers its line history, run logs and injection logs
-too (`c2_retention`). A store that a
-migration holds, of a newer format or damaged ends the worker without a write.
+meanwhile; a step that ends with a lost lease while the worker's own lease and
+the store still hold, as for a link that the path fence refuses, ends that run
+only. At a session start the configuration is read again, and every project's
+retention then covers its line history, run logs and injection logs too
+(`c2_retention`); a read that stays busy, or a configuration that is no longer
+valid, leaves the sweep for the next start, since the sweep must not go by a
+period that it could not read. A store that a migration holds, of a newer
+format or damaged ends the worker without a write.
 """
 import os
 import stat
@@ -98,13 +102,32 @@ def _kind(folder):
     return activation.store_kind(fence.root, lambda path: files._retry(lambda: fence.read(path, deadline), deadline))
 
 
+def _ended(memory, step):
+    """After a step ended with a lost lease: "lost" when the worker's own lease or the store is gone, else "stop".
+
+    A step ends so, too, for a link or a file that the path fence or the step refuses (UnsafePath, LostLock)
+    and for a lease that it took itself and lost. The worker's own lease and the store then still hold,
+    so only the initial project's run ends, and a session start still sweeps. Only this look tells the
+    two apart, since the steps report both as a lost lease.
+    """
+    try:
+        memory.check(clock.now() + worker_support.OPERATION_SECONDS, memory.held)
+    except (locks.LostLock, locks.LockBusy):
+        return "lost"
+    except Exception as error:
+        # The store record could not be looked at: the worker ends, as when the record is replaced.
+        memory.note(error, step=step)
+        return "lost"
+    return "stop"
+
+
 def _step(memory, step, action, project, owner, deadline):
     """One step of a format-2 run: its outcome, None after an error that it noted, or "stop" or "lost"."""
     try:
         outcome = action(memory, project, owner, deadline)
     except locks.LostLock as error:
         memory.note(error, step=step)
-        return "lost"
+        return _ended(memory, step)
     except locks.LockBusy:
         try:
             memory.check(deadline, memory.held)
@@ -118,7 +141,7 @@ def _step(memory, step, action, project, owner, deadline):
         memory.note(error, step=step)
         return None
     if outcome.reason == "lost-lock":
-        return "lost"
+        return _ended(memory, step)
     if outcome.reason == "deadline":
         return "stop"
     return outcome
@@ -127,7 +150,10 @@ def _step(memory, step, action, project, owner, deadline):
 def _curated(memory, project, owner):
     """Steps 2, 3 and 6 of a format-2 project within one run; False when a lost lease or store stops the worker.
 
-    Each step notes its own failures, a lost lease included, and ends with its reason. A trigger that
+    Each step notes its own failures, a lost lease included, and ends with its reason. A step that ends
+    with a lost lease while the worker's own lease and the store still hold met a link or a file that
+    it refuses, or lost a lease that it took itself: the run ends there and the worker goes on, as when
+    the run's time is over. A trigger that
     finds this run's lease fresh starts no worker (SPEC-012), so once a curation that left nothing
     behind is followed by steps 3 and 6, curation looks again for turns marked meanwhile, and steps 3
     and 6 follow each curation that applied something, until one finds nothing or the run ends.
