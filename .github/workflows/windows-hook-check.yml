@@ -93,7 +93,7 @@ jobs:
         if: ${{ !cancelled() }}
         shell: cmd
         run: python .github\hook-check\c2_hosts.py "%RUNNER_TEMP%\hook-check"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: hook-check
@@ -117,7 +117,7 @@ jobs:
       - name: The prompt hook's time with 1,000, 5,000 and 20,000 items (TC-256)
         shell: cmd
         run: python .github\hook-check\c2_recall_timing.py "%RUNNER_TEMP%\recall-timing"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: windows-recall-timing
@@ -144,7 +144,7 @@ jobs:
       - name: C2 walk replays in both installed hosts, scripted curator (TC-263 to TC-269, TC-357, TC-374 to TC-377)
         shell: cmd
         run: python .github\hook-check\c2_walk_replay.py "%RUNNER_TEMP%\walk-replay"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: windows-walk-replay
