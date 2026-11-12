@@ -51,7 +51,9 @@ fails the case, since its requests could not be told from the session's own.
 A worker's command line names its plugin's folder and its project, never its
 home, so a memory worker of another home counts as well: the check is made for
 a machine where no other memory worker stays, as the hook checks' runner is.
-A wait that ran out leaves in the report what it saw at its end.
+A wait that ran out leaves in the report what it saw as it ended: the lease at
+its last look, for how long no lease had been seen, and the memory workers'
+command lines by that look's reading or, when it made none, by one made then.
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
 with two exceptions that the summary lists: a lock that stayed busy, and a
@@ -62,8 +64,10 @@ the machine's speed, which TC-256 measures, so the case counts it and does not
 fail on it. The hooks that can start the worker, at the session's start, at
 the end of a turn and at the session's end, must each return within their own
 deadline by their timing line (TBL-005); the prompt hook's time is TC-256's.
-The report keeps the number of command lines that were read for TC-254 and, of
-the lines themselves, only the memory workers', with a key in them masked.
+The report keeps the number of command lines that were read for TC-254: those
+of the sessions' readings, and the memory workers' of the waits that follow a
+session, when no session's readings run. Of the lines themselves it keeps only
+the memory workers', with a key in them masked.
 It writes report.json and prints a summary, and exits 1 when a case fails.
 """
 from datetime import datetime, timezone
@@ -94,6 +98,9 @@ SETTLE_SECONDS = 90
 # How often the reading of the command lines that follows a session's readings is tried until one works, and
 # the seconds between two tries.
 LAST_READINGS, LAST_READING_PAUSE = 3, 1.0
+# The seconds between two reads of a file of the memory store that a worker may be writing just now, and how
+# often the failure log is read for the hosts to ask once more until a read works (`Hosts.late_only`).
+STORE_READ_PAUSE, FAILURE_LOG_READS = 0.5, 3
 DECISIONS = (
     # (host, trigger turns, the marker, the user's prompt)
     ("claude", 1, "DEC-ALPHA-ship.py",
@@ -389,7 +396,9 @@ def workers(lines):
 def running(text, seen=None):
     """Whether a memory worker runs whose command line holds `text`; a reading that fails counts as one.
 
-    `seen`, a dict, is given what this reading showed: those workers' lines, or the error that it failed with.
+    `seen`, a dict, is given what this reading showed: under `workers` those workers' lines, or under `unread`
+    the error that it failed with. Under `lines` it keeps those lines of this reading and of each reading that
+    it was given before.
     """
     try:
         found, error = [line for line in workers(command_lines()) if text in line], None
@@ -399,6 +408,7 @@ def running(text, seen=None):
         seen.pop("workers", None)
         seen.pop("unread", None)
         seen.update({"workers": found} if error is None else {"unread": error})
+        seen.setdefault("lines", []).extend(found or [])
     return error is not None or bool(found)
 
 
@@ -440,7 +450,7 @@ def marked_files(home, keys, passes=5):
                     found[key].append(name)
         if not unread or passes <= 0:
             return found, unread
-        time.sleep(0.5)
+        time.sleep(STORE_READ_PAUSE)
 
 
 def during(row, host, started, ended):
@@ -510,25 +520,38 @@ def quiet(root, timeout=SETTLE_SECONDS, turns=True, worker=None, seen=None):
 
     With `worker`, no memory worker may run then whose command line holds that text, `""` for any: a worker
     that a hook has just launched does not hold the lease yet. A reading of the command lines that is under
-    way as `timeout` ends is waited for, so the wait may last longer by that reading. `seen`, a dict, is given
-    what the wait's last look showed: whether the project was busy, and what the last reading showed, if
-    one was made (`running`).
+    way as `timeout` ends is waited for, so the wait may last longer by that reading.
+
+    `seen`, a dict, is given what the wait saw. `busy` is what its last look showed of the project: whether it
+    was busy, or `unread` with the kind of the error that kept the look from telling, which counts as busy.
+    `workers` or `unread` is that look's reading of the command lines, and `lines` every reading's (`running`).
+    A wait that ran out also gives `calm`, the seconds since a look last showed the project busy or since the
+    wait began. With `worker` it then reads the command lines once more when its last look did not, which
+    takes that reading's time as well: the look and the reading show one moment, the wait's end.
     """
-    started = calm = time.time()
+    started = calm = idle = time.time()
     while time.time() - started < timeout:
         try:
-            moving = busy(root, turns)
-        except OSError:
-            moving = True  # A folder that the worker is changing just now: the next look reads it.
+            moving = state = busy(root, turns)
+        except OSError as error:
+            # A folder that the worker is changing just now: the next look reads it.
+            moving, state = True, "unread: " + type(error).__name__
         if seen is not None:
-            seen["busy"] = moving
+            # What an earlier look read of the command lines is not what this look met.
+            seen.pop("workers", None)
+            seen.pop("unread", None)
+            seen["busy"] = state
         if moving:
-            calm = time.time()
+            calm = idle = time.time()
         elif time.time() - calm >= QUIET:
             if worker is None or not running(worker, seen):
                 return True
             calm = time.time() - QUIET + 0.5  # The command lines are read again in half a second.
         time.sleep(0.2)
+    if seen is not None:
+        seen["calm"] = round(time.time() - idle, 1)
+        if worker is not None and "workers" not in seen and "unread" not in seen:
+            running(worker, seen)
     return False
 
 
@@ -538,10 +561,9 @@ def waits_line(labels):
         START_WORKER_SECONDS, json.dumps(labels, ensure_ascii=False))
 
 
-def named(host, number, label=None):
-    """A session's name in the report's lists: its label and its request log, as it lies in the output folder."""
-    log = "%s/requests-%d.jsonl" % (host, number)
-    return "%s (%s)" % (label, log) if label else log
+def named(output, label=None):
+    """A session's name in the report's lists: its label and its output file's place in the output folder."""
+    return "%s (%s)" % (label, output) if label else output
 
 
 def settled(home, titles, timeout=SETTLE_SECONDS):
@@ -616,6 +638,10 @@ class Hosts:
             text = text.replace(key, "<marker>")
         return text
 
+    def shown(self, lines):
+        """Command lines as the report shows them, a key masked before a long line is cut: none is left in part."""
+        return [hookcheck.short(self.mask(text), 400) for text in lines]
+
     def after_start_worker(self, path, model):
         """The host's model answers once the worker that the start hook launched has ended.
 
@@ -679,8 +705,10 @@ class Hosts:
         env.update(extra or {})
         # Each session has its own request log: the mock appends, and the bodies are read back per session.
         number, self.count = self.count, self.count + 1
-        self.label = named(host, number, label)
         log = self.out / host / ("requests-%d.jsonl" % number)
+        output = self.out / host / ("output-%d.txt" % number)
+        # The output file names the session: the artifact of every check that runs sessions holds it.
+        self.label = named(output.relative_to(self.out).as_posix(), label)
         self.mock.log = log
         stdin = ""
         if host == "claude":
@@ -698,9 +726,9 @@ class Hosts:
         started = time.time()
         done = hookcheck.run(args, env, folder or self.demo, stdin=stdin, timeout=180)
         ended = time.time()
-        (self.out / host / ("output-%d.txt" % number)).write_text(
-            hookcheck.scrub_mock_key(done["stdout"] + "\n--- stderr ---\n" + done["stderr"],
-                                     env.get("ANTHROPIC_API_KEY") or env.get("MOCK_KEY")), encoding="utf-8")
+        output.write_text(hookcheck.scrub_mock_key(done["stdout"] + "\n--- stderr ---\n" + done["stderr"],
+                                                   env.get("ANTHROPIC_API_KEY") or env.get("MOCK_KEY")),
+                          encoding="utf-8")
         self.mock.log = None
         for key in (env.get("ANTHROPIC_API_KEY"), env.get("MOCK_KEY")):
             if key:
@@ -722,22 +750,23 @@ class Hosts:
         """Wait until no worker holds the demo project or runs any more; whether that came within SETTLE_SECONDS.
 
         A turn may stay unprocessed, as it does without the keys. A worker that a hook has just launched does
-        not hold the lease yet, so the command lines are read as well. A wait that ran out leaves in the report
-        the session that it followed and what its last look saw: the lease, and the workers' command lines or
-        the error of its last reading, which counts as a worker. Those lines count for TC-254 as well.
+        not hold the lease yet, so the command lines are read as well. No session's readings run during this
+        wait, so the workers' lines of each of its readings count for TC-254. A wait that ran out leaves in the
+        report the session that it followed and what it saw as it ended (`quiet`): the lease at its last look,
+        for how many seconds no lease had been seen, and the workers' command lines or the error of the reading
+        that goes with that look. A reading that failed counts as a worker.
         """
         seen = {}
-        if quiet(self.home / ".corthex/corthex-memory/projects/demo", turns=False, worker="", seen=seen):
-            return True
-        left = {"after": self.label, "lease": seen.get("busy")}
-        if "workers" in seen:
-            self.lines.extend(seen["workers"])
-            # A key is masked before a long line is cut, so that none is left in part.
-            left["workers"] = [hookcheck.short(self.mask(text), 400) for text in seen["workers"]]
-        if "unread" in seen:
-            left["unread"] = self.mask(seen["unread"])
-        self.report.setdefault("workers_left", []).append(left)
-        return False
+        gone = quiet(self.home / ".corthex/corthex-memory/projects/demo", turns=False, worker="", seen=seen)
+        self.lines.extend(seen.get("lines", []))
+        if not gone:
+            left = {"after": self.label, "lease": seen.get("busy"), "calm_seconds": seen.get("calm")}
+            if "workers" in seen:
+                left["workers"] = self.shown(seen["workers"])
+            if "unread" in seen:
+                left["unread"] = self.mask(seen["unread"])
+            self.report.setdefault("workers_left", []).append(left)
+        return gone
 
     def decide(self, number, exes):
         host, turns, marker, prompt = DECISIONS[number]
@@ -771,7 +800,7 @@ class Hosts:
         result["curate_requests"] = {"answered at once": len(curate) - len(waiting), "held": len(waiting)}
         result["curate_decisions"] = [row.get("decisions") for row in curate]
         result["hooks"] = self.timings(host, result)
-        result["workers"] = [hookcheck.short(self.mask(text), 400) for text in sampler.workers]
+        result["workers"] = self.shown(sampler.workers)
         result["reasons"] = sorted({match for text in sampler.workers for match in REASON.findall(text)})
         result["expected_reason"] = "end-of-turn" if turns == 1 else "end"
         result["command_reads"] = {"reads": sampler.reads, "lines": len(sampler.lines),
@@ -817,22 +846,22 @@ class Hosts:
 
         Such a recall leaves `late` in the injection log, or, where that line's lock stayed busy, only the
         prompt hook's note in the failure log. A worker may be writing that log just now, so a read of it that
-        fails is tried again, three times in all. A log that stays unread leaves the injection log to decide
-        and is named in the report; the run's end reads it again, strictly.
+        fails is tried again, FAILURE_LOG_READS times in all. A log that stays unread leaves the injection log
+        to decide and is named in the report; the run's end reads it again, strictly.
         """
         found, noted = {}, set()
         for host, outcome in prompt_injections(self.home):
             found.setdefault(host, set()).add(outcome)
-        for left in (2, 1, 0):
+        for left in range(FAILURE_LOG_READS, 0, -1):
             try:
                 noted = {row.get("host") for row in failure_rows(self.home) if late_recall(row)}
+                break
             except (OSError, ValueError) as error:
-                if left:
-                    time.sleep(0.5)
-                    continue
-                # Only the error's kind: its text may hold what the log holds.
-                self.report["late_notes_unread"] = type(error).__name__
-            break
+                if left > 1:
+                    time.sleep(STORE_READ_PAUSE)
+                else:
+                    # Only the error's kind: its text may hold what the log holds.
+                    self.report["late_notes_unread"] = type(error).__name__
         return [host for host, name in HOST_NAMES.items() if not found.get(host, set()).intersection(RANKED) and
                 ("late" in found.get(host, ()) or name in noted)]
 
@@ -1058,7 +1087,8 @@ def main():
         text.append("TC-257: " + report["verdicts"]["TC-257 observed"] + "; " + json.dumps(
             {key: report["scrub"].get(key) for key in ("notice", "memory_requests", "recalled", "workers_gone")}))
         if report.get("workers_left"):
-            text.append("waits for the workers that ran out, with what each saw at its end: " +
+            text.append("waits for the workers that ran out, each with the lease at its last look, its seconds "
+                        "without a lease and the memory workers' command lines as it ended: " +
                         json.dumps(report["workers_left"], ensure_ascii=False))
         text.append("failure log: " + json.dumps(report.get("failures", [])))
         text.append("failures that fail TC-253: " + json.dumps(report["verdicts"]["blocking_failures"]))
