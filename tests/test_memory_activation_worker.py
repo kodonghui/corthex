@@ -10,6 +10,7 @@ import contextlib
 from datetime import datetime, timedelta, timezone
 import json
 import os
+import shutil
 import sys
 import time
 import unittest
@@ -18,9 +19,9 @@ from unittest import mock
 from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (activation, base, c2_store, commands, consolidation_worker, format2, history_retention,
-                        index_worker, injection_log, item_types, locks, raw_log, retention, run_log, state_types,
-                        store, worker_launch, worker_runtime, worker_support)
+from memory_lib import (activation, base, c2_retention, c2_store, commands, configuration, consolidation_worker,
+                        format2, history_retention, index_worker, injection_log, item_types, locks, raw_log,
+                        retention, run_log, state_types, store, worker_launch, worker_runtime, worker_support)
 import test_memory_curation_worker as worker_fixture
 from test_memory_curator_answers import answer, change, quote
 from test_memory_run_log import logged
@@ -521,6 +522,149 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(self.seqs(session), [1, 2, 3])
         self.assertEqual((len(self.history_times()), len(self.run_logs()), len(injections.read_bytes().splitlines())),
                          (2, 2, 2))
+
+    def test_tc436_a_period_raised_after_the_raw_step_keeps_the_layer_records_whatever_the_line_history_is(self):
+        session, history, injections = self.aged()
+        path = self.root / "state-history.jsonl"
+        path.unlink()
+        path.mkdir()
+        raw = retention.retain_project
+
+        def raised(*args, **options):
+            # The user raises the period once the raw logs went by the one set as the project's turn began.
+            result = raw(*args, **options)
+            self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return result
+        with mock.patch.object(retention, "retain_project", side_effect=raised):
+            self.run_worker("start")
+        # Step 2's own look finds the change before the line history is tried: nothing under the layer lease
+        # goes by the earlier period, though this line history would end before its owner check.
+        self.assertTrue(path.is_dir())
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual((self.run_logs(), len(injections.read_bytes().splitlines())),
+                         (["r_0000000000a1.json", "r_0000000000a2.json"], 2))
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def test_tc436_a_period_raised_during_one_project_s_turn_is_the_next_project_s_period(self):
+        session, history, injections = self.aged()
+        # A second project with the same records, whose turn comes first.
+        other = self.root.parent / "other"
+        shutil.copytree(str(self.root), str(other), ignore=shutil.ignore_patterns("*.lock"))
+        retain, turns = history_retention.retain_history, []
+
+        def raised(memory, root, *args, **options):
+            turns.append(root.name)
+            if len(turns) == 1:
+                self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return retain(memory, root, *args, **options)
+        with mock.patch.object(history_retention, "retain_history", side_effect=raised):
+            self.run_worker("start")
+
+        def kept(root):
+            return ([json.loads(line)["seq"] for line in (root / "raw" / (session.name + ".jsonl")).read_bytes().splitlines()],
+                    len((root / "state-history.jsonl").read_bytes().splitlines()),
+                    sorted(path.name for path in (root / "runs").iterdir()),
+                    len((root / "injections" / injections.name).read_bytes().splitlines()))
+        # The first project's raw log went by the period set as its turn began, and its owner check then
+        # found the change. The second project's turn reads the new period, so nothing of it expires.
+        self.assertEqual(turns, ["other", "sample"])
+        self.assertEqual(kept(other), ([1, 2], 2, ["r_0000000000a1.json", "r_0000000000a2.json"], 2))
+        self.assertEqual(kept(self.root), ([1, 2, 3], 2, ["r_0000000000a1.json", "r_0000000000a2.json"], 2))
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def old_logs(self, kind, days):
+        """Empty log files of the device of one kind, whose days are so many days back: the paths."""
+        logs = self.folder / "logs"
+        logs.mkdir(exist_ok=True)
+        paths = [logs / ("%s-%s.jsonl" % (kind, (datetime.now(UTC) - timedelta(days=back)).strftime("%Y-%m-%d")))
+                 for back in days]
+        for path in paths:
+            path.write_bytes(b"")
+        return paths
+
+    def old_failure_logs(self):
+        """Failure logs of the device whose days are 102 and 400 days back: the paths."""
+        return self.old_logs("failures", (102, 400))
+
+    def test_tc436_a_period_raised_during_the_last_project_s_turn_is_the_log_sweep_s_period(self):
+        session, history, injections = self.aged()
+        recent, old = self.old_failure_logs()
+        raw = retention.retain_project
+
+        def raised(*args, **options):
+            # The user raises the period once the project's turn has read the earlier one.
+            result = raw(*args, **options)
+            self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return result
+        with mock.patch.object(retention, "retain_project", side_effect=raised):
+            self.run_worker("start")
+        # The log sweep reads the period again: a failure log that only the earlier period had expired stays,
+        # and one past the new period goes.
+        self.assertEqual((recent.exists(), old.exists()), (True, False))
+        self.assertEqual((self.run_logs(), len(injections.read_bytes().splitlines())),
+                         (["r_0000000000a1.json", "r_0000000000a2.json"], 2))
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def start_whose_log_sweep_cannot_read_the_period(self, error):
+        """Start a session in which the configuration's read raises `error` once the last project's turn has ended."""
+        retain, read, unread = c2_retention.retain_project, c2_store.C2Store.configuration, []
+
+        def reading(memory, *args, **options):
+            if unread:
+                raise unread[0]
+            return read(memory, *args, **options)
+
+        def turn(*args, **options):
+            result = retain(*args, **options)
+            unread.append(error)
+            return result
+        with mock.patch.object(c2_store.C2Store, "configuration", reading), \
+                mock.patch.object(c2_retention, "retain_project", side_effect=turn):
+            self.run_worker("start")
+
+    def test_tc436_a_period_that_the_log_sweep_cannot_read_leaves_the_logs_for_the_next_start(self):
+        self.aged()
+        recent, old = self.old_failure_logs()
+        timed, expired = self.old_logs("hooks", (2, 10))  # the hooks' timing files (TBL-005)
+        for error, noted in ((locks.LockBusy(), []),
+                             (configuration.ConfigurationInvalid("retention.days"),
+                              [("retention", "configuration-invalid")])):
+            with self.subTest(error=type(error).__name__):
+                self.start_whose_log_sweep_cannot_read_the_period(error)
+                # Nothing of the device's logs goes by a period that could not be read. A read that stayed
+                # busy is quiet; a configuration that is no longer valid is noted under the sweep's step.
+                self.assertEqual((recent.exists(), old.exists()), (True, True))
+                # The hooks' timing files wait as well, though no setting changes their eight days: the
+                # sweep is left whole, as it is when the worker's first read fails.
+                self.assertEqual((timed.exists(), expired.exists()), (True, True))
+                self.assertEqual([row for row in self.failures() if row[0] == "retention"], noted)
+        # The next start reads the period and sweeps what waited.
+        self.run_worker("start")
+        self.assertEqual((recent.exists(), old.exists()), (False, False))
+        self.assertEqual((timed.exists(), expired.exists()), (True, False))
+
+    def test_tc436_a_store_record_that_cannot_be_looked_at_after_a_busy_step_ends_the_worker_under_its_name(self):
+        session, history, injections = self.aged()
+        stamp, state, swept = worker_support.BoundDiagnostics._stamp, [], []
+
+        def consolidate(*args, **options):
+            state.append("ended")
+            raise locks.LockBusy()
+
+        def held_open(logger, *args, **options):
+            # The look at the store record right after the step stayed busy is refused once.
+            if state == ["ended"]:
+                state.append("refused")
+                raise PermissionError("held open")
+            return stamp(logger, *args, **options)
+        with mock.patch.object(consolidation_worker, "consolidate", side_effect=consolidate), \
+                mock.patch.object(worker_support.BoundDiagnostics, "_stamp", autospec=True, side_effect=held_open), \
+                mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        self.assertEqual(state, ["ended", "refused"])
+        self.assertEqual(swept, [])
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual(self.failures(), [("consolidate", "PermissionError")])
 
     # TC-437
 

@@ -19,9 +19,11 @@ or kept together: an item and the items that it replaced, merged or was
 replaced by, an item and the pins that moved with it, and state lines whose
 places in the run anchor one another. A group is kept too when reversing it
 would leave a kept or later object invalid: a pin on, a visible line citing or
-an item replaced by an item that would stop being current; a line placed next
-to a line that a later change placed; a restored decision without a current
-decision; or a reopened candidate without two current items.
+an item replaced by an item that would stop being current, the last unless
+that item's replacements would end at a current item, as a merge of an item
+that had replaced another leaves them; a line placed next to a line that a
+later change placed; a restored decision without a current decision; or a
+reopened candidate without two current items.
 """
 import hashlib
 import json
@@ -347,6 +349,22 @@ class _Planner:
         status = self._status_after(name, reversed_)
         return status is not None and status['status'] == 'current'
 
+    def _replacements(self, name, reversed_):
+        """The items that replace the item after the inverse, each the one before's, up to one not superseded."""
+        found, status = [], self._status_after(name, reversed_)
+        while status is not None and status['status'] == 'superseded':
+            name = status.get('superseded_by')
+            if not name or name in found:
+                break
+            found.append(name)
+            status = self._status_after(name, reversed_)
+        return found
+
+    def _replaced(self, name, reversed_):
+        """Whether the item, after the inverse, is superseded and its replacements end at a current item."""
+        found = self._replacements(name, reversed_)
+        return bool(found) and self._current(found[-1], reversed_)
+
     def _layout(self, reversed_):
         """The physical lines after the inverse: ID -> (part, pos, cites)."""
         layout = {name: (line['part'], line['pos'], line['cites']) for name, line in self.physical.items()}
@@ -391,13 +409,16 @@ class _Planner:
                 continue
             for item in sorted(stopping.intersection(line['cites'])):
                 found.append(('item:' + item, self._later(key)))
-        # An item that stays is not replaced by an item that stops being current.
+        # An item that stays is not replaced by an item that stops being current, unless that item is then
+        # replaced in turn, through its replacements, by a current one: a merge of an item that had replaced
+        # another leaves that chain, so undoing the undo of the merge leaves it again (SPEC-145).
         for name, value in sorted(self.s.items.items()):
             key = 'item:' + name
             if key in reversed_ and key not in self.still:
                 continue
-            if value['status'] == 'superseded' and value.get('superseded_by') in stopping:
-                found.append(('item:' + value['superseded_by'], self._later(key)))
+            after = value.get('superseded_by')
+            if value['status'] == 'superseded' and after in stopping and not self._replaced(after, reversed_):
+                found.append(('item:' + after, self._later(key)))
         # A line whose place the inverse changes is not next to a line that a later change placed.
         layout = self._layout(reversed_)
         before = state_plan._placements(list(self.s.lines))
@@ -492,6 +513,9 @@ class _Planner:
         items = {key[len('item:'):] for key in self.last if key.startswith('item:')}
         keys.update('pin:' + name for name in items)
         keys.update('item:' + name for name, value in self.s.items.items() if value.get('superseded_by') in items)
+        # An item that stops being current may leave what it had replaced when its own replacements end at a
+        # current item (`_replaced`), so those replacements are read too.
+        keys.update('item:' + other for name in items for other in self._replacements(name, reversed_))
         keys.update('line:' + line['id'] for line in self.s.lines if items.intersection(line['cites']))
         for key, record in self.targets.items():
             if key.startswith('line:') and record is not None:
