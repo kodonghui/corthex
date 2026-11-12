@@ -2,9 +2,11 @@
 
 No host runs here.
 """
+from collections import Counter
 from datetime import datetime, timezone
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -28,7 +30,7 @@ def load(name):
     return module
 
 
-hosts, walk = load("c2_hosts"), load("c2_walk_replay")
+hosts, walk, timing = load("c2_hosts"), load("c2_walk_replay"), load("c2_recall_timing")
 
 START = 1794000000.0
 HOOKS = ("start", "prompt", "end-of-turn", "end")
@@ -169,13 +171,77 @@ class C2HostVerdictsTest(unittest.TestCase):
         found = hosts.verdicts(value)
         self.assertEqual((found["TC-253"], found["TC-254"]), (True, False))
 
-    def test_tc257_needs_the_keys_at_the_hooks_or_the_notice_that_they_were_kept(self):
-        for reached, notice, expected in ((True, False, True), (False, True, True), (False, False, False)):
-            with self.subTest(reached=reached, notice=notice):
+    def test_tc257_needs_a_request_with_a_key_or_the_notice_and_no_request(self):
+        cases = (
+            # (a request carried a key, the notice was shown, the kinds of the requests that came, the verdict)
+            (True, False, ["embeddings"], True),
+            (False, True, [], True),
+            (False, False, [], False),
+            # Where the keys are kept from the hooks nothing is sent, so a request without a key fails the case.
+            (False, True, ["embeddings"], False),
+            (False, False, ["embeddings"], False),
+        )
+        for reached, notice, sent, expected in cases:
+            with self.subTest(reached=reached, notice=notice, sent=sent):
                 value = report()
-                value["scrub"].update(keys_reached_hooks=reached, notice=notice,
-                                      memory_requests=["embeddings"] if reached else [])
+                value["scrub"].update(keys_reached_hooks=reached, notice=notice, memory_requests=sent)
                 self.assertEqual(hosts.verdicts(value)["TC-257"], expected)
+
+    def test_only_a_held_request_that_is_not_answered_yet_counts_as_held(self):
+        # After HOLD_SECONDS the server answers by itself; such a request was not held past the host's exit.
+        rows = [{"holding": True, "at": 1.0}, {"holding": True, "at": 2.0, "answered": 5.0}, {"holding": False}, {}]
+        self.assertEqual(hosts.unanswered(rows), [{"holding": True, "at": 1.0}])
+
+
+class C2HostRequestsTest(unittest.TestCase):
+    """What the local memory server reads of a request, and where the checks take programs from."""
+
+    @staticmethod
+    def request(content):
+        return {"messages": [{"content": content}]}
+
+    def test_a_request_s_kind_entries_and_items_are_read(self):
+        value = self.request(
+            '<request kind="curate" instructions="made up"><entries>'
+            '<entry id="e_1" speaker="user">결정: A &lt;B&gt; &amp; C</entry><entry id="e_2" speaker="agent"/>'
+            '</entries><items><item id="i_1"><title>Decision &quot;X&quot;</title><text>T</text></item></items>'
+            '</request>')
+        self.assertEqual(hosts.request_kind(value), "curate")
+        self.assertEqual(hosts.MemoryServer.entries(value),
+                         [("e_1", "user", "결정: A <B> & C"), ("e_2", "agent", "")])
+        self.assertEqual(hosts.MemoryServer.items(value), {"i_1": 'Decision "X"'})
+
+    def test_a_request_with_a_document_type_is_refused(self):
+        # Without a document type a request declares no entity, so none expands.
+        expanding = ('<!DOCTYPE request [<!ENTITY a "aaaaaaaaaa"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>'
+                     '<request kind="curate">&b;</request>')
+        for content in (expanding, '<!DOCTYPE request><request kind="curate"/>'):
+            with self.subTest(content=content[:28]):
+                for read in (hosts.request_kind, hosts.MemoryServer.entries, hosts.MemoryServer.items):
+                    with self.assertRaises(ValueError):
+                        read(self.request(content))
+
+    def test_a_request_that_is_not_xml_is_a_value_error(self):
+        # The server's handler notes a ValueError on the request's row and answers nothing.
+        for content in ("", "not XML", '<request kind="curate">', "<a/><b/>", "<request>&undeclared;</request>"):
+            with self.subTest(content=content):
+                with self.assertRaises(ValueError):
+                    hosts.document(self.request(content))
+
+    def test_a_program_comes_from_an_absolute_folder_of_path_only(self):
+        folder = Path(tempfile.mkdtemp(prefix="c2-program-")).resolve()
+        self.addCleanup(shutil.rmtree, str(folder), True)
+        tool = folder / ("made-up-tool" + (".exe" if os.name == "nt" else ""))
+        tool.write_bytes(b"")
+        tool.chmod(0o755)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(str(folder))
+        # The current folder holds the program, and PATH names that folder only as itself and as a relative one.
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join((".", "", os.curdir + os.sep))}):
+            with self.assertRaises(OSError):
+                hosts.program("made-up-tool")
+        with mock.patch.dict(os.environ, {"PATH": os.pathsep.join((".", '"%s"' % folder))}):
+            self.assertEqual(hosts.program("made-up-tool"), str(tool))
 
 
 class C2HostFilesTest(unittest.TestCase):
@@ -297,6 +363,59 @@ class C2WalkReplayTest(unittest.TestCase):
             for command in commands:
                 self.assertNotIn("/scripts/hook.py", command)
                 self.assertTrue(any(('/scripts/measure_hook.py" ' + hook) in command for hook in taken), command)
+
+
+class Asked:
+    """What `Walk.ranked` uses of a walk: sessions whose prompt recalls end as told, in turn, and the steps."""
+
+    def __init__(self, *outcomes):
+        self.outcomes, self.steps = outcomes, []
+        self.asked = 0
+
+    def session(self, host, prompt):
+        self.asked += 1
+        return {"session": "session-%d" % self.asked}
+
+    def injections(self, sessions):
+        number = int(sessions[0].rsplit("-", 1)[1])
+        return [{"session": sessions[0], "where": "start", "outcome": "shown"},
+                {"session": sessions[0], "where": "prompt", "outcome": self.outcomes[number - 1]}]
+
+    def step(self, case, label, value):
+        self.steps.append((case, value))
+
+
+class C2WalkRecallTest(unittest.TestCase):
+    def ranked(self, *outcomes):
+        asked = Asked(*outcomes)
+        result, lines = walk.Walk.ranked(asked, "TC-263", "codex", "a prompt")
+        return asked, result["session"], [line["outcome"] for line in lines]
+
+    def test_a_ranked_recall_is_asked_once(self):
+        for outcome in ("injected", "below", "no-index"):
+            with self.subTest(outcome=outcome):
+                asked, session, outcomes = self.ranked(outcome)
+                self.assertEqual((asked.asked, session, outcomes, asked.steps), (1, "session-1", [outcome], []))
+
+    def test_a_recall_that_gave_up_at_its_window_is_recorded_and_asked_once_more(self):
+        asked, session, outcomes = self.ranked("late", "injected")
+        self.assertEqual((asked.asked, session, outcomes), (2, "session-2", ["injected"]))
+        self.assertEqual([(case, [line["outcome"] for line in lines]) for case, lines in asked.steps],
+                         [("TC-263", ["late"])])
+
+    def test_a_second_late_recall_is_returned_as_it_is(self):
+        asked, session, outcomes = self.ranked("late", "late")
+        self.assertEqual((asked.asked, session, outcomes, len(asked.steps)), (2, "session-2", ["late"], 1))
+
+
+class C2RecallTimingTest(unittest.TestCase):
+    def test_a_host_and_size_passes_only_with_known_outcomes_and_a_run_that_ranked(self):
+        cases = (({"injected": 58, "late": 42}, True), ({"below": 100}, True), ({"injected": 100}, True),
+                 # A recall that never completes is not a time: the step fails.
+                 ({"late": 100}, False), ({"injected": 99, "no-line": 1}, False), ({}, False))
+        for found, expected in cases:
+            with self.subTest(found=found):
+                self.assertEqual(timing.ranked(Counter(found)), expected)
 
 
 class HostVersionsTest(unittest.TestCase):

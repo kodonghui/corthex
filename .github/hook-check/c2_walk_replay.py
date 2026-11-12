@@ -19,6 +19,11 @@ only what the hooks and the curator receive for such a prompt. The hooks run thr
 saves each hook's input, and what the host's model received is read apart as
 the start summary and the recall block.
 
+A recall that gave up at its window says nothing about what recall injects
+(API-010), and how often it does is the machine's speed, which TC-256
+measures. Where a case reads a recall, such a session is recorded and its
+prompt is asked once more; a second late recall fails the check.
+
 The curator's script, by the words of an entry:
 - a user entry with "결정:" and a WALK marker adds a decision, with a state
   line, and with "정정:" it replaces the item whose title has the marker after
@@ -168,9 +173,8 @@ class Curator(c2_hosts.MemoryServer):
 class Walk:
     def __init__(self, out):
         self.out = out
-        self.hosts = c2_hosts.Hosts(out)
-        self.hosts.memory.close()
-        self.hosts.memory = self.curator = Curator()
+        self.curator = Curator()
+        self.hosts = c2_hosts.Hosts(out, memory=self.curator)
         self.home, self.demo = self.hosts.home, self.hosts.demo
         self.root = self.home / ".corthex/corthex-memory/projects/demo"
         # The staged release's hooks run through measure_hook.py, which saves each hook's input before the hook runs.
@@ -252,6 +256,19 @@ class Walk:
         prompts = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(inputs.glob("prompt-*.json"))]
         return {"exit": result["exit"], "session": result["session"], "settled": settled, "prompts": prompts,
                 "start": "\n".join(start), "recall": "\n".join(recall)}
+
+    def ranked(self, case, host, prompt):
+        """A session whose prompt recall ranked, with its prompt lines of the injection log.
+
+        A recall that gave up at its window is recorded as a step of the case, and the prompt is asked once
+        more; the second session is returned as it is.
+        """
+        for last in (False, True):
+            result = self.session(host, prompt)
+            lines = [line for line in self.injections([result["session"]]) if line.get("where") == "prompt"]
+            if last or not any(line.get("outcome") == "late" for line in lines):
+                return result, lines
+            self.step(case, host + ": the recall gave up at its window, so the prompt is asked once more", lines)
 
     @staticmethod
     def memory_parts(body):
@@ -427,10 +444,10 @@ class Walk:
 
     def recall(self):
         """TC-263: prompts that touch items, in both hosts."""
-        sessions = []
+        lines = []
         for host in ("claude", "codex"):
-            result = self.session(host, "WALK-ALPHA.sh 배포 스크립트를 실행하는 순서를 알려 주세요.")
-            sessions.append(result["session"])
+            result, found = self.ranked("TC-263", host, "WALK-ALPHA.sh 배포 스크립트를 실행하는 순서를 알려 주세요.")
+            lines += found
             # Item lines name their item's ID; titles can hold one another ("... (merged)").
             stale = {k for k, v in self.items().items() if v["status"] != "current"}
             shown = set(ITEM_LINE.findall(result["recall"]))
@@ -440,12 +457,11 @@ class Walk:
             # State lines of the start summary cite items too; any that is no longer current is recorded.
             self.step("TC-263", host + ": items cited in the session's memory text that are not current",
                       sorted(set(CITED.findall(result["start"] + "\n" + result["recall"])) & stale))
-        lines = self.step("TC-263", "prompt injection lines",
-                          [line for line in self.injections(sessions) if line.get("where") == "prompt"])
+        self.step("TC-263", "prompt injection lines", lines)
         current = {k for k, v in self.items().items() if v["status"] == "current"}
         self.check("TC-263", "both prompts injected the merged item and only current items",
-                   len(lines) == 2 and all(self.merged in line["items"] and set(line["items"]) <= current
-                                           for line in lines))
+                   len(lines) == 2 and all(self.merged in line.get("items", ()) and
+                                           set(line.get("items", ())) <= current for line in lines))
 
     def search(self):
         found = self.step("TC-265", "search", self.command("search", "WALK-ALPHA.sh"))
@@ -527,8 +543,9 @@ class Walk:
                    done.get("outcome") == "done" and search.get("exit") == 0 and
                    search.get("outcome") in ("done", "nothing") and all(row["item"] != self.merged for row in found),
                    {"search": search.get("outcome"), "results": [row["item"] for row in found]})
-        result = self.session("codex", "WALK-ALPHA.sh 배포 스크립트를 실행하는 순서를 다시 알려 주세요.")
-        lines = [line for line in self.injections([result["session"]]) if line.get("where") == "prompt"]
+        # A forget that is done starts the worker (API-025); its step 6 holds the index that recall reads.
+        self.quiet()
+        _, lines = self.ranked("TC-267", "codex", "WALK-ALPHA.sh 배포 스크립트를 실행하는 순서를 다시 알려 주세요.")
         self.check("TC-267", "and gone from recall: the prompt was ranked without it",
                    len(lines) == 1 and lines[0].get("outcome") in c2_hosts.RANKED and
                    self.merged not in lines[0].get("items", []) and

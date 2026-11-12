@@ -38,7 +38,9 @@ that cannot be read fails the case, since it may hold one. The case also needs
 evidence that it looked: for each host, a prompt whose recall ranked the items
 (`injected` or `below` in the injection log), and in each session a reading of
 the command lines that showed the memory worker. Then Claude Code runs once
-more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257).
+more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257): either a request then
+carries a key, which shows that the keys reached the hooks, or the start
+summary shows the notice and no request comes at all.
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
 with two exceptions that the summary lists: a lock that stayed busy, and a
@@ -66,6 +68,7 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import xml.etree.ElementTree as ET
+from xml.parsers import expat
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run as hookcheck  # noqa: E402
@@ -155,9 +158,31 @@ def event(kind, **data):
     return ("event: " + kind + "\ndata: " + json.dumps(dict(type=kind, **data), ensure_ascii=False) + "\n\n").encode("utf-8")
 
 
+def document(value):
+    """The XML of a memory request, as its root element.
+
+    A document type is refused. The package's requests have none, and without one a request declares no
+    entity, so nothing in it expands: this server parses whatever a local process posts to it.
+    """
+    builder, parser = ET.TreeBuilder(), expat.ParserCreate()
+
+    def refuse(*_):
+        raise ValueError("a memory request has no document type")
+
+    parser.buffer_text = True
+    parser.StartDoctypeDeclHandler = refuse
+    parser.StartElementHandler, parser.EndElementHandler = builder.start, builder.end
+    parser.CharacterDataHandler = builder.data
+    try:
+        parser.Parse(value["messages"][0]["content"], True)
+    except expat.ExpatError as error:
+        raise ValueError("a memory request that is not XML: %s" % error) from error
+    return builder.close()
+
+
 def request_kind(value):
     """The kind of a memory request: curate, merge or state."""
-    return ET.fromstring(value["messages"][0]["content"]).get("kind")
+    return document(value).get("kind")
 
 
 def curate_stream(answer):
@@ -221,7 +246,7 @@ class MemoryServer:
                     row["answered"] = time.time()
                     body = answer if isinstance(answer, bytes) else curate_stream(answer)
                     return outer.send(self, body, 200, "text/event-stream")
-                except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as error:
+                except (OSError, ValueError, KeyError, TypeError) as error:
                     row["error"] = repr(error)
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -241,13 +266,13 @@ class MemoryServer:
 
     @staticmethod
     def entries(value):
-        root = ET.fromstring(value["messages"][0]["content"])
+        root = document(value)
         return [(entry.get("id"), entry.get("speaker"), entry.text or "") for entry in root.iter("entry")]
 
     @staticmethod
     def items(value):
         """The request's items, as {id: title}."""
-        root = ET.fromstring(value["messages"][0]["content"])
+        root = document(value)
         return {item.get("id"): item.findtext("title") or "" for item in root.iter("item")}
 
     def decisions(self, value):
@@ -302,13 +327,24 @@ class MemoryServer:
         self.server.server_close()
 
 
+def program(name):
+    """A program's full path, from the absolute folders of PATH: Windows would try the current folder first."""
+    name += ".exe" if os.name == "nt" else ""
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        folder = folder.strip('"')
+        path = os.path.join(folder, name)
+        if os.path.isabs(folder) and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    raise OSError(name + " is in no absolute folder of PATH")
+
+
 def command_lines():
     """Every process's command line that this user can read, as the system lists them; raises when it cannot."""
     if os.name == "nt":
-        args = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+        args = [program("powershell"), "-NoProfile", "-NonInteractive", "-Command",
                 "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"]
     else:
-        args = ["ps", "-axww", "-o", "args="]
+        args = [program("ps"), "-axww", "-o", "args="]
     done = subprocess.run(args, capture_output=True, timeout=120 if os.name == "nt" else 60)
     lines = done.stdout.decode("utf-8", "replace").splitlines()
     if done.returncode != 0 or not lines:
@@ -377,6 +413,11 @@ def hook_rows(home, host, started, ended):
 def failure_rows(home):
     return [json.loads(line) for path in sorted((home / ".corthex/corthex-memory/logs").glob("failures-*.jsonl"))
             for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def unanswered(rows):
+    """The held requests that the server has not answered: after HOLD_SECONDS it answers by itself."""
+    return [row for row in rows if row.get("holding") and "answered" not in row]
 
 
 def late_recall(row):
@@ -449,8 +490,9 @@ def model_bodies(log):
 
 
 class Hosts:
-    def __init__(self, out):
-        self.out, self.mock, self.memory = out, hookcheck.Mock(), MemoryServer()
+    def __init__(self, out, memory=None):
+        self.out, self.mock = out, hookcheck.Mock()
+        self.memory = MemoryServer() if memory is None else memory
         self.mock.stream = self.after_start_worker
         self.source, self.plugin = stage(hookcheck.REPO, out)
         hookcheck.REPO, hookcheck.MEMORY = self.source, self.plugin
@@ -564,8 +606,8 @@ class Hosts:
                 done = hookcheck.scrub_mock_key(done, key)
         try:
             session = hookcheck.native_session(host, done)
-        except AssertionError:
-            session = None
+        except (AssertionError, ValueError, TypeError):
+            session = None  # No one session ID, or an output line that is not the JSON it starts as.
         return {"host": host, "label": label, "session": session, "exit": done["exit"], "seconds": done["seconds"],
                 "started": started, "ended": ended, "bodies": model_bodies(log), "sampler": sampler,
                 "stderr": hookcheck.short(done["stderr"], 400)}
@@ -582,7 +624,7 @@ class Hosts:
         sampler.stop(after=2.0)
         curate = [row for row in self.memory.requests[before:] if row.get("kind") == "curate"]
         waiting = [row for row in curate if row.get("holding")]
-        result["held_after_exit"] = bool(held and waiting and not self.memory.gate.is_set())
+        result["held_after_exit"] = bool(held and unanswered(waiting) and not self.memory.gate.is_set())
         result["held_sent_before_exit"] = bool(waiting) and waiting[0]["at"] <= result["ended"]
         self.memory.release()
         titles = {title for row in waiting for title in row["titles"]}
@@ -628,7 +670,9 @@ class Hosts:
         result["memory_requests"] = [row.get("kind") for row in sent]
         result["notice"] = any("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" in body for body in bodies)
         result["recalled"] = any(line("DEC-DELTA-tag") in body for body in bodies)
-        result["keys_reached_hooks"] = bool(sent)
+        # Only a request that carries a marker shows that the keys reached the hooks.
+        result["keys_reached_hooks"] = any(key in json.dumps(row["headers"]) for row in sent
+                                           for key in self.keys.values())
         rows = hook_rows(self.home, HOST_NAMES["claude"], result["started"], result["ended"])
         result["hooks"] = {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
         self.report["scrub"] = result
@@ -741,8 +785,10 @@ def verdicts(report):
              all(v["command lines read, with the worker"] for v in per.values()))
     tc255 = bool(per) and all(v["earlier decision shown"] and v["decision curated"] for v in per.values())
     scrub = report.get("scrub", {})
-    # Either the keys reached the hooks, whose requests then came, or the start summary said that they did not.
-    tc257 = bool(scrub) and scrub.get("exit") == 0 and bool(scrub["keys_reached_hooks"] or scrub["notice"])
+    # Either the keys reached the hooks, whose requests then carried them, or the start summary said that they
+    # did not and nothing was sent.
+    tc257 = bool(scrub) and scrub.get("exit") == 0 and bool(
+        scrub["keys_reached_hooks"] or scrub["notice"] and not scrub["memory_requests"])
     return {"sessions": per, "triggers": triggers, "hooks_ok": hooks_ok, "blocking_failures": blocking,
             "late recalls": len(late), "ranked recalls": recalled,
             "TC-253": tc253, "TC-254": tc254, "TC-255": tc255, "TC-257": tc257,

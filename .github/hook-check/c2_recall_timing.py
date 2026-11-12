@@ -31,7 +31,9 @@ the line says so: the deadline then caps the percentile, which no longer
 times a whole recall. The exit is for what must not depend on the runner's
 speed: it exits 1 when a run fails, a run has no outcome, or an outcome is
 other than injected, below or late. Times and the share of late runs vary
-with the runner, so the summary reports them and they never fail the step.
+with the runner, so the summary reports them and they do not fail the step,
+with one bound: a host and size where no run ranked the items fails it, since
+a recall that never completes is not a time.
 """
 from collections import Counter
 import json
@@ -127,10 +129,17 @@ def host_input(host, demo, session):
 def interpreter():
     """The interpreter that the hooks file names first on this system."""
     for name in (("python",) if os.name == "nt" else ("python3", "python")):
-        found = shutil.which(name)
-        if found:
-            return found
-    raise RuntimeError("python not found on PATH")
+        try:
+            return c2_hosts.program(name)
+        except OSError:
+            continue
+    raise RuntimeError("python is in no absolute folder of PATH")
+
+
+def ranked(found):
+    """Whether each outcome is one that recall may end with, and at least one run ranked the items."""
+    return (all(name in c2_hosts.RANKED + ("late",) for name in found) and
+            any(found.get(name) for name in c2_hosts.RANKED))
 
 
 def outcomes(root, sessions):
@@ -167,7 +176,7 @@ def measure(plugin, home, demo, keys, url, host, samples):
             "p95_ms": round(percentile(times, 0.95), 1), "max_ms": round(max(times), 1),
             "under_target": percentile(times, 0.95) < TARGET_MS, "exits": dict(exits),
             "outcomes": dict(found), "capped": found["late"] * 20 > samples,
-            "ranked": all(name in c2_hosts.RANKED + ("late",) for name in found),
+            "ranked": ranked(found),
             "outputs_with_context": injected}
 
 
@@ -229,7 +238,7 @@ def main():
                 size, host, value["median_ms"], value["p95_ms"], value["max_ms"],
                 "holds" if value["under_target"] else "does NOT hold", json.dumps(value["outcomes"]),
                 "; over 1 in 20 late, so the deadline caps the p95" if value["capped"] else "",
-                "" if good else "; exits " + json.dumps(value["exits"])))
+                "" if good else "; FAIL: exits %s, ranked %s" % (json.dumps(value["exits"]), value["ranked"])))
     text.append("TC-256: %s (%s)" % ("FAIL" if failed else "measured", READING))
     print("\n".join(text))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
