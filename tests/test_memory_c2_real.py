@@ -38,6 +38,15 @@ real = load("c2_real")
 worker = load("c2_real_worker")
 
 ANTHROPIC, OPENAI = real.ANTHROPIC, real.OPENAI
+# A process that writes its ID to the file that it is given and then stays, for the tests that end one.
+SLEEPER = 'import os, sys, time; open(sys.argv[1], "w").write(str(os.getpid())); time.sleep(300)'
+# A process that starts a second one, which holds the first one's output open, and then stays as the second does:
+# whoever reads that output to its end waits for both.
+TREE = ("import subprocess, sys, time\n"
+        "second = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'], stdout=sys.stdout,\n"
+        "                          stderr=sys.stderr)\n"
+        "open(sys.argv[1], 'w').write(str(second.pid))\n"
+        "time.sleep(120)\n")
 YES, KOREAN, CHAT = ("the short yes gave a user decision with the user's answer first",
                      "the Korean decision gave a Korean item", "the small talk gave no item")
 
@@ -82,6 +91,28 @@ def written(instructions, answer, failure=None):
             "answer": answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False)}
 
 
+def started(mark, seconds=60):
+    """The process ID that a test's process wrote to `mark`, once it is there."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if mark.exists() and mark.read_text(encoding="utf-8"):
+            return int(mark.read_text(encoding="utf-8"))
+        time.sleep(0.05)
+    raise AssertionError("the process did not start within %d s" % seconds)
+
+
+def over(pid):
+    """End a process that a test started and that may still run, as when the test failed before its own check."""
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def passing(*_):
+    return {"outcome": "pass"}
+
+
 EMPTY = {"changes": [], "state": {"change": [], "add": [], "remove": []}}
 KEPT = {"state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}}
 
@@ -105,16 +136,33 @@ def request(entries, items=(), lines=(), kind="curate", instructions="curate-3",
 
 
 class RefusalTests(unittest.TestCase):
-    def run_main(self, arguments, **environment):
+    def run_main(self, arguments, prepare=None, **environment):
+        """`main` with a new OUTDIR, which `prepare` may fill first, and without the keys of this environment.
+
+        The staged copy that a check points the runner at is put back, so that a test may let a check begin.
+        """
         base = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, base, True)
+        if prepare:
+            prepare(Path(base) / "c2-real")
         kept = {name: value for name, value in os.environ.items()
                 if name not in ("CI", "GITHUB_ACTIONS", ANTHROPIC, OPENAI)}
         kept.update(environment)
         output = io.StringIO()
-        with mock.patch.dict(os.environ, kept, clear=True), contextlib.redirect_stdout(output):
+        with mock.patch.dict(os.environ, kept, clear=True), contextlib.redirect_stdout(output), \
+                mock.patch.object(real.hookcheck, "REPO", real.hookcheck.REPO), \
+                mock.patch.object(real.hookcheck, "MEMORY", real.hookcheck.MEMORY):
             code = real.main([base] + arguments)
         return code, output.getvalue(), Path(base)
+
+    @staticmethod
+    def report(base):
+        return json.loads((base / "c2-real/report.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def files(folder):
+        return {path.relative_to(folder).as_posix(): path.read_text(encoding="utf-8")
+                for path in sorted(folder.rglob("*")) if path.is_file()}
 
     def test_it_never_calls_the_providers_in_ci(self):
         for name in ("CI", "GITHUB_ACTIONS"):
@@ -212,13 +260,15 @@ class RefusalTests(unittest.TestCase):
         def interrupted(*_):
             raise KeyboardInterrupt()
 
-        with mock.patch.dict(real.RUNNERS, {"TC-258": passed, "TC-259": interrupted}), \
-                mock.patch.object(real.hookcheck, "REPO", real.hookcheck.REPO), \
-                mock.patch.object(real.hookcheck, "MEMORY", real.hookcheck.MEMORY):
+        handlers = [signal.getsignal(getattr(signal, name)) for name in real.ENDING if hasattr(signal, name)]
+        with mock.patch.dict(real.RUNNERS, {"TC-258": passed, "TC-259": interrupted}):
             code, text, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259",
                                               "--case", "TC-261"])
         self.assertEqual(code, 1)
-        report = json.loads((base / "c2-real/report.json").read_text(encoding="utf-8"))
+        # The handlers of the signals that end a process are this process's own again.
+        self.assertEqual([signal.getsignal(getattr(signal, name)) for name in real.ENDING if hasattr(signal, name)],
+                         handlers)
+        report = self.report(base)
         self.assertEqual({name: entry["outcome"] for name, entry in report["cases"].items()},
                          {"TC-258": "pass", "TC-259": "not run"})
         self.assertIn("interrupted", report["crash"])
@@ -227,6 +277,140 @@ class RefusalTests(unittest.TestCase):
         self.assertIn("TC-258: pass", text)
         self.assertIn("TC-259: not run", text)
         self.assertIn("interrupted", text.splitlines()[-1])
+
+    def test_the_folder_of_an_earlier_run_is_kept_unless_its_report_shows_a_self_test(self):
+        ran = []
+
+        def runner(_, label):
+            ran.append(label)
+            return {"outcome": "pass"}
+
+        kinds = [("a provider's run", {"report.json": json.dumps({"self_test": False, "cases": {}}),
+                                       "tc-258-1/requests.jsonl": "{}\n"}),
+                 ("files without a report", {"tc-258-1/requests.jsonl": "{}\n"}),
+                 ("a report that is no JSON", {"report.json": '{"self_test": true'}),
+                 ("a report that is no object", {"report.json": "[true]"}),
+                 ("a report that says something else", {"report.json": json.dumps({"self_test": "true"})})]
+        for name, files in kinds:
+            with self.subTest(name):
+                def prepare(folder):
+                    for path, text in files.items():
+                        (folder / path).parent.mkdir(parents=True, exist_ok=True)
+                        (folder / path).write_text(text, encoding="utf-8")
+
+                with mock.patch.dict(real.RUNNERS, {case: runner for case in real.CASES}):
+                    code, text, base = self.run_main(["--self-test"], prepare=prepare)
+                self.assertEqual((code, ran), (2, []))
+                self.assertIn("is there already", text)
+                self.assertIn("another OUTDIR", text)
+                self.assertEqual(self.files(base / "c2-real"), files)
+
+    def test_a_file_or_a_link_named_as_the_check_s_folder_is_left_alone(self):
+        with mock.patch.dict(real.RUNNERS, {case: passing for case in real.CASES}):
+            code, text, base = self.run_main(["--self-test"], prepare=lambda folder: folder.write_text("mine"))
+            self.assertEqual((code, (base / "c2-real").read_text()), (2, "mine"))
+            self.assertIn("is there already", text)
+            if os.name == "nt":
+                return  # A link needs a right there that a test may not have.
+            # Through the link the folder would read as a self-test's: it is a self-test's somewhere else.
+            other = Path(tempfile.mkdtemp())
+            self.addCleanup(shutil.rmtree, str(other), True)
+            (other / "report.json").write_text(json.dumps({"self_test": True}), encoding="utf-8")
+            code, text, base = self.run_main(["--self-test"], prepare=lambda folder: folder.symlink_to(
+                other, target_is_directory=True))
+        self.assertEqual((code, (base / "c2-real").is_symlink()), (2, True))
+        self.assertEqual(self.files(other), {"report.json": json.dumps({"self_test": True})})
+
+    def test_a_self_test_s_folder_and_an_empty_one_are_replaced(self):
+        def left(folder):
+            (folder / "tc-258-1").mkdir(parents=True)
+            (folder / "tc-258-1/requests.jsonl").write_text("{}\n", encoding="utf-8")
+            (folder / "report.json").write_text(json.dumps({"self_test": True, "cases": {}}), encoding="utf-8")
+
+        for name, prepare in (("a self-test's", left), ("an empty folder", lambda folder: folder.mkdir())):
+            with self.subTest(name):
+                with mock.patch.dict(real.RUNNERS, {"TC-261": passing}):
+                    code, _, base = self.run_main(["--self-test", "--case", "TC-261"], prepare=prepare)
+                self.assertEqual(code, 0)
+                self.assertFalse((base / "c2-real/tc-258-1").exists())
+                self.assertEqual({case: entry["outcome"] for case, entry in self.report(base)["cases"].items()},
+                                 {"TC-261": "pass"})
+
+    def test_the_report_is_on_disk_before_each_case_begins(self):
+        seen = []
+
+        def looking(check, _):
+            seen.append(json.loads((check.out / "report.json").read_text(encoding="utf-8")))
+            return {"outcome": "pass"}
+
+        with mock.patch.dict(real.RUNNERS, {"TC-258": looking, "TC-259": looking}):
+            code, _, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259"])
+        self.assertEqual(code, 0)
+        self.assertEqual([(report["self_test"], {case: entry["outcome"] for case, entry in report["cases"].items()})
+                          for report in seen], [(True, {}), (True, {"TC-258": "pass"})])
+        self.assertIn("checkout", seen[0])
+        # Each report took the place of the one before it: no file of a write that is under way stays.
+        self.assertEqual(sorted(path.name for path in (base / "c2-real").iterdir() if path.is_file()),
+                         ["report.json"])
+
+    def test_a_check_that_breaks_as_it_begins_has_said_that_it_is_a_self_test_s(self):
+        seen = []
+
+        def broken(out, _):
+            seen.append(json.loads((out / "report.json").read_text(encoding="utf-8")))
+            raise RuntimeError("the package could not be staged")
+
+        with mock.patch.object(real, "Check", broken):
+            code, text, base = self.run_main(["--self-test"])
+        self.assertEqual((code, seen), (1, [{"release": real.c2_hosts.RELEASE, "provider": real.SELF_TEST,
+                                              "self_test": True}]))
+        self.assertIn("could not be staged", self.report(base)["crash"])
+        self.assertIn("could not be staged", text)
+        self.assertIsNone(real.earlier(base / "c2-real"))  # The next self-test may take the folder.
+
+    def test_a_report_that_cannot_be_written_stops_the_cases_after_it_and_is_written_at_the_end(self):
+        ran, writes, write = [], [], real.write
+
+        def runner(_, label):
+            ran.append(label)
+            return {"outcome": "pass"}
+
+        def failing(out, report, check):
+            writes.append(sorted(report.get("cases", {})))
+            if len(writes) == 3:  # The write before the second case: the first is the check's beginning.
+                raise OSError("No space left on device")
+            return write(out, report, check)
+
+        with mock.patch.dict(real.RUNNERS, {case: runner for case in real.CASES}), \
+                mock.patch.object(real, "write", failing):
+            code, text, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259",
+                                              "--case", "TC-261"])
+        # What the runs gave could not be kept, so no further run was made; the end's writes still were.
+        self.assertEqual((code, ran, writes), (1, ["tc-258-1"], [[], [], ["TC-258"], ["TC-258"], ["TC-258"]]))
+        report = self.report(base)
+        self.assertEqual({case: entry["outcome"] for case, entry in report["cases"].items()}, {"TC-258": "pass"})
+        self.assertIn("No space left on device", report["crash"])
+        self.assertEqual((report["cost"]["requests"], report["files_with_key"]), (0, []))
+        self.assertIn("No space left on device", text)
+
+    def test_a_signal_that_ends_the_process_interrupts_once_and_an_ignored_one_stays_ignored(self):
+        numbers = [getattr(signal, name) for name in real.ENDING if hasattr(signal, name)]
+        self.assertGreater(len(numbers), 1)
+        for number in numbers:
+            if signal.getsignal(number) is None:
+                self.skipTest("a handler of this process is not Python's to put back")
+            self.addCleanup(signal.signal, number, signal.getsignal(number))
+            signal.signal(number, signal.SIG_DFL)
+        signal.signal(numbers[-1], signal.SIG_IGN)  # As under `nohup`.
+        before = real.interruptible()
+        self.assertEqual(before, {number: signal.SIG_DFL for number in numbers[:-1]})
+        self.assertIs(signal.getsignal(numbers[-1]), signal.SIG_IGN)
+        handler = signal.getsignal(numbers[0])
+        with self.assertRaises(KeyboardInterrupt):
+            handler(numbers[0], None)
+        # A second one, which a supervisor may send with the first, does not break off the check's ending.
+        for number in numbers[:-1]:
+            self.assertIsNone(signal.getsignal(number)(number, None))
 
     def test_the_check_holds_only_when_every_case_ended_well_and_every_file_was_searched(self):
         good = {"cases": {"TC-258": {"outcome": "pass"}, "TC-345": {"outcome": "recorded"}},
@@ -622,6 +806,88 @@ class ReadingTests(unittest.TestCase):
         self.assertNotIn("문서", json.dumps(kept, ensure_ascii=False))
         self.assertIn("document", run["requests"][0])
 
+    def test_half_a_surrogate_pair_in_an_answer_is_counted_and_written(self):
+        half = "답 \ud83d 끝"
+        run = {"exit": 0, "usage": [], "failures": [], "requests": [written("curate-3", half)]}
+        kept = real.trimmed(run)
+        self.assertEqual(kept["requests"][0]["answer_bytes"], len("답  끝".encode("utf-8")) + 3)
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(out), True)
+        self.assertFalse(real.write(out, {"cases": {"TC-345": {"why": half, "한글": "그대로"}}}, None))
+        data = (out / "report.json").read_bytes()
+        self.assertIn("그대로".encode("utf-8"), data)  # Only what UTF-8 cannot hold is escaped.
+        self.assertEqual(json.loads(data.decode("utf-8")), {"cases": {"TC-345": {"why": half, "한글": "그대로"}}})
+
+    def test_a_write_that_breaks_leaves_the_report_that_was_there(self):
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(out), True)
+        first = {"cases": {"TC-258": {"outcome": "pass"}}}
+        real.write(out, first, None)
+
+        def broken(path, *_, **__):
+            open(str(path), "wb").close()  # As a write that is cut short leaves its file: without its text.
+            raise OSError("No space left on device")
+
+        with mock.patch.object(Path, "write_bytes", broken), mock.patch.object(Path, "write_text", broken):
+            with self.assertRaises(OSError):
+                real.write(out, {"cases": {"TC-258": {"outcome": "pass"}, "TC-259": {"outcome": "pass"}}}, None)
+        self.assertEqual(json.loads((out / "report.json").read_text(encoding="utf-8")), first)
+
+    def test_on_windows_the_report_waits_for_its_place_and_elsewhere_a_refusal_is_raised_at_once(self):
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(out), True)
+        replace, calls = os.replace, []
+
+        def busy(times):
+            def replacing(source, target):
+                calls.append(target)
+                if len(calls) <= times:
+                    raise PermissionError(13, "The process cannot access the file")
+                return replace(source, target)
+            return replacing
+
+        with mock.patch.object(real, "WINDOWS", True), mock.patch.object(real.os, "replace", busy(2)):
+            real.write(out, {"cases": {}}, None)
+        self.assertEqual((len(calls), json.loads((out / "report.json").read_text(encoding="utf-8"))),
+                         (3, {"cases": {}}))
+        del calls[:]
+        with mock.patch.object(real, "WINDOWS", True), mock.patch.object(real.os, "replace", busy(10 ** 9)), \
+                mock.patch.object(real, "REPLACE_SECONDS", 0.2):
+            with self.assertRaises(PermissionError):
+                real.write(out, {"cases": {"TC-258": {}}}, None)
+        self.assertGreater(len(calls), 1)
+        del calls[:]
+        with mock.patch.object(real, "WINDOWS", False), mock.patch.object(real.os, "replace", busy(1)):
+            with self.assertRaises(PermissionError):
+                real.write(out, {"cases": {"TC-258": {}}}, None)
+        self.assertEqual((len(calls), json.loads((out / "report.json").read_text(encoding="utf-8"))),
+                         (1, {"cases": {}}))
+
+    def test_the_checkout_s_changed_files_are_counted_one_by_one_without_the_check_s_own_folder(self):
+        try:
+            git = real.c2_hosts.program("git")
+        except OSError:
+            self.skipTest("Git is not installed here")
+        base = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, str(base), True)
+        repo = base / "checkout"
+        repo.mkdir()
+        (repo / "kept.txt").write_text("first\n", encoding="utf-8")
+        for args in (["init", "-q"], ["add", "."], ["commit", "-q", "-m", "start"]):
+            subprocess.run([git, "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                            "-c", "commit.gpgsign=false"] + args, check=True, capture_output=True)
+        (repo / "kept.txt").write_text("changed\n", encoding="utf-8")
+        for name in ("new/one.txt", "new/two.txt", "out/c2-real/report.json", "out/c2-real/source/plugin.json"):
+            (repo / name).parent.mkdir(parents=True, exist_ok=True)
+            (repo / name).write_text("{}", encoding="utf-8")
+        with mock.patch.object(real, "REPO", repo):
+            inside = real.checkout(repo / "out/c2-real")
+            outside = real.checkout(base / "elsewhere/c2-real")
+        # The changed file and the two new ones, each by itself; another OUTDIR leaves that folder's two files in.
+        self.assertEqual((inside["changed files"], outside["changed files"]), (3, 5))
+        self.assertRegex(inside["commit"], "^[0-9a-f]{40}$")
+        self.assertEqual(inside["commit"], outside["commit"])
+
     def test_the_cost_is_the_sum_of_the_provider_s_usage_lines_by_call(self):
         check = real.Check.__new__(real.Check)
         check.usage, check.spent = [], 0.0
@@ -756,27 +1022,115 @@ class RunnerTests(unittest.TestCase):
         base = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, str(base), True)
         mark = base / "pid"
-        script = ("import os, sys\n"
+        # Python leaves SIGINT ignored where its parent ignored it, as a shell's background job does.
+        script = ("import os, signal, sys\n"
+                  "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
                   "sys.path.insert(0, sys.argv[1])\n"
                   "import run\n"
-                  "child = 'import os, sys, time; open(sys.argv[1], \"w\").write(str(os.getpid())); "
-                  "time.sleep(300)'\n"
                   "try:\n"
-                  "    run.run([sys.executable, '-c', child, sys.argv[2]], dict(os.environ), timeout=200)\n"
+                  "    run.run([sys.executable, '-c', sys.argv[3], sys.argv[2]], dict(os.environ), timeout=200)\n"
                   "except KeyboardInterrupt:\n"
                   "    print('interrupted')\n")
-        runner = subprocess.Popen([sys.executable, "-c", script, str(FOLDER), str(mark)],
+        runner = subprocess.Popen([sys.executable, "-c", script, str(FOLDER), str(mark), SLEEPER],
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.addCleanup(runner.kill)
-        deadline = time.time() + 60
-        while not (mark.exists() and mark.read_text(encoding="utf-8")) and time.time() < deadline:
-            time.sleep(0.05)
-        child = int(mark.read_text(encoding="utf-8"))
+        child = started(mark)
+        self.addCleanup(over, child)
         runner.send_signal(signal.SIGINT)
         out, err = runner.communicate(timeout=60)
         self.assertEqual((out.decode("utf-8").strip(), runner.returncode), ("interrupted", 0), err.decode("utf-8"))
         with self.assertRaises(ProcessLookupError):  # The child, in its own session, was ended and collected.
             os.kill(child, 0)
+
+
+    def test_a_timeout_ends_the_process_and_the_one_that_it_started(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        mark = base / "pid"
+        began = time.monotonic()
+        done = real.hookcheck.run([sys.executable, "-c", TREE, str(mark)], dict(os.environ), timeout=10)
+        self.assertEqual(done["exit"], "timeout")
+        # The runner reads the output to its end: it came back long before the second process's own end.
+        self.assertLess(time.monotonic() - began, 60)
+        self.assertTrue(mark.read_text(encoding="utf-8"))  # The second process had been started.
+
+    @unittest.skipUnless(os.name == "nt", "only Windows looks for a program's bare name in the current folder")
+    def test_on_windows_a_program_named_taskkill_in_the_current_folder_is_not_started(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        system = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32"
+        # Another program under that name: started in `taskkill`'s place it ends nothing, and the runner waits.
+        shutil.copyfile(str(system / "whoami.exe"), str(base / "taskkill.exe"))
+        before = os.getcwd()
+        os.chdir(str(base))
+        try:
+            began = time.monotonic()
+            done = real.hookcheck.run([sys.executable, "-c", TREE, str(base / "pid")], dict(os.environ), timeout=10)
+        finally:
+            os.chdir(before)
+        self.assertEqual(done["exit"], "timeout")
+        self.assertLess(time.monotonic() - began, 60)
+
+
+@unittest.skipIf(os.name == "nt", "these tests end a process with a signal that Windows does not send")
+class SignalTests(unittest.TestCase):
+    """The check as a process of its own, ended by a signal while a case's process runs."""
+
+    # The check's last step waits here until the test lets it go on, so that a signal can reach it at that step.
+    SCRIPT = ("import os, signal, sys, time\n"
+              "for name in ('SIGTERM', 'SIGHUP'):  # Also where the test's own process ignores one, as under nohup.\n"
+              "    signal.signal(getattr(signal, name), signal.SIG_DFL)\n"
+              "sys.path.insert(0, sys.argv[1])\n"
+              "import c2_real\n"
+              "def waiting(*_):\n"
+              "    c2_real.hookcheck.run([sys.executable, '-c', sys.argv[4], sys.argv[3]], dict(os.environ),\n"
+              "                          timeout=200)\n"
+              "    return {'outcome': 'pass'}\n"
+              "closing = c2_real.close\n"
+              "def close(*args):\n"
+              "    open(sys.argv[3] + '.closing', 'w').close()\n"
+              "    while not os.path.exists(sys.argv[3] + '.go'):\n"
+              "        time.sleep(0.01)\n"
+              "    return closing(*args)\n"
+              "c2_real.close = close\n"
+              "c2_real.RUNNERS.update({'TC-258': lambda *_: {'outcome': 'pass'}, 'TC-259': waiting})\n"
+              "sys.exit(c2_real.main([sys.argv[2], '--self-test', '--case', 'TC-258', '--case', 'TC-259',\n"
+              "                       '--case', 'TC-261']))\n")
+
+    def test_a_signal_that_ends_the_check_ends_the_running_process_and_keeps_the_report(self):
+        for name, first, later in (("SIGTERM", [signal.SIGTERM], []), ("SIGHUP", [signal.SIGHUP], []),
+                                   ("two at once", [signal.SIGHUP, signal.SIGTERM], []),
+                                   ("more while the check ends", [signal.SIGTERM], [signal.SIGHUP, signal.SIGTERM])):
+            with self.subTest(name):
+                base = Path(tempfile.mkdtemp())
+                self.addCleanup(shutil.rmtree, str(base), True)
+                mark = base / "pid"
+                environment = {key: value for key, value in os.environ.items() if key not in (ANTHROPIC, OPENAI)}
+                check = subprocess.Popen([sys.executable, "-c", self.SCRIPT, str(FOLDER), str(base), str(mark),
+                                          SLEEPER], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.addCleanup(check.kill)
+                child = started(mark)
+                self.addCleanup(over, child)
+                for number in first:
+                    check.send_signal(number)
+                deadline = time.time() + 60
+                while not (base / "pid.closing").exists() and check.poll() is None and time.time() < deadline:
+                    time.sleep(0.02)
+                for number in later:
+                    check.send_signal(number)
+                (base / "pid.go").write_text("", encoding="utf-8")
+                out, err = check.communicate(timeout=120)
+                text = out.decode("utf-8", "replace")
+                self.assertEqual((check.returncode, err.decode("utf-8", "replace")), (1, ""), text)
+                report = json.loads((base / "c2-real/report.json").read_text(encoding="utf-8"))
+                self.assertEqual({case: entry["outcome"] for case, entry in report["cases"].items()},
+                                 {"TC-258": "pass", "TC-259": "not run"})
+                self.assertIn("interrupted", report["crash"])
+                self.assertIn("interrupted", text.splitlines()[-1])
+                # The check's last step was made: a signal that came during it did not break it off.
+                self.assertEqual((report["cost"]["requests"], report["files_with_key"]), (0, []))
+                with self.assertRaises(ProcessLookupError):  # The case's process was ended and collected.
+                    os.kill(child, 0)
 
 
 class ScriptedTests(unittest.TestCase):
@@ -884,14 +1238,14 @@ class PathTests(unittest.TestCase):
 
 
 class SelfTestRun(unittest.TestCase):
-    def test_two_cases_run_to_their_end_against_the_local_server_even_in_ci(self):
+    def test_three_cases_run_to_their_end_against_the_local_server_even_in_ci(self):
         base = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, base, True)
         environment = dict(os.environ, CI="true")
         environment.update({ANTHROPIC: "ENVIRONMENT-ANTHROPIC-KEY-0001", OPENAI: "ENVIRONMENT-OPENAI-KEY-0001"})
         # Started as a person starts it, by its path from the checkout: the worker still gets a path that it finds.
         done = subprocess.run([sys.executable, str(Path(".github/hook-check/c2_real.py")), base, "--self-test",
-                               "--case", "TC-259", "--case", "TC-262"],
+                               "--case", "TC-258", "--case", "TC-259", "--case", "TC-262"],
                               cwd=str(ROOT), env=environment, capture_output=True, timeout=900)
         output = done.stdout.decode("utf-8", "replace")
         self.assertEqual((done.returncode, done.stderr.decode("utf-8", "replace")), (0, ""), output)
@@ -902,7 +1256,7 @@ class SelfTestRun(unittest.TestCase):
         self.assertTrue(report["self_test"])
         self.assertEqual(report["provider"], real.SELF_TEST)
         self.assertEqual({name: entry["outcome"] for name, entry in report["cases"].items()},
-                         {"TC-259": "pass", "TC-262": "pass"})
+                         {"TC-258": "pass", "TC-259": "pass", "TC-262": "pass"})
         self.assertEqual((report["files_with_key"], report["local_requests_with_key"]), ([], 0))
         self.assertNotIn("key_in_report", report)
         self.assertGreater(report["local_requests"], 0)
@@ -919,6 +1273,10 @@ class SelfTestRun(unittest.TestCase):
         self.assertEqual([row["instructions"] for row in requests], ["curate-3", "curate-3"])
         self.assertIn("[redacted:anthropic-key]", requests[1]["document"])
         self.assertIn(real.PASTED[1], requests[1]["document"])
+        # The staged package is what was checked: no hook, no worker and no reading of the check itself, which
+        # loads the package's decoder for TC-258, left bytecode files in it.
+        self.assertEqual([path.relative_to(out).as_posix() for path in out.rglob("*")
+                          if path.name == "__pycache__" or path.suffix == ".pyc"], [])
 
 
 if __name__ == "__main__":

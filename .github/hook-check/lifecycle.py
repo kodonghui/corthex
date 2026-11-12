@@ -7,7 +7,6 @@ from pathlib import Path
 import platform
 import queue
 import shutil
-import signal
 import subprocess
 import sys
 import threading
@@ -165,10 +164,7 @@ class Stream:
         try:
             self.process.wait(timeout=20)
         except subprocess.TimeoutExpired:
-            if os.name == "nt":
-                subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.process.pid)], capture_output=True)
-            else:
-                os.killpg(self.process.pid, signal.SIGKILL)
+            runner.end_tree(self.process)
             self.process.wait()
         return {"exit":self.process.returncode,"events":self.rows,"stderr":self.errors}
 

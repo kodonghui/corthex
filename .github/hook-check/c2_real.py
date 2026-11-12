@@ -86,8 +86,18 @@ OUTDIR/c2-real, prints a summary, and exits 1 when a case fails, breaks or is
 not run, when a memory key of this process's environment is in a file under
 that folder, in the report or in a request to the local server, or when a file
 under that folder could not be read for that search. report.json is written
-after each case and again when the check ends or is interrupted, so that what
-a run paid for is kept; an interrupt ends the worker that is running.
+when the check begins, after each case and again when the check ends or is
+interrupted, each time as a whole file that takes the place of the one before,
+so that what a run paid for is kept. An interrupt ends the worker that is
+running, and so does a signal that ends the process where Python can catch it
+(SIGTERM, SIGHUP, Ctrl+Break): the worker has a session of its own and the
+memory keys, and would go on sending without the check. A kill that no process
+can catch (SIGKILL, Windows' End task) leaves the worker to its own end, which
+the package bounds at an hour for a run.
+
+A folder OUTDIR/c2-real that is there already is replaced only when it is empty
+or its report says that it was a self-test's. A run against the providers is
+its own record: the check then exits 2 and touches nothing.
 """
 import argparse
 from collections import Counter, namedtuple
@@ -100,7 +110,9 @@ import platform
 import re
 import secrets
 import shutil
+import signal
 import sys
+import time
 import traceback
 import uuid
 
@@ -119,6 +131,9 @@ NETWORK = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", 
            "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR")
 CASES = ("TC-258", "TC-259", "TC-261", "TC-262", "TC-345", "TC-356")
 LIMIT = 1.0
+ENDING = ("SIGTERM", "SIGHUP", "SIGBREAK")  # The signals that end a process, by the names that a system has.
+WINDOWS = os.name == "nt"
+REPLACE_SECONDS = 2  # How long the report's file waits for its place on Windows.
 CUT = 64            # TC-259's `max_tokens`; the scripted server cuts any answer asked for under CUT_BELOW.
 CUT_BELOW = 1000
 # One foreground run of the worker. Against a provider the package's own limits hold: a request may take 1,800 s
@@ -388,8 +403,7 @@ def schemas(run):
     """TC-258's reading of one run: for each kind of request, how its usage lines ended and whether each answer fits."""
     found = {}
     for kind, call in (("curate", "curate"), ("merge", "consolidate"), ("state", "consolidate")):
-        results = Counter(row["result"] for row in run["usage"]
-                          if row["call"] == call and (row.get("instructions") or "").split("-")[0] == kind)
+        results = Counter(row["result"] for row in run["usage"] if row["call"] == call and kind_of(row) == kind)
         written = [row for row in run["requests"] if kind_of(row) == kind]
         found[kind] = {"usage results": dict(results), "answers": len(written),
                        "answers that fit the schema": sum(1 for row in written if row["failure"] is None and fits(row))}
@@ -725,12 +739,17 @@ def holding(folder, keys, unread=None):
     return found
 
 
+def size(text):
+    """A text's bytes in UTF-8. Half of a surrogate pair, which an answer may hold, counts as its three bytes."""
+    return len(text.encode("utf-8", "surrogatepass"))
+
+
 def trimmed(run):
     """A run of the worker as the report keeps it: the requests' documents stay in the home's requests.jsonl."""
     kept = dict(run)
     kept["requests"] = [{"instructions": row.get("instructions"), "failure": row.get("failure"),
-                         "attempts": row.get("attempts"), "document_bytes": len(row["document"].encode("utf-8")),
-                         "answer_bytes": len((row.get("answer") or "").encode("utf-8"))}
+                         "attempts": row.get("attempts"), "document_bytes": size(row["document"]),
+                         "answer_bytes": size(row.get("answer") or "")}
                         for row in run["requests"]]
     return kept
 
@@ -851,14 +870,23 @@ RUNNERS = {"TC-258": tc258, "TC-259": tc259, "TC-261": tc261, "TC-262": tc262, "
 ORDER = ("crash", "fail", "not run", "recorded", "pass")  # A case's outcome is its runs' first in this order.
 
 
-def checkout():
-    """The checkout's commit and whether its files differ from it, or nothing where Git cannot say."""
+def checkout(out):
+    """The checkout's commit and how many of its files differ from it, or nothing where Git cannot say.
+
+    A file that Git does not track counts, each by itself. The check's own folder `out` does not, when OUTDIR
+    is inside the checkout: it is no change to the files that ran.
+    """
     try:
         git = c2_hosts.program("git")
     except OSError:
         return {"commit": None}
+    status = ["status", "--porcelain", "--untracked-files=all"]
+    try:
+        status += ["--", ".", ":(exclude,literal)" + out.relative_to(REPO).as_posix()]
+    except ValueError:  # OUTDIR is outside the checkout.
+        pass
     found = {}
-    for name, args in (("commit", ["rev-parse", "HEAD"]), ("changed files", ["status", "--porcelain"])):
+    for name, args in (("commit", ["rev-parse", "HEAD"]), ("changed files", status)):
         done = hookcheck.run([git, "-C", str(REPO)] + args, dict(os.environ), timeout=60)
         if done["exit"] != 0:
             return {"commit": None}
@@ -881,7 +909,7 @@ class Check:
         self.spent, self.usage = 0.0, []
         self.report = {"release": c2_hosts.RELEASE, "provider": self.provider, "self_test": not self.real,
                        "system": {"platform": platform.platform(), "python": platform.python_version()},
-                       "checkout": checkout(), "limit_usd": options.limit, "repeat": options.repeat,
+                       "checkout": checkout(out), "limit_usd": options.limit, "repeat": options.repeat,
                        "keys": {name: "present" if name in self.keys else "missing" for name in (ANTHROPIC, OPENAI)},
                        "cases": {}}
 
@@ -1034,11 +1062,111 @@ def close(check, report, out):
 
 
 def write(out, report, check):
-    """Write report.json as it stands, with a memory key of this environment masked; whether one had to be."""
+    """Write report.json as it stands, with a memory key of this environment masked; whether one had to be.
+
+    The text goes to a file beside it, report.json.new, that then takes its place, so that a write that breaks or
+    is interrupted leaves the report that was there; a new file that cannot take the place stays beside it. Half
+    of a surrogate pair, which an answer may hold, is written as its JSON escape and reads back as the same value.
+    """
     text = json.dumps(report, indent=1, ensure_ascii=False, default=str)
     masked = text if check is None else check.mask(text)
-    (out / "report.json").write_text(masked, encoding="utf-8")
+    fresh = out / "report.json.new"
+    fresh.write_bytes(masked.encode("utf-8", "backslashreplace"))
+    until = time.monotonic() + REPLACE_SECONDS
+    while True:
+        try:
+            os.replace(str(fresh), str(out / "report.json"))
+            break
+        except PermissionError:  # On Windows, while a scanner or another reader holds one of the two files open.
+            if not WINDOWS or time.monotonic() >= until:
+                raise
+            time.sleep(0.05)
     return masked != text
+
+
+def earlier(out):
+    """Why the folder of an earlier run is not replaced, or None when it may be.
+
+    It may be when nothing is there, when it is an empty folder, or when its report says that it was a
+    self-test's, which paid for nothing. Anything else may be the record of a run against the providers; a link
+    or a file of that name is not this check's to delete either.
+    """
+    if not os.path.lexists(str(out)):
+        return None
+    try:
+        if out.is_dir() and not out.is_symlink():
+            if not any(out.iterdir()):
+                return None
+            report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+            if isinstance(report, dict) and report.get("self_test") is True:
+                return None
+    except (OSError, ValueError):
+        pass
+    return ("%s is there already, and no report in it says that it was a self-test's. It may be the record of "
+            "what a run against the providers paid for, and this check does not delete it. Name another OUTDIR, "
+            "or move that folder away." % out)
+
+
+def interruptible():
+    """Let a signal that would end this process interrupt it as Ctrl+C does; the handlers that were there before.
+
+    Ended at once, the check would leave its worker running, in a session of its own and with the memory keys,
+    and would not write what its runs gave. A signal that the process was started to ignore, as under `nohup`,
+    stays ignored. Only the first of these signals interrupts: one that follows it, as when a supervisor sends
+    two, must not break off the ending of the worker and the writing of the report.
+    """
+    before, seen = {}, []
+
+    def ended(number, _):
+        if not seen:
+            seen.append(number)
+            raise KeyboardInterrupt()
+
+    for name in ENDING:
+        number = getattr(signal, name, None)
+        try:
+            if number is not None and signal.getsignal(number) is signal.SIG_DFL:
+                before[number] = signal.signal(number, ended)
+        except (ValueError, OSError):  # Only the main thread sets a handler; a test may call `main` from another.
+            pass
+    return before
+
+
+def noted(report, check):
+    """Add the error that is being handled to the report, with a memory key masked."""
+    text = traceback.format_exc()
+    report["crash"] = "\n".join(part for part in (report.get("crash"), text if check is None else check.mask(text))
+                                if part)
+
+
+def carry_out(out, chosen):
+    """Run the chosen cases and write the report, also when the check breaks or is interrupted; the report."""
+    report, check = {"release": c2_hosts.RELEASE, "provider": SELF_TEST if chosen.self_test else PROVIDERS,
+                     "self_test": chosen.self_test}, None
+    write(out, report, None)  # From its first moment the folder says whether it is a self-test's.
+    try:
+        check = Check(out, chosen)
+        report = check.report
+        for name in chosen.case:
+            write(out, report, check)
+            check.case(name)
+    except KeyboardInterrupt:
+        report["crash"] = "interrupted: the runs and the cases after this point were not made"
+    except Exception:
+        noted(report, check)
+    try:
+        write(out, report, check)  # Before the search below, so that a second interrupt loses nothing of the runs.
+    except Exception:
+        noted(report, check)
+    if check is not None:
+        try:
+            close(check, report, out)
+        except Exception:
+            noted(report, check)
+    if write(out, report, check):
+        report["key_in_report"] = True
+        write(out, report, check)
+    return report
 
 
 def main(arguments=None):
@@ -1059,33 +1187,25 @@ def main(arguments=None):
                   "starts, as the hosts' own environment has it, and run again." % ANTHROPIC)
             return 2
     out = Path(chosen.out).resolve() / "c2-real"
+    refusal = earlier(out)
+    if refusal:
+        print(refusal)
+        return 2
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    report, check = {"release": c2_hosts.RELEASE, "provider": SELF_TEST if chosen.self_test else PROVIDERS,
-                     "self_test": chosen.self_test}, None
+    before = interruptible()
     try:
-        check = Check(out, chosen)
-        report = check.report
-        for name in chosen.case:
-            check.case(name)
-            write(out, report, check)
-    except KeyboardInterrupt:
-        report["crash"] = "interrupted: the runs and the cases after this point were not made"
-    except Exception:
-        report["crash"] = traceback.format_exc() if check is None else check.mask(traceback.format_exc())
-    if check is not None:
-        try:
-            close(check, report, out)
-        except Exception:
-            report["crash"] = "\n".join(text for text in (report.get("crash"), check.mask(traceback.format_exc()))
-                                        if text)
-    if write(out, report, check):
-        report["key_in_report"] = True
-        write(out, report, check)
+        report = carry_out(out, chosen)
+    finally:
+        for number, handler in before.items():
+            signal.signal(number, handler)
     print("\n".join(summary(report)))
     return 0 if passed(report) else 1
 
 
 if __name__ == "__main__":
+    # The readings load the staged package's library into this process: it leaves no bytecode files beside the
+    # modules that were checked, as the hooks and the worker leave none.
+    sys.dont_write_bytecode = True
     sys.exit(main())

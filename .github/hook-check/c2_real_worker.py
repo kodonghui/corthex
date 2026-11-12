@@ -44,6 +44,9 @@ def record(tap, instructions, result):
 
 def main():
     tap, cut, plugin = Path(sys.argv[1]), int(sys.argv[2]), Path(sys.argv[3])
+    # As the worker's own first line does, before the library is loaded here: the staged package, which is what
+    # was checked, gets no bytecode files beside its modules.
+    sys.dont_write_bytecode = True
     sys.path.insert(0, str(plugin / "skills/corthex-memory/scripts"))
     from memory_lib import model_client, model_request
     if cut > 0:
