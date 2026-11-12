@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -35,6 +36,7 @@ hosts, walk, timing = load("c2_hosts"), load("c2_walk_replay"), load("c2_recall_
 START = 1794000000.0
 HOOKS = ("start", "prompt", "end-of-turn", "end")
 KEYS = {"files_with_marker": [], "command_lines_with_marker": 0, "requests_with_key": 4}
+ANTHROPIC, OPENAI = "CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KEY"
 
 
 def stamp(seconds):
@@ -63,9 +65,10 @@ def failure(number, host, hook, step, error, after=2.0):
 def report(sessions=None, failures=(), recalls=None):
     return {"sessions": [session(number) for number in range(4)] if sessions is None else sessions,
             "failures": list(failures), "command_lines": 160,
-            "keys": {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": dict(KEYS), "CORTHEX_MEMORY_OPENAI_API_KEY": dict(KEYS)},
+            "keys": {ANTHROPIC: dict(KEYS), OPENAI: dict(KEYS)},
             "recalls": {"claude": {"injected": 1}, "codex": {"injected": 2}} if recalls is None else recalls,
-            "scrub": {"exit": 0, "keys_reached_hooks": False, "notice": True, "memory_requests": []}}
+            "scrub": {"exit": 0, "keys_reached_hooks": {ANTHROPIC: False, OPENAI: False}, "notice": True,
+                      "memory_requests": []}}
 
 
 class C2HostVerdictsTest(unittest.TestCase):
@@ -171,21 +174,34 @@ class C2HostVerdictsTest(unittest.TestCase):
         found = hosts.verdicts(value)
         self.assertEqual((found["TC-253"], found["TC-254"]), (True, False))
 
-    def test_tc257_needs_a_request_with_a_key_or_the_notice_and_no_request(self):
+    def test_tc257_needs_each_key_in_a_request_or_the_notice_and_no_request(self):
+        reached, kept, one = "keys reached the hooks", "keys kept from the hooks", "only one key reached the hooks"
         cases = (
-            # (a request carried a key, the notice was shown, the kinds of the requests that came, the verdict)
-            (True, False, ["embeddings"], True),
-            (False, True, [], True),
-            (False, False, [], False),
+            # (a request carried the Anthropic key, one carried the OpenAI key, the notice was shown, the kinds
+            # of the requests that came, the verdict, what the summary says)
+            (True, True, False, ["embeddings", "curate"], True, reached),
+            (False, False, True, [], True, kept),
+            (False, False, False, [], False, kept),
             # Where the keys are kept from the hooks nothing is sent, so a request without a key fails the case.
-            (False, True, ["embeddings"], False),
-            (False, False, ["embeddings"], False),
+            (False, False, True, ["embeddings"], False, kept),
+            (False, False, False, ["embeddings"], False, kept),
+            # A host that passes one key and keeps the other fails it, with the notice or without.
+            (False, True, False, ["embeddings"], False, one),
+            (True, False, True, ["curate"], False, one),
         )
-        for reached, notice, sent, expected in cases:
-            with self.subTest(reached=reached, notice=notice, sent=sent):
+        for anthropic, openai, notice, sent, expected, observed in cases:
+            with self.subTest(anthropic=anthropic, openai=openai, notice=notice, sent=sent):
                 value = report()
-                value["scrub"].update(keys_reached_hooks=reached, notice=notice, memory_requests=sent)
-                self.assertEqual(hosts.verdicts(value)["TC-257"], expected)
+                value["scrub"].update(keys_reached_hooks={ANTHROPIC: anthropic, OPENAI: openai}, notice=notice,
+                                      memory_requests=sent)
+                found = hosts.verdicts(value)
+                self.assertEqual((found["TC-257"], found["TC-257 observed"]), (expected, observed))
+
+    def test_a_request_carries_a_key_in_any_of_its_headers(self):
+        row = {"headers": {"x-api-key": "sk-made-up-1", "content-type": "application/json"}}
+        self.assertTrue(hosts.carries(row, "sk-made-up-1"))
+        self.assertFalse(hosts.carries(row, "sk-made-up-2"))
+        self.assertTrue(hosts.carries({"headers": {"authorization": "Bearer sk-made-up-2"}}, "sk-made-up-2"))
 
     def test_only_a_held_request_that_is_not_answered_yet_counts_as_held(self):
         # After HOLD_SECONDS the server answers by itself; such a request was not held past the host's exit.
@@ -241,7 +257,29 @@ class C2HostRequestsTest(unittest.TestCase):
             with self.assertRaises(OSError):
                 hosts.program("made-up-tool")
         with mock.patch.dict(os.environ, {"PATH": os.pathsep.join((".", '"%s"' % folder))}):
-            self.assertEqual(hosts.program("made-up-tool"), str(tool))
+            self.assertEqual(os.path.normcase(hosts.program("made-up-tool")), os.path.normcase(str(tool)))
+
+    def test_a_host_s_shim_is_found_by_its_extension_in_an_absolute_folder(self):
+        # On Windows the hosts are npm `.cmd` shims: each folder of the given path is tried with each extension.
+        first, second = (Path(tempfile.mkdtemp(prefix="c2-shim-")).resolve() for _ in range(2))
+        for folder in (first, second):
+            self.addCleanup(shutil.rmtree, str(folder), True)
+        shim, other = first / "made-up-host.CMD", second / "made-up-host.EXE"
+        for path in (shim, other):
+            path.write_bytes(b"")
+            path.chmod(0o755)
+        both = os.pathsep.join((str(first), str(second)))
+        self.assertEqual(hosts.program("made-up-host", both, (".EXE", ".CMD")), str(shim))
+        self.assertEqual(hosts.program("made-up-host", os.pathsep.join((str(second), str(first))), (".EXE", ".CMD")),
+                         str(other))
+        with self.assertRaises(OSError):
+            hosts.program("made-up-host", str(first), (".EXE",))
+        # The given path is the one searched, and a folder that is not absolute is never tried.
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(str(first))
+        with mock.patch.dict(os.environ, {"PATH": both}):
+            with self.assertRaises(OSError):
+                hosts.program("made-up-host", os.pathsep.join((".", "")), (".CMD",))
 
 
 class C2HostFilesTest(unittest.TestCase):
@@ -257,6 +295,94 @@ class C2HostFilesTest(unittest.TestCase):
     def item(self, ident, title):
         (self.root / "layer/items" / (ident + ".json")).write_text(json.dumps({"id": ident, "title": title}),
                                                                    encoding="utf-8")
+
+    def injections(self, name, outcomes):
+        folder = self.root / "injections"
+        folder.mkdir(exist_ok=True)
+        (folder / name).write_text("".join(json.dumps({"where": "prompt", "outcome": outcome}) + "\n"
+                                           for outcome in outcomes), encoding="utf-8")
+
+    def hosts_object(self, **values):
+        """A `Hosts` that staged and started nothing: only what the method under test reads."""
+        checked = hosts.Hosts.__new__(hosts.Hosts)
+        checked.home, checked.report, checked.lines = self.home, {}, []
+        for name, value in values.items():
+            setattr(checked, name, value)
+        return checked
+
+    def test_only_a_host_whose_recalls_gave_up_and_ranked_nothing_is_asked_once_more(self):
+        checked = self.hosts_object()
+        self.assertEqual(checked.late_only(), [])
+        self.injections("claude-code-1.jsonl", ["no-index", "late"])
+        self.injections("codex-1.jsonl", ["late", "injected"])
+        self.assertEqual(checked.late_only(), ["claude"])
+        self.injections("claude-code-2.jsonl", ["below"])
+        self.assertEqual(checked.late_only(), [])
+        # A recall that failed in another way is not a slow runner's: the host is not asked again.
+        self.injections("codex-1.jsonl", ["error"])
+        self.assertEqual(checked.late_only(), [])
+
+    def test_one_more_session_answers_at_once_waits_for_its_worker_and_is_reported(self):
+        sampler, memory = mock.Mock(lines=["a line"]), mock.Mock()
+        session = {"label": "recall again (claude)", "exit": 0, "started": START, "ended": START + 5,
+                   "sampler": sampler, "bodies": ["a body"]}
+        checked = self.hosts_object(memory=memory, session=mock.Mock(return_value=session))
+        with mock.patch.object(hosts, "configure") as configure, \
+                mock.patch.object(hosts, "quiet", return_value=True) as quiet:
+            result = checked.recall_again("claude", "/made-up/claude")
+        configure.assert_called_once_with(self.home, 10)
+        # The gate is open, so the session's curate request is answered at once.
+        self.assertEqual([call[0] for call in memory.method_calls], ["rearm", "release"])
+        checked.session.assert_called_once_with("claude", "/made-up/claude", hosts.AGAIN,
+                                                label="recall again (claude)")
+        sampler.stop.assert_called_once_with()
+        quiet.assert_called_once_with(self.root)
+        self.assertEqual((checked.lines, checked.report["recall_again"]), (["a line"], [result]))
+        self.assertEqual((result["quiet"], result["hooks"], "sampler" in result, "bodies" in result),
+                         (True, {}, False, False))
+
+    def test_a_project_is_busy_while_a_worker_holds_it_or_a_turn_waits(self):
+        self.assertFalse(hosts.busy(self.root))
+        (self.root / "unprocessed").mkdir()
+        self.assertFalse(hosts.busy(self.root))
+        (self.root / "unprocessed/turn").write_text("", encoding="utf-8")
+        self.assertEqual((hosts.busy(self.root), hosts.busy(self.root, turns=False)), (True, False))
+        # While curation is stopped the turns wait for nothing.
+        (self.root / "curation.json").write_text(json.dumps({"stopped": {"at": "2026-11-12T00:00:00.000Z"}}),
+                                                 encoding="utf-8")
+        self.assertFalse(hosts.busy(self.root))
+        (self.root / "curation.lock").write_text("", encoding="utf-8")
+        self.assertEqual((hosts.busy(self.root), hosts.busy(self.root, turns=False)), (True, True))
+
+    def test_quiet_waits_for_the_calm_and_gives_up_at_its_time(self):
+        with mock.patch.object(hosts, "QUIET", 0.4):
+            started = time.time()
+            self.assertTrue(hosts.quiet(self.root, timeout=10))
+            self.assertTrue(0.4 <= time.time() - started < 5)
+            (self.root / "curation.lock").write_text("", encoding="utf-8")
+            self.assertFalse(hosts.quiet(self.root, timeout=0.8))
+            # A folder that cannot be listed just now is looked at again.
+            (self.root / "curation.lock").unlink()
+            with mock.patch.object(hosts, "busy", side_effect=[PermissionError(13, "being replaced")] + [False] * 50):
+                self.assertTrue(hosts.quiet(self.root, timeout=10))
+
+    def test_a_wait_for_the_start_s_worker_that_gives_up_is_reported(self):
+        checked = self.hosts_object(count=3, memory=mock.Mock())
+        (self.root / "curation.lock").write_text("", encoding="utf-8")
+        with mock.patch.object(hosts, "START_WORKER_SECONDS", 0.3), \
+                mock.patch.object(hosts.hookcheck.Mock, "stream", return_value=b"") as stream:
+            checked.after_start_worker("/v1/messages?beta=true", "a model")
+        self.assertEqual(checked.report, {"start_worker_waits_given_up": [3]})
+        checked.memory.hold.assert_called_once_with()
+        stream.assert_called_once_with("/v1/messages?beta=true", "a model")
+        # A wait that ends because the lease and the worker are gone reports nothing.
+        (self.root / "curation.lock").unlink()
+        checked.report = {}
+        with mock.patch.object(hosts, "QUIET", 0.2), \
+                mock.patch.object(hosts, "command_lines", return_value=["python other.py --reason start"]), \
+                mock.patch.object(hosts.hookcheck.Mock, "stream", return_value=b""):
+            checked.after_start_worker("/v1/responses", "a model")
+        self.assertEqual(checked.report, {})
 
     def test_settled_does_not_wait_when_no_answer_was_held(self):
         started = time.time()
@@ -337,6 +463,40 @@ class C2HostFilesTest(unittest.TestCase):
                 self.assertEqual((plugin / "hooks/hooks.json").read_text(encoding="utf-8"), '"release"')
                 for name in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
                     self.assertEqual(json.loads((plugin / name).read_text(encoding="utf-8"))["version"], hosts.RELEASE)
+
+
+class C2SamplerTest(unittest.TestCase):
+    def test_the_last_reading_follows_the_readings_in_the_caller_s_thread(self):
+        caller, seen = threading.current_thread(), []
+        worker = "python /made-up/scripts/worker.py --reason end"
+
+        def lines():
+            # The worker shows only once the readings' own thread has ended.
+            seen.append(threading.current_thread() is caller)
+            return [worker] if seen[-1] else ["python other.py"]
+        with mock.patch.object(hosts, "command_lines", lines), mock.patch.object(hosts, "SAMPLE_SECONDS", 0.01):
+            sampler = hosts.Sampler()
+            sampler.start()
+            while not seen:
+                time.sleep(0.01)
+            sampler.stop(last=True)
+            self.assertFalse(sampler.is_alive())
+            self.assertEqual((seen[-1], any(seen[:-1]), sampler.reads), (True, False, len(seen)))
+            self.assertEqual(sampler.workers, [worker])
+            # Without `last` the readings end where they are.
+            del seen[:]
+            sampler = hosts.Sampler()
+            sampler.start()
+            while not seen:
+                time.sleep(0.01)
+            sampler.stop()
+            self.assertEqual((any(seen), sampler.workers), (False, []))
+
+    def test_a_reading_that_fails_is_noted_and_counts_as_none(self):
+        with mock.patch.object(hosts, "command_lines", side_effect=OSError("no ps")):
+            sampler = hosts.Sampler()
+            sampler.read()
+        self.assertEqual((sampler.reads, sampler.lines, len(sampler.errors)), (0, [], 1))
 
 
 class C2WalkReplayTest(unittest.TestCase):

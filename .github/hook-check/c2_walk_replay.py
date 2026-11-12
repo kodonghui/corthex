@@ -46,7 +46,6 @@ from pathlib import Path
 import re
 import shutil
 import sys
-import time
 import traceback
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -207,26 +206,9 @@ class Walk:
         return [value for value in self.items(project).values() if words in value["title"] and
                 (status is None or value["status"] == status)]
 
-    def quiet(self, root=None, timeout=90, turns=True):
-        """Wait until no worker holds the project and no turn waits, for three seconds.
-
-        Turns wait for nothing while curation is stopped (TC-268), and after a curation that the script
-        refused they wait for the next trigger (`turns=False`): then only the lease counts.
-        """
-        root = root or self.root
-        started = calm = time.time()
-        while time.time() - started < timeout:
-            try:
-                stopped = "stopped" in json.loads((root / "curation.json").read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                stopped = False
-            waiting = (root / "unprocessed").is_dir() and any((root / "unprocessed").iterdir())
-            if (root / "curation.lock").exists() or (turns and waiting and not stopped):
-                calm = time.time()
-            elif time.time() - calm >= 3:
-                return True
-            time.sleep(0.2)
-        return False
+    def quiet(self, root=None, turns=True):
+        """Wait until no worker holds the project and no turn waits, for three seconds (`c2_hosts.quiet`)."""
+        return c2_hosts.quiet(root or self.root, turns=turns)
 
     def session(self, host, prompt, reply=None, project="demo", refused=False):
         """One session of one prompt in a project's folder; `refused` says that the script refuses its curation.
