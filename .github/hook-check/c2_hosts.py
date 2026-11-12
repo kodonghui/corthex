@@ -44,7 +44,14 @@ that evidence is judged, as the walk replays ask such a prompt once more. Then
 Claude Code runs once more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257):
 either each key comes in a request, which shows that the keys reached the
 hooks, or the start summary shows the notice and no request comes at all; one
-key without the other fails the case.
+key without the other fails the case. Its requests are counted from a moment
+when no worker holds the project or runs to the next such moment after the
+session; a worker that is still there after SETTLE_SECONDS, before or after,
+fails the case, since its requests could not be told from the session's own.
+A worker's command line names its plugin's folder and its project, never its
+home, so a memory worker of another home counts as well: the check is made for
+a machine where no other memory worker stays, as the hook checks' runner is.
+A wait that ran out leaves in the report what it saw at its end.
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
 with two exceptions that the summary lists: a lock that stayed busy, and a
@@ -55,7 +62,8 @@ the machine's speed, which TC-256 measures, so the case counts it and does not
 fail on it. The hooks that can start the worker, at the session's start, at
 the end of a turn and at the session's end, must each return within their own
 deadline by their timing line (TBL-005); the prompt hook's time is TC-256's.
-The report keeps the number of command lines read, never the lines.
+The report keeps the number of command lines that were read for TC-254 and, of
+the lines themselves, only the memory workers', with a key in them masked.
 It writes report.json and prints a summary, and exits 1 when a case fails.
 """
 from datetime import datetime, timezone
@@ -83,6 +91,9 @@ HOLD_SECONDS = 120
 QUIET = 3.0
 START_WORKER_SECONDS = 60
 SETTLE_SECONDS = 90
+# How often the reading of the command lines that follows a session's readings is tried until one works, and
+# the seconds between two tries.
+LAST_READINGS, LAST_READING_PAUSE = 3, 1.0
 DECISIONS = (
     # (host, trigger turns, the marker, the user's prompt)
     ("claude", 1, "DEC-ALPHA-ship.py",
@@ -101,6 +112,8 @@ WORDS = re.compile(r"[0-9A-Za-z가-힣._-]+")
 REASON = re.compile(r"--reason (\S+)")
 MODEL_PATH = re.compile(r"/v1/(messages|responses)(\?|$)")
 SAMPLE_SECONDS = 2.0 if os.name == "nt" else 0.5
+# The extensions that a host's program may have: on Windows npm installs it as a `.cmd` shim.
+HOST_EXTENSIONS = (".exe", ".cmd", ".bat") if os.name == "nt" else ("",)
 RANKED = ("injected", "below")
 # The own deadlines, in milliseconds, of the hooks that can start the worker (`memory_lib.hooks.SECONDS`).
 DEADLINE_MS = {"start": 1000, "end-of-turn": 300, "end": 500}
@@ -337,16 +350,13 @@ class MemoryServer:
 def program(name, path=None, extensions=None):
     """A program's full path, from the absolute folders of PATH: Windows would try the current folder first.
 
-    On Windows the name is tried with each extension of PATHEXT in each folder, which finds a host's `.cmd`
-    shim as the system would. `path` and `extensions` stand for the environment's.
+    On Windows the name is tried with `.exe`, or in each folder with each of `extensions` in their order,
+    which a host's lookup gives (HOST_EXTENSIONS). `path` stands for the environment's PATH.
     """
     if path is None:
         path = os.environ.get("PATH", "")
     if extensions is None:
-        extensions = [""]
-        if os.name == "nt":
-            extensions = [value for value in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep)
-                          if value]
+        extensions = (".exe",) if os.name == "nt" else ("",)
     for folder in path.split(os.pathsep):
         folder = folder.strip('"')
         if not os.path.isabs(folder):
@@ -374,6 +384,22 @@ def command_lines():
 
 def workers(lines):
     return [text for text in lines if "scripts/worker.py" in text.replace("\\", "/")]
+
+
+def running(text, seen=None):
+    """Whether a memory worker runs whose command line holds `text`; a reading that fails counts as one.
+
+    `seen`, a dict, is given what this reading showed: those workers' lines, or the error that it failed with.
+    """
+    try:
+        found, error = [line for line in workers(command_lines()) if text in line], None
+    except (OSError, subprocess.SubprocessError) as failed:
+        found, error = None, repr(failed)
+    if seen is not None:
+        seen.pop("workers", None)
+        seen.pop("unread", None)
+        seen.update({"workers": found} if error is None else {"unread": error})
+    return error is not None or bool(found)
 
 
 def configure(home, turns):
@@ -479,20 +505,43 @@ def busy(root, turns=True):
         return True
 
 
-def quiet(root, timeout=SETTLE_SECONDS, turns=True):
-    """Wait until the project has not been busy for QUIET seconds; whether that came within `timeout`."""
+def quiet(root, timeout=SETTLE_SECONDS, turns=True, worker=None, seen=None):
+    """Wait until the project has not been busy for QUIET seconds; whether that came within `timeout`.
+
+    With `worker`, no memory worker may run then whose command line holds that text, `""` for any: a worker
+    that a hook has just launched does not hold the lease yet. A reading of the command lines that is under
+    way as `timeout` ends is waited for, so the wait may last longer by that reading. `seen`, a dict, is given
+    what the wait's last look showed: whether the project was busy, and what the last reading showed, if
+    one was made (`running`).
+    """
     started = calm = time.time()
     while time.time() - started < timeout:
         try:
             moving = busy(root, turns)
         except OSError:
             moving = True  # A folder that the worker is changing just now: the next look reads it.
+        if seen is not None:
+            seen["busy"] = moving
         if moving:
             calm = time.time()
         elif time.time() - calm >= QUIET:
-            return True
+            if worker is None or not running(worker, seen):
+                return True
+            calm = time.time() - QUIET + 0.5  # The command lines are read again in half a second.
         time.sleep(0.2)
     return False
+
+
+def waits_line(labels):
+    """The summary's line for the sessions whose model answered after the wait for the start's worker ran out."""
+    return "sessions whose model answered after %d s of waiting for the start's worker: %s" % (
+        START_WORKER_SECONDS, json.dumps(labels, ensure_ascii=False))
+
+
+def named(host, number, label=None):
+    """A session's name in the report's lists: its label and its request log, as it lies in the output folder."""
+    log = "%s/requests-%d.jsonl" % (host, number)
+    return "%s (%s)" % (label, log) if label else log
 
 
 def settled(home, titles, timeout=SETTLE_SECONDS):
@@ -546,6 +595,9 @@ def model_bodies(log):
 
 
 class Hosts:
+    # Model requests of one session may wait at once: under this lock one of them names the session.
+    naming = threading.Lock()
+
     def __init__(self, out, memory=None):
         self.out, self.mock = out, hookcheck.Mock()
         self.memory = MemoryServer() if memory is None else memory
@@ -555,7 +607,7 @@ class Hosts:
         self.home, self.demo = hookcheck.prepare(out / "shared")
         self.keys = marker_keys()
         # The command lines read stay here, out of the report: a crash writes the report as it stands.
-        self.lines, self.count = [], 0
+        self.lines, self.count, self.label = [], 0, None
         self.report = {"release": RELEASE, "store": self.store_kind(), "installs": {}, "sessions": [],
                        "command_lines": 0}
 
@@ -574,22 +626,13 @@ class Hosts:
         requests the memory server then holds. Only a model request waits; the mock answers anything else.
         """
         if MODEL_PATH.search(path):
-            lock = self.home / ".corthex/corthex-memory/projects/demo/curation.lock"
-            started = calm = time.time()
-            while time.time() - started < START_WORKER_SECONDS:
-                if lock.exists():
-                    calm = time.time()
-                elif time.time() - calm >= QUIET:
-                    try:
-                        if not any("--reason start" in text for text in workers(command_lines())):
-                            break
-                    except (OSError, subprocess.SubprocessError):
-                        pass
-                    calm = time.time() - QUIET + 0.5
-                time.sleep(0.1)
-            else:
-                # The session goes on, and its checks say what failed; the report says that this wait ended.
-                self.report.setdefault("start_worker_waits_given_up", []).append(self.count)
+            root = self.home / ".corthex/corthex-memory/projects/demo"
+            if not quiet(root, START_WORKER_SECONDS, turns=False, worker="--reason start"):
+                # The session goes on, and its checks say what failed; the report names the session once.
+                with self.naming:
+                    waits = self.report.setdefault("start_worker_waits_given_up", [])
+                    if self.label not in waits:
+                        waits.append(self.label)
             self.memory.hold()
         return hookcheck.Mock.stream(path, model)
 
@@ -617,7 +660,7 @@ class Hosts:
 
     def install(self, host):
         env = self.environment(host)
-        exe = program(host, env["PATH"])
+        exe = program(host, env["PATH"], HOST_EXTENSIONS)
         version = hookcheck.short(hookcheck.run([exe, "--version"], env, self.demo, timeout=60)["stdout"], 80)
         if host == "claude":
             steps = [("marketplace corthex", ["plugin", "marketplace", "add", str(self.source)]),
@@ -636,6 +679,7 @@ class Hosts:
         env.update(extra or {})
         # Each session has its own request log: the mock appends, and the bodies are read back per session.
         number, self.count = self.count, self.count + 1
+        self.label = named(host, number, label)
         log = self.out / host / ("requests-%d.jsonl" % number)
         self.mock.log = log
         stdin = ""
@@ -669,6 +713,32 @@ class Hosts:
                 "started": started, "ended": ended, "bodies": model_bodies(log), "sampler": sampler,
                 "stderr": hookcheck.short(done["stderr"], 400)}
 
+    def timings(self, host, result):
+        """The timing lines (TBL-005) of one session's hooks, by hook."""
+        rows = hook_rows(self.home, HOST_NAMES[host], result["started"], result["ended"])
+        return {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
+
+    def rested(self):
+        """Wait until no worker holds the demo project or runs any more; whether that came within SETTLE_SECONDS.
+
+        A turn may stay unprocessed, as it does without the keys. A worker that a hook has just launched does
+        not hold the lease yet, so the command lines are read as well. A wait that ran out leaves in the report
+        the session that it followed and what its last look saw: the lease, and the workers' command lines or
+        the error of its last reading, which counts as a worker. Those lines count for TC-254 as well.
+        """
+        seen = {}
+        if quiet(self.home / ".corthex/corthex-memory/projects/demo", turns=False, worker="", seen=seen):
+            return True
+        left = {"after": self.label, "lease": seen.get("busy")}
+        if "workers" in seen:
+            self.lines.extend(seen["workers"])
+            # A key is masked before a long line is cut, so that none is left in part.
+            left["workers"] = [hookcheck.short(self.mask(text), 400) for text in seen["workers"]]
+        if "unread" in seen:
+            left["unread"] = self.mask(seen["unread"])
+        self.report.setdefault("workers_left", []).append(left)
+        return False
+
     def decide(self, number, exes):
         host, turns, marker, prompt = DECISIONS[number]
         configure(self.home, turns)
@@ -678,13 +748,16 @@ class Hosts:
         sampler = result.pop("sampler")
         # The curate request is held: the worker must still be running after the host process has ended.
         held = self.memory.held.wait(30)
-        # One more reading while the request is held: the worker is then running, wherever the readings'
-        # own rhythm stands.
-        sampler.stop(last=True)
         curate = [row for row in self.memory.requests[before:] if row.get("kind") == "curate"]
         waiting = [row for row in curate if row.get("holding")]
+        # Judged before the reading below, which takes its time: the server answers a held request by itself
+        # after HOLD_SECONDS.
         result["held_after_exit"] = bool(held and unanswered(waiting) and not self.memory.gate.is_set())
         result["held_sent_before_exit"] = bool(waiting) and waiting[0]["at"] <= result["ended"]
+        # One more reading while the request is held: the worker is then running, wherever the readings'
+        # own rhythm stands. Should the readings outlast HOLD_SECONDS the worker may be gone by then, and a
+        # session whose readings showed no worker fails TC-254.
+        sampler.stop(last=True)
         self.memory.release()
         titles = {title for row in waiting for title in row["titles"]}
         result["settled"] = settled(self.home, sorted(titles))
@@ -697,9 +770,8 @@ class Hosts:
                                 "runs": sorted({logged[ident] for ident in added if ident in logged})}
         result["curate_requests"] = {"answered at once": len(curate) - len(waiting), "held": len(waiting)}
         result["curate_decisions"] = [row.get("decisions") for row in curate]
-        rows = hook_rows(self.home, HOST_NAMES[host], result["started"], result["ended"])
-        result["hooks"] = {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
-        result["workers"] = [self.mask(text) for text in sampler.workers]
+        result["hooks"] = self.timings(host, result)
+        result["workers"] = [hookcheck.short(self.mask(text), 400) for text in sampler.workers]
         result["reasons"] = sorted({match for text in sampler.workers for match in REASON.findall(text)})
         result["expected_reason"] = "end-of-turn" if turns == 1 else "end"
         result["command_reads"] = {"reads": sampler.reads, "lines": len(sampler.lines),
@@ -715,6 +787,8 @@ class Hosts:
     def scrub(self, exe):
         """TC-257: Claude Code with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 and both memory keys set."""
         configure(self.home, 10)
+        # Every request from here on counts as this session's, so no worker of an earlier one may be left.
+        gone = self.rested()
         before = len(self.memory.requests)
         self.memory.rearm()
         self.memory.release()
@@ -724,9 +798,9 @@ class Hosts:
         sampler.stop()
         self.lines.extend(sampler.lines)
         bodies = result.pop("bodies")
-        # A worker that has the keys sends its requests before it lets the project go. Without them this
-        # session's turn stays unprocessed, so only the lease is waited for.
-        result["quiet"] = quiet(self.home / ".corthex/corthex-memory/projects/demo", turns=False)
+        # A worker that has the keys sends its requests before it ends. Without them this session's turn
+        # stays unprocessed, so the count waits for the workers and not for the turn.
+        result["workers_gone"] = {"before": gone, "after": self.rested()}
         sent = self.memory.requests[before:]
         result["memory_requests"] = [row.get("kind") for row in sent]
         result["notice"] = any("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" in body for body in bodies)
@@ -734,17 +808,33 @@ class Hosts:
         # Only a request that carries a key shows that this key reached the hooks.
         result["keys_reached_hooks"] = {name: any(carries(row, key) for row in sent)
                                         for name, key in self.keys.items()}
-        rows = hook_rows(self.home, HOST_NAMES["claude"], result["started"], result["ended"])
-        result["hooks"] = {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
+        result["hooks"] = self.timings("claude", result)
         self.report["scrub"] = result
         return result
 
     def late_only(self):
-        """The hosts that have no ranked recall so far and one that gave up at its window."""
-        found = {}
+        """The hosts that have no ranked recall so far and one that gave up at its window.
+
+        Such a recall leaves `late` in the injection log, or, where that line's lock stayed busy, only the
+        prompt hook's note in the failure log. A worker may be writing that log just now, so a read of it that
+        fails is tried again, three times in all. A log that stays unread leaves the injection log to decide
+        and is named in the report; the run's end reads it again, strictly.
+        """
+        found, noted = {}, set()
         for host, outcome in prompt_injections(self.home):
             found.setdefault(host, set()).add(outcome)
-        return [host for host in HOST_NAMES if "late" in found.get(host, ()) and not found[host].intersection(RANKED)]
+        for left in (2, 1, 0):
+            try:
+                noted = {row.get("host") for row in failure_rows(self.home) if late_recall(row)}
+            except (OSError, ValueError) as error:
+                if left:
+                    time.sleep(0.5)
+                    continue
+                # Only the error's kind: its text may hold what the log holds.
+                self.report["late_notes_unread"] = type(error).__name__
+            break
+        return [host for host, name in HOST_NAMES.items() if not found.get(host, set()).intersection(RANKED) and
+                ("late" in found.get(host, ()) or name in noted)]
 
     def recall_again(self, host, exe):
         """One more session of one prompt in a host whose recalls gave up at their window (TC-254's evidence).
@@ -761,10 +851,9 @@ class Hosts:
         sampler.stop()
         self.lines.extend(sampler.lines)
         result.pop("bodies")
-        # The scrub session that follows counts every request from its start on: this session's worker ends first.
-        result["quiet"] = quiet(self.home / ".corthex/corthex-memory/projects/demo")
-        rows = hook_rows(self.home, HOST_NAMES[host], result["started"], result["ended"])
-        result["hooks"] = {row["hook"]: {"outcome": row["outcome"], "ms": row.get("ms")} for row in rows}
+        # Its worker ends before another session asks a recall, which reads the index that the worker keeps.
+        result["rested"] = self.rested()
+        result["hooks"] = self.timings(host, result)
         self.report.setdefault("recall_again", []).append(result)
         return result
 
@@ -798,17 +887,18 @@ class Sampler(threading.Thread):
         self.reads = 0
 
     def read(self):
-        """One reading of the command lines."""
+        """One reading of the command lines; whether it worked."""
         try:
             found = command_lines()
-            self.reads += 1
         except (OSError, subprocess.SubprocessError) as error:
             self.errors.append(repr(error))
-            found = []
+            return False
+        self.reads += 1
         self.lines.extend(found)
         for line in workers(found):
-            if hookcheck.short(line, 400) not in self.workers:
-                self.workers.append(hookcheck.short(line, 400))
+            if line not in self.workers:
+                self.workers.append(line)
+        return True
 
     def run(self):
         while not self.halt.is_set():
@@ -816,11 +906,15 @@ class Sampler(threading.Thread):
             self.halt.wait(SAMPLE_SECONDS)
 
     def stop(self, last=False):
-        """End the readings; with `last`, one more reading follows them, in the caller's thread."""
+        """End the readings; with `last`, one more follows them in the caller's thread, tried until it works."""
         self.halt.set()
         self.join(timeout=150)
         if last:
-            self.read()
+            for left in range(LAST_READINGS, 0, -1):
+                if self.read():
+                    break
+                if left > 1:
+                    time.sleep(LAST_READING_PAUSE)  # What made the reading fail may pass.
 
 
 def verdicts(report):
@@ -881,16 +975,23 @@ def verdicts(report):
     tc255 = bool(per) and all(v["earlier decision shown"] and v["decision curated"] for v in per.values())
     scrub = report.get("scrub", {})
     # Either both keys reached the hooks, whose requests then carried them, or the start summary said that
-    # they did not and nothing was sent. A host that passes one key and keeps the other fails the case.
+    # they did not and nothing was sent. A host that passes one key and keeps the other fails the case, and
+    # so does a count that did not begin and end at a moment without a worker. A worker that was left then
+    # sent requests that are not the session's, or that were still to come; a reading of the command lines
+    # that failed, or a report that has no such moments, does not show that none was left.
     reached = scrub.get("keys_reached_hooks") or {}
     kept = not any(reached.values())
-    tc257 = bool(scrub) and scrub.get("exit") == 0 and bool(
+    gone = scrub.get("workers_gone") or {}
+    counted = bool(gone) and all(gone.values())
+    tc257 = bool(scrub) and counted and scrub.get("exit") == 0 and bool(
         reached and all(reached.values()) or kept and scrub["notice"] and not scrub["memory_requests"])
     return {"sessions": per, "triggers": triggers, "hooks_ok": hooks_ok, "blocking_failures": blocking,
             "late recalls": len(late), "ranked recalls": recalled,
             "TC-253": tc253, "TC-254": tc254, "TC-255": tc255, "TC-257": tc257,
-            "TC-257 observed": "not run" if not scrub else "keys kept from the hooks" if kept else
-            "keys reached the hooks" if all(reached.values()) else "only one key reached the hooks"}
+            "TC-257 observed": "not run" if not scrub
+            else "the requests were not counted between two moments without a worker"
+            if not counted else "keys kept from the hooks" if kept else "keys reached the hooks"
+            if all(reached.values()) else "only one key reached the hooks"}
 
 
 def main():
@@ -946,13 +1047,19 @@ def main():
         text.append("command lines read: %d; ranked recalls by host: %s" % (
             report.get("command_lines", 0), json.dumps(report["verdicts"]["ranked recalls"])))
         for value in report.get("recall_again", []):
-            text.append("%s: its recalls had given up at their window, so one more prompt was asked; exit %s" % (
-                value["label"], value["exit"]))
+            text.append("%s: its recalls had given up at their window, so one more prompt was asked; exit %s; "
+                        "no worker left afterwards: %s" % (value["label"], value["exit"],
+                                                           "yes" if value["rested"] else "NO"))
+        if report.get("late_notes_unread"):
+            text.append("the failure log could not be read as the hosts to ask once more were looked for (%s), so "
+                        "the injection log alone decided" % report["late_notes_unread"])
         if report.get("start_worker_waits_given_up"):
-            text.append("sessions whose model answered after %d s of waiting for the start's worker: %s" % (
-                START_WORKER_SECONDS, json.dumps(report["start_worker_waits_given_up"])))
+            text.append(waits_line(report["start_worker_waits_given_up"]))
         text.append("TC-257: " + report["verdicts"]["TC-257 observed"] + "; " + json.dumps(
-            {key: report["scrub"].get(key) for key in ("notice", "memory_requests", "recalled")}))
+            {key: report["scrub"].get(key) for key in ("notice", "memory_requests", "recalled", "workers_gone")}))
+        if report.get("workers_left"):
+            text.append("waits for the workers that ran out, with what each saw at its end: " +
+                        json.dumps(report["workers_left"], ensure_ascii=False))
         text.append("failure log: " + json.dumps(report.get("failures", [])))
         text.append("failures that fail TC-253: " + json.dumps(report["verdicts"]["blocking_failures"]))
         text.append("recalls that gave up at their window, counted and not failed: %d" %

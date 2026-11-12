@@ -37,6 +37,7 @@ START = 1794000000.0
 HOOKS = ("start", "prompt", "end-of-turn", "end")
 KEYS = {"files_with_marker": [], "command_lines_with_marker": 0, "requests_with_key": 4}
 ANTHROPIC, OPENAI = "CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KEY"
+NOT_COUNTED = "the requests were not counted between two moments without a worker"
 
 
 def stamp(seconds):
@@ -68,7 +69,7 @@ def report(sessions=None, failures=(), recalls=None):
             "keys": {ANTHROPIC: dict(KEYS), OPENAI: dict(KEYS)},
             "recalls": {"claude": {"injected": 1}, "codex": {"injected": 2}} if recalls is None else recalls,
             "scrub": {"exit": 0, "keys_reached_hooks": {ANTHROPIC: False, OPENAI: False}, "notice": True,
-                      "memory_requests": []}}
+                      "memory_requests": [], "workers_gone": {"before": True, "after": True}}}
 
 
 class C2HostVerdictsTest(unittest.TestCase):
@@ -197,6 +198,21 @@ class C2HostVerdictsTest(unittest.TestCase):
                 found = hosts.verdicts(value)
                 self.assertEqual((found["TC-257"], found["TC-257 observed"]), (expected, observed))
 
+    def test_tc257_fails_when_its_requests_were_not_counted_between_two_moments_without_a_worker(self):
+        # A worker that was left then sent requests that are another session's, or that were still to come. A
+        # reading that failed counts as a worker, and a report of an earlier check has no such moments at all:
+        # neither shows that no worker was left, so the verdict says what was not observed.
+        absent = object()
+        for gone in ({"before": False, "after": True}, {"before": True, "after": False}, {}, None, absent):
+            with self.subTest(gone=gone):
+                value = report()
+                value["scrub"]["workers_gone"] = gone
+                if gone is absent:
+                    del value["scrub"]["workers_gone"]
+                found = hosts.verdicts(value)
+                self.assertEqual((found["TC-257"], found["TC-257 observed"]), (False, NOT_COUNTED))
+                self.assertEqual([found[case] for case in ("TC-253", "TC-254", "TC-255")], [True] * 3)
+
     def test_a_request_carries_a_key_in_any_of_its_headers(self):
         row = {"headers": {"x-api-key": "sk-made-up-1", "content-type": "application/json"}}
         self.assertTrue(hosts.carries(row, "sk-made-up-1"))
@@ -264,22 +280,27 @@ class C2HostRequestsTest(unittest.TestCase):
         first, second = (Path(tempfile.mkdtemp(prefix="c2-shim-")).resolve() for _ in range(2))
         for folder in (first, second):
             self.addCleanup(shutil.rmtree, str(folder), True)
-        shim, other = first / "made-up-host.CMD", second / "made-up-host.EXE"
+        shim, other = first / "made-up-host.cmd", second / "made-up-host.exe"
         for path in (shim, other):
             path.write_bytes(b"")
             path.chmod(0o755)
         both = os.pathsep.join((str(first), str(second)))
-        self.assertEqual(hosts.program("made-up-host", both, (".EXE", ".CMD")), str(shim))
-        self.assertEqual(hosts.program("made-up-host", os.pathsep.join((str(second), str(first))), (".EXE", ".CMD")),
+        self.assertEqual(hosts.program("made-up-host", both, (".exe", ".cmd")), str(shim))
+        self.assertEqual(hosts.program("made-up-host", os.pathsep.join((str(second), str(first))), (".exe", ".cmd")),
                          str(other))
         with self.assertRaises(OSError):
-            hosts.program("made-up-host", str(first), (".EXE",))
+            hosts.program("made-up-host", str(first), (".exe",))
+        # Only a host is looked for as a shim. Any other program is an `.exe` on Windows, whatever PATHEXT says:
+        # a batch file of its name in an earlier folder is passed by.
+        self.assertEqual(hosts.HOST_EXTENSIONS, (".exe", ".cmd", ".bat") if os.name == "nt" else ("",))
+        with mock.patch.object(hosts.os, "name", "nt"), mock.patch.dict(os.environ, {"PATHEXT": ".CMD;.EXE"}):
+            self.assertEqual(hosts.program("made-up-host", both), str(other))
         # The given path is the one searched, and a folder that is not absolute is never tried.
         self.addCleanup(os.chdir, os.getcwd())
         os.chdir(str(first))
         with mock.patch.dict(os.environ, {"PATH": both}):
             with self.assertRaises(OSError):
-                hosts.program("made-up-host", os.pathsep.join((".", "")), (".CMD",))
+                hosts.program("made-up-host", os.pathsep.join((".", "")), (".cmd",))
 
 
 class C2HostFilesTest(unittest.TestCase):
@@ -302,10 +323,15 @@ class C2HostFilesTest(unittest.TestCase):
         (folder / name).write_text("".join(json.dumps({"where": "prompt", "outcome": outcome}) + "\n"
                                            for outcome in outcomes), encoding="utf-8")
 
+    def failures(self, rows):
+        (self.store / "logs").mkdir(exist_ok=True)
+        (self.store / "logs/failures-2026-11-12.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
     def hosts_object(self, **values):
         """A `Hosts` that staged and started nothing: only what the method under test reads."""
         checked = hosts.Hosts.__new__(hosts.Hosts)
-        checked.home, checked.report, checked.lines = self.home, {}, []
+        checked.home, checked.report, checked.lines, checked.label = self.home, {}, [], None
         for name, value in values.items():
             setattr(checked, name, value)
         return checked
@@ -322,13 +348,48 @@ class C2HostFilesTest(unittest.TestCase):
         self.injections("codex-1.jsonl", ["error"])
         self.assertEqual(checked.late_only(), [])
 
+    def test_a_late_recall_that_left_only_its_failure_line_is_asked_once_more(self):
+        # The injection log's line is skipped when its lock stays busy; the prompt hook's note is still there.
+        checked = self.hosts_object()
+        self.failures([failure(0, "codex", "prompt", "recall", "lock-busy"),
+                       failure(0, "claude-code", "end", "curate", "deadline")])
+        self.assertEqual(checked.late_only(), [])
+        self.failures([failure(0, "claude-code", "prompt", "recall", "timeout")])
+        self.assertEqual(checked.late_only(), ["claude"])
+        self.injections("claude-code-1.jsonl", ["no-index"])
+        self.assertEqual(checked.late_only(), ["claude"])
+        self.injections("claude-code-2.jsonl", ["injected"])
+        self.assertEqual(checked.late_only(), [])
+
+    def test_a_failure_log_that_is_being_written_is_read_again_and_then_left_to_the_injection_log(self):
+        checked = self.hosts_object()
+        self.injections("codex-1.jsonl", ["late"])
+        note = failure(0, "claude-code", "prompt", "recall", "timeout")
+        self.failures([note])
+        self.assertEqual((checked.late_only(), checked.report), (["claude", "codex"], {}))
+        # A line that a worker is writing just now is whole a moment later: the second read finds the note.
+        with mock.patch.object(hosts, "failure_rows", side_effect=[ValueError("half a line"), [note]]) as read, \
+                mock.patch.object(hosts.time, "sleep") as sleep:
+            self.assertEqual((checked.late_only(), checked.report), (["claude", "codex"], {}))
+        self.assertEqual((read.call_count, sleep.call_args_list), (2, [mock.call(0.5)]))
+        # A log that stays unread after three reads leaves the injection log to decide. The report names the
+        # kind of the error and nothing of the log, and the run's end, which reads the log strictly, still
+        # fails on such a line.
+        path = self.store / "logs/failures-2026-11-12.jsonl"
+        path.write_text(path.read_text(encoding="utf-8") + '{"at": "2026-11-', encoding="utf-8")
+        with mock.patch.object(hosts.time, "sleep") as sleep:
+            self.assertEqual(checked.late_only(), ["codex"])
+        self.assertEqual((checked.report, sleep.call_count), ({"late_notes_unread": "JSONDecodeError"}, 2))
+        with self.assertRaises(ValueError):
+            hosts.failure_rows(self.home)
+
     def test_one_more_session_answers_at_once_waits_for_its_worker_and_is_reported(self):
         sampler, memory = mock.Mock(lines=["a line"]), mock.Mock()
         session = {"label": "recall again (claude)", "exit": 0, "started": START, "ended": START + 5,
                    "sampler": sampler, "bodies": ["a body"]}
-        checked = self.hosts_object(memory=memory, session=mock.Mock(return_value=session))
-        with mock.patch.object(hosts, "configure") as configure, \
-                mock.patch.object(hosts, "quiet", return_value=True) as quiet:
+        checked = self.hosts_object(memory=memory, session=mock.Mock(return_value=session),
+                                    rested=mock.Mock(return_value=True))
+        with mock.patch.object(hosts, "configure") as configure:
             result = checked.recall_again("claude", "/made-up/claude")
         configure.assert_called_once_with(self.home, 10)
         # The gate is open, so the session's curate request is answered at once.
@@ -336,10 +397,69 @@ class C2HostFilesTest(unittest.TestCase):
         checked.session.assert_called_once_with("claude", "/made-up/claude", hosts.AGAIN,
                                                 label="recall again (claude)")
         sampler.stop.assert_called_once_with()
-        quiet.assert_called_once_with(self.root)
+        # Its worker is waited for, and the result says whether it went.
+        checked.rested.assert_called_once_with()
         self.assertEqual((checked.lines, checked.report["recall_again"]), (["a line"], [result]))
-        self.assertEqual((result["quiet"], result["hooks"], "sampler" in result, "bodies" in result),
+        self.assertEqual((result["rested"], result["hooks"], "sampler" in result, "bodies" in result),
                          (True, {}, False, False))
+
+    def test_a_wait_for_the_workers_that_runs_out_leaves_what_its_last_look_saw_in_the_report(self):
+        name = "scrub (claude/requests-5.jsonl)"
+        # A key that lies across the place where a long line is cut.
+        worker = "python /made-up/" + "x" * 347 + "/scripts/worker.py --reason end "
+        self.assertEqual(len(worker), 395)
+        checked = self.hosts_object(label=name, keys={ANTHROPIC: "MARKER-A-0123456789"})
+        looks = [None, {"busy": True}, {"busy": False, "workers": [worker + "MARKER-A-0123456789 --project demo"]},
+                 {"busy": False, "unread": "OSError('no ps MARKER-A-0123456789')"}]
+
+        def wait(root, turns, worker, seen):
+            self.assertEqual((root, turns, worker, seen), (self.root, False, "", {}))
+            found = looks.pop(0)
+            seen.update(found or {})
+            return found is None
+        with mock.patch.object(hosts, "quiet", side_effect=wait), mock.patch.object(hosts, "command_lines") as read:
+            # No turn is waited for, and the command lines are read for a worker of any kind.
+            self.assertTrue(checked.rested())
+            self.assertEqual((checked.report, checked.lines), ({}, []))
+            self.assertEqual([checked.rested() for _ in range(3)], [False] * 3)
+        # What the wait saw is kept as it was: nothing is read again once the wait is over.
+        read.assert_not_called()
+        # The lease alone when no reading was made, the workers' lines, or the error of the last reading.
+        self.assertEqual(checked.report["workers_left"], [
+            {"after": name, "lease": True},
+            {"after": name, "lease": False, "workers": [worker + "<mark..."]},
+            {"after": name, "lease": False, "unread": "OSError('no ps <marker>')"}])
+        self.assertNotIn("MARK", json.dumps(checked.report))
+        # A worker's line that the report shows counts for TC-254 like the lines of the sessions' readings.
+        self.assertEqual(checked.lines, [worker + "MARKER-A-0123456789 --project demo"])
+
+    def test_the_scrub_session_counts_its_requests_between_two_moments_without_a_worker(self):
+        earlier = {"kind": "curate", "headers": {"x-api-key": "MARKER-A"}}
+        memory, sampler = mock.Mock(requests=[earlier]), mock.Mock(lines=["a line"])
+        session = {"label": "scrub", "exit": 0, "started": START, "ended": START + 5, "sampler": sampler,
+                   "bodies": ["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set. " + hosts.line("DEC-DELTA-tag")]}
+        waited = []
+
+        def run(*args, **options):
+            waited.append(checked.rested.call_count)
+            memory.requests.append({"kind": "embeddings", "headers": {"authorization": "Bearer MARKER-O"}})
+            return session
+        checked = self.hosts_object(memory=memory, session=mock.Mock(side_effect=run),
+                                    rested=mock.Mock(side_effect=[True, False]),
+                                    keys={ANTHROPIC: "MARKER-A", OPENAI: "MARKER-O"})
+        with mock.patch.object(hosts, "configure"):
+            result = checked.scrub("/made-up/claude")
+        # One wait for the workers comes before the session, and one after it.
+        self.assertEqual((waited, checked.rested.call_count), ([1], 2))
+        self.assertEqual(checked.session.call_args[1]["extra"], {"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"})
+        # The request of an earlier session is not this session's, and each key is looked for by itself.
+        self.assertEqual((result["memory_requests"], result["keys_reached_hooks"]),
+                         (["embeddings"], {ANTHROPIC: False, OPENAI: True}))
+        self.assertEqual((result["notice"], result["recalled"], result["workers_gone"]),
+                         (True, True, {"before": True, "after": False}))
+        self.assertEqual((checked.lines, checked.report["scrub"]), (["a line"], result))
+        found = hosts.verdicts(dict(report(), scrub=result))
+        self.assertEqual((found["TC-257"], found["TC-257 observed"]), (False, NOT_COUNTED))
 
     def test_a_project_is_busy_while_a_worker_holds_it_or_a_turn_waits(self):
         self.assertFalse(hosts.busy(self.root))
@@ -365,16 +485,60 @@ class C2HostFilesTest(unittest.TestCase):
             (self.root / "curation.lock").unlink()
             with mock.patch.object(hosts, "busy", side_effect=[PermissionError(13, "being replaced")] + [False] * 50):
                 self.assertTrue(hosts.quiet(self.root, timeout=10))
+            # With `worker`, a memory worker whose command line holds that text keeps the wait going: one that
+            # a hook has just launched does not hold the lease yet.
+            start, end = ("python /made-up/scripts/worker.py --reason " + reason for reason in ("start", "end"))
+            with mock.patch.object(hosts, "command_lines", side_effect=[[start], [start, end], [end]]) as read:
+                self.assertTrue(hosts.quiet(self.root, timeout=10, worker="--reason start"))
+            self.assertEqual(read.call_count, 3)
+            with mock.patch.object(hosts, "command_lines", return_value=["python other.py", end]):
+                self.assertFalse(hosts.quiet(self.root, timeout=0.7, worker=""))
+                self.assertTrue(hosts.quiet(self.root, timeout=10, worker="--reason start"))
+            # No reading is made without `worker`. A reading that fails counts as a worker, since it does not
+            # show that none runs, so the wait never ends as calm on one.
+            with mock.patch.object(hosts, "command_lines", side_effect=OSError("no ps")) as read:
+                self.assertTrue(hosts.quiet(self.root, timeout=10))
+                read.assert_not_called()
+                self.assertTrue(hosts.running(""))
+                self.assertFalse(hosts.quiet(self.root, timeout=0.7, worker=""))
+            with mock.patch.object(hosts, "command_lines", return_value=["python other.py"]):
+                self.assertFalse(hosts.running(""))
+            # `seen` is given what a reading showed, and of a wait what its last look showed.
+            seen = {"unread": "an earlier reading"}
+            with mock.patch.object(hosts, "command_lines", return_value=["python other.py", start, end]):
+                self.assertEqual((hosts.running("--reason end", seen), seen), (True, {"workers": [end]}))
+                self.assertEqual((hosts.running("--reason skill", seen), seen), (False, {"workers": []}))
+            with mock.patch.object(hosts, "command_lines", side_effect=OSError("no ps")):
+                self.assertEqual((hosts.running("", seen), seen), (True, {"unread": "OSError('no ps')"}))
+            with mock.patch.object(hosts, "running", side_effect=[True, False]) as running:
+                self.assertTrue(hosts.quiet(self.root, timeout=10, worker="--reason end", seen=seen))
+            self.assertEqual(running.call_args_list, [mock.call("--reason end", seen)] * 2)
+            self.assertEqual(seen["busy"], False)
+            (self.root / "curation.lock").write_text("", encoding="utf-8")
+            seen = {}
+            self.assertFalse(hosts.quiet(self.root, timeout=0.5, worker="", seen=seen))
+            self.assertEqual(seen, {"busy": True})
 
     def test_a_wait_for_the_start_s_worker_that_gives_up_is_reported(self):
-        checked = self.hosts_object(count=3, memory=mock.Mock())
+        # A session's name points to its request log in the output folder, whose number its output file has too.
+        self.assertEqual((hosts.named("codex", 1, "decision 2"), hosts.named("claude", 0)),
+                         ("decision 2 (codex/requests-1.jsonl)", "claude/requests-0.jsonl"))
+        checked = self.hosts_object(label=hosts.named("codex", 1, "decision 2"), memory=mock.Mock())
         (self.root / "curation.lock").write_text("", encoding="utf-8")
         with mock.patch.object(hosts, "START_WORKER_SECONDS", 0.3), \
                 mock.patch.object(hosts.hookcheck.Mock, "stream", return_value=b"") as stream:
-            checked.after_start_worker("/v1/messages?beta=true", "a model")
-        self.assertEqual(checked.report, {"start_worker_waits_given_up": [3]})
-        checked.memory.hold.assert_called_once_with()
-        stream.assert_called_once_with("/v1/messages?beta=true", "a model")
+            # A session's second model request waits again, and the session is named once.
+            for _ in range(2):
+                checked.after_start_worker("/v1/messages?beta=true", "a model")
+            # A request that is not the model's does not wait.
+            checked.after_start_worker("/v1/models", "a model")
+        self.assertEqual(checked.report, {"start_worker_waits_given_up": ["decision 2 (codex/requests-1.jsonl)"]})
+        self.assertEqual(checked.memory.hold.call_count, 2)
+        self.assertEqual(stream.call_args_list, [mock.call("/v1/messages?beta=true", "a model")] * 2 +
+                         [mock.call("/v1/models", "a model")])
+        self.assertEqual(hosts.waits_line(["decision 2", "결정 하나"]),
+                         "sessions whose model answered after 60 s of waiting for the start's worker: "
+                         '["decision 2", "결정 하나"]')
         # A wait that ends because the lease and the worker are gone reports nothing.
         (self.root / "curation.lock").unlink()
         checked.report = {}
@@ -495,8 +659,41 @@ class C2SamplerTest(unittest.TestCase):
     def test_a_reading_that_fails_is_noted_and_counts_as_none(self):
         with mock.patch.object(hosts, "command_lines", side_effect=OSError("no ps")):
             sampler = hosts.Sampler()
-            sampler.read()
+            self.assertFalse(sampler.read())
         self.assertEqual((sampler.reads, sampler.lines, len(sampler.errors)), (0, [], 1))
+        with mock.patch.object(hosts, "command_lines", return_value=["python other.py"]):
+            self.assertTrue(sampler.read())
+        self.assertEqual((sampler.reads, sampler.lines, len(sampler.errors)), (1, ["python other.py"], 1))
+
+    def test_the_last_reading_is_tried_again_until_one_works(self):
+        caller = threading.current_thread()
+        worker = "python /made-up/scripts/worker.py --reason end"
+        for failed, expected in ((hosts.LAST_READINGS - 1, [worker]), (hosts.LAST_READINGS, [])):
+            with self.subTest(failed=failed):
+                began, results = threading.Event(), [OSError("no ps")] * failed + [[worker]]
+
+                def lines(began=began, results=results):
+                    if threading.current_thread() is not caller:
+                        began.set()
+                        return ["python other.py"]
+                    found = results.pop(0)
+                    if isinstance(found, Exception):
+                        raise found
+                    return found
+                # The readings' own thread reads once and then waits for its end.
+                with mock.patch.object(hosts, "command_lines", lines), \
+                        mock.patch.object(hosts, "SAMPLE_SECONDS", 60), \
+                        mock.patch.object(hosts.time, "sleep") as sleep:
+                    sampler = hosts.Sampler()
+                    sampler.start()
+                    self.assertTrue(began.wait(10))
+                    sampler.stop(last=True)
+                self.assertFalse(sampler.is_alive())
+                # A pause comes between two tries, and none after the last.
+                self.assertEqual(sleep.call_args_list,
+                                 [mock.call(hosts.LAST_READING_PAUSE)] * min(failed, hosts.LAST_READINGS - 1))
+                self.assertEqual((sampler.workers, len(sampler.errors), sampler.reads),
+                                 (expected, failed, 1 + len(expected)))
 
 
 class C2WalkReplayTest(unittest.TestCase):

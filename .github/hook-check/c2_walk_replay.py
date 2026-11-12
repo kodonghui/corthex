@@ -622,6 +622,8 @@ def main():
             walk.curator.close()
             report["requests"] = [{key: row.get(key) for key in ("kind", "titles", "error")}
                                   for row in walk.curator.requests if row.get("kind") != "embeddings"]
+            # Of a replay, the hosts' own report holds only the sessions whose wait for the start's worker ran out.
+            report["start_worker_waits_given_up"] = walk.hosts.report.get("start_worker_waits_given_up", [])
     (out / "report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
     text = ["== C2 walk replays at %s (scripted curator, no model, no agent) ==" % c2_hosts.RELEASE]
     failed = "crash" in report or bool(report.get("errors"))
@@ -633,6 +635,8 @@ def main():
         for name, ok in value["checks"].items():
             failed = failed or not ok
             text.append("%s %s: %s" % (case, "pass" if ok else "FAIL", name))
+    if report.get("start_worker_waits_given_up"):
+        text.append(c2_hosts.waits_line(report["start_worker_waits_given_up"]))
     print("\n".join(text))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
