@@ -29,7 +29,10 @@ The worker reads the configuration again before its sweep (`worker_runtime`), an
 the line history's owner check reads it once more. When that check cannot confirm
 the retention period, because the user changed it meanwhile, the configuration
 is no longer valid or its read stays busy, the history, the run logs and the
-injection logs of the project are all kept for the next start.
+injection logs of the project are all kept for the next start. Nothing else
+reads the period again: the raw logs of every project go by the period read
+before the sweep, and so do the run logs and injection logs of a project whose
+line history ends before that check, as without its `layer` folder.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone

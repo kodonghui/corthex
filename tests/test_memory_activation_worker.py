@@ -322,6 +322,19 @@ class WorkerActivationTest(unittest.TestCase):
     def layer_records(self, injections):
         return len(self.history_times()), len(self.run_logs()), len(injections.read_bytes().splitlines())
 
+    def test_tc436_a_line_history_that_stays_busy_before_its_owner_check_leaves_the_others_to_expire(self):
+        session, history, injections = self.aged()
+        before = (self.root / "state-history.jsonl").read_bytes()
+        # As when the line history's own lease or read outlasts its wait, before its owner check.
+        with mock.patch.object(history_retention, "retain_history", side_effect=locks.LockBusy()):
+            self.run_worker("start")
+        # That check did not look, so the run logs and injection logs go by the period read before the sweep.
+        self.assertEqual((self.root / "state-history.jsonl").read_bytes(), before)
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
+
     def unread_period(self, confirmed):
         """A start whose line history's owner check cannot read the configuration after `confirmed` reads."""
         session, history, injections = self.aged()
