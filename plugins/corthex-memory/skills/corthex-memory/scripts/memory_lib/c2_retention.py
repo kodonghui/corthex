@@ -26,13 +26,13 @@ project's `layer` folder, so without that folder the history is kept and noted
 while the run logs and injection logs still expire.
 
 The worker reads the configuration again before its sweep (`worker_runtime`), and
-the line history's owner check reads it once more. When that check cannot confirm
-the retention period, because the user changed it meanwhile, the configuration
-is no longer valid or its read stays busy, the history, the run logs and the
-injection logs of the project are all kept for the next start. Nothing else
-reads the period again: the raw logs of every project go by the period read
-before the sweep, and so do the run logs and injection logs of a project whose
-line history ends before that check, as without its `layer` folder.
+each project's turn begins by reading it once more, so that the project goes by
+the retention period set as its turn begins. Step 2 then looks again under the
+layer lease, first itself and then at each of the line history's owner checks.
+When one of those looks cannot confirm the period, because the user changed it
+meanwhile, the configuration is no longer valid or its read stays busy, the
+history, the run logs and the injection logs of the project are all kept for
+the next start, and the next project's turn reads the period that is set then.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -78,6 +78,11 @@ def _family(memory, deadline, action):
         return None
 
 
+def _settings(memory, deadline):
+    """The configuration as it is now, read as the curation worker reads it again under its leases."""
+    return memory.configuration(memory.note, deadline=min(deadline, clock.now() + worker_support.OPERATION_SECONDS))
+
+
 def retain_project(memory, project, owner, deadline, when=None):
     """Every format-2 record of `project` past the retention period, under the caller's curation lease."""
     root = memory.folder / "projects" / base.project_folder_name(project)
@@ -85,28 +90,32 @@ def retain_project(memory, project, owner, deadline, when=None):
             owner.device != memory.device or owner.policy != locks.POLICIES["curation"]):
         raise locks.LostLock()
     moment = when if when is not None else datetime.now(timezone.utc)
+    # The period set as this project's turn begins: an earlier project's turn may have taken long, or found
+    # the period changed. The log sweep after the projects goes by the last one read.
+    memory.config = _settings(memory, deadline)
     days = memory.config.values["retention"]["days"]
-    unconfirmed = []  # Holds an entry while the owner's check has not confirmed the period.
+    confirmed = False  # Whether the last look under the layer lease found the period still this one.
 
-    def current(memory_, root_, context):
-        # The owner's check (history_retention): the period that the user set is still this one,
-        # read as the curation worker reads the configuration again under its leases.
-        unconfirmed[:] = [True]
+    def current(memory_=None, root_=None, context=None):
+        # Step 2's first look, and the owner's check (history_retention): the period is still this one.
+        nonlocal confirmed
+        confirmed = False
         try:
-            settings = memory.configuration(memory.note, deadline=min(
-                deadline, clock.now() + worker_support.OPERATION_SECONDS))
+            settings = _settings(memory, deadline)
         except configuration.ConfigurationInvalid:
             raise fence_plan.Stale() from None
         if settings.values["retention"]["days"] != days:
             raise fence_plan.Stale()
-        unconfirmed.clear()
+        confirmed = True
 
     def layer():
         with memory.lease(root / "layer.lock", "layer", deadline, "retention"):
+            # The raw step may have taken long: nothing under this lease goes by a period that is not confirmed here.
+            current()
             history = _family(memory, deadline, lambda: history_retention.retain_history(
                 memory, root, deadline, when=moment, days=days, history_precondition=current))
-            if unconfirmed:
-                # Nothing more of the project goes by a period that the check could not confirm.
+            if not confirmed:
+                # Nor by one that a later check of the line history could not confirm.
                 return history, 0, 0
             # These two families take the cutoff's moment as a TBL-121 time.
             runs, injections = (_family(memory, deadline, lambda family=family: family(

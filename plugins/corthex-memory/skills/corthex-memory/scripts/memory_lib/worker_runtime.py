@@ -136,6 +136,10 @@ def _step(memory, step, action, project, owner, deadline):
         except locks.LostLock as error:
             memory.note(error, step=step)
             return "lost"
+        except Exception as error:
+            # The store record could not be looked at: the worker ends, as in `_ended`.
+            memory.note(error, step=step)
+            return "lost"
         return None
     except Exception as error:
         memory.note(error, step=step)
