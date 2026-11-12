@@ -340,6 +340,30 @@ class UndoPlanTest(unittest.TestCase):
                          {'item:' + merged['id']: 'forgotten', 'item:' + self.a['id']: 'later-dependent-change',
                           'item:' + self.b['id']: 'later-dependent-change'})
 
+    def test_the_binding_covers_the_replacements_that_keep_an_item_replaced(self):
+        # b was replaced by d, which no run of this chain changes. That is undone, a later run replaces c with
+        # b, and the undo is undone: c -> b -> d ends at a current item only while d is current, so the
+        # binding holds d although the inverse does not write it.
+        world, d = self.world, item(4)
+        world.run(1, lambda w: [w.save(self.b), w.save(self.c), w.save(d)])
+        second = world.run(2, lambda w: [w.status(self.b['id'], 'superseded', d['id'])])
+        undo = world.run(3, lambda w: [w.status(self.b['id'], 'current')], kind='undo', undoes=second['id'])
+        world.run(4, lambda w: [w.status(self.c['id'], 'superseded', self.b['id'])])
+        plan = world.plan(undo)
+        self.assertEqual(kept(plan), {})
+        self.assertEqual(plan.items, {self.b['id']: {'status': 'superseded', 'superseded_by': d['id']}})
+        # A change of an item that the plan does not read leaves the binding; a change of d does not.
+        world.touch('item:' + self.a['id'])
+        self.assertEqual(world.plan(undo).data['binding'], plan.data['binding'])
+        world.touch('item:' + d['id'])
+        again = world.plan(undo)
+        self.assertEqual((kept(again), again.items), ({}, plan.items))
+        self.assertNotEqual(again.data['binding'], plan.data['binding'])
+        # And once d is no longer current the group is kept, as before.
+        world.run(5, lambda w: [w.status(d['id'], 'withdrawn')])
+        self.assertEqual({key: why for key, (why, _) in kept(world.plan(undo)).items()},
+                         {'item:' + self.b['id']: 'later-dependent-change'})
+
     # TC-383: dependent later pins and lines keep their group; independent groups are reversed
 
     def test_tc383_a_later_pin_or_decision_line_keeps_the_item_and_its_group(self):

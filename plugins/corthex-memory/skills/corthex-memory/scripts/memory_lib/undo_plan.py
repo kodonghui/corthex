@@ -349,17 +349,21 @@ class _Planner:
         status = self._status_after(name, reversed_)
         return status is not None and status['status'] == 'current'
 
+    def _replacements(self, name, reversed_):
+        """The items that replace the item after the inverse, each the one before's, up to one not superseded."""
+        found, status = [], self._status_after(name, reversed_)
+        while status is not None and status['status'] == 'superseded':
+            name = status.get('superseded_by')
+            if not name or name in found:
+                break
+            found.append(name)
+            status = self._status_after(name, reversed_)
+        return found
+
     def _replaced(self, name, reversed_):
         """Whether the item, after the inverse, is superseded and its replacements end at a current item."""
-        seen = set()
-        status = self._status_after(name, reversed_)
-        while status is not None and status['status'] == 'superseded' and name not in seen:
-            seen.add(name)
-            name = status.get('superseded_by')
-            status = self._status_after(name, reversed_) if name else None
-            if status is not None and status['status'] == 'current':
-                return True
-        return False
+        found = self._replacements(name, reversed_)
+        return bool(found) and self._current(found[-1], reversed_)
 
     def _layout(self, reversed_):
         """The physical lines after the inverse: ID -> (part, pos, cites)."""
@@ -509,6 +513,9 @@ class _Planner:
         items = {key[len('item:'):] for key in self.last if key.startswith('item:')}
         keys.update('pin:' + name for name in items)
         keys.update('item:' + name for name, value in self.s.items.items() if value.get('superseded_by') in items)
+        # An item that stops being current may leave what it had replaced when its own replacements end at a
+        # current item (`_replaced`), so those replacements are read too.
+        keys.update('item:' + other for name in items for other in self._replacements(name, reversed_))
         keys.update('line:' + line['id'] for line in self.s.lines if items.intersection(line['cites']))
         for key, record in self.targets.items():
             if key.startswith('line:') and record is not None:
