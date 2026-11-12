@@ -30,8 +30,9 @@ DEVICE, AT, REFUSAL = worker_fixture.DEVICE, worker_fixture.AT, worker_fixture.R
 MERGED = consolidation_fixture.STAMP
 FAILED = datetime(2026, 11, 12, 10, 0, tzinfo=timezone.utc)
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
-# The time of these tests' usage lines. A request's usage line takes the clock's own time, which no `when` of a
-# worker reaches, while the status read at NOW counts only the lines of NOW's month that are not after NOW.
+# The time of these tests' usage lines. A request's usage line takes the wall clock's time (`base.utc_time`),
+# which no `when` of a worker reaches, while the status read at NOW reads only the log of NOW's month and takes
+# a line after NOW as damage, which leaves the whole usage out.
 USED = datetime(2026, 11, 12, 11, 0, tzinfo=timezone.utc)
 PINNED = '2026-11-12T09:30:00.000Z'
 UNPRICED = 'claude-sonnet-5-5'  # a curator model that the default price list does not name
