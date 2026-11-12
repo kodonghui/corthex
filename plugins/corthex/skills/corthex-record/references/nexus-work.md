@@ -2,6 +2,8 @@
 
 This is the agent workflow for an installed `corthex-hub` skill and the project's configured NEXUS server. The hub's own skill and command help define its CLI. Use its installed `scripts/hub.py`, not a program in the current directory. Local stage work does not require the hub, a service token or a server.
 
+Three sections need no hub and no token: Ask for a checkpoint, Tell the user where the work stands, and Walk a NEXUS server's pages in a browser. They hold in every session of a project that is expected on a NEXUS server, also in a session that cannot send. A project is expected there when the profile's `nexus.push` names it, or when the user or the project's own rules say so.
+
 ## Read once in a session
 
 After identifying the project, read its agent to-do once per project in this session, from either the entry skill or the first stage skill reached. Carry that fact in the session; changing stages does not trigger another read. An explicit request to refresh work may read again.
@@ -38,6 +40,38 @@ An accepted proposal authorizes preparing its described change. It does not auth
 3. If the source already contains it, report `reflected --commit FULL_COMMIT` after verifying that commit. If affected items changed or disappeared so it no longer fits, ask the user on the related comment and report `needs-user`; leave the decision to them.
 4. Report `merged --pr HTTPS_URL` only after verifying the merge. Report `closed --pr HTTPS_URL` for an unmerged closure; ask the user again unless a replacement PR was opened and reported. Never open a duplicate merely because another session's claim expired.
 5. After the merge, send a fresh snapshot only within the existing server/project authorization and after the first-send confirmation below. Verify the result; a queued write is not a redraw.
+
+## Ask for a checkpoint
+
+A checkpoint request is what the user reads before passing a stage, so it has one form.
+
+- Ask for one part's stage in one request, never for several stages. Stages that wait together get a request each, asked one at a time, the earliest stage first.
+- Write at most ten lines and 1,200 characters in all, in the user's language and in plain words: what changes for the user, not how the work went. The detail stays in the stage's source.
+- Name one thing to look at first, and only one: an item by its trace ID, an `https` address, or the stage's own picture or list.
+- Ask the checkpoint's question alone. Another open choice gets a question of its own, with its recommendation and the other choices.
+- For a stage of screens (stages 07 to 09, or a unit of stage 11 or 12 that adds or changes a screen), show something that the user can press: the built screen, or a mockup that answers presses where nothing is built yet. A picture of a screen alone is not enough. The thing to look at first is then the address where it opens on the user's own phone or PC, or the screen's ID with a line that says where its file is. Say at which widths and in which states you looked yourself, and which you did not.
+- Use an address that needs no new permission and shows project data to nobody else: the project's own preview behind the same sign-in, an address in the session, or a file that opens by itself. Showing a screen releases nothing: a deploy that the project asks about first is still asked.
+- Where nothing can be pressed yet, such as a sitemap with no screen drawn, say so in one of the lines and name the stage's picture first.
+
+Make the request in the session. Where the session can send and the server takes a comment that asks (the hub's skill says which servers do), also write it as a comment on the stage as a whole with `--asks checkpoint`: the same lines, with the thing to look at first as the last line. A part's stage has one open request, so write a newer one as a reply on it. When the server refuses the comment, the request in the session stands; do not reword it to get it through.
+
+## Tell the user where the work stands
+
+The user cannot see the work between checkpoints. Say each of these once, in the session and in the user's language. A notice asks nothing.
+
+- A plan of tasks is agreed on its own, at stage 10's checkpoint: the plan gets a checkpoint request of its own, and no task of it starts before the user passes that checkpoint. The pass of an earlier stage, or of the design that the plan follows, does not agree the plan.
+- When building starts (stage 11), say so in one line: that building has started, the first task, and where the work shows.
+- Each time a stage passes or a group of tasks ends, send one short notice: where the work stands, what changed for the user in at most ten lines, and one thing to look at first. When a checkpoint is due at that point, the stage's request takes the notice's place.
+
+## Walk a NEXUS server's pages in a browser
+
+A NEXUS server cannot tell a browser agent in the user's signed-in browser from the user: what the agent presses there is recorded as the user's own act. So every brief for a walk of NEXUS pages, in stage 12 or elsewhere, carries these rules.
+
+- A project is synthetic only when the brief names it as made for the test. Every other project counts as real.
+- On a real project the walk only reads. It never makes a press that is the user's own: passing or withdrawing a checkpoint, accepting or dismissing a proposal, taking a recommendation, marking a comment answered, removing a project, or any other press that the page offers the user for deciding, sending or removing something. It leaves no comment and no reply there either, since the server would record them as the user's.
+- Up to such a press the walk reports what the page offers, and stops. The acts themselves are walked on a synthetic project, on a server or in a space that holds no real project.
+- A brief that names no synthetic project makes the whole walk read-only, and the report says so.
+- After a press made by mistake on a real project, stop and report at once what it changed. Do not undo it yourself: taking it back is the user's act too.
 
 ## Record the work and its checkpoint
 

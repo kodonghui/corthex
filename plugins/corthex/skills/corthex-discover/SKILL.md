@@ -4,7 +4,7 @@ description: CORTHEX stage 01, domain discovery. Use when the user runs or summa
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Domain discovery
@@ -36,4 +36,4 @@ This skill covers one stage. Its contract, ways of working, steps, checks and ou
 
 ## Optional NEXUS work
 
-For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.
+For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable. For a project that is expected on a NEXUS server, its rules for a checkpoint request, for telling the user where the work stands and for a browser walk of NEXUS pages hold in every session, also in one without the hub.

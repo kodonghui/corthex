@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.10.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.11.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.3.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -239,6 +239,8 @@ Historical server/Worker receipts are preserved in the product history. Current 
 In0.2, the pushed material comes from Git objects of the latest fetched default branch and includes the allowed domain/SQL/sitemap sources and part-specific repository stage records. It is no longer described as only the0.1 item list. Follow the hub format's redaction and source/item/check/1,000,000-byte bounds. Preserve precedence of `.corthex/stages/PART.json` over device records, and explicit context/term/terms:none and exemption annotations for picture cross-checks. No completed state is inferred without its actual human checkpoint.
 
 The optional core0.7 workflow teaches one to-do read per session/project, explicit user work first, claims/PR holds, comment decisions, accepted reflections, stage records and withdrawal checks. It remains skills-only and adds no automatic network hook. It retains PR C's valid project ask_before replacement rule, existing explicit authorization and irreversible-action boundaries. When splitting parts or repositories, preserve only the verified records of each source. NEXUS product sources/records belong to their separate repository and never overwrite MEMORY records.
+
+From core 0.11 the workflow also gives a checkpoint request one form: one part's stage, at most ten lines and 1,200 characters, one thing to look at first, and for a stage of screens something that the user can press. A plan of tasks is agreed at stage 10's checkpoint before its first task starts, the user is told once when building starts and each time a stage passes or a group of tasks ends, and a browser walk of a NEXUS server's pages makes none of the user's own presses on a project that its brief does not name as synthetic. These rules need no hub and hold in every session of a project that is expected on a NEXUS server.
 
 The Windows/macOS unrun sentence above is historical0.1 evidence. The2026-11-04 CLI supplement checks PR117's59 named methods in all six OS/Python-endpoint cells; build's three cases are separate PR118 six-method/six-cell evidence. Actual human/server/full original acceptance remains separately adjudicated in each run report.
 
