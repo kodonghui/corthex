@@ -17,7 +17,7 @@ from unittest import mock
 from _common import ROOT
 sys.path.insert(0, str(ROOT / 'plugins/corthex-memory/skills/corthex-memory/scripts'))
 from memory_lib import (c2_status, clock, commands, configuration, curation_worker, files, format2, item_types, locks,
-                        pin_command, run_listing, run_log)
+                        model_usage, pin_command, run_listing, run_log)
 from test_memory_curator_answers import answer, change, quote
 import test_memory_commands as commands_fixture
 import test_memory_conflicts_command as conflicts_fixture
@@ -30,6 +30,9 @@ DEVICE, AT, REFUSAL = worker_fixture.DEVICE, worker_fixture.AT, worker_fixture.R
 MERGED = consolidation_fixture.STAMP
 FAILED = datetime(2026, 11, 12, 10, 0, tzinfo=timezone.utc)
 NOW = datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)
+# The time of these tests' usage lines. A request's usage line takes the clock's own time, which no `when` of a
+# worker reaches, while the status read at NOW counts only the lines of NOW's month that are not after NOW.
+USED = datetime(2026, 11, 12, 11, 0, tzinfo=timezone.utc)
 PINNED = '2026-11-12T09:30:00.000Z'
 UNPRICED = 'claude-sonnet-5-5'  # a curator model that the default price list does not name
 EMPTY = dict(current=0, superseded=0, withdrawn=0, undone=0)
@@ -37,6 +40,14 @@ EMPTY = dict(current=0, superseded=0, withdrawn=0, undone=0)
 
 class StatusStore(conflicts_fixture.ConflictsStore):
     """A format-2 project with one recorded turn, and the C2 status read as the runner will read it."""
+
+    def setUp(self):
+        super().setUp()
+        start = model_usage.Attempt.start
+        stamped = mock.patch.object(model_usage.Attempt, 'start',
+                                    lambda **options: start(**dict(options, when=USED)))
+        stamped.start()
+        self.addCleanup(stamped.stop)
 
     def status(self, everything=False, project='sample', when=NOW, memory=None):
         context = commands.Context('status', {'folder': str(self.root), 'all': everything}, None,
