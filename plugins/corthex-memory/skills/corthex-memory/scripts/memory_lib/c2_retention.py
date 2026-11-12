@@ -34,8 +34,8 @@ from . import run_log, worker_support
 
 @dataclass(frozen=True)
 class Retained:
-    raw: object        # retention.retain_project's totals, or None when the path fence refused the raw folder
-    history: object    # history_retention's result, or None when it did not run
+    raw: object        # retention.retain_project's totals, or None when it failed or stayed busy
+    history: object    # history_retention's result, or None when it did not run, failed or stayed busy
     runs: int          # run logs deleted
     injections: int    # injection log lines deleted
 

@@ -335,6 +335,55 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(len(injections.read_bytes().splitlines()), 1)
         self.assertEqual(self.failures(), [])
 
+    def test_tc436_a_link_that_ends_the_starting_project_s_run_leaves_the_sweep_to_run(self):
+        session, history, injections = self.aged()
+        said, _ = self.one_turn()
+        self.mark(said)
+        elsewhere = self.folder.parent / "layer-elsewhere"
+        (self.root / "layer").rename(elsewhere)
+        try:
+            os.symlink(str(elsewhere), str(self.root / "layer"), target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest("symbolic links are not available: %s" % error)
+
+        def outside():
+            return {path.relative_to(elsewhere).as_posix(): path.read_bytes()
+                    for path in elsewhere.rglob("*") if path.is_file()}
+        before, swept = outside(), []
+        with mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        # Curation ends at the link before anything is sent. The worker's lease and the store still hold,
+        # so the sweep runs: the line history waits for its layer folder, and the other families expire.
+        self.assertEqual((self.server.requests, len(self.markers())), ([], 1))
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(len(self.history_times()), 2)
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(outside(), before)
+        self.assertEqual((swept, self.failures()), ([1], [("curate", "lost-lock"), ("retention", "lost-lock")]))
+
+    def test_tc436_a_replaced_store_ends_the_worker_before_the_sweep(self):
+        session, history, injections = self.aged()
+        said, _ = self.one_turn()
+        self.mark(said)
+        from memory_lib import curation_worker
+        curate, swept = curation_worker.curate, []
+
+        def replaced(*args, **options):
+            # The store record is replaced by a copy of itself while the run goes on.
+            record = self.folder / "store.json"
+            copy = record.with_name("store.json.copy")
+            copy.write_bytes(record.read_bytes())
+            os.replace(str(copy), str(record))
+            return curate(*args, **options)
+        with mock.patch.object(curation_worker, "curate", side_effect=replaced), \
+                mock.patch.object(retention, "retain_logs", side_effect=lambda *args, **options: swept.append(1)):
+            self.run_worker("start")
+        self.assertEqual((self.server.requests, len(self.markers()), swept), ([], 1, []))
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual((len(self.history_times()), len(self.run_logs()), len(injections.read_bytes().splitlines())),
+                         (2, 2, 2))
+
     # TC-437
 
     def test_tc437_a_confirmed_forget_starts_the_worker_which_curates_on_from_there(self):
