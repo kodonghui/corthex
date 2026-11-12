@@ -87,7 +87,10 @@ not run, when a memory key of this process's environment is in a file under
 that folder, in the report or in a request to the local server, or when a file
 under that folder could not be read for that search. The checkout stays as it
 was: started as a script the check writes no bytecode files beside its
-modules, and it asks Git not to write the index that a status refreshes.
+modules, and it asks Git not to write the index that a status refreshes. Git,
+which tells the checkout's commit and its changed files, is started without
+the memory keys, as the hooks are: only the worker of a run against the
+providers gets them.
 
 report.json is written when the check begins, after each case and again when
 the check ends or is interrupted, each time as a whole file that takes the
@@ -105,7 +108,9 @@ that was written before its last case began.
 
 A folder OUTDIR/c2-real that is there already is replaced only when it is empty
 or its report says that it was a self-test's. A run against the providers is
-its own record: the check then exits 2 and touches nothing.
+its own record: the check then exits 2 and touches nothing. OUTDIR is to be a
+folder that no other user of the system can write: the staged package runs
+from it with the memory keys.
 """
 import argparse
 from collections import Counter, namedtuple
@@ -917,11 +922,15 @@ def checkout(out):
         status += ["--", ".", ":(exclude,literal)" + out.relative_to(REPO).as_posix()]
     except ValueError:  # OUTDIR is outside the checkout.
         pass
+    # Git gets this process's environment without the memory keys. It has no use for them, and a program that
+    # the checkout's or the user's configuration makes Git start, such as a file system monitor, gets Git's
+    # environment. Without optional locks `git status` does not write the index that it refreshed: the checkout
+    # stays as it is, and a Git command of the user's that runs meanwhile does not find the index locked.
+    env = {name: value for name, value in os.environ.items() if name not in (ANTHROPIC, OPENAI)}
+    env["GIT_OPTIONAL_LOCKS"] = "0"
     found = {}
     for name, args in (("commit", ["rev-parse", "HEAD"]), ("changed files", status)):
-        # Without optional locks `git status` does not write the index that it refreshed: the checkout stays as
-        # it is, and a Git command of the user's that runs meanwhile does not find the index locked.
-        done = hookcheck.run([git, "-C", str(REPO)] + args, dict(os.environ, GIT_OPTIONAL_LOCKS="0"), timeout=60)
+        done = hookcheck.run([git, "-C", str(REPO)] + args, env, timeout=60)
         if done["exit"] != 0:
             return {"commit": None}
         found[name] = done["stdout"].strip()

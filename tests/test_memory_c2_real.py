@@ -981,6 +981,25 @@ class ReadingTests(unittest.TestCase):
             self.assertEqual(real.checkout(repo / "out/c2-real")["changed files"], 2)
         self.assertEqual((repo / ".git/index").read_bytes(), index)
 
+    def test_git_is_started_without_the_memory_keys(self):
+        calls = []
+
+        def run(command, env, **more):
+            calls.append((command, env))
+            return {"exit": 0, "stdout": "", "stderr": ""}
+        keys = {real.ANTHROPIC: "sk-ant-" + "k" * 24, real.OPENAI: "sk-" + "o" * 24}
+        with mock.patch.dict(os.environ, dict(keys, C2_REAL_KEPT="kept")), \
+                mock.patch.object(real.hookcheck, "run", run), \
+                mock.patch.object(real.c2_hosts, "program", lambda name: "git-of-the-test"):
+            found = real.checkout(real.REPO.parent / "elsewhere/c2-real")
+        self.assertEqual(found, {"commit": "", "changed files": 0})
+        self.assertEqual([command[0] for command, _ in calls], ["git-of-the-test"] * 2)
+        for _, env in calls:
+            # What Git's configuration makes it start, such as a file system monitor, gets Git's environment:
+            # the rest of this process's, and neither key under its name or any other.
+            self.assertEqual((set(keys) & set(env), set(keys.values()) & set(env.values())), (set(), set()))
+            self.assertEqual((env["C2_REAL_KEPT"], env["GIT_OPTIONAL_LOCKS"]), ("kept", "0"))
+
     def test_the_cost_is_the_sum_of_the_provider_s_usage_lines_by_call(self):
         check = real.Check.__new__(real.Check)
         check.usage, check.spent = [], 0.0
