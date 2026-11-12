@@ -10,9 +10,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -33,6 +35,7 @@ def load(name):
 
 
 real = load("c2_real")
+worker = load("c2_real_worker")
 
 ANTHROPIC, OPENAI = real.ANTHROPIC, real.OPENAI
 YES, KOREAN, CHAT = ("the short yes gave a user decision with the user's answer first",
@@ -127,8 +130,9 @@ class RefusalTests(unittest.TestCase):
         self.assertIn(ANTHROPIC + " is not set", text)
         self.assertEqual(list(base.iterdir()), [])
 
-    def test_a_repeat_below_one_and_a_limit_of_zero_are_refused(self):
-        for arguments in (["--repeat", "0"], ["--limit", "0"]):
+    def test_a_repeat_below_one_and_a_limit_that_is_no_number_above_zero_are_refused(self):
+        for arguments in (["--repeat", "0"], ["--limit", "0"], ["--limit", "-1"], ["--limit", "nan"],
+                          ["--limit", "inf"]):
             with self.subTest(arguments):
                 code, _, base = self.run_main(["--self-test"] + arguments)
                 self.assertEqual(code, 2)
@@ -142,7 +146,12 @@ class RefusalTests(unittest.TestCase):
             self.assertIn("c2_real.py", text, name)
             self.assertIn("--self-test", text, name)
 
-    def test_a_run_stops_before_the_worker_once_the_cost_has_reached_the_limit(self):
+    def test_a_case_named_twice_is_run_once_and_no_name_means_every_case(self):
+        self.assertEqual(real.options(["out", "--case", "TC-261", "--case", "TC-258", "--case", "TC-261"]).case,
+                         ["TC-261", "TC-258"])
+        self.assertEqual(real.options(["out"]).case, list(real.CASES))
+
+    def test_no_run_starts_once_the_cost_has_reached_the_limit(self):
         check = real.Check.__new__(real.Check)
         check.real, check.spent, check.options = True, 0.25, SimpleNamespace(limit=0.25)
         with self.assertRaises(real.Stopped) as stopped:
@@ -153,26 +162,88 @@ class RefusalTests(unittest.TestCase):
         check.real, check.spent = False, 9.0  # A self-test's lines are the local server's made-up usage.
         check.afford()
 
-    def test_a_case_s_outcome_is_the_worst_of_its_runs_and_stops_at_the_limit(self):
+    def test_a_run_that_began_is_finished_and_the_next_one_does_not_start_at_the_limit(self):
         check = real.Check.__new__(real.Check)
-        check.report, check.options, check.keys = {"cases": {}}, SimpleNamespace(repeat=3), {}
-        outcomes = iter(["pass", real.Stopped("the limit"), "never reached"])
+        check.report, check.keys = {"cases": {}}, {}
+        check.real, check.spent, check.options = True, 0.0, SimpleNamespace(repeat=3, limit=0.5)
+        labels = []
 
         def runner(_, label):
-            value = next(outcomes)
-            if isinstance(value, Exception):
-                raise value
-            return {"outcome": value, "label": label}
+            labels.append(label)
+            check.spent += 0.5  # This run's cost reaches the limit; what it found is kept.
+            return {"outcome": "pass", "label": label}
 
-        with mock.patch.dict(real.RUNNERS, {"TC-261": runner}):
+        with mock.patch.dict(real.RUNNERS, {"TC-261": runner, "TC-262": runner}):
             check.case("TC-261")
+            check.case("TC-262")
         entry = check.report["cases"]["TC-261"]
+        self.assertEqual(labels, ["tc-261-1"])
         self.assertEqual([run["outcome"] for run in entry["runs"]], ["pass", "not run"])
+        self.assertIn("0.5000 USD", entry["runs"][1]["why"])
         self.assertEqual((entry["outcome"], entry["runs"][0]["label"]), ("not run", "tc-261-1"))
+        # A case that would begin at the limit builds no home: its runner is not called at all.
+        self.assertEqual(check.report["cases"]["TC-262"]["outcome"], "not run")
+        self.assertEqual([run["outcome"] for run in check.report["cases"]["TC-262"]["runs"]], ["not run"])
+
+    def test_an_interrupt_is_noted_on_its_run_and_raised_again(self):
+        check = real.Check.__new__(real.Check)
+        check.report, check.keys, check.real = {"cases": {}}, {}, False
+        check.options = SimpleNamespace(repeat=3)
+        outcomes = iter(["pass", KeyboardInterrupt()])
+
+        def runner(*_):
+            value = next(outcomes)
+            if isinstance(value, BaseException):
+                raise value
+            return {"outcome": value}
+
+        with mock.patch.dict(real.RUNNERS, {"TC-345": runner, "TC-356": runner}):
+            with self.assertRaises(KeyboardInterrupt):
+                check.case("TC-345")
+        entry = check.report["cases"]["TC-345"]
+        self.assertEqual([run["outcome"] for run in entry["runs"]], ["pass", "not run"])
+        self.assertIn("interrupted", entry["runs"][1]["why"])
+        self.assertEqual(entry["outcome"], "not run")
+
+    def test_an_interrupt_keeps_the_report_of_the_cases_before_it(self):
+        def passed(*_):
+            return {"outcome": "pass", "observed": {"read": True}}
+
+        def interrupted(*_):
+            raise KeyboardInterrupt()
+
+        with mock.patch.dict(real.RUNNERS, {"TC-258": passed, "TC-259": interrupted}), \
+                mock.patch.object(real.hookcheck, "REPO", real.hookcheck.REPO), \
+                mock.patch.object(real.hookcheck, "MEMORY", real.hookcheck.MEMORY):
+            code, text, base = self.run_main(["--self-test", "--case", "TC-258", "--case", "TC-259",
+                                              "--case", "TC-261"])
+        self.assertEqual(code, 1)
+        report = json.loads((base / "c2-real/report.json").read_text(encoding="utf-8"))
+        self.assertEqual({name: entry["outcome"] for name, entry in report["cases"].items()},
+                         {"TC-258": "pass", "TC-259": "not run"})
+        self.assertIn("interrupted", report["crash"])
+        self.assertEqual((report["cost"]["requests"], report["files_with_key"], report["files_not_read"]),
+                         (0, [], []))
+        self.assertIn("TC-258: pass", text)
+        self.assertIn("TC-259: not run", text)
+        self.assertIn("interrupted", text.splitlines()[-1])
+
+    def test_the_check_holds_only_when_every_case_ended_well_and_every_file_was_searched(self):
+        good = {"cases": {"TC-258": {"outcome": "pass"}, "TC-345": {"outcome": "recorded"}},
+                "files_with_key": [], "files_not_read": [], "local_requests_with_key": 0}
+        self.assertTrue(real.passed(good))
+        for name, change in (("a case that failed", {"cases": {"TC-258": {"outcome": "fail"}}}),
+                             ("a case that was not run", {"cases": {"TC-258": {"outcome": "not run"}}}),
+                             ("no case", {"cases": {}}),
+                             ("an interrupt", {"crash": "interrupted"}),
+                             ("a key in a file", {"files_with_key": ["a"]}),
+                             ("a file that could not be read", {"files_not_read": ["a"]})):
+            with self.subTest(name):
+                self.assertFalse(real.passed(dict(good, **change)))
 
     def test_a_run_that_breaks_is_kept_with_a_key_masked_and_the_next_run_still_goes(self):
         check = real.Check.__new__(real.Check)
-        check.report, check.options = {"cases": {}}, SimpleNamespace(repeat=2)
+        check.report, check.options, check.real = {"cases": {}}, SimpleNamespace(repeat=2), False
         check.keys = {ANTHROPIC: "REAL-KEY-VALUE"}
         outcomes = iter([RuntimeError("it broke with REAL-KEY-VALUE"), "recorded"])
 
@@ -189,6 +260,15 @@ class RefusalTests(unittest.TestCase):
         self.assertEqual(entry["outcome"], "crash")
         self.assertIn("<memory key>", entry["runs"][0]["crash"])
         self.assertNotIn("REAL-KEY-VALUE", entry["runs"][0]["crash"])
+
+    def test_a_key_is_masked_before_a_long_output_is_cut(self):
+        check = real.Check.__new__(real.Check)
+        check.keys = {ANTHROPIC: "REAL-KEY-VALUE-0123456789"}
+        # Cut first, the text would end with the key's first characters and no whole key would be left to mask.
+        shown = check.shown("x" * 590 + " REAL-KEY-VALUE-0123456789 and more", 600)
+        self.assertNotIn("REAL", shown)
+        self.assertTrue(shown.endswith("..."))
+        self.assertEqual(check.shown("error: REAL-KEY-VALUE-0123456789"), "error: <memory key>")
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -265,6 +345,24 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(real.holding(base, ["KEY-THREE"]), [])
         self.assertEqual(real.holding(base, []), [])
 
+    def test_a_file_that_cannot_be_read_is_named_apart_and_the_others_are_still_searched(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        (base / "a.txt").write_text("KEY-ONE", encoding="utf-8")
+        (base / "b.txt").write_text("held by another process", encoding="utf-8")
+        read = Path.read_bytes
+
+        def locked(path):
+            if path.name == "b.txt":
+                raise PermissionError("in use")
+            return read(path)
+
+        unread = []
+        with mock.patch.object(Path, "read_bytes", locked):
+            self.assertEqual(real.holding(base, ["KEY-ONE"], unread), ["a.txt"])
+            self.assertEqual(real.holding(base, ["KEY-ONE"]), ["a.txt"])
+        self.assertEqual(unread, ["b.txt"])
+
 
 class ReadingTests(unittest.TestCase):
     def test_tc258_needs_each_kind_of_request_logged_ok_with_an_answer_that_fits(self):
@@ -275,9 +373,17 @@ class ReadingTests(unittest.TestCase):
         found = real.schemas(run)
         self.assertEqual(found["merge"], {"usage results": {"ok": 1}, "answers": 1, "answers that fit the schema": 1})
         self.assertTrue(real.accepted(found))
+        # An attempt that failed and was tried again leaves a `failed` line beside the request's `ok` line.
+        retried = {"usage": run["usage"] + [usage("consolidate", "failed", "merge-2", error="overloaded")],
+                   "requests": run["requests"]}
+        self.assertEqual(real.schemas(retried)["merge"]["usage results"], {"ok": 1, "failed": 1})
+        self.assertTrue(real.accepted(real.schemas(retried)))
         for name, change in (("no state request", lambda value: (value["usage"].pop(2), value["requests"].pop(2))),
-                             ("a failed merge", lambda value: value["usage"].append(
-                                 usage("consolidate", "failed", "merge-2"))),
+                             ("a merge that failed in the end", lambda value: (
+                                 value["usage"].append(usage("consolidate", "failed", "merge-2", error="overloaded")),
+                                 value["requests"].append(written("merge-2", "", "overloaded")))),
+                             ("a request whose line was not written", lambda value: value["usage"].append(
+                                 usage("consolidate", "ok", "merge-2"))),
                              ("an answer that does not fit", lambda value: value["requests"].__setitem__(
                                  0, written("curate-3", {"changes": []}))),
                              ("an answer that is no JSON", lambda value: value["requests"].__setitem__(
@@ -300,7 +406,7 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(real.answers(rows, "state"), [KEPT])
         self.assertEqual(real.answers(rows, "merge"), [])
 
-    def test_tc259_needs_the_result_limit_and_the_code_max_tokens_on_each_curate_line(self):
+    def test_tc259_needs_the_result_limit_and_the_code_max_tokens_and_no_answer_that_was_not_cut(self):
         before, after = layer(waiting=2), layer(waiting=2)
         record = {"recent": [{"kind": "curate", "result": "failed", "error": "max-tokens", "at": "now"}],
                   "failures": {"count": 1}}
@@ -310,7 +416,10 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(found["the curation record's latest attempt"],
                          {"kind": "curate", "result": "failed", "error": "max-tokens"})
         self.assertEqual((found["failed attempts counted"], found["turns left to curate"]), (1, [2, 2]))
+        again = {"usage": [usage("curate", "failed", "curate-3", error="overloaded")] + run["usage"]}
+        self.assertTrue(real.cut(again, before, after, record)["logged with the result limit and the code max-tokens"])
         for name, rows in (("an answer that was not cut", [usage("curate", "ok", "curate-3")]),
+                           ("a cut answer and one that was not cut", run["usage"] + [usage("curate", "ok", "curate-3")]),
                            ("another failure", [usage("curate", "failed", "curate-3", error="api_error")]),
                            ("a limit without its code", [usage("curate", "limit", "curate-3")]),
                            ("no request", [])):
@@ -532,6 +641,144 @@ class ReadingTests(unittest.TestCase):
             self.assertTrue(real.leaked(report))
 
 
+class WorkTests(unittest.TestCase):
+    """`Home.work` around a worker that is not started: the runner is replaced."""
+
+    def home(self, is_real):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        check = real.Check.__new__(real.Check)
+        check.real, check.plugin, check.provider = is_real, Path("plugin"), "a provider"
+        check.keys, check.markers = {ANTHROPIC: "REAL-KEY-VALUE-0123456789"}, {ANTHROPIC: "MARKER"}
+        check.server = SimpleNamespace(url="http://127.0.0.1:9")
+        check.usage, check.spent = [], 0.0
+        home = real.Home.__new__(real.Home)
+        home.check, home.home, home.demo, home.base = check, base, base, base
+        home.store, home.tap = base / "store", base / "requests.jsonl"
+        (home.store / "logs").mkdir(parents=True)
+        home.read, home.broken = {"usage": 0, "failures": 0, "requests": 0}, {}
+        return check, home
+
+    def test_a_provider_s_run_may_take_the_package_s_own_hour_and_a_local_run_much_less(self):
+        seen = []
+
+        def run(args, env, cwd=None, stdin="", timeout=180, line=None):
+            seen.append(timeout)
+            return {"exit": 0, "seconds": 0.1, "stdout": "", "stderr": ""}
+
+        for is_real, expected in ((True, [real.WORK_SECONDS, real.LOCAL_SECONDS]),
+                                  (False, [real.LOCAL_SECONDS, real.LOCAL_SECONDS])):
+            with self.subTest(real=is_real):
+                check, home = self.home(is_real)
+                del seen[:]
+                with mock.patch.object(real.hookcheck, "run", run):
+                    self.assertEqual(home.work()["exit"], 0)
+                    home.work(provider=False)
+                self.assertEqual(seen, expected)
+        from memory_lib import worker_runtime
+        self.assertGreater(real.WORK_SECONDS, worker_runtime.RUN_SECONDS)
+        self.assertLess(real.LOCAL_SECONDS, real.WORK_SECONDS)
+
+    def test_what_an_interrupted_run_logged_is_still_counted(self):
+        check, home = self.home(True)
+
+        def run(*_, **__):
+            # The worker had logged one request and was writing its next lines when it was stopped.
+            (home.store / "logs/usage-2026-11.jsonl").write_text(
+                json.dumps(usage("curate", cost=0.25)) + "\n" + '{"call": "cur', encoding="utf-8")
+            (home.store / "logs/failures-2026-11.jsonl").write_text('{"step": "cur', encoding="utf-8")
+            raise KeyboardInterrupt()
+
+        with mock.patch.object(real.hookcheck, "run", run):
+            with self.assertRaises(KeyboardInterrupt):
+                home.work()
+        self.assertEqual((check.spent, [row["call"] for row in check.usage]), (0.25, ["curate"]))
+        self.assertEqual(home.read["usage"], 1)
+
+    def test_a_run_names_the_lines_that_were_no_json_and_a_worker_that_failed_shows_no_part_of_a_key(self):
+        check, home = self.home(True)
+        home.tap.write_text(json.dumps(written("curate-3", EMPTY)) + "\nnot JSON\n", encoding="utf-8")
+        (home.store / "logs/usage-2026-11.jsonl").write_text(json.dumps(usage("curate", cost=0.5)) + "\n",
+                                                            encoding="utf-8")
+        done = {"exit": 0, "seconds": 0.1, "stdout": "", "stderr": ""}
+        with mock.patch.object(real.hookcheck, "run", return_value=done):
+            run = home.work()
+        self.assertEqual(run["lines left out because they are no JSON"], {"usage": 0, "failures": 0, "requests": 1})
+        self.assertEqual((len(run["requests"]), len(run["usage"]), check.spent), (1, 1, 0.5))
+        failed = {"exit": 1, "seconds": 0.1, "stdout": "",
+                  "stderr": "x" * 590 + " REAL-KEY-VALUE-0123456789 and more"}
+        with mock.patch.object(real.hookcheck, "run", return_value=failed):
+            with self.assertRaises(RuntimeError) as error:
+                home.work()
+        self.assertNotIn("REAL", str(error.exception))
+        self.assertIn("the worker ended with 1", str(error.exception))
+
+    def test_a_file_s_whole_lines_are_read_and_the_others_counted(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        path = base / "lines.jsonl"
+        path.write_bytes('{"a": "한글"}\n{"b": 2}\n{"c": \n'.encode("utf-8") + b"\xff\xfe\n")
+        self.assertEqual(real.whole_lines(path), ([{"a": "한글"}, {"b": 2}], 2))
+
+
+class TapTests(unittest.TestCase):
+    """The worker wrapper's line for a request, without a worker."""
+
+    def setUp(self):
+        self.base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(self.base), True)
+
+    @staticmethod
+    def result(text, failure=None, attempts=1):
+        return SimpleNamespace(document="<request>문서</request>", attempts=attempts, response=SimpleNamespace(
+            text=text, failure=None if failure is None else SimpleNamespace(code=failure)))
+
+    def test_a_request_s_line_reads_back_as_it_was_also_with_half_a_surrogate_pair(self):
+        tap = self.base / "requests.jsonl"
+        self.assertTrue(worker.record(tap, "curate-3", self.result("답 \ud83d 끝", "max-tokens", 2)))
+        self.assertTrue(worker.record(tap, "state-2", self.result("{}")))
+        rows, broken = real.whole_lines(tap)
+        self.assertEqual(broken, 0)
+        self.assertEqual(rows[0], {"instructions": "curate-3", "document": "<request>문서</request>",
+                                   "answer": "답 \ud83d 끝", "failure": "max-tokens", "attempts": 2})
+        self.assertEqual((rows[1]["instructions"], rows[1]["failure"]), ("state-2", None))
+        self.assertIn("문서".encode("utf-8"), tap.read_bytes())
+
+    def test_a_line_that_cannot_be_written_is_left_out_and_nothing_is_raised(self):
+        self.assertFalse(worker.record(self.base, "curate-3", self.result("{}")))  # TAP is a folder.
+        self.assertFalse(worker.record(self.base / "requests.jsonl", "curate-3", SimpleNamespace()))
+        self.assertFalse((self.base / "requests.jsonl").exists())
+
+
+class RunnerTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "this test interrupts a process with a signal, which Windows does not send")
+    def test_an_interrupt_of_the_runner_ends_the_process_that_it_started(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        mark = base / "pid"
+        script = ("import os, sys\n"
+                  "sys.path.insert(0, sys.argv[1])\n"
+                  "import run\n"
+                  "child = 'import os, sys, time; open(sys.argv[1], \"w\").write(str(os.getpid())); "
+                  "time.sleep(300)'\n"
+                  "try:\n"
+                  "    run.run([sys.executable, '-c', child, sys.argv[2]], dict(os.environ), timeout=200)\n"
+                  "except KeyboardInterrupt:\n"
+                  "    print('interrupted')\n")
+        runner = subprocess.Popen([sys.executable, "-c", script, str(FOLDER), str(mark)],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.addCleanup(runner.kill)
+        deadline = time.time() + 60
+        while not (mark.exists() and mark.read_text(encoding="utf-8")) and time.time() < deadline:
+            time.sleep(0.05)
+        child = int(mark.read_text(encoding="utf-8"))
+        runner.send_signal(signal.SIGINT)
+        out, err = runner.communicate(timeout=60)
+        self.assertEqual((out.decode("utf-8").strip(), runner.returncode), ("interrupted", 0), err.decode("utf-8"))
+        with self.assertRaises(ProcessLookupError):  # The child, in its own session, was ended and collected.
+            os.kill(child, 0)
+
+
 class ScriptedTests(unittest.TestCase):
     def setUp(self):
         self.server = real.Scripted()
@@ -625,15 +872,27 @@ class ScriptedTests(unittest.TestCase):
         self.assertEqual(pattern.search(turn.prompt).group(0), key)
 
 
+class PathTests(unittest.TestCase):
+    def test_the_worker_and_the_contract_have_whole_paths_however_the_script_was_named(self):
+        # Python 3.8 gives a script the path as it was typed; `runpy` does so on every version.
+        probe = ("import runpy\n"
+                 "found = runpy.run_path('.github/hook-check/c2_real.py', run_name='c2_real_probed')\n"
+                 "print(found['WORKER'].is_absolute(), found['CONTRACT'].is_absolute(), found['WORKER'].is_file())\n")
+        done = subprocess.run([sys.executable, "-c", probe], cwd=str(ROOT), capture_output=True, timeout=120)
+        self.assertEqual((done.stdout.decode("utf-8").strip(), done.returncode), ("True True True", 0),
+                         done.stderr.decode("utf-8", "replace"))
+
+
 class SelfTestRun(unittest.TestCase):
     def test_two_cases_run_to_their_end_against_the_local_server_even_in_ci(self):
         base = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, base, True)
         environment = dict(os.environ, CI="true")
         environment.update({ANTHROPIC: "ENVIRONMENT-ANTHROPIC-KEY-0001", OPENAI: "ENVIRONMENT-OPENAI-KEY-0001"})
-        done = subprocess.run([sys.executable, str(FOLDER / "c2_real.py"), base, "--self-test",
+        # Started as a person starts it, by its path from the checkout: the worker still gets a path that it finds.
+        done = subprocess.run([sys.executable, str(Path(".github/hook-check/c2_real.py")), base, "--self-test",
                                "--case", "TC-259", "--case", "TC-262"],
-                              env=environment, capture_output=True, timeout=900)
+                              cwd=str(ROOT), env=environment, capture_output=True, timeout=900)
         output = done.stdout.decode("utf-8", "replace")
         self.assertEqual((done.returncode, done.stderr.decode("utf-8", "replace")), (0, ""), output)
         self.assertIn(real.SELF_TEST, output.splitlines()[0])

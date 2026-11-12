@@ -148,7 +148,10 @@ class Mock:
 
 
 def run(args, env, cwd=None, stdin="", timeout=180, line=None):
-    """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe."""
+    """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe.
+
+    An interrupt of this process ends the process and its children too, and is raised again.
+    """
     start = time.time()
     started_ns = native_evidence.clock_ns()
     try:
@@ -157,16 +160,28 @@ def run(args, env, cwd=None, stdin="", timeout=180, line=None):
                                    start_new_session=os.name != "nt")
     except OSError as error:
         return {"exit": None, "error": str(error), "stdout": "", "stderr": "", "seconds": 0}
-    try:
-        out, err = process.communicate(stdin.encode("utf-8"), timeout=timeout)
-        code = process.returncode
-    except subprocess.TimeoutExpired:
+
+    def end():
         if os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
         else:
             os.killpg(process.pid, signal.SIGKILL)
+
+    try:
+        out, err = process.communicate(stdin.encode("utf-8"), timeout=timeout)
+        code = process.returncode
+    except subprocess.TimeoutExpired:
+        end()
         out, err = process.communicate()
         code = "timeout"
+    except BaseException:
+        # An interrupt of this process. On POSIX the child has its own session, so it would run on without it.
+        try:
+            end()
+            process.wait(timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        raise
     return {"exit": code, "seconds": round(time.time() - start, 1), "pid": process.pid,
             "started_monotonic_ns": started_ns, "ended_monotonic_ns": native_evidence.clock_ns(),
             "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace")}

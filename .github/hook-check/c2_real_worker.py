@@ -16,11 +16,30 @@ PLUGIN, once two functions of that package's library are wrapped:
 
 Nothing else of the worker changes: it reads the store, the configuration and
 the keys as the installed worker does, and it ends quietly as that one does.
+A line that cannot be written to TAP is left out and the answer goes on to the
+worker as it came; c2_real.py then finds a request without its line.
 """
 import json
 from pathlib import Path
 import runpy
 import sys
+
+
+def record(tap, instructions, result):
+    """Add a request's line to TAP; whether it was written. It never raises, so the worker keeps its answer.
+
+    A character that UTF-8 cannot hold, such as half of a surrogate pair in an answer, is written as its JSON
+    escape, so the line reads back as the same value.
+    """
+    try:
+        failure = result.response.failure
+        row = {"instructions": instructions, "document": result.document, "answer": result.response.text,
+               "failure": None if failure is None else failure.code, "attempts": result.attempts}
+        with open(str(tap), "ab") as target:
+            target.write(json.dumps(row, ensure_ascii=False).encode("utf-8", "backslashreplace") + b"\n")
+    except Exception:
+        return False
+    return True
 
 
 def main():
@@ -40,12 +59,7 @@ def main():
 
     def written(memory, **options):
         result = send(memory, **options)
-        failure = result.response.failure
-        row = {"instructions": options.get("instructions"), "document": result.document,
-               "answer": result.response.text, "failure": None if failure is None else failure.code,
-               "attempts": result.attempts}
-        with open(str(tap), "a", encoding="utf-8") as target:
-            target.write(json.dumps(row, ensure_ascii=False) + "\n")
+        record(tap, options.get("instructions"), result)
         return result
 
     model_client.send = written

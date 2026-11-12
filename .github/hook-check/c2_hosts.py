@@ -185,6 +185,16 @@ def event(kind, **data):
     return ("event: " + kind + "\ndata: " + json.dumps(dict(type=kind, **data), ensure_ascii=False) + "\n\n").encode("utf-8")
 
 
+def stopped_stream(reason, output=1):
+    """A provider's answer that stopped for `reason` before any text, with `output` tokens counted as written."""
+    message = dict(type="message", role="assistant", content=[],
+                   usage={"input_tokens": 900, "output_tokens": 1, "cache_creation_input_tokens": 0,
+                          "cache_read_input_tokens": 0})
+    return (event("message_start", message=message) +
+            event("message_delta", delta={"stop_reason": reason}, usage={"output_tokens": output}) +
+            event("message_stop"))
+
+
 def document(value):
     """The XML of a memory request, as its root element.
 

@@ -31,18 +31,21 @@ The report lists them apart and leaves them out of the cost.
 
 - TC-258: after a seed of two decisions that say the same thing, two more
   turns are curated; then a consolidation is made due, whose run sends merge
-  requests and the state request. It passes when a request of each kind is
-  logged `ok` and each answer fits its schema by the package's own decoder.
-  What the answers merged and how the state changed, with the number of lines
-  in Korean before and after, is recorded.
+  requests and the state request. It passes when each request of each kind
+  ended with a usage line `ok` and each answer fits its schema by the
+  package's own decoder. An attempt that failed and that the package tried
+  again does not count against it. What the answers merged and how the state
+  changed, with the number of lines in Korean before and after, is recorded.
 - TC-259: two turns are curated with `max_tokens` lowered to 64, which the
-  package never does itself. It passes when the request's usage line has the
-  result `limit` and the code `max-tokens`; the report also gives the curation
+  package never does itself. It passes when the request has a usage line with
+  the result `limit` and the code `max-tokens` and none with another result
+  than an attempt that failed before it. The report also gives the curation
   record's attempt, whether anything was applied and whether the same turns
-  are curated by the next run. No refusal is asked for: Anthropic's documentation of refusals,
-  read on 2026-11-12, names no request that a model refuses without harmful
-  content, and the test text that it once named ended four requests with
-  `end_turn` that day. Refusals are checked against the test servers only.
+  are curated by the next run. No refusal is asked for: Anthropic's
+  documentation of refusals, read on 2026-11-12, names no request that a model
+  refuses without harmful content, and the test text that it once named ended
+  four requests with `end_turn` that day. Refusals are checked against the
+  test servers only.
 - TC-261: a short `응` to the agent's proposal, a decision in Korean and
   small talk. It passes when a decision's first quote is the user's `응`, an
   item of the Korean decision has Korean title and text, and no item quotes
@@ -66,9 +69,10 @@ The report lists them apart and leaves them out of the cost.
   nothing is saved, and whose words each replacement rests on, is recorded.
 
 `--repeat N` runs each case N times, since the answers vary; the report keeps
-every run. Before each run of the worker the cost so
-far, by the usage log's lines, is compared with `--limit` (1 USD unless
-given), and once it is reached the cases that are left are not run.
+every run. Before each run of a case the cost so far, by the usage log's
+lines, is compared with `--limit` (1 USD unless given). Once it is reached no
+run starts and the cases that are left are not run. A run that has begun is
+finished, so the cost can pass the limit by what one run of a case costs.
 Embeddings are sent when the worker's step 6 has the OpenAI key; no case here
 reads one, so the report only counts how they ended.
 
@@ -79,13 +83,17 @@ does.
 
 It writes report.json and the requests of each home (`requests.jsonl`) under
 OUTDIR/c2-real, prints a summary, and exits 1 when a case fails, breaks or is
-not run, or when a memory key of this process's environment is in a file under
-that folder, in the report or in a request to the local server.
+not run, when a memory key of this process's environment is in a file under
+that folder, in the report or in a request to the local server, or when a file
+under that folder could not be read for that search. report.json is written
+after each case and again when the check ends or is interrupted, so that what
+a run paid for is kept; an interrupt ends the worker that is running.
 """
 import argparse
 from collections import Counter, namedtuple
 from datetime import datetime, timedelta, timezone
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -101,8 +109,10 @@ import c2_hosts  # noqa: E402
 import run as hookcheck  # noqa: E402
 
 REPO = hookcheck.REPO  # The checkout itself: the checks below point `hookcheck.REPO` at its staged copy.
-WORKER = Path(__file__).with_name("c2_real_worker.py")
-CONTRACT = Path(__file__).with_name("host-inputs.json")
+# Whole paths: before Python 3.9 a script's `__file__` is the path as it was typed, and the worker runs elsewhere.
+WORKER = Path(__file__).resolve().with_name("c2_real_worker.py")
+CONTRACT = Path(__file__).resolve().with_name("host-inputs.json")
+HOSTS = {}  # The contract's hosts, read once.
 ANTHROPIC, OPENAI = "CORTHEX_MEMORY_ANTHROPIC_API_KEY", "CORTHEX_MEMORY_OPENAI_API_KEY"
 # What a worker needs of its host's environment for the network; the package passes them on to each request.
 NETWORK = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "no_proxy",
@@ -111,7 +121,9 @@ CASES = ("TC-258", "TC-259", "TC-261", "TC-262", "TC-345", "TC-356")
 LIMIT = 1.0
 CUT = 64            # TC-259's `max_tokens`; the scripted server cuts any answer asked for under CUT_BELOW.
 CUT_BELOW = 1000
-WORK_SECONDS = 900  # One foreground run of the worker: a few requests, each some tens of seconds.
+# One foreground run of the worker. Against a provider the package's own limits hold: a request may take 1,800 s
+# and a run an hour, and a worker ended before that leaves the request it was sending out of the usage log.
+WORK_SECONDS, LOCAL_SECONDS = 3900, 900
 PROVIDERS = "the providers' own addresses"
 SELF_TEST = "a local test server (self-test): no provider was called"
 SEED = "local seed"
@@ -248,7 +260,9 @@ def key_turn(key):
 
 def host_input(host, event, demo, session, turn, **values):
     """A hook's input with the fields that `host` sends for `event` (host-inputs.json)."""
-    fields = json.loads(CONTRACT.read_text(encoding="utf-8"))["hosts"][host]["events"][event]
+    if not HOSTS:
+        HOSTS.update(json.loads(CONTRACT.read_text(encoding="utf-8"))["hosts"])
+    fields = HOSTS[host]["events"][event]
     base = {"cwd": str(demo), "hook_event_name": event, "permission_mode": "default", "session_id": session,
             "transcript_path": str(demo / ".fixture-transcript.jsonl") if host == "claude" else None,
             "model": "gpt-fixture", "prompt_id": turn, "turn_id": turn, "stop_hook_active": False,
@@ -259,12 +273,7 @@ def host_input(host, event, demo, session, turn, **values):
 
 def cut_stream():
     """A provider's answer that its `max_tokens` cut before any text."""
-    message = dict(type="message", role="assistant", content=[],
-                   usage={"input_tokens": 900, "output_tokens": 1, "cache_creation_input_tokens": 0,
-                          "cache_read_input_tokens": 0})
-    return (c2_hosts.event("message_start", message=message) +
-            c2_hosts.event("message_delta", delta={"stop_reason": "max_tokens"}, usage={"output_tokens": CUT}) +
-            c2_hosts.event("message_stop"))
+    return c2_hosts.stopped_stream("max_tokens", CUT)
 
 
 class Scripted(c2_hosts.MemoryServer):
@@ -388,8 +397,12 @@ def schemas(run):
 
 
 def accepted(found):
-    """Whether TC-258 holds: each kind was sent, every request of it is logged `ok` and every answer fits."""
-    return all(value["usage results"] and set(value["usage results"]) == {"ok"} and value["answers"] and
+    """Whether TC-258 holds: each kind was sent, every request of it ended `ok` and every answer fits.
+
+    The package logs each attempt, so a request that failed once and was answered at its next attempt has a
+    `failed` line and an `ok` line: as many `ok` lines as requests means that none failed in the end.
+    """
+    return all(value["answers"] and value["usage results"].get("ok") == value["answers"] and
                value["answers that fit the schema"] == value["answers"]
                for value in (found[kind] for kind in ("curate", "merge", "state")))
 
@@ -397,11 +410,13 @@ def accepted(found):
 def cut(run, before, after, record):
     """TC-259's reading: how the cut request was logged, what the curation record says and what the run left."""
     rows = [row for row in run["usage"] if row["call"] == "curate"]
+    limits = [row for row in rows if row["result"] == "limit" and row.get("error") == "max-tokens"]
     attempt = (record.get("recent") or [{}])[0]
     return {"usage lines": [{key: row.get(key) for key in ("result", "error", "input", "output", "cost")}
                             for row in rows],
-            "logged with the result limit and the code max-tokens": bool(rows) and all(
-                row["result"] == "limit" and row.get("error") == "max-tokens" for row in rows),
+            # An attempt that failed before the cut answer was tried again by the package; an `ok` line is no cut.
+            "logged with the result limit and the code max-tokens": bool(limits) and all(
+                row in limits or row["result"] == "failed" for row in rows),
             "the curation record's latest attempt": {key: attempt.get(key) for key in ("kind", "result", "error")},
             "failed attempts counted": (record.get("failures") or {}).get("count"),
             "items after the cut answer": len(after["items"]),
@@ -553,7 +568,7 @@ class Home:
         self.configure(value)
         self.root = self.store / "projects/demo"
         self.tap = self.base / "requests.jsonl"
-        self.sessions, self.read = {}, {"usage": 0, "failures": 0, "requests": 0}
+        self.sessions, self.read, self.broken = {}, {"usage": 0, "failures": 0, "requests": 0}, {}
 
     def configuration(self):
         return json.loads((self.store / "configuration.json").read_text(encoding="utf-8"))
@@ -589,41 +604,58 @@ class Home:
                                  str(self.demo), stdin=data, timeout=120)
             if done["exit"] != 0:
                 raise RuntimeError("the %s hook ended with %s: %s" % (name, done["exit"],
-                                                                      hookcheck.short(done["stderr"])))
+                                                                      self.check.shown(done["stderr"])))
         found = {entry["kind"]: ident for ident, entry in self.entries().items() if ident not in before}
         if sorted(found) != ["answer", "prompt"]:
             raise RuntimeError("the hooks recorded %s for a turn" % (sorted(found) or "nothing"))
         return found
 
     def rows(self, name):
-        if name == "requests":
-            return [json.loads(line) for line in self.tap.read_text(encoding="utf-8").splitlines()
-                    ] if self.tap.exists() else []
-        if name == "failures":
-            return c2_hosts.failure_rows(self.home)
-        return [json.loads(line) for path in sorted((self.store / "logs").glob("usage-*.jsonl"))
-                for line in path.read_text(encoding="utf-8").splitlines()]
+        """The lines of the usage log, of the failure log or of the written requests, and how many were no JSON."""
+        paths = [self.tap] if name == "requests" else sorted((self.store / "logs").glob(name + "-*.jsonl"))
+        found, self.broken[name] = [], 0
+        for path in paths:
+            if path.exists():
+                values, broken = whole_lines(path)
+                found += values
+                self.broken[name] += broken
+        return found
 
     def work(self, provider=True, cut=0):
-        """Run the staged worker in the foreground; what it logged, noted and sent in this run."""
+        """Run the staged worker in the foreground; what it logged, noted and sent in this run.
+
+        What the run logged is read and counted towards the cost also when the run breaks or is interrupted.
+        """
         check = self.check
-        if provider:
-            check.afford()
         args = [sys.executable, str(WORKER), str(self.tap), str(cut), str(check.plugin),
                 "--reason", "end", "--project", "demo"]
-        done = hookcheck.run(args, check.worker_environment(self.home, provider), str(self.demo),
-                             timeout=WORK_SECONDS)
-        run = {"exit": done["exit"], "seconds": done["seconds"], "provider": check.provider if provider else SEED}
+        run = {"provider": check.provider if provider else SEED}
+        try:
+            done = hookcheck.run(args, check.worker_environment(self.home, provider), str(self.demo),
+                                 timeout=WORK_SECONDS if provider and check.real else LOCAL_SECONDS)
+        except BaseException:
+            try:
+                self.logged(run, provider)
+            except Exception:  # The interrupt or the error of the run itself is the one to raise.
+                pass
+            raise
+        self.logged(run, provider)
+        run.update(exit=done["exit"], seconds=done["seconds"])
         if done["stderr"].strip():
-            run["stderr"] = check.mask(hookcheck.short(done["stderr"], 600))
+            run["stderr"] = check.shown(done["stderr"], 600)
+        if done["exit"] != 0:
+            raise RuntimeError("the worker ended with %s: %s" % (done["exit"], run.get("stderr")))
+        return run
+
+    def logged(self, run, provider):
+        """Add to a run the lines that were written since the run before it, and count a provider's cost."""
         for name in ("usage", "failures", "requests"):
             rows = self.rows(name)
             run[name], self.read[name] = rows[self.read[name]:], len(rows)
         run["usage"] = [{key: value for key, value in row.items() if key != "prices"} for row in run["usage"]]
-        check.account(run, provider)
-        if done["exit"] != 0:
-            raise RuntimeError("the worker ended with %s: %s" % (done["exit"], run.get("stderr")))
-        return run
+        if any(self.broken.values()):
+            run["lines left out because they are no JSON"] = dict(self.broken)
+        self.check.account(run, provider)
 
     def layer(self):
         """The project's items, state lines and conflict candidates, and the number of turns that wait."""
@@ -659,14 +691,37 @@ class Home:
                 if value["quotes"][0]["entry"] == ids[number]["prompt"]][0]
 
 
-def holding(folder, keys):
-    """The files under a folder that hold one of the keys, as paths from it."""
+def whole_lines(path):
+    """A JSON-lines file's values and the number of lines left out because they are no JSON.
+
+    A worker that was stopped while it wrote may leave such a line.
+    """
+    found, broken = [], 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            found.append(json.loads(line))
+        except ValueError:
+            broken += 1
+    return found, broken
+
+
+def holding(folder, keys, unread=None):
+    """The files under a folder that hold one of the keys, as paths from it.
+
+    A file that cannot be read is added to `unread`, when given, and is not searched.
+    """
     found = []
     for path in sorted(folder.rglob("*")):
-        if path.is_file():
+        try:
+            if not path.is_file():
+                continue
             data = path.read_bytes()
-            if any(key.encode("utf-8") in data for key in keys):
-                found.append(path.relative_to(folder).as_posix())
+        except OSError:
+            if unread is not None:
+                unread.append(path.relative_to(folder).as_posix())
+            continue
+        if any(key.encode("utf-8") in data for key in keys):
+            found.append(path.relative_to(folder).as_posix())
     return found
 
 
@@ -835,6 +890,10 @@ class Check:
             text = text.replace(key, "<memory key>")
         return text
 
+    def shown(self, text, size=300):
+        """A process's output as the report shows it, a key masked before the text is cut: none is left in part."""
+        return hookcheck.short(self.mask(text), size)
+
     def home(self, label):
         return Home(self, label)
 
@@ -859,6 +918,7 @@ class Check:
         return env
 
     def afford(self):
+        """Refuse to start a run of a case once the cost so far has reached the limit."""
         if self.real and self.spent >= self.options.limit:
             raise Stopped("the cost so far, %.4f USD by the usage log, has reached the limit of %.2f USD" % (
                 self.spent, self.options.limit))
@@ -869,16 +929,24 @@ class Check:
             self.spent += sum(row.get("cost") or 0 for row in run["usage"])
 
     def case(self, name):
-        entry = self.report["cases"][name] = {"runs": []}
-        for number in range(1, self.options.repeat + 1):
-            try:
-                entry["runs"].append(RUNNERS[name](self, "%s-%d" % (name.lower(), number)))
-            except Stopped as stopped:
-                entry["runs"].append({"outcome": "not run", "why": str(stopped)})
-                break
-            except Exception:
-                entry["runs"].append({"outcome": "crash", "crash": self.mask(traceback.format_exc())})
-        entry["outcome"] = min((run["outcome"] for run in entry["runs"]), key=ORDER.index)
+        """Run a case `repeat` times; no run starts once the limit is reached, and an interrupt is noted."""
+        entry = self.report["cases"][name] = {"outcome": "not run", "runs": []}
+        try:
+            for number in range(1, self.options.repeat + 1):
+                try:
+                    self.afford()
+                    entry["runs"].append(RUNNERS[name](self, "%s-%d" % (name.lower(), number)))
+                except Stopped as stopped:
+                    entry["runs"].append({"outcome": "not run", "why": str(stopped)})
+                    break
+                except KeyboardInterrupt:
+                    entry["runs"].append({"outcome": "not run", "why": "interrupted during this run"})
+                    raise
+                except Exception:
+                    entry["runs"].append({"outcome": "crash", "crash": self.mask(traceback.format_exc())})
+        finally:
+            if entry["runs"]:
+                entry["outcome"] = min((run["outcome"] for run in entry["runs"]), key=ORDER.index)
 
     def cost(self):
         """The provider's requests by the usage log's lines: how many, how they ended, their tokens and cost."""
@@ -898,8 +966,8 @@ class Check:
 
 def summary(report):
     text = ["== MEMORY's requests at %s against %s ==" % (report["release"], report["provider"])]
-    if "crash" in report:
-        return text + [report["crash"]]
+    if "cases" not in report:
+        return text + [report.get("crash", "the check did not begin")]
     text.append("system: %s, Python %s; checkout: %s; keys: %s" % (
         report["system"]["platform"], report["system"]["python"], json.dumps(report["checkout"]),
         json.dumps(report["keys"])))
@@ -910,19 +978,35 @@ def summary(report):
                      if isinstance(value, (bool, str, int)) or key in ("curate", "merge", "state")}
             text.append("  run %d: %s %s" % (number, run["outcome"], json.dumps(
                 shown or run.get("why") or run.get("crash"), ensure_ascii=False)))
-    text.append("requests to %s, by the usage log: %s" % (report["provider"], json.dumps(report["cost"])))
+    text.append("requests to %s, by the usage log: %s" % (report["provider"], json.dumps(report.get("cost"))))
     text.append("requests to the local server, for the seeds%s: %s" % (
         " and the self-test" if report["self_test"] else "", report.get("local_requests")))
     if leaked(report):
         text.append("A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND: in files %s; in the report: %s; in requests to the "
                     "local server: %s" % (json.dumps(report.get("files_with_key")), bool(report.get("key_in_report")),
                                           report.get("local_requests_with_key")))
+    if report.get("files_not_read"):
+        text.append("files that could not be read, so the search for a key is not complete: %s" % json.dumps(
+            report["files_not_read"]))
+    if "crash" in report:
+        text.append(report["crash"])
     return text
 
 
 def leaked(report):
     """Whether a memory key of this process's environment reached a file, the report or the local server."""
     return bool(report.get("files_with_key") or report.get("key_in_report") or report.get("local_requests_with_key"))
+
+
+def passed(report):
+    """Whether the check holds as a whole.
+
+    Every case passed or was recorded, nothing broke or was interrupted, no memory key of this environment was
+    found, and every file under the folder could be searched for one.
+    """
+    done = "crash" not in report and bool(report.get("cases")) and all(
+        entry["outcome"] in ("pass", "recorded") for entry in report["cases"].values())
+    return done and not leaked(report) and not report.get("files_not_read")
 
 
 def options(arguments):
@@ -932,7 +1016,29 @@ def options(arguments):
     parser.add_argument("--repeat", type=int, default=1, help="runs of each case, since answers vary")
     parser.add_argument("--limit", type=float, default=LIMIT, help="USD by the usage log after which no run starts")
     parser.add_argument("--self-test", action="store_true", help="answer every request from a local server")
-    return parser.parse_args(arguments)
+    chosen = parser.parse_args(arguments)
+    chosen.case = list(dict.fromkeys(chosen.case or CASES))  # A case named twice is run once.
+    return chosen
+
+
+def close(check, report, out):
+    """Add what the check as a whole found, once its cases have ended or were interrupted."""
+    check.server.close()
+    report["cost"] = check.cost()
+    report["local_requests"] = len(check.server.requests)
+    report["local_requests_with_key"] = sum(1 for row in check.server.requests if any(
+        c2_hosts.carries(row, key) for key in check.keys.values()))
+    unread = []
+    report["files_with_key"] = holding(out, list(check.keys.values()), unread)
+    report["files_not_read"] = unread
+
+
+def write(out, report, check):
+    """Write report.json as it stands, with a memory key of this environment masked; whether one had to be."""
+    text = json.dumps(report, indent=1, ensure_ascii=False, default=str)
+    masked = text if check is None else check.mask(text)
+    (out / "report.json").write_text(masked, encoding="utf-8")
+    return masked != text
 
 
 def main(arguments=None):
@@ -941,8 +1047,8 @@ def main(arguments=None):
     except AttributeError:
         pass
     chosen = options(arguments)
-    if chosen.repeat < 1 or chosen.limit <= 0:
-        print("--repeat is at least 1 and --limit is above 0")
+    if chosen.repeat < 1 or not 0 < chosen.limit < math.inf:
+        print("--repeat is at least 1 and --limit is a number above 0")
         return 2
     if not chosen.self_test:
         if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
@@ -961,27 +1067,24 @@ def main(arguments=None):
     try:
         check = Check(out, chosen)
         report = check.report
-        for name in chosen.case or CASES:
+        for name in chosen.case:
             check.case(name)
+            write(out, report, check)
+    except KeyboardInterrupt:
+        report["crash"] = "interrupted: the runs and the cases after this point were not made"
     except Exception:
         report["crash"] = traceback.format_exc() if check is None else check.mask(traceback.format_exc())
-    finally:
-        if check is not None:
-            check.server.close()
-            report["cost"] = check.cost()
-            report["local_requests"] = len(check.server.requests)
-            report["local_requests_with_key"] = sum(1 for row in check.server.requests if any(
-                c2_hosts.carries(row, key) for key in check.keys.values()))
-            report["files_with_key"] = holding(out, list(check.keys.values()))
-    text = json.dumps(report, indent=1, ensure_ascii=False, default=str)
-    if check is not None and check.mask(text) != text:
+    if check is not None:
+        try:
+            close(check, report, out)
+        except Exception:
+            report["crash"] = "\n".join(text for text in (report.get("crash"), check.mask(traceback.format_exc()))
+                                        if text)
+    if write(out, report, check):
         report["key_in_report"] = True
-        text = check.mask(json.dumps(report, indent=1, ensure_ascii=False, default=str))
-    (out / "report.json").write_text(text, encoding="utf-8")
+        write(out, report, check)
     print("\n".join(summary(report)))
-    done = "crash" not in report and bool(report.get("cases")) and all(
-        entry["outcome"] in ("pass", "recorded") for entry in report["cases"].values())
-    return 0 if done and not leaked(report) else 1
+    return 0 if passed(report) else 1
 
 
 if __name__ == "__main__":
