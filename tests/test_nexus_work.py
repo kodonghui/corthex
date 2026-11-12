@@ -94,6 +94,31 @@ class NexusWorkTest(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, tell)
 
+    def test_a_draft_of_documents_is_merged_before_its_request(self):
+        text = workflow()
+        merge = section(text, "## Merge a draft before its checkpoint request")
+        self.assertLess(text.index("## Merge a draft before its checkpoint request"),
+                        text.index("## Ask for a checkpoint"))
+        for rule in (
+            "For a project that is expected on a NEXUS server",
+            "when its pull request holds documents only: the stage's sources and its record",
+            "as `in_progress`, with a next action that says that the stage waits for its checkpoint",
+            "A merged file is not a finished stage",
+            "Once the project's checks pass, merge the pull request into the default branch",
+            "Where the project's rules ask the user before a merge, ask once, or follow the user's standing answer",
+            "Only then make the checkpoint request",
+            "is another pull request",
+            "nothing is taken back from the default branch for that alone",
+            "The checks fail, or the user's answer about the merge is still open: nothing is merged, and no request "
+            "is made",
+            "also changes code, settings or anything that a merge would release: this section does not hold",
+            "The project is not expected on a NEXUS server: this section does not hold",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, merge)
+        steps = [merge.index("\n%d. " % number) for number in range(1, 6)]
+        self.assertEqual(steps, sorted(steps))
+
     def test_a_browser_walk_leaves_the_users_presses_to_the_user(self):
         walk = section(workflow(), "## Walk a NEXUS server's pages in a browser")
         for rule in (
