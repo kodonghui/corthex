@@ -40,8 +40,12 @@ the command lines that showed the memory worker. Then Claude Code runs once
 more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257).
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
-except a lock that stayed busy, which the summary lists. The report keeps the
-number of command lines read, never the lines.
+with two exceptions that the summary lists: a lock that stayed busy, and a
+recall that gave up at its window (API-010). The prompt hook still returns in
+time after such a recall, with the outcome `deadline`, and the prompt goes on
+without a recall block; how often that happens is a matter of the machine's
+speed, which TC-256 measures, so the case counts it and does not fail on it.
+The report keeps the number of command lines read, never the lines.
 It writes report.json and prints a summary, and exits 1 when a case fails.
 """
 from datetime import datetime, timezone
@@ -306,21 +310,27 @@ def store_files(home):
     return [path for path in folder.rglob("*") if path.is_file()]
 
 
+def during(row, host, started, ended):
+    """Whether a log line of the memory store is one host's, written between two times; the lines name no session."""
+    at = datetime.strptime(row["at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
+    return row.get("host") == host and started - 1 <= at <= ended + 1
+
+
 def hook_rows(home, host, started, ended):
-    """The hook timing lines (TBL-005) of one host between two times; the lines name no session."""
-    rows = []
-    for path in sorted((home / ".corthex/corthex-memory/logs").glob("hooks-*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            row = json.loads(line)
-            at = datetime.strptime(row["at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
-            if row.get("host") == host and started - 1 <= at <= ended + 1:
-                rows.append(row)
-    return rows
+    """The hook timing lines (TBL-005) of one host between two times."""
+    return [row for path in sorted((home / ".corthex/corthex-memory/logs").glob("hooks-*.jsonl"))
+            for row in map(json.loads, path.read_text(encoding="utf-8").splitlines())
+            if during(row, host, started, ended)]
 
 
 def failure_rows(home):
     return [json.loads(line) for path in sorted((home / ".corthex/corthex-memory/logs").glob("failures-*.jsonl"))
             for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def late_recall(row):
+    """A failure line of a recall that gave up at its window, as API-010 means it to: the prompt hook's own note."""
+    return row.get("hook") == "prompt" and row.get("step") == "recall" and row.get("error") == "deadline"
 
 
 def items(home):
@@ -613,12 +623,21 @@ class Sampler(threading.Thread):
 def verdicts(report):
     sessions = report["sessions"]
     hooks_ok = all(row["outcome"] == "ok" for value in sessions for row in value["hooks"].values())
+    late = [row for row in report.get("failures", []) if late_recall(row)]
+
+    def returned(value):
+        # Each hook's outcome is `ok`. The prompt hook's may be `deadline` only when this session's own failure
+        # line says that its recall gave up at its window: any other step that a deadline cut fails the case.
+        own = [row for row in late if during(row, HOST_NAMES[value["host"]], value["started"], value["ended"])]
+        return all(row["outcome"] == "ok" or (hook == "prompt" and row["outcome"] == "deadline" and bool(own))
+                   for hook, row in value["hooks"].items())
+
     per = {}
     for value in sessions:
         per[value["label"]] = {
             "exit": value["exit"] == 0,
-            "four hooks ok": set(value["hooks"]) >= {"start", "prompt", "end-of-turn", "end"} and
-            all(row["outcome"] == "ok" for row in value["hooks"].values()),
+            "four hooks ok or late in recall": set(value["hooks"]) >= {"start", "prompt", "end-of-turn", "end"} and
+            returned(value),
             "trigger started the worker": value["expected_reason"] in value["reasons"],
             "worker held after the host ended": value["held_after_exit"],
             "held results applied after release": value["settled"]["applied"],
@@ -632,10 +651,10 @@ def verdicts(report):
     keys = report.get("keys", {})
     # A failure that the worker or a hook noted, such as a run log it could not write, fails the case. A lock
     # that stayed busy is reported but passes: `model_usage` appends a usage line once, on a best-effort basis,
-    # so a hook and the worker appending at once may leave one out and note it.
-    blocking = [row for row in report.get("failures", []) if row.get("error") != "lock-busy"]
+    # so a hook and the worker appending at once may leave one out and note it. So is a late recall.
+    blocking = [row for row in report.get("failures", []) if row.get("error") != "lock-busy" and not late_recall(row)]
     tc253 = bool(per) and not blocking and all(
-        v["exit"] and v["four hooks ok"] and v["trigger started the worker"] and
+        v["exit"] and v["four hooks ok or late in recall"] and v["trigger started the worker"] and
         v["worker held after the host ended"] and v["held results applied after release"] and
         v["run log lists the applied items"] for v in per.values())
     # TC-254 needs evidence that it looked: a ranked recall in each host, and command lines read in each
@@ -652,7 +671,7 @@ def verdicts(report):
     tc257 = bool(scrub) and scrub.get("exit") == 0 and (
         scrub["keys_reached_hooks"] or (scrub["notice"] and not scrub["memory_requests"]))
     return {"sessions": per, "triggers": triggers, "hooks_ok": hooks_ok, "blocking_failures": blocking,
-            "ranked recalls": recalled,
+            "late recalls": len(late), "ranked recalls": recalled,
             "TC-253": tc253, "TC-254": tc254, "TC-255": tc255, "TC-257": tc257,
             "TC-257 observed": "keys reached the hooks" if scrub.get("keys_reached_hooks") else
             "keys kept from the hooks" if scrub else "not run"}
@@ -709,6 +728,8 @@ def main():
             {key: report["scrub"].get(key) for key in ("notice", "memory_requests", "recalled")}))
         text.append("failure log: " + json.dumps(report.get("failures", [])))
         text.append("failures that fail TC-253: " + json.dumps(report["verdicts"]["blocking_failures"]))
+        text.append("recalls that gave up at their window, counted and not failed: %d" %
+                    report["verdicts"]["late recalls"])
         for case in cases:
             text.append("%s: %s" % (case, "pass" if report["verdicts"][case] else "FAIL"))
     print("\n".join(text))
