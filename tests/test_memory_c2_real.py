@@ -4,6 +4,7 @@ No provider is called here: the readings get made-up layers and answers, and the
 every request from its local server.
 """
 import contextlib
+import http.client
 import importlib.util
 import io
 import json
@@ -1310,6 +1311,29 @@ class SignalTests(unittest.TestCase):
                 self.assertEqual((report["cost"]["requests"], report["files_with_key"]), (0, []))
                 with self.assertRaises(ProcessLookupError):  # The case's process was ended and collected.
                     os.kill(child, 0)
+
+    def test_the_local_server_s_threads_leave_the_signals_that_interrupt_the_check_to_the_main_thread(self):
+        # A signal that one of them received would not end the main thread's wait for a case's process, so its
+        # handler would run only after that process: of two signals at once Linux gives the second to another
+        # thread, which can then take both.
+        masks = []
+
+        class Asked(real.Scripted):
+            def count(self, value):
+                masks.append(signal.pthread_sigmask(signal.SIG_BLOCK, []))
+                return 1
+
+        interrupting = {getattr(signal, name) for name in INTERRUPTING if hasattr(signal, name)}
+        before = signal.pthread_sigmask(signal.SIG_BLOCK, [])
+        self.assertEqual(interrupting & before, set())
+        server = Asked()
+        self.addCleanup(server.close)
+        self.assertEqual(signal.pthread_sigmask(signal.SIG_BLOCK, []), before)  # The caller's own mask is kept.
+        connection = http.client.HTTPConnection("127.0.0.1", server.server.server_port, timeout=30)
+        self.addCleanup(connection.close)
+        connection.request("POST", "/v1/messages/count_tokens", body=b"{}")
+        self.assertEqual(json.loads(connection.getresponse().read().decode("utf-8")), {"input_tokens": 1})
+        self.assertEqual([interrupting - mask for mask in masks], [set()])  # In the thread that answered.
 
     def test_a_signal_that_comes_while_the_check_ends_by_itself_does_not_break_off_its_ending(self):
         for name, number in (("SIGTERM", signal.SIGTERM), ("SIGHUP", signal.SIGHUP), ("Ctrl+C", signal.SIGINT)):

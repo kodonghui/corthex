@@ -77,6 +77,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -153,17 +154,17 @@ def line(marker):
     return "The user decided " + marker + "."
 
 
-def vector(text):
-    """A made-up embedding: DIMS numbers for a text, the same for the same text.
+def vector(text, dims=DIMS):
+    """A made-up embedding: `dims` numbers for a text, the same for the same text.
 
     It does not tell texts apart by their words. A word's bucket comes from its first eight bytes read as one
     number, whose low bits are zero for a word of up to six bytes: every such word adds to bucket 0, and
     nearly every text comes close to every other. A recall against it shows that the hook embeds, ranks and
     injects, and which items it leaves out, never that what it injects matches the prompt.
     """
-    values = [0.0] * DIMS
+    values = [0.0] * dims
     for word in WORDS.findall(text.lower()):
-        bucket = int.from_bytes(word.encode("utf-8")[:8].ljust(8, b"\0"), "big") * 2654435761 % DIMS
+        bucket = int.from_bytes(word.encode("utf-8")[:8].ljust(8, b"\0"), "big") * 2654435761 % dims
         values[bucket] += 1.0
     if not any(values):
         values[0] = 1.0
@@ -235,6 +236,32 @@ def curate_stream(answer):
             event("message_stop"))
 
 
+# The signals that interrupt a check, by the names that a system has.
+INTERRUPTS = ("SIGINT", "SIGTERM", "SIGHUP")
+
+
+def serve(server):
+    """Start the thread that serves `server`, which takes no signal that interrupts a check.
+
+    Python runs a signal's handler in the main thread, and a wait of the main thread ends for a signal only
+    when that thread received it. A signal that another thread received leaves the main thread waiting: a
+    check that waits for a process would run its handler only once that process had ended. Linux gives a signal
+    to another thread when the main one has a signal pending, as the second of two that come at once, and that
+    thread can then take both. So the serving thread starts with these signals blocked, and with it each thread
+    that it starts for a request; the thread that calls this keeps its own mask. A system without a mask for a
+    thread's signals, as Windows, gives a thread no such signal.
+    """
+    mask = getattr(signal, "pthread_sigmask", None)
+    before = None
+    if mask is not None:
+        before = mask(signal.SIG_BLOCK, [getattr(signal, name) for name in INTERRUPTS if hasattr(signal, name)])
+    try:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    finally:
+        if mask is not None:
+            mask(signal.SIG_SETMASK, before)
+
+
 class MemoryServer:
     """The memory worker's and the prompt hook's Anthropic and OpenAI endpoints, on 127.0.0.1.
 
@@ -262,9 +289,15 @@ class MemoryServer:
                 try:
                     value = json.loads(body)
                     if self.path.endswith("/count_tokens"):
-                        return outer.send(self, b'{"error":{"type":"api_error"}}', 500, "application/json")
+                        tokens = outer.count(value)
+                        if tokens is None:
+                            return outer.send(self, b'{"error":{"type":"api_error"}}', 500, "application/json")
+                        row["kind"] = "count"
+                        return outer.send(self, json.dumps({"input_tokens": tokens}).encode("utf-8"), 200,
+                                          "application/json")
                     if self.path.endswith("/embeddings"):
-                        data = [{"object": "embedding", "index": n, "embedding": vector(text)}
+                        dims = value.get("dimensions", DIMS)
+                        data = [{"object": "embedding", "index": n, "embedding": vector(text, dims)}
                                 for n, text in enumerate(value["input"])]
                         reply = {"object": "list", "model": value["model"], "data": data,
                                  "usage": {"prompt_tokens": 9 * len(data), "total_tokens": 9 * len(data)}}
@@ -288,8 +321,12 @@ class MemoryServer:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        serve(self.server)
         self.url = "http://127.0.0.1:%d" % self.server.server_port
+
+    def count(self, value):
+        """The count that a count request gets; None for the provider's error, which is what these checks expect."""
+        return None
 
     @staticmethod
     def send(handler, body, status, mime):

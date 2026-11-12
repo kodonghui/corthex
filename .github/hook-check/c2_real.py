@@ -653,14 +653,17 @@ class Home:
                 self.broken[name] += broken
         return found
 
+    def wrapper(self, cut):
+        """The command that starts the staged worker's wrapper, without the worker's own arguments."""
+        return [sys.executable, str(WORKER), str(self.tap), str(cut), str(os.getpid()), str(self.check.plugin)]
+
     def work(self, provider=True, cut=0):
         """Run the staged worker in the foreground; what it logged, noted and sent in this run.
 
         What the run logged is read and counted towards the cost also when the run breaks or is interrupted.
         """
         check = self.check
-        args = [sys.executable, str(WORKER), str(self.tap), str(cut), str(os.getpid()), str(check.plugin),
-                "--reason", "end", "--project", "demo"]
+        args = self.wrapper(cut) + ["--reason", "end", "--project", "demo"]
         run = {"provider": check.provider if provider else SEED}
         try:
             done = hookcheck.run(args, check.worker_environment(self.home, provider), str(self.demo),
@@ -939,6 +942,8 @@ def checkout(out):
 
 
 class Check:
+    Server = Scripted  # The local server of the seeds and of a self-test.
+
     def __init__(self, out, options):
         self.out, self.options = out, options
         self.real = not options.self_test
@@ -946,7 +951,7 @@ class Check:
         self.keys = {name: os.environ[name] for name in (ANTHROPIC, OPENAI) if os.environ.get(name)}
         self.markers = c2_hosts.marker_keys()
         self.made_up = "sk-ant-" + "madeup" + secrets.token_hex(16)
-        self.server = Scripted()
+        self.server = self.Server()
         self.source, self.plugin = c2_hosts.stage(REPO, out)
         hookcheck.REPO, hookcheck.MEMORY = self.source, self.plugin
         self.spent, self.usage = 0.0, []
@@ -998,6 +1003,13 @@ class Check:
         if provider:
             self.usage.extend(run["usage"])
             self.spent += sum(row.get("cost") or 0 for row in run["usage"])
+
+    def steps(self):
+        """What `carry_out` runs one by one, with the report written before each: here the chosen cases."""
+        return self.options.case
+
+    def step(self, name):
+        self.case(name)
 
     def case(self, name):
         """Run a case `repeat` times; no run starts once the limit is reached, and an interrupt is noted."""
@@ -1197,8 +1209,11 @@ def noted(report, check, text=None):
                                 if part)
 
 
-def carry_out(out, chosen, signals=None):
+def carry_out(out, chosen, signals=None, kind=None):
     """Run the chosen cases and write the report, also when the check breaks or is interrupted; the report.
+
+    `kind` is the check's class, `Check` unless given: another check of this folder that is made of the same
+    parts gives its own, whose `steps` are run in the place of the cases.
 
     The check's ending is the write of what the runs gave, the search of the files with the cost, and the last
     write. From where it begins `signals` are held. An error or an interrupt that reaches one of its steps all
@@ -1210,11 +1225,11 @@ def carry_out(out, chosen, signals=None):
     try:
         try:
             write(out, report, None)  # From its first moment the folder says whether it is a self-test's.
-            check = Check(out, chosen)
+            check = (kind or Check)(out, chosen)
             report = check.report
-            for name in chosen.case:
+            for name in check.steps():
                 write(out, report, check)
-                check.case(name)
+                check.step(name)
         except Exception:
             noted(report, check)
         if signals is not None:
@@ -1242,11 +1257,20 @@ def carry_out(out, chosen, signals=None):
 
 
 def main(arguments=None):
+    chosen = options(arguments)
+    return launch(chosen, "c2-real")
+
+
+def launch(chosen, folder, kind=None, told=None, held=None):
+    """What follows a check's options: its refusals, its folder under OUTDIR, its run and its summary; the exit.
+
+    Another check of this folder that is made of the same parts gives its class as `kind`, with the function
+    that tells its report (`told`) and the one that says whether it holds (`held`).
+    """
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except AttributeError:
         pass
-    chosen = options(arguments)
     if chosen.repeat < 1 or not 0 < chosen.limit < math.inf:
         print("--repeat is at least 1 and --limit is a number above 0")
         return 2
@@ -1258,7 +1282,7 @@ def main(arguments=None):
             print("%s is not set in this environment, so no request can be sent. Set it where this command "
                   "starts, as the hosts' own environment has it, and run again." % ANTHROPIC)
             return 2
-    out = Path(chosen.out).resolve() / "c2-real"
+    out = Path(chosen.out).resolve() / folder
     refusal = earlier(out)
     if refusal:
         print(refusal)
@@ -1268,11 +1292,11 @@ def main(arguments=None):
     out.mkdir(parents=True)
     signals = Interrupts()
     try:
-        report = carry_out(out, chosen, signals)
+        report = carry_out(out, chosen, signals, kind)
     finally:
         signals.restore()
-    print("\n".join(summary(report)))
-    return 0 if passed(report) else 1
+    print("\n".join((told or summary)(report)))
+    return 0 if (held or passed)(report) else 1
 
 
 if __name__ == "__main__":

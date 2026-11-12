@@ -104,7 +104,8 @@ jobs:
           retention-days: 7
 
   # TC-256 runs the staged prompt hook 600 times; its own job keeps the hook job within its time.
-  # The real-provider check's self-test (TASK-100) runs here too, since it needs Python only; it calls no provider.
+  # The self-tests of the real-provider check (TASK-100) and of the measurement check (TASK-047) run here too,
+  # since they need Python only; they call no provider.
   recall-timing:
     runs-on: windows-latest
     timeout-minutes: 40
@@ -122,6 +123,10 @@ jobs:
         if: ${{ !cancelled() }}
         shell: cmd
         run: python .github\hook-check\c2_real.py "%RUNNER_TEMP%\real-self-test" --self-test
+      - name: The measurement check against its own local server, no provider (TASK-047 self-test)
+        if: ${{ !cancelled() }}
+        shell: cmd
+        run: python .github\hook-check\c2_measure.py "%RUNNER_TEMP%\measure-self-test" --self-test --part efforts --part skip --part recall
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
@@ -129,6 +134,7 @@ jobs:
           path: |
             ${{ runner.temp }}/recall-timing/c2-recall-timing/report.json
             ${{ runner.temp }}/real-self-test/c2-real/report.json
+            ${{ runner.temp }}/measure-self-test/c2-measure/report.json
           retention-days: 7
 
   # TASK-101's replays of the C2 walks with a scripted curator, in their own job for time.
