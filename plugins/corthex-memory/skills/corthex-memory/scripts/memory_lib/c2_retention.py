@@ -91,7 +91,9 @@ def retain_logs(memory, deadline):
 
     A project's turn may have found the period changed, or its read may have stayed busy and left the
     one read before it. A read that stays busy here, or a configuration that is no longer valid, leaves
-    the logs for the next start, as it leaves a project.
+    the logs for the next start, as it leaves a project. The hooks' timing files wait with the failure
+    logs, although no setting changes their eight days: a sweep that could not read its period is left
+    whole, as it is when the worker's first read fails.
     """
     memory.config = _settings(memory, deadline)
     return retention.retain_logs(memory, deadline)

@@ -572,15 +572,19 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(kept(self.root), ([1, 2, 3], 2, ["r_0000000000a1.json", "r_0000000000a2.json"], 2))
         self.assertEqual(self.failures(), [("retention", "RuntimeError")])
 
-    def old_failure_logs(self):
-        """Failure logs of the device whose days are 102 and 400 days back: the paths."""
+    def old_logs(self, kind, days):
+        """Empty log files of the device of one kind, whose days are so many days back: the paths."""
         logs = self.folder / "logs"
         logs.mkdir(exist_ok=True)
-        paths = [logs / ("failures-%s.jsonl" % (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d"))
-                 for days in (102, 400)]
+        paths = [logs / ("%s-%s.jsonl" % (kind, (datetime.now(UTC) - timedelta(days=back)).strftime("%Y-%m-%d")))
+                 for back in days]
         for path in paths:
             path.write_bytes(b"")
         return paths
+
+    def old_failure_logs(self):
+        """Failure logs of the device whose days are 102 and 400 days back: the paths."""
+        return self.old_logs("failures", (102, 400))
 
     def test_tc436_a_period_raised_during_the_last_project_s_turn_is_the_log_sweep_s_period(self):
         session, history, injections = self.aged()
@@ -618,9 +622,10 @@ class WorkerActivationTest(unittest.TestCase):
                 mock.patch.object(c2_retention, "retain_project", side_effect=turn):
             self.run_worker("start")
 
-    def test_tc436_a_period_that_the_log_sweep_cannot_read_leaves_the_failure_logs(self):
+    def test_tc436_a_period_that_the_log_sweep_cannot_read_leaves_the_logs_for_the_next_start(self):
         self.aged()
         recent, old = self.old_failure_logs()
+        timed, expired = self.old_logs("hooks", (2, 10))  # the hooks' timing files (TBL-005)
         for error, noted in ((locks.LockBusy(), []),
                              (configuration.ConfigurationInvalid("retention.days"),
                               [("retention", "configuration-invalid")])):
@@ -629,7 +634,14 @@ class WorkerActivationTest(unittest.TestCase):
                 # Nothing of the device's logs goes by a period that could not be read. A read that stayed
                 # busy is quiet; a configuration that is no longer valid is noted under the sweep's step.
                 self.assertEqual((recent.exists(), old.exists()), (True, True))
+                # The hooks' timing files wait as well, though no setting changes their eight days: the
+                # sweep is left whole, as it is when the worker's first read fails.
+                self.assertEqual((timed.exists(), expired.exists()), (True, True))
                 self.assertEqual([row for row in self.failures() if row[0] == "retention"], noted)
+        # The next start reads the period and sweeps what waited.
+        self.run_worker("start")
+        self.assertEqual((recent.exists(), old.exists()), (False, False))
+        self.assertEqual((timed.exists(), expired.exists()), (True, False))
 
     def test_tc436_a_store_record_that_cannot_be_looked_at_after_a_busy_step_ends_the_worker_under_its_name(self):
         session, history, injections = self.aged()
