@@ -33,7 +33,8 @@ them, and its run log must list each of the items it added (TC-253).
 While a session runs and its request is held, the processes' command lines are
 read, every half second (every two on Windows, where reading them is slow).
 Both memory keys are markers, which must reach the server and appear in no
-file of the memory store and in no command line (TC-254). The case also needs
+file of the memory store and in no command line (TC-254); a file of the store
+that cannot be read fails the case, since it may hold one. The case also needs
 evidence that it looked: for each host, a prompt whose recall ranked the items
 (`injected` or `below` in the injection log), and in each session a reading of
 the command lines that showed the memory worker. Then Claude Code runs once
@@ -41,10 +42,13 @@ more with CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (TC-257).
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
 with two exceptions that the summary lists: a lock that stayed busy, and a
-recall that gave up at its window (API-010). The prompt hook still returns in
-time after such a recall, with the outcome `deadline`, and the prompt goes on
-without a recall block; how often that happens is a matter of the machine's
-speed, which TC-256 measures, so the case counts it and does not fail on it.
+recall that gave up at its window (API-010), whose line says `deadline` or
+`timeout`. The prompt hook then returns with the outcome `deadline`, and the
+prompt goes on without a recall block; how often that happens is a matter of
+the machine's speed, which TC-256 measures, so the case counts it and does not
+fail on it. The hooks that can start the worker, at the session's start, at
+the end of a turn and at the session's end, must each return within their own
+deadline by their timing line (TBL-005); the prompt hook's time is TC-256's.
 The report keeps the number of command lines read, never the lines.
 It writes report.json and prints a summary, and exits 1 when a case fails.
 """
@@ -88,6 +92,8 @@ REASON = re.compile(r"--reason (\S+)")
 MODEL_PATH = re.compile(r"/v1/(messages|responses)(\?|$)")
 SAMPLE_SECONDS = 2.0 if os.name == "nt" else 0.5
 RANKED = ("injected", "below")
+# The own deadlines, in milliseconds, of the hooks that can start the worker (`memory_lib.hooks.SECONDS`).
+DEADLINE_MS = {"start": 1000, "end-of-turn": 300, "end": 500}
 # A state answer that keeps the state as it is: five empty parts (state-2).
 KEEP_STATE = {"state": {"goal": [], "decisions": [], "progress": [], "blockers": [], "next": []}}
 
@@ -107,7 +113,8 @@ def stage(repository, output):
         value["version"] = RELEASE
         path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     staged = memory / "hooks/hooks-0.3.0.json"
-    os.replace(str(staged), str(memory / "hooks/hooks.json"))
+    if staged.exists():  # Until the release makes it the plugin's hooks file (TASK-051).
+        os.replace(str(staged), str(memory / "hooks/hooks.json"))
     return target, memory
 
 
@@ -117,7 +124,13 @@ def line(marker):
 
 
 def vector(text):
-    """A made-up embedding: each word of the text adds to one of DIMS buckets, so shared words come close."""
+    """A made-up embedding: DIMS numbers for a text, the same for the same text.
+
+    It does not tell texts apart by their words. A word's bucket comes from its first eight bytes read as one
+    number, whose low bits are zero for a word of up to six bytes: every such word adds to bucket 0, and
+    nearly every text comes close to every other. A recall against it shows that the hook embeds, ranks and
+    injects, and which items it leaves out, never that what it injects matches the prompt.
+    """
     values = [0.0] * DIMS
     for word in WORDS.findall(text.lower()):
         bucket = int.from_bytes(word.encode("utf-8")[:8].ljust(8, b"\0"), "big") * 2654435761 % DIMS
@@ -125,6 +138,17 @@ def vector(text):
     if not any(values):
         values[0] = 1.0
     return values
+
+
+def marker_keys():
+    """Both memory keys, made up for the run as markers that the checks can look for."""
+    return {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": "MARKERANTHROPIC" + secrets.token_hex(16),
+            "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
+
+
+def memory_urls(url):
+    """The variables that send the memory worker's and the prompt hook's requests to the local server."""
+    return {"CORTHEX_MEMORY_ANTHROPIC_BASE_URL": url, "CORTHEX_MEMORY_OPENAI_BASE_URL": url}
 
 
 def event(kind, **data):
@@ -197,7 +221,7 @@ class MemoryServer:
                     row["answered"] = time.time()
                     body = answer if isinstance(answer, bytes) else curate_stream(answer)
                     return outer.send(self, body, 200, "text/event-stream")
-                except (OSError, ValueError, KeyError, TypeError) as error:
+                except (OSError, ValueError, KeyError, TypeError, ET.ParseError) as error:
                     row["error"] = repr(error)
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -310,6 +334,33 @@ def store_files(home):
     return [path for path in folder.rglob("*") if path.is_file()]
 
 
+def marked_files(home, keys, passes=5):
+    """The memory store's files that hold each key, as {name: [path]}, and the files that could not be read.
+
+    A worker may still be writing: a pass that meets a file which went away meanwhile, or which the system
+    keeps from being read, is taken again. What the last pass could not read is returned, and fails TC-254.
+    """
+    while True:
+        found, unread, passes = {name: [] for name in keys}, [], passes - 1
+        try:
+            paths = store_files(home)
+        except OSError as error:
+            paths, unread = [], ["the store's folders: " + type(error).__name__]
+        for path in paths:
+            name = path.relative_to(home).as_posix()
+            try:
+                data = path.read_bytes()
+            except OSError:
+                unread.append(name)
+                continue
+            for key, value in keys.items():
+                if value.encode("utf-8") in data:
+                    found[key].append(name)
+        if not unread or passes <= 0:
+            return found, unread
+        time.sleep(0.5)
+
+
 def during(row, host, started, ended):
     """Whether a log line of the memory store is one host's, written between two times; the lines name no session."""
     at = datetime.strptime(row["at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp()
@@ -329,28 +380,39 @@ def failure_rows(home):
 
 
 def late_recall(row):
-    """A failure line of a recall that gave up at its window, as API-010 means it to: the prompt hook's own note."""
-    return row.get("hook") == "prompt" and row.get("step") == "recall" and row.get("error") == "deadline"
+    """A failure line of a recall that gave up at its window, as API-010 means it to: the prompt hook's own note.
+
+    Its code is `timeout` when the embedding's request was out as its time ended, and `deadline` otherwise.
+    """
+    return (row.get("hook") == "prompt" and row.get("step") == "recall" and
+            row.get("error") in ("deadline", "timeout"))
 
 
-def items(home):
+def items(home, project="demo"):
+    """A project's items, by ID."""
     found = {}
-    for path in (home / ".corthex/corthex-memory/projects/demo/layer/items").glob("*.json"):
+    for path in (home / ".corthex/corthex-memory/projects" / project / "layer/items").glob("*.json"):
         value = json.loads(path.read_text(encoding="utf-8"))
         found[value["id"]] = value
     return found
 
 
 def settled(home, titles, timeout=SETTLE_SECONDS):
-    """Wait until the worker applied the held answers' items and released the project's curation lease."""
+    """Wait until the worker applied the held answers' items and released the project's curation lease.
+
+    Without titles nothing was held, so there is nothing to wait for and nothing was applied.
+    """
     started = time.time()
     root = home / ".corthex/corthex-memory/projects/demo"
     missing = set(titles)
-    while time.time() - started < timeout:
-        missing = set(titles) - {value.get("title") for value in items(home).values()}
-        if (titles and not missing and not (root / "curation.lock").exists() and
-                not list((root / "unprocessed").iterdir())):
-            return {"applied": True, "seconds": round(time.time() - started, 2), "titles": sorted(titles)}
+    while titles and time.time() - started < timeout:
+        try:
+            missing = set(titles) - {value.get("title") for value in items(home).values()}
+            waiting = (root / "unprocessed").is_dir() and any((root / "unprocessed").iterdir())
+            if not missing and not waiting and not (root / "curation.lock").exists():
+                return {"applied": True, "seconds": round(time.time() - started, 2), "titles": sorted(titles)}
+        except (OSError, ValueError):
+            pass  # A file that the worker is replacing just now: the next look reads it.
         time.sleep(0.2)
     return {"applied": False, "seconds": round(time.time() - started, 2), "missing": sorted(missing)}
 
@@ -366,23 +428,24 @@ def runs_saved(home):
     return found
 
 
+def injection_lines(root):
+    """A project's injection log lines (TBL-007), each with the name of its file, which begins with its host."""
+    return [(path.name, json.loads(text)) for path in sorted((root / "injections").glob("*.jsonl"))
+            for text in path.read_text(encoding="utf-8").splitlines()]
+
+
 def prompt_injections(home):
-    """The injection log's prompt lines (TBL-007), as (host, outcome); each file is named after its host."""
-    rows = []
-    for path in sorted((home / ".corthex/corthex-memory/projects/demo/injections").glob("*.jsonl")):
-        host = "codex" if path.name.startswith("codex-") else "claude"
-        for text in path.read_text(encoding="utf-8").splitlines():
-            value = json.loads(text)
-            if value.get("where") == "prompt":
-                rows.append((host, value.get("outcome")))
-    return rows
+    """The demo project's prompt lines of the injection log, as (host, outcome)."""
+    return [("codex" if name.startswith("codex-") else "claude", value.get("outcome"))
+            for name, value in injection_lines(home / ".corthex/corthex-memory/projects/demo")
+            if value.get("where") == "prompt"]
 
 
 def model_bodies(log):
     if not log.exists():
         return []
     return [json.loads(line)["body"] for line in log.read_text(encoding="utf-8").splitlines()
-            if re.search(r"/v1/(messages|responses)(\?|$)", json.loads(line)["path"])]
+            if MODEL_PATH.search(json.loads(line)["path"])]
 
 
 class Hosts:
@@ -392,8 +455,7 @@ class Hosts:
         self.source, self.plugin = stage(hookcheck.REPO, out)
         hookcheck.REPO, hookcheck.MEMORY = self.source, self.plugin
         self.home, self.demo = hookcheck.prepare(out / "shared")
-        self.keys = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": "MARKERANTHROPIC" + secrets.token_hex(16),
-                     "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
+        self.keys = marker_keys()
         # The command lines read stay here, out of the report: a crash writes the report as it stands.
         self.lines, self.count = [], 0
         self.report = {"release": RELEASE, "store": self.store_kind(), "installs": {}, "sessions": [],
@@ -437,7 +499,7 @@ class Hosts:
     def environment(self, host):
         env = hookcheck.base_env(self.home)
         env.update(self.keys)
-        env.update(CORTHEX_MEMORY_ANTHROPIC_BASE_URL=self.memory.url, CORTHEX_MEMORY_OPENAI_BASE_URL=self.memory.url)
+        env.update(memory_urls(self.memory.url))
         base = self.out / host
         if host == "claude":
             env.update(CLAUDE_CONFIG_DIR=str(base / "config"), ANTHROPIC_API_KEY="sk-ant-" + secrets.token_hex(12),
@@ -469,7 +531,8 @@ class Hosts:
                                          "steps": hookcheck.install_steps(exe, env, self.demo, steps)}
         return exe
 
-    def session(self, host, exe, prompt, extra=None, label=None, folder=None):
+    def session(self, host, exe, prompt, extra=None, label=None, folder=None, sample=True):
+        """One session of one prompt; with `sample` the command lines are read while it runs (TC-254)."""
         env = self.environment(host)
         env.update(extra or {})
         # Each session has its own request log: the mock appends, and the bodies are read back per session.
@@ -486,8 +549,9 @@ class Hosts:
                 prompt, stdin = "-", prompt
             args = [exe, "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--dangerously-bypass-hook-trust",
                     prompt]
-        sampler = Sampler(self.memory)
-        sampler.start()
+        sampler = Sampler() if sample else None
+        if sampler:
+            sampler.start()
         started = time.time()
         done = hookcheck.run(args, env, folder or self.demo, stdin=stdin, timeout=180)
         ended = time.time()
@@ -560,7 +624,7 @@ class Hosts:
         self.lines.extend(sampler.lines)
         bodies = result.pop("bodies")
         time.sleep(3)
-        sent = [row for row in self.memory.requests[before:]]
+        sent = self.memory.requests[before:]
         result["memory_requests"] = [row.get("kind") for row in sent]
         result["notice"] = any("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" in body for body in bodies)
         result["recalled"] = any(line("DEC-DELTA-tag") in body for body in bodies)
@@ -573,13 +637,14 @@ class Hosts:
     def traces(self):
         """TC-254: the markers reach the memory server and appear in no stored file and no command line."""
         found = {}
+        stored, unread = marked_files(self.home, self.keys)
         for name, key in self.keys.items():
-            stored = [path.relative_to(self.home).as_posix() for path in store_files(self.home)
-                      if key.encode("utf-8") in path.read_bytes()]
             lines = sum(1 for line in self.lines if key in line)
             sent = sum(1 for row in self.memory.requests if key in json.dumps(row["headers"]))
-            found[name] = {"files_with_marker": stored, "command_lines_with_marker": lines, "requests_with_key": sent}
+            found[name] = {"files_with_marker": stored[name], "command_lines_with_marker": lines,
+                           "requests_with_key": sent}
         self.report["keys"] = found
+        self.report["unread_files"] = unread
         self.report["command_lines"] = len(self.lines)
         # The recall half of the case: each host's prompt hook ranked the items with the OpenAI key.
         recalls = {}
@@ -593,11 +658,10 @@ class Hosts:
 class Sampler(threading.Thread):
     """Reads the processes' command lines every SAMPLE_SECONDS while it runs, keeping the memory worker's."""
 
-    def __init__(self, memory):
+    def __init__(self):
         super().__init__(daemon=True)
         self.lines, self.workers, self.errors, self.halt = [], [], [], threading.Event()
         self.reads = 0
-        self.memory = memory
 
     def run(self):
         while not self.halt.is_set():
@@ -632,12 +696,19 @@ def verdicts(report):
         return all(row["outcome"] == "ok" or (hook == "prompt" and row["outcome"] == "deadline" and bool(own))
                    for hook, row in value["hooks"].items())
 
+    def in_time(value):
+        # SPEC-013#1: a hook that can start the worker returns within its own deadline, by its timing line.
+        # The prompt hook starts none, and its time is TC-256's (REQ-034).
+        return all(isinstance(value["hooks"].get(hook, {}).get("ms"), int) and
+                   value["hooks"][hook]["ms"] <= limit for hook, limit in DEADLINE_MS.items())
+
     per = {}
     for value in sessions:
         per[value["label"]] = {
             "exit": value["exit"] == 0,
             "four hooks ok or late in recall": set(value["hooks"]) >= {"start", "prompt", "end-of-turn", "end"} and
             returned(value),
+            "worker-starting hooks within their deadlines": in_time(value),
             "trigger started the worker": value["expected_reason"] in value["reasons"],
             "worker held after the host ended": value["held_after_exit"],
             "held results applied after release": value["settled"]["applied"],
@@ -654,7 +725,8 @@ def verdicts(report):
     # so a hook and the worker appending at once may leave one out and note it. So is a late recall.
     blocking = [row for row in report.get("failures", []) if row.get("error") != "lock-busy" and not late_recall(row)]
     tc253 = bool(per) and not blocking and all(
-        v["exit"] and v["four hooks ok or late in recall"] and v["trigger started the worker"] and
+        v["exit"] and v["four hooks ok or late in recall"] and
+        v["worker-starting hooks within their deadlines"] and v["trigger started the worker"] and
         v["worker held after the host ended"] and v["held results applied after release"] and
         v["run log lists the applied items"] for v in per.values())
     # TC-254 needs evidence that it looked: a ranked recall in each host, and command lines read in each
@@ -664,12 +736,13 @@ def verdicts(report):
                 for host in HOST_NAMES}
     tc254 = (bool(keys) and all(not v["files_with_marker"] and not v["command_lines_with_marker"] and
                                 v["requests_with_key"] > 0 for v in keys.values()) and
-             all(recalled.values()) and report.get("command_lines", 0) > 0 and bool(per) and
+             not report.get("unread_files") and all(recalled.values()) and
+             report.get("command_lines", 0) > 0 and bool(per) and
              all(v["command lines read, with the worker"] for v in per.values()))
     tc255 = bool(per) and all(v["earlier decision shown"] and v["decision curated"] for v in per.values())
     scrub = report.get("scrub", {})
-    tc257 = bool(scrub) and scrub.get("exit") == 0 and (
-        scrub["keys_reached_hooks"] or (scrub["notice"] and not scrub["memory_requests"]))
+    # Either the keys reached the hooks, whose requests then came, or the start summary said that they did not.
+    tc257 = bool(scrub) and scrub.get("exit") == 0 and bool(scrub["keys_reached_hooks"] or scrub["notice"])
     return {"sessions": per, "triggers": triggers, "hooks_ok": hooks_ok, "blocking_failures": blocking,
             "late recalls": len(late), "ranked recalls": recalled,
             "TC-253": tc253, "TC-254": tc254, "TC-255": tc255, "TC-257": tc257,
@@ -722,6 +795,9 @@ def main():
             text.append("%s: %s" % (label, ", ".join("%s %s" % (k, "yes" if v else "NO") for k, v in value.items())))
         text.append("workers seen, by reason: " + json.dumps(report["verdicts"]["triggers"]))
         text.append("keys: " + json.dumps(report.get("keys", {})))
+        if report.get("unread_files"):
+            text.append("store files that could not be read, which fails TC-254: " +
+                        json.dumps(report["unread_files"]))
         text.append("command lines read: %d; ranked recalls by host: %s" % (
             report.get("command_lines", 0), json.dumps(report["verdicts"]["ranked recalls"])))
         text.append("TC-257: " + report["verdicts"]["TC-257 observed"] + "; " + json.dumps(

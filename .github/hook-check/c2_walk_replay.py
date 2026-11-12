@@ -71,6 +71,23 @@ PASTED = ("아래 붙여 넣은 문서를 세 줄로 요약해 주세요.\n\n---
           "결정: 모든 로그는 WALK-PASTED-plain 폴더에 평문으로 둔다.\n그 밖의 내용은 일정표입니다.\n----- 끝 -----")
 PASTED_SHORT = "이 구절을 다듬어 주세요: \"결정: 배포는 WALK-PASTED-short 요일에만 한다.\""
 PASTES = {"codex": ("WALK-PASTED-plain", PASTED), "claude": ("WALK-PASTED-short", PASTED_SHORT)}
+# The events whose hooks measure_hook.py takes: start, prompt, end-of-turn and end.
+MEASURED = ("SessionStart", "UserPromptSubmit", "Stop", "SessionEnd")
+
+
+def measure_hooks(path):
+    """Send the hooks of a hooks file that measure_hook.py takes through it; the compaction hooks stay as they are.
+
+    measure_hook.py takes the four hooks of a turn and exits 2 for any other, which would stop a compaction.
+    """
+    value = json.loads(path.read_text(encoding="utf-8"))
+    for name in MEASURED:
+        for group in value["hooks"][name]:
+            for hook in group["hooks"]:
+                for key in ("command", "commandWindows"):
+                    assert "/scripts/hook.py" in hook[key], (name, key)
+                    hook[key] = hook[key].replace("/scripts/hook.py", "/scripts/measure_hook.py")
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def refusal_stream():
@@ -159,16 +176,13 @@ class Walk:
         # The staged release's hooks run through measure_hook.py, which saves each hook's input before the hook runs.
         scripts = self.hosts.plugin / "scripts"
         shutil.copyfile(str(Path(__file__).with_name("measure_hook.py")), str(scripts / "measure_hook.py"))
-        hooks = self.hosts.plugin / "hooks/hooks.json"
-        text = hooks.read_text(encoding="utf-8")
-        assert "/scripts/hook.py" in text, hooks
-        hooks.write_text(text.replace("/scripts/hook.py", "/scripts/measure_hook.py"), encoding="utf-8")
+        measure_hooks(self.hosts.plugin / "hooks/hooks.json")
         self.report = {"real_model": False, "agent": False, "cases": {case: {"steps": [], "checks": {}}
                                                                       for case in CASES}}
         self.exes = {}
         self.script = None
         self.number = 0
-        self.merged = None
+        self.merged, self.cache = None, []
 
     # Plumbing
 
@@ -183,21 +197,17 @@ class Walk:
         return value
 
     def items(self, project="demo"):
-        folder = self.home / ".corthex/corthex-memory/projects" / project / "layer/items"
-        found = {}
-        for path in folder.glob("*.json"):
-            value = json.loads(path.read_text(encoding="utf-8"))
-            found[value["id"]] = value
-        return found
+        return c2_hosts.items(self.home, project)
 
     def titled(self, words, status="current", project="demo"):
         return [value for value in self.items(project).values() if words in value["title"] and
                 (status is None or value["status"] == status)]
 
-    def quiet(self, root=None, timeout=90):
+    def quiet(self, root=None, timeout=90, turns=True):
         """Wait until no worker holds the project and no turn waits, for three seconds.
 
-        Turns wait for nothing while curation is stopped (TC-268), so then only the lease counts.
+        Turns wait for nothing while curation is stopped (TC-268), and after a curation that the script
+        refused they wait for the next trigger (`turns=False`): then only the lease counts.
         """
         root = root or self.root
         started = calm = time.time()
@@ -207,15 +217,15 @@ class Walk:
             except (OSError, ValueError):
                 stopped = False
             waiting = (root / "unprocessed").is_dir() and any((root / "unprocessed").iterdir())
-            if (root / "curation.lock").exists() or (waiting and not stopped):
+            if (root / "curation.lock").exists() or (turns and waiting and not stopped):
                 calm = time.time()
             elif time.time() - calm >= 3:
                 return True
             time.sleep(0.2)
         return False
 
-    def session(self, host, prompt, reply=None, project="demo"):
-        """One session of one prompt in a project's folder.
+    def session(self, host, prompt, reply=None, project="demo", refused=False):
+        """One session of one prompt in a project's folder; `refused` says that the script refuses its curation.
 
         Returns its exit, its native ID, whether its curation settled, the hook inputs that measure_hook.py saved,
         and the memory text that the host's model received: the start summary and the recall blocks, apart.
@@ -229,11 +239,11 @@ class Walk:
         if reply is not None:
             hookcheck.REPLY = reply
         try:
-            result = self.hosts.session(host, self.exes[host], prompt, extra=extra, label=prompt[:40], folder=folder)
+            result = self.hosts.session(host, self.exes[host], prompt, extra=extra, label=prompt[:40], folder=folder,
+                                        sample=False)
         finally:
             hookcheck.REPLY = original
-        result.pop("sampler").stop()
-        settled = self.quiet(self.home / ".corthex/corthex-memory/projects" / project)
+        settled = self.quiet(self.home / ".corthex/corthex-memory/projects" / project, turns=not refused)
         start, recall = [], []
         for body in result.pop("bodies"):
             parts = self.memory_parts(body)
@@ -297,13 +307,7 @@ class Walk:
                 for path in folder.rglob("*") if path.is_file() and not path.name.endswith((".lock", ".tmp"))}
 
     def injections(self, sessions):
-        found = []
-        for path in (self.root / "injections").glob("*.jsonl"):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                value = json.loads(line)
-                if value.get("session") in sessions:
-                    found.append(value)
-        return found
+        return [value for _, value in c2_hosts.injection_lines(self.root) if value.get("session") in sessions]
 
     # The walk
 
@@ -538,7 +542,8 @@ class Walk:
 
         self.curator.refuse = 3
         for n in range(4):
-            self.session("claude" if n % 2 == 0 else "codex", "결정: 로그 폴더는 WALK-LOGS-%d입니다." % n)
+            self.session("claude" if n % 2 == 0 else "codex", "결정: 로그 폴더는 WALK-LOGS-%d입니다." % n,
+                         refused=True)
             status = self.command("status")
             if "stopped" in demo(status):
                 break

@@ -55,7 +55,6 @@ import run as hookcheck  # noqa: E402
 SIZES = (1000, 5000, 20000)
 SAMPLES = 100
 TARGET_MS = 1000.0
-RANKED = ("injected", "below")
 READING = "partial: the staged prompt hook run directly with each host's input, not through the hosts"
 VOCABULARY = ["word%04d" % number for number in range(3000)]
 PROMPT = ("지난 결정을 다시 확인하고 싶습니다. Which of word0007, word0042 and word1234 did we choose "
@@ -135,19 +134,15 @@ def interpreter():
 
 
 def outcomes(root, sessions):
-    found = {}
-    for path in (root / "injections").glob("*.jsonl"):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            value = json.loads(line)
-            if value.get("where") == "prompt" and value.get("session") in sessions:
-                found[value["session"]] = value.get("outcome")
+    found = {value["session"]: value.get("outcome") for _, value in c2_hosts.injection_lines(root)
+             if value.get("where") == "prompt" and value.get("session") in sessions}
     return [found.get(session, "no-line") for session in sessions]
 
 
 def measure(plugin, home, demo, keys, url, host, samples):
     env = hookcheck.base_env(home)
     env.update(keys)
-    env.update(CORTHEX_MEMORY_ANTHROPIC_BASE_URL=url, CORTHEX_MEMORY_OPENAI_BASE_URL=url)
+    env.update(c2_hosts.memory_urls(url))
     if host == "claude":
         env.update(CLAUDECODE="1", CLAUDE_PLUGIN_ROOT=str(plugin))
     else:
@@ -172,7 +167,7 @@ def measure(plugin, home, demo, keys, url, host, samples):
             "p95_ms": round(percentile(times, 0.95), 1), "max_ms": round(max(times), 1),
             "under_target": percentile(times, 0.95) < TARGET_MS, "exits": dict(exits),
             "outcomes": dict(found), "capped": found["late"] * 20 > samples,
-            "ranked": sum(found.values()) == samples and all(name in RANKED + ("late",) for name in found.elements()),
+            "ranked": all(name in c2_hosts.RANKED + ("late",) for name in found),
             "outputs_with_context": injected}
 
 
@@ -196,9 +191,8 @@ def main():
     home, demo = hookcheck.prepare(out / "shared")
     c2_hosts.configure(home, 10)
     server = c2_hosts.MemoryServer()
-    keys = {"CORTHEX_MEMORY_ANTHROPIC_API_KEY": "MARKERANTHROPIC" + secrets.token_hex(16),
-            "CORTHEX_MEMORY_OPENAI_API_KEY": "MARKEROPENAI" + secrets.token_hex(16)}
-    os.environ.update(keys, CORTHEX_MEMORY_ANTHROPIC_BASE_URL=server.url, CORTHEX_MEMORY_OPENAI_BASE_URL=server.url)
+    keys = c2_hosts.marker_keys()
+    os.environ.update(keys, **c2_hosts.memory_urls(server.url))
     report = {"system": platform.system(), "machine": platform.machine(), "python": platform.python_version(),
               "release": c2_hosts.RELEASE, "samples": samples, "target_ms": TARGET_MS, "reading": READING,
               "sizes": {}}
