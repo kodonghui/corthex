@@ -29,7 +29,7 @@ ID_KINDS = [
     "context", "term", "requirement", "flow", "spec", "table", "api",
     "screen", "task", "test", "bug", "decision", "scene",
 ]
-PROJECT_FIELDS = {"name", "title", "team", "language", "records", "ask_before", "parts", "repos", "ids", "stages"}
+PROJECT_FIELDS = {"name", "title", "team", "language", "records", "ask_before", "parts", "on_nexus", "repos", "ids", "stages"}
 STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip"}
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
 # Sticky colours a Miro board accepts by name.
@@ -187,6 +187,8 @@ class StageContractTest(unittest.TestCase):
         self.assertRegex(project["name"], KEBAB)
         self.assertIsInstance(project["ask_before"], list)
         self.assertTrue(all(isinstance(item, str) and item.strip() for item in project["ask_before"]))
+        # A copied example must not make a session say that a NEXUS server is missing.
+        self.assertIs(project["on_nexus"], False)
         parts = project["parts"]
         self.assertIsInstance(parts, list)
         self.assertGreaterEqual(len(parts), 1)
