@@ -18,8 +18,9 @@ from unittest import mock
 from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (activation, base, commands, format2, index_worker, injection_log, item_types, locks, raw_log,
-                        retention, run_log, state_types, store, worker_launch, worker_runtime)
+from memory_lib import (activation, base, commands, format2, history_retention, index_worker, injection_log,
+                        item_types, locks, raw_log, retention, run_log, state_types, store, worker_launch,
+                        worker_runtime)
 import test_memory_curation_worker as worker_fixture
 from test_memory_curator_answers import answer, change, quote
 from test_memory_run_log import logged
@@ -289,6 +290,50 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(len(injections.read_bytes().splitlines()), 1)
         self.assertEqual({path.name: path.read_bytes() for path in elsewhere.iterdir()}, outside)
         self.assertEqual((swept, self.failures()), ([1], [("retention", "lost-lock")]))
+
+    def run_logs(self):
+        return sorted(path.name for path in (self.root / "runs").iterdir())
+
+    def history_times(self):
+        return [json.loads(line)["at"] for line in (self.root / "state-history.jsonl").read_bytes().splitlines()]
+
+    def test_tc436_a_raw_step_that_fails_leaves_the_other_families_to_expire(self):
+        session, history, injections = self.aged()
+        with mock.patch.object(retention, "retain_project", side_effect=PermissionError("held open")):
+            self.run_worker("start")
+        # The raw log stays for the next start; the line history, run logs and injection logs still expire.
+        self.assertEqual(self.seqs(session), [1, 2, 3])
+        self.assertEqual(self.history_times(), [history[1]["at"]])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual([step for step, _ in self.failures()], ["retention"])
+
+    def test_tc436_a_family_that_stays_busy_within_the_phase_leaves_the_next_family_to_run(self):
+        session, history, injections = self.aged()
+        before = (self.root / "state-history.jsonl").read_bytes()
+        # As when the owner check's read of the configuration outlasts its second.
+        with mock.patch.object(history_retention, "retain_history", side_effect=locks.LockBusy()):
+            self.run_worker("start")
+        self.assertEqual((self.root / "state-history.jsonl").read_bytes(), before)
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
+
+    def test_tc436_without_its_layer_folder_a_project_still_expires_its_run_and_injection_logs(self):
+        session, history, injections = self.aged()
+        before = (self.root / "state-history.jsonl").read_bytes()
+        away = self.folder.parent / "layer-away"
+        (self.root / "layer").rename(away)
+        with mock.patch.object(worker_runtime, "_curated", return_value=True):
+            self.run_worker("start")
+        # The line history needs the layer folder, which its owner check lists, and waits for it.
+        self.assertFalse((self.root / "layer").exists())
+        self.assertEqual((self.root / "state-history.jsonl").read_bytes(), before)
+        self.assertEqual(self.seqs(session), [1, 2])
+        self.assertEqual(self.run_logs(), ["r_0000000000a2.json"])
+        self.assertEqual(len(injections.read_bytes().splitlines()), 1)
+        self.assertEqual(self.failures(), [])
 
     # TC-437
 
