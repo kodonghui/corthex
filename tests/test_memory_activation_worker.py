@@ -19,9 +19,9 @@ from unittest import mock
 from _common import ROOT
 SCRIPTS = ROOT / "plugins/corthex-memory/skills/corthex-memory/scripts"
 sys.path.insert(0, str(SCRIPTS))
-from memory_lib import (activation, base, c2_store, commands, consolidation_worker, format2, history_retention,
-                        index_worker, injection_log, item_types, locks, raw_log, retention, run_log, state_types,
-                        store, worker_launch, worker_runtime, worker_support)
+from memory_lib import (activation, base, c2_retention, c2_store, commands, configuration, consolidation_worker,
+                        format2, history_retention, index_worker, injection_log, item_types, locks, raw_log,
+                        retention, run_log, state_types, store, worker_launch, worker_runtime, worker_support)
 import test_memory_curation_worker as worker_fixture
 from test_memory_curator_answers import answer, change, quote
 from test_memory_run_log import logged
@@ -571,6 +571,65 @@ class WorkerActivationTest(unittest.TestCase):
         self.assertEqual(kept(other), ([1, 2], 2, ["r_0000000000a1.json", "r_0000000000a2.json"], 2))
         self.assertEqual(kept(self.root), ([1, 2, 3], 2, ["r_0000000000a1.json", "r_0000000000a2.json"], 2))
         self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def old_failure_logs(self):
+        """Failure logs of the device whose days are 102 and 400 days back: the paths."""
+        logs = self.folder / "logs"
+        logs.mkdir(exist_ok=True)
+        paths = [logs / ("failures-%s.jsonl" % (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d"))
+                 for days in (102, 400)]
+        for path in paths:
+            path.write_bytes(b"")
+        return paths
+
+    def test_tc436_a_period_raised_during_the_last_project_s_turn_is_the_log_sweep_s_period(self):
+        session, history, injections = self.aged()
+        recent, old = self.old_failure_logs()
+        raw = retention.retain_project
+
+        def raised(*args, **options):
+            # The user raises the period once the project's turn has read the earlier one.
+            result = raw(*args, **options)
+            self.configure(projects={"sample": {"enabled": True, "since": self.since}}, retention={"days": 365})
+            return result
+        with mock.patch.object(retention, "retain_project", side_effect=raised):
+            self.run_worker("start")
+        # The log sweep reads the period again: a failure log that only the earlier period had expired stays,
+        # and one past the new period goes.
+        self.assertEqual((recent.exists(), old.exists()), (True, False))
+        self.assertEqual((self.run_logs(), len(injections.read_bytes().splitlines())),
+                         (["r_0000000000a1.json", "r_0000000000a2.json"], 2))
+        self.assertEqual(self.failures(), [("retention", "RuntimeError")])
+
+    def start_whose_log_sweep_cannot_read_the_period(self, error):
+        """Start a session in which the configuration's read raises `error` once the last project's turn has ended."""
+        retain, read, unread = c2_retention.retain_project, c2_store.C2Store.configuration, []
+
+        def reading(memory, *args, **options):
+            if unread:
+                raise unread[0]
+            return read(memory, *args, **options)
+
+        def turn(*args, **options):
+            result = retain(*args, **options)
+            unread.append(error)
+            return result
+        with mock.patch.object(c2_store.C2Store, "configuration", reading), \
+                mock.patch.object(c2_retention, "retain_project", side_effect=turn):
+            self.run_worker("start")
+
+    def test_tc436_a_period_that_the_log_sweep_cannot_read_leaves_the_failure_logs(self):
+        self.aged()
+        recent, old = self.old_failure_logs()
+        for error, noted in ((locks.LockBusy(), []),
+                             (configuration.ConfigurationInvalid("retention.days"),
+                              [("retention", "configuration-invalid")])):
+            with self.subTest(error=type(error).__name__):
+                self.start_whose_log_sweep_cannot_read_the_period(error)
+                # Nothing of the device's logs goes by a period that could not be read. A read that stayed
+                # busy is quiet; a configuration that is no longer valid is noted under the sweep's step.
+                self.assertEqual((recent.exists(), old.exists()), (True, True))
+                self.assertEqual([row for row in self.failures() if row[0] == "retention"], noted)
 
     def test_tc436_a_store_record_that_cannot_be_looked_at_after_a_busy_step_ends_the_worker_under_its_name(self):
         session, history, injections = self.aged()

@@ -33,6 +33,9 @@ When one of those looks cannot confirm the period, because the user changed it
 meanwhile, the configuration is no longer valid or its read stays busy, the
 history, the run logs and the injection logs of the project are all kept for
 the next start, and the next project's turn reads the period that is set then.
+After the projects, `retain_logs` reads the configuration once more for the
+device's failure logs, so that they do not go by a period that a project's turn
+found changed, or that a later read could not confirm.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -83,6 +86,17 @@ def _settings(memory, deadline):
     return memory.configuration(memory.note, deadline=min(deadline, clock.now() + worker_support.OPERATION_SECONDS))
 
 
+def retain_logs(memory, deadline):
+    """The device's log sweep by the retention period that is set as it begins.
+
+    A project's turn may have found the period changed, or its read may have stayed busy and left the
+    one read before it. A read that stays busy here, or a configuration that is no longer valid, leaves
+    the logs for the next start, as it leaves a project.
+    """
+    memory.config = _settings(memory, deadline)
+    return retention.retain_logs(memory, deadline)
+
+
 def retain_project(memory, project, owner, deadline, when=None):
     """Every format-2 record of `project` past the retention period, under the caller's curation lease."""
     root = memory.folder / "projects" / base.project_folder_name(project)
@@ -91,7 +105,7 @@ def retain_project(memory, project, owner, deadline, when=None):
         raise locks.LostLock()
     moment = when if when is not None else datetime.now(timezone.utc)
     # The period set as this project's turn begins: an earlier project's turn may have taken long, or found
-    # the period changed. The log sweep after the projects goes by the last one read.
+    # the period changed. The log sweep after the projects reads it again (`retain_logs`).
     memory.config = _settings(memory, deadline)
     days = memory.config.values["retention"]["days"]
     confirmed = False  # Whether the last look under the layer lease found the period still this one.

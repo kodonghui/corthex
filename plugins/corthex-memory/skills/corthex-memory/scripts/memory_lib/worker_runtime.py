@@ -11,7 +11,8 @@ meanwhile; a step that ends with a lost lease while the worker's own lease and
 the store still hold, as for a link that the path fence refuses, ends that run
 only. At a session start the configuration is read again, and every project's
 retention then covers its line history, run logs and injection logs too
-(`c2_retention`); a read that stays busy, or a configuration that is no longer
+(`c2_retention`), each project and then the device's log sweep reading the
+period once more; a read that stays busy, or a configuration that is no longer
 valid, leaves the sweep for the next start, since the sweep must not go by a
 period that it could not read. A store that a migration holds, of a newer
 format or damaged ends the worker without a write.
@@ -133,11 +134,9 @@ def _step(memory, step, action, project, owner, deadline):
             memory.check(deadline, memory.held)
         except locks.LockBusy:
             return "stop"  # The run's time is over, as a returned `deadline` says.
-        except locks.LostLock as error:
-            memory.note(error, step=step)
-            return "lost"
         except Exception as error:
-            # The store record could not be looked at: the worker ends, as in `_ended`.
+            # The worker's lease or the store is gone, or the store record could not be looked at: the
+            # worker ends, as in `_ended`.
             memory.note(error, step=step)
             return "lost"
         return None
@@ -192,9 +191,11 @@ def run(project, reason, expected_device=None, folder=None):
             return  # A store that a migration holds, of a newer format or damaged.
         if kind == activation.FORMAT_2:
             from . import c2_retention, c2_store
-            memory, retain = c2_store.C2Store(folder, expected_device), c2_retention.retain_project
+            memory = c2_store.C2Store(folder, expected_device)
+            retain, retain_logs = c2_retention.retain_project, c2_retention.retain_logs
         else:
-            memory, retain = worker_support.WorkerStore(folder, expected_device), retention.retain_project
+            memory = worker_support.WorkerStore(folder, expected_device)
+            retain, retain_logs = retention.retain_project, retention.retain_logs
         deadline = _deadline()
         root = _root(memory, project, deadline)
         if root is not None:
@@ -213,7 +214,7 @@ def run(project, reason, expected_device=None, folder=None):
             memory.config = memory.configuration(memory.note, deadline=clock.now() + worker_support.OPERATION_SECONDS)
         for name in _projects(memory):
             _phase(memory, retain, step, name)
-        _phase(memory, retention.retain_logs, step)
+        _phase(memory, retain_logs, step)
         step = "restore"
         _phase(memory, cleanup.clean_store, step)
         for name in _projects(memory):
