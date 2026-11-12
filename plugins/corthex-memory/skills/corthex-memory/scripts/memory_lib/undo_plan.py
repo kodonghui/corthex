@@ -19,9 +19,11 @@ or kept together: an item and the items that it replaced, merged or was
 replaced by, an item and the pins that moved with it, and state lines whose
 places in the run anchor one another. A group is kept too when reversing it
 would leave a kept or later object invalid: a pin on, a visible line citing or
-an item replaced by an item that would stop being current; a line placed next
-to a line that a later change placed; a restored decision without a current
-decision; or a reopened candidate without two current items.
+an item replaced by an item that would stop being current, the last unless
+that item's replacements would end at a current item, as a merge of an item
+that had replaced another leaves them; a line placed next to a line that a
+later change placed; a restored decision without a current decision; or a
+reopened candidate without two current items.
 """
 import hashlib
 import json
