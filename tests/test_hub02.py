@@ -988,18 +988,21 @@ class CommandOutcomesTest(HubCase):
         self.assertEqual(box.files()[0].read_bytes(), before)
         self.assertEqual(rows[0]["answer"]["held_commit"], "checked when sent")
 
-    def test_remove_preview_uses_get_and_only_real_removal_clears_queue(self):
+    def test_remove_reads_the_projects_data_and_keeps_the_outbox(self):
+        # 0.4.0: remove sends no removal; the user removes the project in NEXUS (API-137, SPEC-202).
         box = BOX.Outbox(self.home, "acme-shop")
         with box.lease() as lease:
             box.save(box.make("reply", "/api/spaces/acme-shop/comments/" + COMMENT + "/replies", SESSION, {"text": "Old"}), {"failure": "no network"}, lease)
-        _, rows, client = self.execute(["remove", "acme-shop", "--dry-run"])
-        self.assertEqual(client.calls[0][0:2], ("GET", "/api/snapshots/acme-shop/removal"))
-        self.assertTrue(box.files())
+        for words in (["remove", "acme-shop"], ["remove", "acme-shop", "--dry-run"]):
+            with self.subTest(words=words):
+                _, rows, client = self.execute(words)
+                self.assertEqual([call[0:2] for call in client.calls], [("GET", "/api/spaces/acme-shop/data")])
+                self.assertEqual((rows[0]["outcome"], rows[0]["answer"], rows[0]["address"]),
+                                 ("done", {"ok": True}, "https://nexus.example.com/p/acme-shop#data"))
+                self.assertEqual(len(box.files()), 1)
         _, rows, client = self.execute(["remove", "acme-shop"], FakeClient([HTTP.result("refused", problem={"status": 404, "code": "project_not_found"})]))
-        self.assertEqual(client.calls[0][0], "DELETE")
-        self.assertEqual(rows[0]["outcome"], "done")
-        self.assertIn("next_push", rows[0]["answer"])
-        self.assertEqual(box.files(), [])
+        self.assertEqual((rows[0]["outcome"], rows[0]["answer"], rows[0].get("address")), ("done", {"nothing_to_remove": True}, None))
+        self.assertEqual(len(box.files()), 1)
 
     def test_local_commands_have_one_json_envelope_per_project(self):
         for words in (["snapshot", "acme-shop", "--json"],

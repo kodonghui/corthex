@@ -152,10 +152,10 @@ Settings in `~/.corthex/profile.json`:
 
 - `url`: the server. `--url` and the environment variable `CORTHEX_NEXUS_URL` take precedence. It must use `https`; `http` works only for `localhost`, `127.0.0.1` and `::1`, for testing.
 - `push`: the projects that may be sent. `hub.py push` with no names sends these; a name that is not listed is refused.
-- `hub.py remove` deletes the projects it names from the server, listed in `push` or not.
+- `hub.py remove` sends no removal: for each project it names, listed in `push` or not, it reads `GET /api/spaces/<project>/data` and gives the address of the project's data, `<url>/p/<project>#data`, where the user removes the project under their own sign-in.
 - The service token is read from `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET` and sent as the Cloudflare Access headers `CF-Access-Client-Id` and `CF-Access-Client-Secret`. A server on this machine may be used without a token.
 
-Each push first drains the outbox and reads `GET /api/snapshots/<project>/held`, then makes a fresh snapshot. No held snapshot or the same commit needs no `replaces`; a descendant replaces the held commit. An older or missing commit needs a fetch; divergence needs explicit user agreement before `--replace-held`. Commit times never decide ancestry. `--dry-run` sends nothing, including the outbox and held question. Removal preview reads `GET /api/snapshots/<project>/removal`; only an actual successful removal clears the local queue.
+Each push first drains the outbox and reads `GET /api/snapshots/<project>/held`, then makes a fresh snapshot. No held snapshot or the same commit needs no `replaces`; a descendant replaces the held commit. An older or missing commit needs a fetch; divergence needs explicit user agreement before `--replace-held`. Commit times never decide ancestry. `--dry-run` sends nothing, including the outbox and held question. A server from before the design revision has no project's data, so `remove` reads its removal preview, `GET /api/snapshots/<project>/removal`, with the remark `server-older`. `remove` keeps the local queue; a write for a removed project is dropped with its `404` at the next contact.
 
 `POST <url>/api/snapshots` sends compact JSON and returns the revision and 0.2 space/picture/checkpoint counts. Redirects are not followed. A phase-1 held endpoint without a Problem code requires a server upgrade. The hub reports the server's Problem Details and retains only retryable agent writes, never pushes.
 
@@ -168,7 +168,8 @@ The server in `nexus/` answers only requests whose Access signature, issuer and 
 | `POST /api/snapshots` | The revision and, for 0.2, resulting space/picture/discrepancy/checkpoint counts; a 0.1 snapshot retains its legacy name/revision answer |
 | `GET /api/snapshots` | `{"projects": [...]}`, with each project's `name`, `revision`, `generated_at`, `received_at` and `bytes` |
 | `GET /api/snapshots/<project>` | the stored snapshot |
-| `DELETE /api/snapshots/<project>` | `{"name": "acme-shop", "removed": true}`, or `404` when the server does not hold the project. `hub.py remove` sends this. |
+| `GET /api/spaces/<project>/data` | the project's data: its stored snapshot, the agent's last read and what a removal deletes, with the open entries by ID. `hub.py remove` reads this. |
+| `DELETE /api/snapshots/<project>` | `{"name": "acme-shop", "removed": true}`, or `404` when the server does not hold the project. A server of the design revision takes it only under the user's own sign-in; `hub.py remove` never sends it. |
 | `GET /` | the hub page, with `origin` set to `server` |
 
 The server refuses a request with:

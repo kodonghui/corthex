@@ -895,5 +895,87 @@ class CheckpointRequestTest(RevisionCase):
         self.assertEqual((self.posts(), self.waiting()), ([], []))
 
 
+class RemoveTest(RevisionCase):
+    """TASK-292: remove sends no removal; it reads the project's data and gives its address (API-137, API-177, SPEC-115, SPEC-202)."""
+
+    DATA = "/api/spaces/acme/data"
+    DRY_RUN = "/api/snapshots/acme/removal"
+
+    def setUp(self):
+        super().setUp()
+        self.profile()
+        self.register()
+
+    @staticmethod
+    def data():
+        """A project's data in the contract's ProjectData form, with an entry of each open kind."""
+        removal = {"project": "acme",
+                   "deletes": {"snapshot": True, "space": True, "pictures": 2, "discrepancies": 1, "comments": 2, "replies": 1,
+                               "decisions": 0, "proposals": 1, "edits": 1, "checkpoints": 1},
+                   "open": {"comments": {"total": 2, "ids": ["nc_" + "a" * 12, "nc_" + "b" * 12]},
+                            "proposals": {"total": 1, "ids": ["np_" + "c" * 12]},
+                            "reflections": {"total": 1, "ids": ["ne_" + "d" * 12]},
+                            "checkpoints": {"total": 1, "ids": ["nk_" + "e" * 12]}}}
+        return {"project": "acme", "title": "Synthetic project", "repository": None, "commit": None, "revision": 4,
+                "generated_at": "2026-11-13T09:00:00+09:00", "pushed_at": "2026-11-13T00:00:01.000Z", "space": True,
+                "read_at": None, "read_session": None, "unread_since": None, "removal": removal}
+
+    def test_TC_1688_remove_done_the_dry_run_and_the_address(self):
+        answer = self.data()
+        self.peer.on("GET", self.DATA, (200, answer))
+        waiting = self.seed_write()
+        for words in ([], ["--dry-run"]):
+            with self.subTest(words=words):
+                code, rows, err = self.hub("remove", "acme", *words)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", []), err)
+                self.assertEqual((rows[0]["answer"], rows[0]["address"]), (answer, self.peer.url + "/p/acme#data"))
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("GET", self.DATA)] * 2)
+        self.assertTrue(waiting.is_file(), "the project's outbox stays")
+        code, out, err = self.hub("remove", "acme", json_lines=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn("\n  address: " + self.peer.url + "/p/acme#data\n  no removal was sent: the user removes the project", out)
+        self.assertIn('"ids": [\n          "np_' + "c" * 12, out)
+
+    def test_TC_1689_remove_done_nothing_to_remove(self):
+        self.peer.on("GET", self.DATA, problem(404, "project_not_found"))
+        code, rows, err = self.hub("remove", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["answer"]), (0, "done", {"nothing_to_remove": True}), err)
+        self.assertNotIn("address", rows[0])
+        code, out, _ = self.hub("remove", "acme", json_lines=False)
+        self.assertIn("  nothing to remove: the server holds no such project", out)
+        self.assertEqual([call["method"] for call in self.peer.calls], ["GET", "GET"])
+
+    def test_TC_1690_a_write_that_waits_for_a_removed_project(self):
+        waiting = self.seed_write()
+        replies = "/api/spaces/acme/comments/nc_" + "a" * 12 + "/replies"
+        self.peer.on("POST", replies, problem(404, "project_not_found"))
+        self.peer.on("GET", "/api/spaces/acme/todo", problem(404, "space_not_found"))
+        code, rows, err = self.hub("todo", "acme", "--session", "s-1")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["outbox"]["dropped"]), (0, "done", 1), err)
+        self.assertEqual(rows[0]["outbox"]["notices"][0]["problem"]["code"], "project_not_found")
+        self.assertFalse(waiting.exists())
+        # The command goes on after the write is dropped.
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("POST", replies), ("GET", "/api/spaces/acme/todo")])
+
+    def test_a_server_of_before_shows_its_dry_run(self):
+        dry = self.data()["removal"]
+        self.peer.on("GET", self.DRY_RUN, (200, dry))
+        code, rows, err = self.hub("remove", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["answer"], rows[0]["remarks"]), (0, "done", dry, ["server-older"]), err)
+        self.assertNotIn("address", rows[0])
+        self.assertEqual([call["path"] for call in self.peer.calls], [self.DATA, self.DRY_RUN])
+        code, out, _ = self.hub("remove", "acme", json_lines=False)
+        self.assertIn("  no removal was sent: this server has no project's data yet", out)
+        self.peer.on("GET", self.DRY_RUN, problem(404, "project_not_found"))
+        code, rows, err = self.hub("remove", "acme")
+        self.assertEqual((code, rows[0]["answer"], rows[0]["remarks"]), (0, {"nothing_to_remove": True}, ["server-older"]), err)
+
+    def test_a_refusal_is_reported_and_removes_nothing(self):
+        self.peer.on("GET", self.DATA, problem(403, "not_allowed"))
+        code, rows, err = self.hub("remove", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["problem"]["code"]), (1, "refused", "not_allowed"), err)
+        self.assertEqual([call["method"] for call in self.peer.calls], ["GET"])
+
+
 if __name__ == "__main__":
     unittest.main()

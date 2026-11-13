@@ -61,7 +61,7 @@ The checks and the forms of source the hub reads are in [references/reading.md](
 4. A push that the server answers by holding no such project, also after the user removed it, is the project's first: the hub sends nothing and refuses it with `first push needs --first`. Tell the user and ask; after their yes for that project, run `hub.py push PROJECT --first`, which takes exactly one project. On a project that the server holds, `--first` changes nothing.
 5. The hub drains pending writes, asks for the held commit and compares ancestry before sending. A descendant replaces it; an older or missing commit needs a fetch. Divergence names both commits: use `--replace-held` only after the user agrees. A phase-1 server needs the 0.2 release. Report the actual refusal; a refused token needs its Access setup fixed.
 
-`hub.py remove <project>` deletes a project from the server; ask before you run it. Taking a project out of `nexus.push` stops further pushes but leaves what the server holds.
+Only the user removes a project, in NEXUS under their own sign-in. `hub.py remove PROJECT` sends no removal: it reads the project's data and shows what a removal deletes, with the open comments, open proposals, pending reflections and checkpoints not yet recorded by ID, and the address of the project's data, `<nexus.url>/p/<project>#data`, where the user removes it. `--dry-run` does the same. Show both, offer to answer, reflect or record those entries first, and say that a removed project comes back only by a first push that the user agrees to and, while the project is in `nexus.push`, how to take it off the list. The project's outbox stays: a write that waits for a removed project is dropped with its `404` at the next contact. `404 project_not_found` is nothing to remove. A server from before the design revision has no project's data yet, so the hub shows its dry run instead, with the remark `server-older`. Taking a project out of `nexus.push` stops further pushes but leaves what the server holds.
 
 ### A session without a profile, and can-send
 
@@ -106,4 +106,4 @@ The write is queued before its first HTTP call. If its outbox cannot be written,
 
 - Write only stage records when using `status`; never edit other repository files or snapshots from this skill.
 - Never record a state, a checkpoint or a finding the user did not give or you did not check.
-- Never send a project that is not listed in `nexus.push`, never remove one from the server without the user's go-ahead, and never put a token where it would be saved or shown.
+- Never send a project that is not listed in `nexus.push`, never put a token where it would be saved or shown, and leave a project's removal to the user, in NEXUS.

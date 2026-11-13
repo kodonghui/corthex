@@ -36,6 +36,10 @@ HOUR, DAY, WEEK = 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60
 SINCE = (("comments", "last_at"), ("discrepancies", "opened_at"), ("reflections", "made_at"), ("checkpoints", "passed_at"))
 # 0.4.0: a project's first push waits for the user's yes, which --first carries (SPEC-111, REQ-107).
 FIRST_PUSH = "first push needs --first"
+# 0.4.0: remove sends no removal; only the user removes a project, in NEXUS (SPEC-115, SPEC-202).
+REMOVE_HERE = "no removal was sent: the user removes the project at the address above, under their own sign-in"
+REMOVE_OLDER = "no removal was sent: this server has no project's data yet, so the answer is its dry run of a removal"
+NOTHING_TO_REMOVE = "nothing to remove: the server holds no such project"
 # 0.4.0: a checkpoint request is taken only in form, and the hub reads the to-do before it (SPEC-197, SPEC-191).
 READ_FIRST = "read the to-do first"
 UNKNOWN_STAGE = "the comment's stage could not be read, so nothing was kept; send the request again"
@@ -621,15 +625,20 @@ def execute(args, home, api, env=None, client_factory=None):
                             lease.renew()
                             value = client.call("POST", "/api/snapshots", snapshot)
                 elif command == "remove":
+                    # 0.4.0: remove sends no removal. It reads the project's data and gives the address of its
+                    # panel, where the user removes the project under their own sign-in (SPEC-115, SPEC-202).
                     lease.renew()
-                    path = "/api/snapshots/" + name + ("/removal" if args.dry_run else "")
-                    value = client.call("GET" if args.dry_run else "DELETE", path)
-                    if (value.get("problem") or {}).get("code") == "project_not_found":
-                        value = {"outcome": "done", "answer": {"removed": False}}
-                    if value["outcome"] == "done" and not args.dry_run:
-                        box.clear(lease)
-                        if name in allowed:
-                            value.setdefault("answer", {})["next_push"] = "brings this project back with an empty space; remove it from nexus.push to stop pushes"
+                    value = client.call("GET", "/api/spaces/" + name + "/data")
+                    code = (value.get("problem") or {}).get("code")
+                    if code == "not_found" or value.get("failure") == "HTTP 404":
+                        # How versions meet: a server of before has no project's data; its dry run shows what a removal deletes.
+                        lease.renew()
+                        value = dict(client.call("GET", "/api/snapshots/" + name + "/removal"), remarks=["server-older"])
+                        code = (value.get("problem") or {}).get("code")
+                    if code == "project_not_found":
+                        value = {"outcome": "done", "answer": {"nothing_to_remove": True}, "remarks": value.get("remarks")}
+                    elif value["outcome"] == "done" and "server-older" not in (value.get("remarks") or ()):
+                        value = dict(value, address=place.url.rstrip("/") + "/p/" + name + "#data")
                 elif command == "todo":
                     value = read_todo(client, home, name, session, kept, boxes)
                 elif command == "show":
@@ -697,6 +706,11 @@ def emit(args, rows, h):
             elif row.get("new") is not None:
                 # A checkpoint request held back names what came in since the session's read before.
                 h.say("  new: " + json.dumps(row["new"], ensure_ascii=False))
+            if row.get("address"):
+                h.say("  address: " + row["address"])
+            if row["command"] == "remove" and row["outcome"] == "done":
+                h.say("  " + (NOTHING_TO_REMOVE if (row["answer"] or {}).get("nothing_to_remove") else
+                              REMOVE_OLDER if "server-older" in (row.get("remarks") or ()) else REMOVE_HERE))
             for remark in row.get("remarks") or ():
                 h.say("  " + remark + ": " + REMARKS.get(remark, ""))
             if "recovery" in row:

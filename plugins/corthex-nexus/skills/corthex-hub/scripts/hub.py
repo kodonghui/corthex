@@ -2222,10 +2222,10 @@ def parser():
     send_cmd.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
     send_cmd.add_argument("--dry-run", action="store_true", help="show what would be sent without sending it")
 
-    drop = commands.add_parser("remove", help="remove projects from your own NEXUS server")
-    drop.add_argument("project", nargs="+", help="projects to remove from the server")
+    drop = commands.add_parser("remove", help="show what removing projects from NEXUS deletes and where the user removes them; sends no removal")
+    drop.add_argument("project", nargs="+", help="projects whose data to show")
     drop.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
-    drop.add_argument("--dry-run", action="store_true", help="show what would be removed without removing it")
+    drop.add_argument("--dry-run", action="store_true", help="the same: remove never sends a removal")
     companion("commands").configure(top, commands, {"snapshot":snap, "status":stat, "build":build, "push":send_cmd, "remove":drop}, None)
     return top
 
