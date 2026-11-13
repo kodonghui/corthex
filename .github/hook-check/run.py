@@ -147,8 +147,28 @@ class Mock:
         return "".join("event: " + event["type"] + "\ndata: " + json.dumps(event, ensure_ascii=False) + "\n\n" for event in events).encode("utf-8")
 
 
+def end_tree(process):
+    """End a process that this script started, with the processes that it started.
+
+    On POSIX the process leads a session of its own, and its group is ended. On Windows that is the work of
+    `taskkill`, taken by its whole path from the system's folder: by its bare name Windows would look for it in
+    the current folder first. Where it cannot be started, the process alone is ended.
+    """
+    if os.name != "nt":
+        os.killpg(process.pid, signal.SIGKILL)
+        return
+    program = os.path.join(os.environ.get("SystemRoot") or r"C:\Windows", "System32", "taskkill.exe")
+    try:
+        subprocess.run([program, "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+    except OSError:
+        process.kill()
+
+
 def run(args, env, cwd=None, stdin="", timeout=180, line=None):
-    """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe."""
+    """Runs a process with a timeout that also ends its children; line is a raw command line for cmd.exe.
+
+    An interrupt of this process ends the process and its children too, and is raised again.
+    """
     start = time.time()
     started_ns = native_evidence.clock_ns()
     try:
@@ -157,16 +177,22 @@ def run(args, env, cwd=None, stdin="", timeout=180, line=None):
                                    start_new_session=os.name != "nt")
     except OSError as error:
         return {"exit": None, "error": str(error), "stdout": "", "stderr": "", "seconds": 0}
+
     try:
         out, err = process.communicate(stdin.encode("utf-8"), timeout=timeout)
         code = process.returncode
     except subprocess.TimeoutExpired:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
+        end_tree(process)
         out, err = process.communicate()
         code = "timeout"
+    except BaseException:
+        # An interrupt of this process. On POSIX the child has its own session, so it would run on without it.
+        try:
+            end_tree(process)
+            process.wait(timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        raise
     return {"exit": code, "seconds": round(time.time() - start, 1), "pid": process.pid,
             "started_monotonic_ns": started_ns, "ended_monotonic_ns": native_evidence.clock_ns(),
             "stdout": out.decode("utf-8", "replace"), "stderr": err.decode("utf-8", "replace")}
