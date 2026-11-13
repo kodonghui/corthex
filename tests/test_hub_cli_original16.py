@@ -243,7 +243,8 @@ class HubOriginalCli16Test(unittest.TestCase):
             self.check(label + ": one envelope", len(rows), 1)
             self.check(label + ": decoded output privacy", private_output_absent([rows, stderr, plain_objects(stderr)], self.home))
             row = rows[0]
-            self.check(label + ": envelope keys", set(row), ENVELOPE | ({"recovery"} if "recovery" in row else set()))
+            self.check(label + ": envelope keys", set(row), ENVELOPE | ({"recovery"} if "recovery" in row else set()) |
+                       (fixture.TODO_READ if words[0] == "todo" else set()))
             self.check(label + ": command/project/outcome", (row.get("command"), row.get("project"), row.get("outcome")), (words[0], PROJECT, outcome))
             self.check(label + ": JSON stderr empty", stderr, "")
             phase["outcome"] = row.get("outcome")

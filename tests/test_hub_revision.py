@@ -7,18 +7,44 @@ used; the token values are synthetic. The method names keep the QA cases' TC IDs
 import http.server
 import json
 import os
+import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py"
 TOKEN = {"CORTHEX_NEXUS_CLIENT_ID": "synthetic-client-id", "CORTHEX_NEXUS_CLIENT_SECRET": "synthetic-client-secret"}
 REMOTE = "https://nexus.example.invalid"
+# The contract's Time and SessionLabel, which the session reads file uses (SessionReads).
+TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z\Z")
+LABEL = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
+
+
+def utc(seconds=0):
+    """A time in the contract's Time form, the given seconds from now by this device's clock."""
+    moment = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def session_reads_valid(data, project):
+    """The contract's SessionReads, with TBL-125's one entry for each session, the newest first."""
+    if not (isinstance(data, dict) and set(data) == {"format", "project", "reads"} and type(data["format"]) is int and
+            data["format"] == 1 and data["project"] == project and isinstance(data["reads"], list)):
+        return False
+    for entry in data["reads"]:
+        if not (isinstance(entry, dict) and "at" in entry and set(entry) <= {"session", "at"} and
+                isinstance(entry["at"], str) and TIME.fullmatch(entry["at"]) and
+                ("session" not in entry or isinstance(entry["session"], str) and LABEL.fullmatch(entry["session"]))):
+            return False
+    times, sessions = [entry["at"] for entry in data["reads"]], [entry.get("session") for entry in data["reads"]]
+    return times == sorted(times, reverse=True) and len(set(sessions)) == len(sessions)
 
 
 class Peer:
@@ -83,6 +109,35 @@ def problem(status, code, **members):
     return status, body
 
 
+class Todo:
+    """A synthetic space's agent to-do, answered as the built contract does, with read_at by this device's clock.
+
+    Its entries hold only their IDs and the times of the unread rule, which is what the hub reads of them.
+    """
+
+    TIMES = {"comments": "last_at", "discrepancies": "opened_at", "reflections": "made_at", "checkpoints": "passed_at"}
+
+    def __init__(self):
+        self.lists = {key: [] for key in self.TIMES}
+        self.with_read_at, self.answered = True, []
+
+    def add(self, kind, ident, when, **fields):
+        entry = {"id": ident, self.TIMES[kind]: when}
+        entry.update(fields)
+        self.lists[kind].append(entry)
+        return ident
+
+    def __call__(self, call):
+        read_at = utc()
+        self.answered.append((call["session"], read_at))
+        answer = {"project": "acme", "default_commit": None, "session": call["session"]}
+        if self.with_read_at:
+            answer["read_at"] = read_at
+        answer.update({key: {"total": len(entries), "entries": list(entries)} for key, entries in self.lists.items()})
+        answer.update(waiting_for_user=0, taken=0)
+        return 200, answer
+
+
 class RevisionCase(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="corthex-revision-")
@@ -125,7 +180,7 @@ class RevisionCase(unittest.TestCase):
                           "session": "s-1", "made": made, "body": {"text": "Waiting reply"}, "tries": 0})
         return path
 
-    def hub(self, *words, env=None, cwd=None, json_lines=True):
+    def start(self, *words, env=None, cwd=None, json_lines=True):
         git = shutil.which("git")
         folders = [str(Path(sys.executable).parent)] + ([str(Path(git).parent)] if git else [])
         environment = {"HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join(folders),
@@ -137,14 +192,25 @@ class RevisionCase(unittest.TestCase):
                 environment[key] = os.environ[key]
         environment.update(env or {})
         argv = [sys.executable, "-B", str(SCRIPT), "--home", str(self.home)] + list(words) + (["--json"] if json_lines else [])
-        result = subprocess.run(argv, cwd=str(cwd or self.repo), env=environment, capture_output=True, timeout=60)
-        out, err = result.stdout.decode("utf8"), result.stderr.decode("utf8")
+        return subprocess.Popen(argv, cwd=str(cwd or self.repo), env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def finish(self, process, json_lines=True):
+        try:
+            raw_out, raw_err = process.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            raise
+        out, err = raw_out.decode("utf8"), raw_err.decode("utf8")
         for secret in TOKEN.values():
             self.assertNotIn(secret, out + err)
         if not json_lines:
-            return result.returncode, out, err
+            return process.returncode, out, err
         rows = [json.loads(line) for line in out.splitlines() if line.strip()]
-        return result.returncode, rows, err
+        return process.returncode, rows, err
+
+    def hub(self, *words, env=None, cwd=None, json_lines=True):
+        return self.finish(self.start(*words, env=env, cwd=cwd, json_lines=json_lines), json_lines)
 
 
 class SessionEnvironmentTest(RevisionCase):
@@ -298,6 +364,172 @@ class SessionEnvironmentTest(RevisionCase):
         self.settings("acme", on_nexus=False)
         code, rows, err = self.hub("snapshot", "acme")
         self.assertFalse([c for c in rows[0]["answer"]["snapshot"]["checks"] if c["rule"] == "on-nexus-invalid"])
+
+
+class SessionReadsTest(RevisionCase):
+    """TASK-289: the session's reads and todo --if-due (API-138, SPEC-191, SPEC-187, TBL-125)."""
+
+    def setUp(self):
+        super().setUp()
+        self.reads_path = self.home / ".corthex/hub/reads/acme.json"
+        self.space = Todo()
+        self.peer.on("GET", "/api/spaces/acme/todo", (self.space, None))
+        self.profile()
+        self.register()
+
+    def kept(self, *reads):
+        self.write(self.reads_path, {"format": 1, "project": "acme", "reads": list(reads)})
+
+    def reads(self):
+        data = json.loads(self.reads_path.read_text(encoding="utf8"))
+        self.assertTrue(session_reads_valid(data, "acme"), data)
+        return data
+
+    def test_TC_1691_todo_done_the_sessions_read_is_kept(self):
+        first = [self.space.add("comments", "nc_" + "a" * 12, utc(-120)),
+                 self.space.add("discrepancies", "nd_" + "c" * 12, utc(-90)),
+                 self.space.add("reflections", "ne_" + "d" * 12, utc(-60)),
+                 self.space.add("checkpoints", "nk_" + "e" * 12, utc(-30), state="passed", withdrawn_at=None)]
+        code, rows, err = self.hub("todo", "acme", "--session", "s-1")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        read_1 = self.space.answered[-1][1]
+        self.assertEqual(self.reads(), {"format": 1, "project": "acme", "reads": [{"session": "s-1", "at": read_1}]})
+        self.assertEqual((rows[0]["read"], rows[0]["since"]), (True, None))
+        self.assertEqual(rows[0]["new"], {"comments": [first[0]], "discrepancies": [first[1]], "reflections": [first[2]], "checkpoints": [first[3]]})
+        self.assertEqual(rows[0]["remarks"], [])
+        # Written between the two reads: a comment, and the withdrawal of a checkpoint passed before the first.
+        later = [self.space.add("comments", "nc_" + "b" * 12, utc()),
+                 self.space.add("checkpoints", "nk_" + "f" * 12, utc(-3600), state="withdrawn", withdrawn_at=utc())]
+        code, rows, err = self.hub("todo", "acme", "--session", "s-1")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        read_2 = self.space.answered[-1][1]
+        self.assertEqual((rows[0]["read"], rows[0]["since"]), (True, read_1))
+        self.assertEqual(rows[0]["new"], {"comments": [later[0]], "discrepancies": [], "reflections": [], "checkpoints": [later[1]]})
+        self.assertEqual(self.reads()["reads"], [{"session": "s-1", "at": read_2}])
+        code, out, err = self.hub("todo", "acme", "--session", "s-1", json_lines=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn("\n  read: yes\n  since: " + read_2 + "\n  new: ", out)
+        self.assertEqual([(c["method"], c["path"], c["session"]) for c in self.peer.calls], [("GET", "/api/spaces/acme/todo", "s-1")] * 3)
+
+    def test_TC_1692_todo_failed_nothing_is_kept(self):
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        self.profile("http://127.0.0.1:%d" % port)
+        self.kept({"session": "s-1", "at": utc(-25 * 3600)})
+        before = self.reads_path.read_bytes()
+        for words in ([], ["--if-due"]):
+            with self.subTest(words=words):
+                code, rows, _ = self.hub("todo", "acme", "--session", "s-1", *words)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "failed", "no network"))
+                self.assertEqual((rows[0]["read"], rows[0]["answer"], rows[0]["new"]), (False, None, None))
+                self.assertEqual(self.reads_path.read_bytes(), before)
+
+    def test_TC_1693_todo_if_due_done_not_due(self):
+        waiting = self.seed_write()
+        # 23 and 2 hours old, and half an hour ahead, which a clock set a little wrong gives.
+        for seconds in (-23 * 3600, -2 * 3600, 30 * 60):
+            with self.subTest(seconds=seconds):
+                at = utc(seconds)
+                self.kept({"session": "s-1", "at": at})
+                code, rows, err = self.hub("todo", "acme", "--session", "s-1", "--if-due")
+                self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+                self.assertEqual((rows[0]["read"], rows[0]["answer"], rows[0]["since"], rows[0]["new"]), (False, None, at, None))
+                self.assertEqual(rows[0]["outbox"], {"sent": 0, "dropped": 0, "waiting": 0})
+        self.assertEqual(self.peer.calls, [])
+        self.assertTrue(waiting.is_file(), "a read that is not due sends no outbox")
+        self.assertFalse((self.home / ".corthex/hub/outbox/acme.guard").exists())
+
+    def test_TC_1694_todo_if_due_done_due(self):
+        day = 24 * 3600
+        cases = [("a read 25 hours old", [{"session": "s-1", "at": utc(-25 * 3600)}]),
+                 ("no file", None),
+                 ("a file that is not JSON", "{not json"),
+                 ("a file of another project", {"format": 1, "project": "beta", "reads": [{"session": "s-1", "at": utc(-60)}]}),
+                 ("an entry in another form", [{"session": "s-1", "at": "yesterday"}]),
+                 ("no entry for the session", [{"session": "s-2", "at": utc(-60)}]),
+                 # The device's clock a day ahead of the server's makes the kept time a day old,
+                 # and a day behind makes it a day ahead.
+                 ("the device's clock a day ahead", [{"session": "s-1", "at": utc(-day - 120)}]),
+                 ("the device's clock a day behind", [{"session": "s-1", "at": utc(day)}])]
+        for name, reads in cases:
+            with self.subTest(name):
+                if self.reads_path.exists():
+                    self.reads_path.unlink()
+                if isinstance(reads, list):
+                    self.kept(*reads)
+                elif reads is not None:
+                    self.write(self.reads_path, reads)
+                calls = len(self.peer.calls)
+                code, rows, err = self.hub("todo", "acme", "--session", "s-1", "--if-due")
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["read"]), (0, "done", True), err)
+                self.assertEqual(len(self.peer.calls), calls + 1)
+                kept = self.reads()["reads"]
+                self.assertEqual([entry for entry in kept if entry.get("session") == "s-1"], [{"session": "s-1", "at": self.space.answered[-1][1]}])
+                if name == "no entry for the session":
+                    self.assertEqual(kept[1:], reads, "another session's entry stays")
+
+    def test_TC_1695_todo_two_hubs_at_once(self):
+        processes = [self.start("todo", "acme", "--session", label) for label in ("s-1", "s-2")]
+        for process in processes:
+            code, rows, err = self.finish(process)
+            # Whichever hub comes second may find the project's outbox lease taken; it then reads nothing.
+            self.assertIn((code, rows[0]["outcome"], rows[0]["failure"]),
+                          [(0, "done", None), (1, "failed", "another hub is sending this project's outbox")], err)
+        answered = {}
+        for session, at in self.space.answered:
+            answered.setdefault(session, set()).add(at)
+        reads = self.reads()["reads"]
+        for entry in reads:
+            self.assertIn(entry["at"], answered.get(entry.get("session"), set()), "no session takes another's read for its own")
+        for label in ("s-1", "s-2"):
+            with self.subTest(session=label):
+                mine = [entry for entry in self.reads()["reads"] if entry.get("session") == label]
+                calls = len(self.peer.calls)
+                code, rows, err = self.hub("todo", "acme", "--session", label, "--if-due")
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["read"]), (0, "done", not mine), err)
+                self.assertEqual(len(self.peer.calls), calls + (0 if mine else 1), "a session whose entry was lost reads again as due")
+        self.assertEqual(sorted(entry["session"] for entry in self.reads()["reads"]), ["s-1", "s-2"])
+
+    def test_TC_1696_todo_sessions_without_a_label_share_one_entry(self):
+        code, rows, err = self.hub("todo", "acme")
+        self.assertEqual((code, rows[0]["read"]), (0, True), err)
+        self.assertEqual(self.reads()["reads"], [{"at": self.space.answered[-1][1]}])
+        self.assertIsNone(self.peer.calls[-1]["session"])
+        # An hour later, by the kept time, a session without a label is not due: it uses the same entry.
+        hour_ago = utc(-3600)
+        self.kept({"at": hour_ago})
+        code, rows, err = self.hub("todo", "acme", "--if-due")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["read"], rows[0]["since"]), (0, "done", False, hour_ago), err)
+        self.assertEqual(len(self.peer.calls), 1)
+        # A labeled session takes no read of the unlabeled entry for its own.
+        code, rows, err = self.hub("todo", "acme", "--if-due", env={"CORTHEX_NEXUS_SESSION": "s-1"})
+        self.assertEqual((code, rows[0]["read"]), (0, True), err)
+        self.assertEqual(self.reads()["reads"], [{"session": "s-1", "at": self.space.answered[-1][1]}, {"at": hour_ago}])
+
+    def test_a_server_of_before_keeps_no_read(self):
+        self.space.with_read_at = False
+        for words in ([], ["--if-due"], ["--if-due"]):
+            with self.subTest(words=words):
+                code, rows, err = self.hub("todo", "acme", "--session", "s-1", *words)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["read"], rows[0]["since"], rows[0]["new"], rows[0]["remarks"]),
+                                 (0, "done", True, None, None, ["server-older"]), err)
+        self.assertEqual(len(self.peer.calls), 3)
+        self.assertFalse(self.reads_path.exists())
+        code, out, _ = self.hub("todo", "acme", "--session", "s-1", json_lines=False)
+        self.assertIn("  server-older: the server is of before the design revision", out)
+
+    def test_a_project_without_a_space_keeps_nothing(self):
+        self.peer.on("GET", "/api/spaces/acme/todo", problem(404, "space_not_found"))
+        for words in ([], ["--if-due"]):
+            with self.subTest(words=words):
+                code, rows, err = self.hub("todo", "acme", "--session", "s-1", *words)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["read"], rows[0]["since"]), (0, "done", True, None), err)
+                self.assertEqual(rows[0]["new"], {"comments": [], "discrepancies": [], "reflections": [], "checkpoints": []})
+                self.assertEqual(rows[0]["answer"]["comments"], {"total": 0, "entries": []})
+        self.assertEqual(len(self.peer.calls), 2)
+        self.assertFalse(self.reads_path.exists())
 
 
 if __name__ == "__main__":

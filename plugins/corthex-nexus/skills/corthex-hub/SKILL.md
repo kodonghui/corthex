@@ -74,7 +74,7 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 
 | Command | Purpose |
 | --- | --- |
-| `todo PROJECT [--session LABEL]` | Read ordered agent work and waiting/taken counts; a missing space is empty |
+| `todo PROJECT [--session LABEL] [--if-due]` | Read ordered agent work and waiting/taken counts; a missing space is empty. `--if-due` reads only when the session's last read is due |
 | `comment PROJECT --stage STAGE --text TEXT [--item ID]` | Comment on an item of any of the 13 stages, or on the stage as a whole without `--item`; optional `--quote`, `--asks` |
 | `reply PROJECT COMMENT --text TEXT` | Reply to a comment; optional `--asks` |
 | `answered PROJECT COMMENT` | Mark it answered |
@@ -86,6 +86,8 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 | `show PROJECT ENTRY` | Read a comment, proposal, reflection or checkpoint in full |
 | `claim PROJECT ENTRY`, `release PROJECT ENTRY` | Claim/end a session's agent work; claims are never queued |
 | `outbox [PROJECT ...] [--send]` | List metadata without text, or retry pending writes |
+
+`todo` keeps the time of each session's read, as the server's answer names it, in `~/.corthex/hub/reads/<project>.json` for seven days; sessions without a label share one entry. Its result says whether it read the server (`read`), the time of the session's read before (`since`) and, by list, the IDs that are new since then (`new`, all of them after the session's first read). Run plain `todo` when a session starts work on a project, and `todo --if-due` at each step where a unit of stage work starts or ends: it reads only when the session has no kept read, or the kept time is more than a day old or more than an hour ahead, and otherwise contacts no server and sends no outbox. After a read that follows the session's first, tell the user only what is in `new`. A server of before the design revision names no read, so nothing is kept, `--if-due` reads each time, and the result carries the remark `server-older`.
 
 When your comment or reply leaves a question for the user, `--asks` says what it asks, so that the user's page offers the right answer: `answer` for an answer in words, `recommended` when the text holds a recommendation that the user can take as recommended, and `checkpoint` when it asks the user to pass the stage's checkpoint as recommended. The user's next entry clears it. A NEXUS server from before the redesign takes comments only on the pictured stages (`01-domain`, `05-erd`, `07-sitemap`), with `--quote` when `--item` is left out, and no `--asks`; it refuses the rest as `invalid_request`, so comment there without them.
 

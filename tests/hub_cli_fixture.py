@@ -27,6 +27,8 @@ WRITES = {"comment", "reply", "answered", "decide", "propose", "withdraw", "refl
 SESSIONS = WRITES | {"claim", "release"}
 EXITS = {"done": 0, "command-line-invalid": 2, "failed": 1, "refused": 1, "kept": 3}
 ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
+# 0.4.0: a todo result also says whether it read, since when, and what is new (API-138).
+TODO_READ = {"read", "since", "new"}
 WRITE_RE = re.compile(r'"(nw_[0-9a-hjkmnp-tv-z]{12})"\Z')
 PRIVATE_MARKER = "qa-sensitive@example.com"
 # Reviewed release changes after the accepted pin, each mapped back to the audited bytes.
@@ -420,7 +422,7 @@ def invoke(case_dir, phase, hub, home, server, words, env, observations, expecte
         check(observations, phase + ":one JSON envelope", len(rows), 1)
         row = rows[0]
         check(observations, phase + ":outcome", row.get("outcome"), expected_outcome)
-        check(observations, phase + ":envelope keys", sorted(row), sorted(ENVELOPE))
+        check(observations, phase + ":envelope keys", sorted(row), sorted(ENVELOPE | (TODO_READ if words[0] == "todo" else set())))
         check(observations, phase + ":project", row["project"], server.bundle["project"])
         check(observations, phase + ":command", row["command"], words[0])
     if expected_outcome == "kept":

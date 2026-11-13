@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
@@ -26,6 +27,12 @@ TRACE = re.compile(r"[A-Z][A-Z0-9]*-[0-9]{1,6}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 ENTRY = re.compile(r"n([cpdek])_[0-9a-hjkmnp-tv-z]{12}\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
+# 0.4.0: the session reads file (TBL-125) keeps each session's last read of the agent to-do, by the
+# server's time, so that todo --if-due reads again only once a day has passed (SPEC-191).
+TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z\Z")
+HOUR, DAY, WEEK = 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60
+# Each list's time of the unread rule: a withdrawn checkpoint counts from its withdrawal.
+SINCE = (("comments", "last_at"), ("discrepancies", "opened_at"), ("reflections", "made_at"), ("checkpoints", "passed_at"))
 
 
 class CommandLine(ValueError):
@@ -38,9 +45,11 @@ def outcome(command, project, value=None, stats=None, remarks=()):
             "answer": value.get("answer"), "problem": value.get("problem"), "failure": value.get("failure"),
             "outbox": stats or {"sent": 0, "dropped": 0, "waiting": 0},
             "remarks": list(dict.fromkeys(list(remarks) + list(value.get("remarks") or ())))}
-    for key in ("read", "since", "new", "address"):
-        if key in value:
-            row[key] = value[key]
+    if command == "todo":
+        # API-138: whether the hub read the server, the session's read before, and what is new since.
+        row.update(read=value.get("read", False), since=value.get("since"), new=value.get("new"))
+    if "address" in value:
+        row["address"] = value["address"]
     if value.get("recovery") is not None:
         row["recovery"] = value["recovery"]
     return row
@@ -261,6 +270,97 @@ def can_send(args, home, env, h, place):
     return outcome("can-send", name, {"outcome": "done", "answer": answer})
 
 
+def reads_file(home, project):
+    """TBL-125's file, reads/<project>.json under the hub's folder, or None where a link would lead elsewhere."""
+    folder = Path(home) / ".corthex" / "hub" / "reads"
+    path = folder / (project + ".json")
+    return None if folder.is_symlink() or path.is_symlink() else path
+
+
+def session_reads(home, project, boxes):
+    """The session reads, the newest first, or None when the file is missing or not valid (the contract's SessionReads)."""
+    path = reads_file(home, project)
+    try:
+        data = json.loads(path.read_text(encoding="utf8")) if path is not None else None
+    except (OSError, ValueError):
+        return None
+    if not (isinstance(data, dict) and set(data) == {"format", "project", "reads"} and type(data["format"]) is int and
+            data["format"] == 1 and data["project"] == project and isinstance(data["reads"], list)):
+        return None
+    for entry in data["reads"]:
+        if not (isinstance(entry, dict) and "at" in entry and not set(entry) - {"session", "at"} and isinstance(entry["at"], str) and
+                TIME.fullmatch(entry["at"]) and boxes.timestamp(entry["at"]) is not None and
+                ("session" not in entry or isinstance(entry["session"], str) and SESSION.fullmatch(entry["session"]))):
+            return None
+    return data["reads"]
+
+
+def last_read(reads, session):
+    """The session's kept time; sessions without a label share the entry that names none."""
+    return next((entry["at"] for entry in reads or () if entry.get("session") == session), None)
+
+
+def read_due(reads, session, now, boxes):
+    """SPEC-191: due when nothing is kept for the session, or its time is more than a day old or more than an hour ahead."""
+    at = last_read(reads, session)
+    if at is None:
+        return True
+    stamp = boxes.timestamp(at)
+    return now - stamp > DAY or stamp - now > HOUR
+
+
+def keep_read(home, project, session, at, boxes):
+    """Keep an answered read's time for the session through a temporary file and a move, without a lock (TBL-125).
+
+    An entry goes 7 days after its time. Of two hubs that write at once one entry may be lost, and that
+    session then reads once more.
+    """
+    path, now = reads_file(home, project), time.time()
+    if path is None or not (isinstance(at, str) and TIME.fullmatch(at) and boxes.timestamp(at) is not None):
+        return
+    others = [entry for entry in session_reads(home, project, boxes) or ()
+              if entry.get("session") != session and now - boxes.timestamp(entry["at"]) <= WEEK]
+    mine = {"at": at} if session is None else {"session": session, "at": at}
+    try:
+        boxes.atomic(path, {"format": 1, "project": project, "reads": sorted([mine] + others, key=lambda entry: entry["at"], reverse=True)})
+    except OSError:
+        pass
+
+
+def new_entries(answer, since, boxes):
+    """API-138: each list's IDs whose time is at or after since, all of them when since is null (SPEC-191)."""
+    start = boxes.timestamp(since) if since is not None else None
+    new = {}
+    for key, field in SINCE:
+        listed = answer.get(key) if isinstance(answer.get(key), dict) else {}
+        new[key] = []
+        for entry in listed.get("entries") if isinstance(listed.get("entries"), list) else ():
+            if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+                continue
+            when = entry.get("withdrawn_at") if key == "checkpoints" and entry.get("state") == "withdrawn" else entry.get(field)
+            stamp = boxes.timestamp(when) if isinstance(when, str) else None
+            # An entry whose time cannot be read is told rather than hidden.
+            if start is None or stamp is None or stamp >= start:
+                new[key].append(entry["id"])
+    return new
+
+
+def read_todo(client, home, project, session, kept, boxes):
+    """Read the agent to-do, keep the answer's read_at for the session, and say what is new since its read before."""
+    value = client.call("GET", "/api/spaces/" + project + "/todo", session=session)
+    if (value.get("problem") or {}).get("code") == "space_not_found":
+        return {"outcome": "done", "answer": {"comments": {"total": 0, "entries": []}, "discrepancies": {"total": 0, "entries": []}, "reflections": {"total": 0, "entries": []}, "checkpoints": {"total": 0, "entries": []}, "waiting_for_user": 0, "taken": 0},
+                "read": True, "since": kept, "new": {key: [] for key, _ in SINCE}}
+    if value["outcome"] != "done" or not isinstance(value.get("answer"), dict):
+        return value
+    answer = value["answer"]
+    if "read_at" not in answer:
+        # A server of before the design revision records no read, so nothing is kept (How versions meet).
+        return dict(value, read=True, since=None, new=None, remarks=["server-older"])
+    keep_read(home, project, session, answer["read_at"], boxes)
+    return dict(value, read=True, since=kept, new=new_entries(answer, kept, boxes))
+
+
 def execute(args, home, api, env=None, client_factory=None):
     h = SimpleNamespace(**api)
     env = os.environ if env is None else env
@@ -334,6 +434,13 @@ def execute(args, home, api, env=None, client_factory=None):
                     "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
                     "held_commit": "checked when sent"}
                 rows.append(outcome(command, name, {"outcome": "done", "answer": answer}, remarks=remarks)); continue
+        kept = None
+        if command == "todo":
+            reads = session_reads(home, name, boxes)
+            kept = last_read(reads, session)
+            if getattr(args, "if_due", False) and not read_due(reads, session, time.time(), boxes):
+                # Not due: no server and no outbox (SPEC-191).
+                rows.append(outcome(command, name, {"outcome": "done", "read": False, "since": kept}, remarks=remarks)); continue
         value = None
         try:
             with box.lease() as lease:
@@ -387,9 +494,7 @@ def execute(args, home, api, env=None, client_factory=None):
                         if name in allowed:
                             value.setdefault("answer", {})["next_push"] = "brings this project back with an empty space; remove it from nexus.push to stop pushes"
                 elif command == "todo":
-                    value = client.call("GET", "/api/spaces/" + name + "/todo", session=session)
-                    if (value.get("problem") or {}).get("code") == "space_not_found":
-                        value = {"outcome": "done", "answer": {"comments": {"total": 0, "entries": []}, "discrepancies": {"total": 0, "entries": []}, "reflections": {"total": 0, "entries": []}, "checkpoints": {"total": 0, "entries": []}, "waiting_for_user": 0, "taken": 0}}
+                    value = read_todo(client, home, name, session, kept, boxes)
                 elif command == "show":
                     kind = {"c": "comments", "p": "proposals", "e": "edits", "k": "checkpoints"}[args.entry[1]]
                     value = client.call("GET", "/api/spaces/" + name + "/" + kind + "/" + args.entry)
@@ -405,6 +510,8 @@ def execute(args, home, api, env=None, client_factory=None):
             value = interrupted(box, pending, value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
         # Lease release can itself fail. Publish exactly one outcome only
         # after that cleanup has either completed or been handled above.
+        if command == "todo" and "since" not in value:
+            value = dict(value, since=kept)
         rows.append(outcome(command, name, value, stats, remarks))
     return scrub(rows, home, env, h)
 
@@ -442,6 +549,12 @@ def emit(args, rows, h):
                 h.say("  " + h.one_line(row["problem"].get("code", "refused")) + ": " + h.one_line(row["problem"].get("detail", ""), 300))
             if row["answer"]:
                 h.say(json.dumps(row["answer"], ensure_ascii=False, indent=2))
+            if row["command"] == "todo":
+                h.say("  read: " + ("yes" if row["read"] else "no"))
+                if row["since"]:
+                    h.say("  since: " + row["since"])
+                if row["new"] is not None:
+                    h.say("  new: " + json.dumps(row["new"], ensure_ascii=False))
             for remark in row.get("remarks") or ():
                 h.say("  " + remark + ": " + REMARKS.get(remark, ""))
             if "recovery" in row:
@@ -506,5 +619,7 @@ def configure(top, commands, existing, h):
             parser.add_argument("--pr", required=name == "record")
             if name == "reflect":
                 parser.add_argument("--commit")
+        if name == "todo":
+            parser.add_argument("--if-due", action="store_true", help="read only when the session's last read is more than a day old")
         if name == "outbox":
             parser.add_argument("--send", action="store_true")
