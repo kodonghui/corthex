@@ -797,8 +797,8 @@ class ReadingTests(unittest.TestCase):
                          [("merge-2", 900, 1)])
 
     def recall_entry(self):
-        def asked(outcome, ms, scores, scored="in the hook's time", embed=100):
-            return {"outcome": outcome, "ms": ms, "embed_ms": embed, "scored": scored,
+        def asked(outcome, ms, scores, scored="in the hook's time", embed=100, turn=1):
+            return {"outcome": outcome, "ms": ms, "embed_ms": embed, "scored": scored, "asked": turn,
                     "candidates": [{"item": "i_%d" % number, "score": score} for number, score in scores]}
 
         def taken(turn, ms, outcome, embed=None):
@@ -809,14 +809,17 @@ class ReadingTests(unittest.TestCase):
                 "stages": [{"prompts": [], "recorded": {"dims": 512, "prompts": [
                     taken(1, 300.0, "no-index"), taken(2, 280.0, "no-index")]}}, {"prompts": [
                         {"512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
-                         "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)])},
+                         "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)], turn=2)},
                         {"512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
-                         "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)])},
-                        {"512": asked("short", 200.0, [], "no", None), "1536": asked("short", 210.0, [], "no", None)}],
+                         "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)], turn=2)},
+                        {"512": asked("short", 200.0, [], "no", None),
+                         "1536": asked("short", 210.0, [], "no", None, turn=2)}],
                     "recorded": {"dims": 1536, "prompts": [
                         taken(1, 700.0, "below", 110), taken(2, 990.0, "late", 800), taken(3, 250.0, "short")]}},
-                    # A stage that ended before its turns were recorded.
-                    {"prompts": [{"512": asked("late", 900.0, [], "no", None)}]}]}
+                    # A stage that ended before its turns were recorded; it began at the length that the stage
+                    # before it had left, and nothing was ranked at its second.
+                    {"prompts": [{"1536": asked("failed", 480.0, [], "no", 90),
+                                  "512": asked("late", 900.0, [], "no", None, turn=2)}]}]}
 
     def test_the_recall_part_is_read_at_each_length(self):
         entry = self.recall_entry()
@@ -838,6 +841,22 @@ class ReadingTests(unittest.TestCase):
             "hook_ms_of_ranked_in_time": {"min": 700.0, "median": 700.0, "max": 700.0, "values": 1},
             "embed_ms": {"min": 110, "median": 455.0, "max": 800, "values": 2}})
         self.assertEqual(found["embed_ms"], {"min": 100, "median": 100, "max": 100, "values": 1})
+        # A prompt's text goes out once for each length, and what was sent a moment before may come back sooner:
+        # the readings of the length that was asked first are apart from those of a length asked after it.
+        self.assertEqual((found["asked_first"], found["asked_later"]), (
+            {"prompts": 3, "outcomes": {"below": 1, "late": 1, "short": 1},
+             "hook_ms": {"min": 200.0, "median": 400.0, "max": 950.0, "values": 3},
+             "embed_ms": {"min": 100, "median": 100, "max": 100, "values": 1}},
+            {"prompts": 1, "outcomes": {"late": 1},
+             "hook_ms": {"min": 900.0, "median": 900.0, "max": 900.0, "values": 1}, "embed_ms": None}))
+        longer = measure.by_length(entry, 1536)
+        self.assertEqual((longer["asked_first"], longer["asked_later"]), (
+            {"prompts": 1, "outcomes": {"failed": 1},
+             "hook_ms": {"min": 480.0, "median": 480.0, "max": 480.0, "values": 1},
+             "embed_ms": {"min": 90, "median": 90, "max": 90, "values": 1}},
+            {"prompts": 3, "outcomes": {"below": 2, "short": 1},
+             "hook_ms": {"min": 210.0, "median": 450.0, "max": 500.0, "values": 3},
+             "embed_ms": {"min": 100, "median": 100, "max": 100, "values": 2}}))
         self.assertEqual(found["best_score"], {"min": 0.5, "median": 0.55, "max": 0.6, "values": 2})
         self.assertEqual(found["fifth_score"], {"min": 0.1, "median": 0.1, "max": 0.1, "values": 1})
         self.assertEqual(found["rebuilds"]["times"], 0)
@@ -846,6 +865,7 @@ class ReadingTests(unittest.TestCase):
         empty = measure.by_length({"stages": [], "rebuilds": []}, 512)
         self.assertEqual((empty["hook_ms"], empty["recorded"]["prompts"], empty["recorded"]["hook_ms"]),
                          (None, 0, None))
+        self.assertEqual(empty["asked_first"], {"prompts": 0, "outcomes": {}, "hook_ms": None, "embed_ms": None})
 
     def test_two_lengths_are_compared_over_the_prompts_that_both_ranked(self):
         found = measure.between(self.recall_entry(), 512, 1536)
@@ -1234,6 +1254,12 @@ class CheckTests(unittest.TestCase):
                                 ("sample", ["a", "b"], 2, 1, 1, 1), ("curation", ["a", "b", "c"], 2, 2, 2, 2)])
         self.assertEqual((entry["outcome"], [stage["recorded"]["dims"] for stage in entry["stages"]]),
                          ("measured", [512, 1536, 512]))
+        # The lengths take turns to be the one at which a sample's prompts are asked first.
+        self.assertEqual([(stage["sample"], row["512"]["asked"], row["1536"]["asked"])
+                          for stage in entry["stages"] for row in stage["prompts"]], [("b", 1, 2), ("c", 2, 1)])
+        self.assertEqual([(entry["by_dims"][dims]["asked_first"]["prompts"],
+                           entry["by_dims"][dims]["asked_later"]["prompts"]) for dims in ("512", "1536")],
+                         [(1, 1), (1, 1)])
         self.assertIn("estimates", check.report)
         texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
         self.assertEqual(([row["sample"] for row in texts["prompts"]], list(texts["items"])),
@@ -1527,6 +1553,11 @@ class SelfTestRun(unittest.TestCase):
                 self.assertEqual(sorted(value["item"] for value in asked["candidates"]), sorted(texts["items"]))
                 self.assertGreater(asked["ms"], 0)
                 self.assertEqual(recall_part["by_dims"][dims]["ranked"], 1)
+        # The one sample with prompts to ask began at the default length.
+        self.assertEqual((row["512"]["asked"], row["1536"]["asked"]), (1, 2))
+        self.assertEqual([(recall_part["by_dims"][dims]["asked_first"]["prompts"],
+                           recall_part["by_dims"][dims]["asked_later"]["prompts"]) for dims in ("512", "1536")],
+                         [(1, 0), (0, 1)])
         # The index got its other length once, in one run of the worker that sent embeddings only.
         self.assertEqual([(value["dims"], value["items"], value["before"], value["worker_runs"])
                           for value in recall_part["rebuilds"]], [(1536, 2, "made-up-en", 1)])

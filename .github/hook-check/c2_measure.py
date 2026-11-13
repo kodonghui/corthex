@@ -764,7 +764,7 @@ def replay(check, entry):
                                              "characters": len(counted(turn["prompt"])),
                                              "language": language(turn["prompt"])})
                     texts["prompts"].append({"sample": sample["id"], "turn": number, "text": turn["prompt"]})
-                for dims in order:
+                for turn_of_length, dims in enumerate(order, 1):
                     runs = []
                     try:
                         home.vectors(dims, runs)
@@ -773,7 +773,8 @@ def replay(check, entry):
                             entry["rebuilds"].append(rebuilt(runs, dims=dims, before=sample["id"],
                                                              items=len(home.current())))
                     for row, turn in zip(stage["prompts"], sample["turns"]):
-                        row[str(dims)] = home.recalled(turn["host"], turn["prompt"])
+                        # The length at which a prompt is asked first sends a text that no request has sent yet.
+                        row[str(dims)] = dict(home.recalled(turn["host"], turn["prompt"]), asked=turn_of_length)
                         for value in row[str(dims)]["candidates"]:
                             item = items.get(value["item"]) or c2_hosts.items(home.home).get(value["item"]) or {}
                             texts["items"][value["item"]] = {key: item.get(key) for key in ("kind", "title", "text")}
@@ -815,17 +816,25 @@ def by_length(entry, dims):
 
     `hook_ms` and the outcomes beside it are of the prompts as they were asked, left out of recording, so they
     are without the hook's recording step and its share of the hook's time. `recorded` has the same hook as an
-    installed one runs, for the turns that were recorded while the index had this length.
+    installed one runs, for the turns that were recorded while the index had this length. A prompt is asked at
+    one length after the other, the lengths taking turns to be the first from sample to sample, and a text that
+    was sent a moment before may come back sooner: `asked_first` and `asked_later` give the times apart, so that
+    the difference between two lengths is not read from the order in which they were asked.
     """
     rows = asked(entry, dims)
     ranked = [row for row in rows if row["candidates"]]
     rebuilds = [value for value in entry["rebuilds"] if value["dims"] == dims]
     taken = [row for stage in entry["stages"] if (stage.get("recorded") or {}).get("dims") == dims
              for row in stage["recorded"]["prompts"]]
+    turns = (("asked_first", [row for row in rows if row.get("asked") == 1]),
+             ("asked_later", [row for row in rows if row.get("asked", 1) > 1]))
     return {"prompts": len(rows), "outcomes": dict(Counter(row["outcome"] for row in rows)),
             "scored_with_more_time": sum(1 for row in rows if row["scored"] == MORE),
             "ranked": len(ranked),
             "hook_ms": timed([row["ms"] for row in rows]),
+            **{name: {"prompts": len(group), "outcomes": dict(Counter(row["outcome"] for row in group)),
+                      "hook_ms": spread([row["ms"] for row in group], 1),
+                      "embed_ms": spread([row["embed_ms"] for row in group], 1)} for name, group in turns},
             "hook_ms_of_ranked_in_time": spread([row["ms"] for row in rows if row["outcome"] in c2_hosts.RANKED], 1),
             "recorded": {"prompts": len(taken), "outcomes": dict(Counter(row["outcome"] for row in taken)),
                          "hook_ms": timed([row["ms"] for row in taken]),
