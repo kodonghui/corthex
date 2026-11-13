@@ -33,6 +33,9 @@ TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]
 HOUR, DAY, WEEK = 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60
 # Each list's time of the unread rule: a withdrawn checkpoint counts from its withdrawal.
 SINCE = (("comments", "last_at"), ("discrepancies", "opened_at"), ("reflections", "made_at"), ("checkpoints", "passed_at"))
+# 0.4.0: a project's first push waits for the user's yes, which --first carries (SPEC-111, REQ-107).
+FIRST_PUSH = "first push needs --first"
+NOTES = {FIRST_PUSH: "the first push of this project to this server waits for the user's yes: push it with --first only after the user agrees"}
 
 
 class CommandLine(ValueError):
@@ -137,6 +140,8 @@ def validate(args, env, h):
     part = getattr(args, "part", "")
     if part and (len(part) > 100 or not h.NAME.fullmatch(part)):
         raise CommandLine("--part needs a lowercase project part name")
+    if getattr(args, "first", False) and len(args.project) != 1:
+        raise CommandLine("--first takes exactly one project, the one that the user agreed to push for the first time")
     return session
 
 
@@ -432,7 +437,7 @@ def execute(args, home, api, env=None, client_factory=None):
                 h.save_snapshot(home, snapshot)
                 answer = {"bytes": len(h.dump(snapshot, compact=True).encode("utf8")), "summary": snapshot["summary"],
                     "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
-                    "held_commit": "checked when sent"}
+                    "held_commit": "checked when sent", "first_push": "checked when sent"}
                 rows.append(outcome(command, name, {"outcome": "done", "answer": answer}, remarks=remarks)); continue
         kept = None
         if command == "todo":
@@ -474,6 +479,9 @@ def execute(args, home, api, env=None, client_factory=None):
                         value = held if problem.get("code") else {"outcome": "refused", "failure": "the server needs the 0.2 release"} if held.get("failure") == "HTTP 404" else held
                         if value.get("failure") == "no service token":
                             value = dict(value, outcome="refused", failure="no service token: set CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET")
+                    elif problem.get("code") == "project_not_found" and not getattr(args, "first", False):
+                        # The server holds no such project, also after a removal: its first push waits for the user's yes.
+                        value = {"outcome": "refused", "failure": FIRST_PUSH}
                     else:
                         snapshot = h.make_snapshot(project, h.load_status(home, name), home=home)
                         h.save_snapshot(home, snapshot)
@@ -545,6 +553,8 @@ def emit(args, rows, h):
             h.say((row["project"] or "project") + ": " + row["command"] + " " + row["outcome"])
             if row["failure"]:
                 h.say("  " + row["failure"])
+                if row["failure"] in NOTES:
+                    h.say("  " + NOTES[row["failure"]])
             if row["problem"]:
                 h.say("  " + h.one_line(row["problem"].get("code", "refused")) + ": " + h.one_line(row["problem"].get("detail", ""), 300))
             if row["answer"]:
@@ -579,6 +589,7 @@ def configure(top, commands, existing, h):
     for parser in existing.values():
         parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     existing["push"].add_argument("--replace-held", action="store_true")
+    existing["push"].add_argument("--first", action="store_true", help="allow the project's first push, after the user's yes for it")
     status = existing["status"]
     for name in ("part", "by", "where", "nexus"):
         status.add_argument("--" + name, default="" if name == "part" else None)

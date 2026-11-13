@@ -212,6 +212,42 @@ class RevisionCase(unittest.TestCase):
     def hub(self, *words, env=None, cwd=None, json_lines=True):
         return self.finish(self.start(*words, env=env, cwd=cwd, json_lines=json_lines), json_lines)
 
+    def git(self, *words):
+        program = shutil.which("git")
+        if program is None:
+            self.skipTest("Git is not installed")
+        env = {"HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.environ.get("PATH", ""),
+               "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0",
+               "GIT_AUTHOR_NAME": "Fixture author", "GIT_AUTHOR_EMAIL": "fixture@example.com",
+               "GIT_COMMITTER_NAME": "Fixture author", "GIT_COMMITTER_EMAIL": "fixture@example.com"}
+        for key in ("SystemRoot", "WINDIR", "SYSTEMROOT"):
+            if os.name == "nt" and key in os.environ:
+                env[key] = os.environ[key]
+        result = subprocess.run([program, "-C", str(self.repo)] + list(words), env=env, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf8", "replace"))
+        return result.stdout.decode("utf8").strip()
+
+    def commit(self, message):
+        self.write(self.repo / "notes.md", message + "\n")
+        self.git("add", ".")
+        self.git("commit", "--no-verify", "-q", "-m", message)
+        return self.git("rev-parse", "HEAD")
+
+    def checkout(self):
+        """Make the project's folder a Git repository with a first commit (SPEC-105 finds its default branch by publish)."""
+        shutil.rmtree(str(self.repo / ".git"))
+        self.git("init", "-q")
+        self.git("symbolic-ref", "HEAD", "refs/heads/main")
+        self.git("config", "commit.gpgsign", "false")
+        self.git("config", "core.hooksPath", str(self.base / "no-hooks"))
+        self.git("config", "remote.origin.url", "https://example.invalid/acme.git")
+        return self.commit("start")
+
+    def publish(self, commit):
+        """The remote's default branch at the commit, as a fetch and git remote set-head leave it."""
+        self.git("update-ref", "refs/remotes/origin/main", commit)
+        self.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
 
 class SessionEnvironmentTest(RevisionCase):
     """TASK-288: a session's environment, and can-send (API-179, SPEC-190, SPEC-192)."""
@@ -530,6 +566,82 @@ class SessionReadsTest(RevisionCase):
                 self.assertEqual(rows[0]["answer"]["comments"], {"total": 0, "entries": []})
         self.assertEqual(len(self.peer.calls), 2)
         self.assertFalse(self.reads_path.exists())
+
+
+class FirstPushTest(RevisionCase):
+    """TASK-290: a project's first push only with --first (API-136, SPEC-111, REQ-107)."""
+
+    HELD = "/api/snapshots/acme/held"
+
+    def setUp(self):
+        super().setUp()
+        self.profile()
+        self.register()
+        self.peer.on("POST", "/api/snapshots", (201, {"project": "acme", "stored": True}))
+
+    def posts(self):
+        return [call["body"] for call in self.peer.calls if call["method"] == "POST"]
+
+    def test_TC_1674_push_refused_the_first_push_waits(self):
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        code, rows, err = self.hub("push", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "refused", "first push needs --first"), err)
+        code, out, _ = self.hub("push", "acme", json_lines=False)
+        self.assertEqual(code, 1)
+        self.assertIn("  first push needs --first\n  the first push of this project to this server waits for the user's yes", out)
+        self.assertEqual([(c["method"], c["path"]) for c in self.peer.calls], [("GET", self.HELD)] * 2)
+        self.assertEqual(list((self.home / ".corthex/hub/outbox").glob("acme/*.json")), [])
+
+    def test_TC_1675_push_first_done(self):
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        code, rows, err = self.hub("push", "acme", "--first")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual(rows[0]["answer"], {"project": "acme", "stored": True})
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.posts()[0]["project"]["name"], "acme")
+        self.assertNotIn("replaces", self.posts()[0])
+
+    def test_TC_1676_push_first_wrong_command_line(self):
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        for words in (["push", "--first"], ["push", "acme", "beta", "--first"]):
+            with self.subTest(words=words):
+                code, rows, err = self.hub(*words)
+                self.assertEqual((code, rows), (2, []))
+                self.assertIn("--first takes exactly one project", err)
+        self.assertEqual(self.peer.calls, [])
+
+    def test_TC_1677_push_first_on_a_project_that_the_server_holds(self):
+        held = self.checkout()
+        child = self.commit("next")
+        self.publish(child)
+        self.peer.on("GET", self.HELD, (200, {"project": "acme", "default_commit": held}))
+        for words in (["push", "acme"], ["push", "acme", "--first"]):
+            with self.subTest(words=words):
+                code, rows, err = self.hub(*words)
+                self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual([(body["replaces"], body["repos"]["."]["default"]["commit"]) for body in self.posts()], [(held, child)] * 2)
+
+    def test_TC_1678_push_a_removed_project_is_a_first_push_again(self):
+        self.peer.on("GET", self.HELD, (200, {"project": "acme", "default_commit": None}))
+        code, rows, err = self.hub("push", "acme")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        # The user removes the project on the server; the server then holds no such project.
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        code, rows, _ = self.hub("push", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "refused", "first push needs --first"))
+        code, rows, err = self.hub("push", "acme", "--first")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual(len(self.posts()), 2)
+
+    def test_TC_1679_push_dry_run_asks_the_server_nothing(self):
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        code, rows, err = self.hub("push", "acme", "--dry-run")
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual((rows[0]["answer"]["held_commit"], rows[0]["answer"]["first_push"]), ("checked when sent", "checked when sent"))
+        code, out, _ = self.hub("push", "acme", "--dry-run", json_lines=False)
+        self.assertEqual(code, 0)
+        self.assertIn('"first_push": "checked when sent"', out)
+        self.assertEqual(self.peer.calls, [])
 
 
 if __name__ == "__main__":

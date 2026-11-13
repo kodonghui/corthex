@@ -367,7 +367,7 @@ def cli_words(command, bundle, home, invalid=False):
     sensitive = "Fixture text " + PRIVATE_MARKER + " " + str(home)
     words = {
         "snapshot": ["snapshot", project], "status": ["status", project, "05-erd", "--state", "in_progress"],
-        "push": ["push", project], "remove": ["remove", project], "todo": ["todo", project],
+        "push": ["push", project, "--first"], "remove": ["remove", project], "todo": ["todo", project],
         "comment": ["comment", project, "--stage", "05-erd", "--part", "sample", "--item", "TBL-001", "--text", sensitive],
         "reply": ["reply", project, ids["c"], "--text", sensitive], "answered": ["answered", project, ids["c"]],
         "decide": ["decide", project, ids["c"], "--link", "https://example.invalid/pr/1", "--text", sensitive],

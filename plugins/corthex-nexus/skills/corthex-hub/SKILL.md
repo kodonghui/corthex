@@ -57,8 +57,9 @@ The checks and the forms of source the hub reads are in [references/reading.md](
 
 1. The user lists the projects that may be sent in `nexus.push` in `~/.corthex/profile.json`, and the address in `nexus.url`. Ask before the first push of each project.
 2. The service token goes in the environment variables `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET`, never in a file, the profile, a command line or a message.
-3. Run `hub.py push --dry-run` first and show what would be sent. Then run `hub.py push`.
-4. The hub drains pending writes, asks for the held commit and compares ancestry before sending. A descendant replaces it; an older or missing commit needs a fetch. Divergence names both commits: use `--replace-held` only after the user agrees. A phase-1 server needs the 0.2 release. Report the actual refusal; a refused token needs its Access setup fixed.
+3. Run `hub.py push --dry-run` first and show what would be sent. Then run `hub.py push`. The dry run asks the server nothing, so whether the push is the project's first is checked when it is sent.
+4. A push that the server answers by holding no such project, also after the user removed it, is the project's first: the hub sends nothing and refuses it with `first push needs --first`. Tell the user and ask; after their yes for that project, run `hub.py push PROJECT --first`, which takes exactly one project. On a project that the server holds, `--first` changes nothing.
+5. The hub drains pending writes, asks for the held commit and compares ancestry before sending. A descendant replaces it; an older or missing commit needs a fetch. Divergence names both commits: use `--replace-held` only after the user agrees. A phase-1 server needs the 0.2 release. Report the actual refusal; a refused token needs its Access setup fixed.
 
 `hub.py remove <project>` deletes a project from the server; ask before you run it. Taking a project out of `nexus.push` stops further pushes but leaves what the server holds.
 
