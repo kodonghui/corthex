@@ -34,10 +34,14 @@ The parts, of which `efforts`, and `skip` when FILE is given, run unless
   sizes, at no cost, and writes down how the package's two estimates read the
   request. For each request the report gives the working and the safe
   estimate, the numbers of ASCII and other characters that they are made of,
-  the count, the input and output tokens that the provider billed, its times,
-  its cost by the usage log, and what the answer asks for by action and kind;
-  for each run, the items and state lines that it left. This part's worker
-  gets no embedding key, so it sends no embedding.
+  the count that the package's sizing let the request go with, the input and
+  output tokens that the provider billed, its times, its cost by the usage
+  log, and what the answer asks for by action and kind; for each run, the
+  items and state lines that it left and how its index step ended. A curate
+  and a merge request have a count; a state request has none, since the
+  package sizes it without one. One part of a turn that went in parts was
+  counted while the parts had a provisional number, and the report says so.
+  This part's worker gets no embedding key, so it sends no embedding.
 - skip: for each prompt of FILE, whether the staged package's own
   `recall.skipped` skips it at the default of `recall.skip`, by the prompt's
   language (ko with a Hangul letter, en with Latin letters and none, else
@@ -57,9 +61,11 @@ The parts, of which `efforts`, and `skip` when FILE is given, run unless
   it has ended. A prompt whose recall ended late or failed is given once more
   to `c2_measure_hook.py`, the same hook with 30 seconds: its scores are
   recorded as such and its time is not. Between two lengths every item is
-  embedded again, which the report counts. It needs
-  CORTHEX_MEMORY_OPENAI_API_KEY, and stops where an embedding of the items
-  fails.
+  embedded again, which the report counts. An embedding request that failed
+  leaves its items without a vector until a later run of the worker, so the
+  worker is run again, five times at most, until its index step says that
+  every current item has one; the part stops where it does not. It needs
+  CORTHEX_MEMORY_OPENAI_API_KEY.
 
 report.json holds numbers, the names of settings and the IDs that the package
 made: no text of a sample, of a prompt, of an item or of an answer. Those stay
@@ -82,12 +88,13 @@ with made-up keys, its answers are scripted and its count is a number made
 from the request's size. It shows that this script and the package run on a
 system, and nothing about a provider, a model or an estimate.
 
-It prints a summary and exits 1 when a run broke, was not made or left a
-request without its count or its usage line, when a memory key of this
-process's environment is in a file under the folder, in the report or in a
-request to the local server, or when a file there could not be read for that
-search. Whether the safe estimate is at or above each count is a reading that
-the report gives; it does not change the exit.
+It prints a summary and exits 1 when a run broke, was not made, or left a
+request that failed or that lacks its usage lines or a count that the package
+makes for its kind, when a memory key of this process's environment is in a
+file under the folder, in the report or in a request to the local server, or
+when a file there could not be read for that search. Whether the safe
+estimate is at or above each count is a reading that the report gives; it
+does not change the exit.
 """
 import argparse
 from collections import Counter
@@ -124,7 +131,12 @@ THRESHOLD = 2       # The highest `recall.threshold`: above any score, so every 
 MORE_SECONDS = 30   # The time of the hook that is asked again for a prompt whose recall ended late or failed.
 AGAIN = ("late", "failed", "no-line")
 RUNS = 3            # Runs of the worker for the turns that one sample leaves waiting.
-REBUILDS = 5        # Runs of the worker until the index has every item at a new length.
+REBUILDS = 5        # Runs of the worker until the index has a vector for every current item.
+MODEL_CALLS = ("curate", "consolidate")  # The usage lines' calls of the requests that go through `send`.
+# The kinds of request that the package sizes with a count, once it counts every request that it sizes. A state
+# request's list is chosen beside no turns, which keeps it far below the limit without a count.
+COUNTED = ("curate", "merge")
+INDEX = ("reason", "rebuilt", "written", "removed", "embedded", "requests", "failed")
 SKIPS = (2, 4, 6, 8, 10, 12, 16)
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}\Z")
 KOREAN = re.compile("[가-힣ᄀ-ᇿㄱ-ㆎ]")
@@ -203,6 +215,11 @@ def valid(value, name):
             "turns": [{key: turn[key] for key in ("host", "prompt", "reply")} for turn in value["turns"]]}
 
 
+def loaded(path):
+    """A JSON file's value. A byte order mark before it, as some editors on Windows write one, is no part of it."""
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
+
+
 def samples_of(folder, names):
     """The samples of a folder: those named, in that order, or all by file name."""
     folder = Path(folder)
@@ -212,7 +229,7 @@ def samples_of(folder, names):
     found = []
     for path in paths:
         try:
-            value = json.loads(path.read_text(encoding="utf-8"))
+            value = loaded(path)
         except (OSError, ValueError) as error:
             raise ValueError("%s cannot be read as JSON: %s" % (path.name, type(error).__name__))
         sample = valid(value, path.name)
@@ -227,7 +244,7 @@ def samples_of(folder, names):
 def prompts_of(path):
     """The prompts of a file: a JSON list of `{"text"[, "source"]}`."""
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        value = loaded(path)
     except (OSError, ValueError) as error:
         raise ValueError("--prompts: the file cannot be read as JSON: %s" % type(error).__name__)
     if not isinstance(value, list) or not value or not all(
@@ -318,21 +335,28 @@ class Home(c2_real.Home):
         """The layer's current items, by ID."""
         return {ident: value for ident, value in c2_hosts.items(self.home).items() if value["status"] == "current"}
 
-    def vectors(self, dims):
-        """Give the index vectors of `dims` numbers: None when it has them, else what the rebuilding runs logged."""
+    def settle(self, runs):
+        """Run the worker until a run leaves the index whole, REBUILDS times at most; each run is added to `runs`.
+
+        `runs` are the home's last runs: where the last of them left the index whole, none is made. A Stopped
+        says that the index is still not whole, so recall has no sound index to rank; `runs` then has the runs
+        that were made.
+        """
+        more = 0
+        while not runs or not whole(runs[-1]):
+            if more == REBUILDS:
+                raise c2_real.Stopped("the index is not whole after %d more runs of the worker (the last index step: "
+                                      "%s), so recall has no sound index to rank" % (
+                                          REBUILDS, json.dumps(kept(runs[-1])[-1:])))
+            runs.append(self.work())
+            more += 1
+
+    def vectors(self, dims, runs):
+        """Give the index vectors of `dims` numbers; the runs of the worker that it takes are added to `runs`."""
         models = self.configuration().get("models", {})
-        if models.get("dims", self.check.defaults["dims"]) == dims:
-            return None
-        self.setting("models", "dims", dims)
-        lines, runs = [], 0
-        while runs < REBUILDS:
-            run = self.work()
-            runs += 1
-            made = [row for row in run["usage"] if row.get("call") == "embed-items"]
-            lines += made
-            if not made:  # A run that embedded nothing: the index has every item.
-                break
-        return embedded(lines, dims=dims, worker_runs=runs)
+        if models.get("dims", self.check.defaults["dims"]) != dims:
+            self.setting("models", "dims", dims)
+            self.settle(runs)
 
     def ask(self, host, prompt, seconds=None):
         """Give a prompt to the staged prompt hook as the first of a new session; its time, outcome and candidates.
@@ -378,16 +402,44 @@ class Home(c2_real.Home):
         return found
 
 
-def embedded(lines, **more):
-    """Item embedding requests by their usage lines. A failed one stops the part: recall then has no index."""
-    failed = sorted({str(row.get("error")) for row in lines if row.get("result") != "ok"})
-    if failed:
-        raise c2_real.Stopped("an embedding of the items failed (%s), so recall has no index to rank" %
-                              ", ".join(failed))
-    found = dict(more)
-    found.update(requests=len(lines), input=sum(row.get("input") or 0 for row in lines),
-                 usd=round(sum(row.get("cost") or 0 for row in lines), 6),
-                 ms=sum(row.get("total_ms") or 0 for row in lines))
+def kept(run):
+    """How each index step of a run ended, by the wrapper's lines of it: why, and what it did, in numbers."""
+    return [{key: row.get(key) for key in INDEX} for row in run["requests"] if row.get("kind") == "index"]
+
+
+def whole(run):
+    """Whether a run left the index with a vector for every current item.
+
+    Its last index step ended as `done` and none of that step's embedding requests failed: the items of a failed
+    request stay without a vector until a later run. No request to the model came after that step either, whose
+    answer could have changed the items.
+    """
+    rows = [row for row in run["requests"] if row.get("kind") in ("request", "index")]
+    last = rows[-1] if rows else {}
+    return last.get("kind") == "index" and last.get("reason") == "done" and not last.get("failed")
+
+
+def embedded(lines):
+    """Some attempts of item embedding requests by their usage lines, of which each attempt has one, in numbers."""
+    return {"attempts": len(lines),
+            "failed_attempts": dict(Counter(str(row.get("error")) for row in lines if row.get("result") != "ok")),
+            "input": sum(row.get("input") or 0 for row in lines),
+            "usd": round(sum(row.get("cost") or 0 for row in lines), 6),
+            "ms": sum(row.get("total_ms") or 0 for row in lines)}
+
+
+def rebuilt(runs, **more):
+    """The runs of the worker that gave the index its vectors at another length, in numbers.
+
+    Such a run sends embeddings only, unless the worker has something else to do, as a consolidation that failed
+    before: the requests to the model that these runs made are read here too, where there are any.
+    """
+    usage = [row for run in runs for row in run["usage"]]
+    found = dict(more, worker_runs=len(runs), index=[step for run in runs for step in kept(run)])
+    found.update(embedded([row for row in usage if row.get("call") == "embed-items"]))
+    requests = joined([row for run in runs for row in run["requests"]], usage)
+    if requests:
+        found["model_requests"] = requests
     return found
 
 
@@ -411,49 +463,76 @@ def answered(row):
     return found
 
 
+def within(row, line):
+    """Whether a usage line's attempt began in a request's time. The three are times as the package writes one, so
+    they are in order as texts."""
+    began, ended, at = row.get("began"), row.get("ended"), line.get("at")
+    return bool(began and ended and at) and began <= at <= ended
+
+
 def joined(rows, usage):
-    """A home's written requests, each with the count of its document and its usage lines, in numbers and names.
+    """A home's written requests, each with the count that let it go and its usage lines, in numbers and names.
 
     `rows` are the lines of requests.jsonl and `usage` those of the usage log, both in the order in which they
-    were written. The package logs each attempt of a request as a line of its own, so a request takes as many
-    lines of its instructions as it had attempts, and its last line is the one of its answer.
+    were written.
+
+    The package logs each attempt of a request as a line of its own, with the time at which the attempt began. A
+    request takes the lines of its instructions whose attempts began from its `began` to its `ended` and that no
+    request before it took, and no more than its call says that it wrote (`logged`); the last of them is the one
+    of its answer. So a line that a call wrote before it raised an error belongs to that call, whose line says
+    `raised`, and to no later request.
+
+    A request's count is the one that the package's own sizing says let it go, by the line `sized` of its
+    document. One part of a turn that went in parts was counted while the parts had a provisional number, in a
+    document a few characters longer than the one that went: `count_is_of_this_document` says whether a count of
+    this very document gave the number.
     """
-    counts, lines = {}, {}
+    counts, sizings, taken, found = set(), {}, set(), []
+    lines = [row for row in usage if row.get("call") in MODEL_CALLS]
     for row in rows:
+        key = (row.get("instructions"), row.get("source_sha256"))
         if row.get("kind") == "count":
-            counts.setdefault(row.get("source_sha256"), []).append(row)
-    for row in usage:
-        if row.get("call") in ("curate", "consolidate"):
-            lines.setdefault(row.get("instructions"), []).append(row)
-    found = []
-    for row in rows:
+            counts.add(key + (row.get("tokens"),))
+        elif row.get("kind") == "sized":
+            sizings[key] = row
         if row.get("kind") != "request":
             continue
-        made = counts.get(row.get("source_sha256"), [])
-        tokens = next((value["tokens"] for value in reversed(made) if value.get("tokens") is not None), None)
-        waiting = lines.get(row.get("instructions"), [])
-        attempts = [waiting.pop(0) for _ in range(min(row.get("attempts") or 0, len(waiting)))]
-        last = attempts[-1] if attempts else {}
+        sizing, mine = sizings.get(key, {}), []
+        for index, value in enumerate(lines):
+            if row.get("logged") is not None and len(mine) == row["logged"]:
+                break
+            if index not in taken and value.get("instructions") == row.get("instructions") and within(row, value):
+                mine.append(index)
+        taken.update(mine)
+        attempts = [lines[index] for index in mine]
+        last, tokens = attempts[-1] if attempts else {}, sizing.get("counted")
         entry = {"instructions": row.get("instructions"), "model": row.get("model"), "effort": row.get("effort"),
                  "attempts": row.get("attempts"), "failure": row.get("failure"),
                  "document_bytes": c2_real.size(row.get("document") or ""),
                  "answer_bytes": c2_real.size(row.get("answer") or ""),
                  "source_sha256": row.get("source_sha256"), "ascii": row.get("ascii"), "other": row.get("other"),
                  "working": row.get("working"), "safe": row.get("safe"),
-                 "count": tokens, "count_calls": len(made),
-                 "count_failures": [value["failure"] for value in made if value.get("failure")],
-                 "usage_lines": len(attempts), "result": last.get("result"), "error": last.get("error"),
+                 "count": tokens, "count_calls": sizing.get("counts") or 0,
+                 "usage_lines": len(attempts), "logged": row.get("logged"),
+                 "result": last.get("result"), "error": last.get("error"),
                  "input": sum(last.get(name) or 0 for name in ("input", "cache_write", "cache_read"))
                  if attempts else None,
                  "output": last.get("output"), "first_ms": last.get("first_ms"), "total_ms": last.get("total_ms"),
                  "usd": round(sum(value.get("cost") or 0 for value in attempts), 6),
                  "list": last.get("list"), "turns": last.get("turns"),
                  # The usage line's estimate is the working estimate that the wrapper computed again.
-                 "estimate_agrees": bool(attempts) and last.get("estimate") == row.get("estimate") == row.get("working")}
-        if tokens and row.get("safe") is not None:
-            entry.update(safe_at_or_above_count=row["safe"] >= tokens,
-                         safe_over_count=round(row["safe"] / tokens, 3),
-                         working_over_count=round(row["working"] / tokens, 3))
+                 "estimate_agrees": (bool(attempts) and
+                                     last.get("estimate") == row.get("estimate") == row.get("working"))}
+        if row.get("raised"):
+            entry["raised"] = row["raised"]
+        if sizing.get("part"):
+            entry["part"] = sizing["part"]
+        if tokens:
+            entry["count_is_of_this_document"] = key + (tokens,) in counts
+            if row.get("safe") is not None:
+                entry.update(safe_at_or_above_count=row["safe"] >= tokens,
+                             safe_over_count=round(row["safe"] / tokens, 3),
+                             working_over_count=round(row["working"] / tokens, 3))
         entry.update(answered(row))
         found.append(entry)
     return found
@@ -481,8 +560,7 @@ def results(usage):
     """The usage lines by call and how each ended."""
     found = {}
     for row in usage:
-        ended = row.get("result") if row.get("result") != "failed" else "failed: %s" % row.get("error")
-        found.setdefault(row.get("call"), Counter())[ended] += 1
+        found.setdefault(row.get("call"), Counter())[c2_real.result_of(row)] += 1
     return {call: dict(value) for call, value in found.items()}
 
 
@@ -502,15 +580,21 @@ def attempts(record, since=None):
 
 
 def reading(home, runs, since=None):
-    """Some runs of a home's worker in numbers: each request with its estimates, its count and its usage line,
-    what the usage and failure logs and the curation record say of the runs, and the layer as it is now."""
+    """Some runs of a home's worker in numbers: each request with its estimates, its count and its usage lines,
+    what the usage and failure logs and the curation record say of the runs, how each index step ended, and the
+    layer as it is now."""
     usage = [row for run in runs for row in run["usage"]]
+    requests = joined([row for run in runs for row in run["requests"]], usage)
     found = {"worker_runs": len(runs), "seconds": round(sum(run.get("seconds") or 0 for run in runs), 1),
-             "requests": joined([row for run in runs for row in run["requests"]], usage),
-             "usage": results(usage), "usd": round(sum(row.get("cost") or 0 for row in usage), 6),
+             "requests": requests, "usage": results(usage),
+             "usd": round(sum(row.get("cost") or 0 for row in usage), 6),
              "failures": [{key: row.get(key) for key in ("hook", "step", "error") if row.get(key) is not None}
                           for run in runs for row in run["failures"]],
+             "index": [step for run in runs for step in kept(run)],
              "attempts": attempts(home.record(), since), "layer": made(home.layer())}
+    loose = sum(1 for row in usage if row.get("call") in MODEL_CALLS) - sum(row["usage_lines"] for row in requests)
+    if loose:  # As of a request whose process was ended before its line could be written.
+        found["usage_lines_of_no_request"] = loose
     broken = Counter()
     for run in runs:
         broken.update(run.get("lines left out because they are no JSON") or {})
@@ -520,17 +604,30 @@ def reading(home, runs, since=None):
 
 
 def lacking(found):
-    """Why a reading is not whole, as a list; empty when every request has its count and an `ok` usage line."""
+    """Why a reading is not whole, as a list; empty when every request has what the package gives its kind.
+
+    That is an `ok` usage line, as many usage lines as its call wrote, for a curate and a merge request a count,
+    and for a curate request a usage line with the estimate that was computed again.
+    """
     why = []
     if not found["requests"]:
         why.append("no request was written")
     for number, row in enumerate(found["requests"], 1):
-        if row["count"] is None:
+        if row.get("raised"):
+            why.append("request %d ended with the error %s" % (number, row["raised"]))
+            continue
+        kind = c2_real.kind_of(row)
+        if kind in COUNTED and row["count"] is None:
             why.append("request %d has no count" % number)
         if row["result"] != "ok":
             why.append("request %d ended with %s" % (number, row["result"] or "no usage line"))
-        if not row["estimate_agrees"]:
+        elif row.get("logged") is not None and row["usage_lines"] != row["logged"]:
+            why.append("request %d has %d usage lines in its time and wrote %d" % (number, row["usage_lines"],
+                                                                                   row["logged"]))
+        if kind == "curate" and not row["estimate_agrees"]:
             why.append("request %d: the usage line's estimate is not the one that was computed again" % number)
+    if found.get("usage_lines_of_no_request"):
+        why.append("%d usage lines are of no request that was written" % found["usage_lines_of_no_request"])
     if found["layer"]["turns_left_to_curate"]:
         why.append("%d turns are left to curate" % found["layer"]["turns_left_to_curate"])
     if found.get("lines_left_out_because_they_are_no_json"):
@@ -596,7 +693,7 @@ def replay(check, entry):
     try:
         for sample in check.samples:
             check.afford()
-            start, since, items = len(home.made), moment(), home.current()
+            items = home.current()
             stage = {"sample": sample["id"], "current_items_before": len(items), "prompts": []}
             entry["stages"].append(stage)
             if items:
@@ -607,9 +704,13 @@ def replay(check, entry):
                                              "language": language(turn["prompt"])})
                     texts["prompts"].append({"sample": sample["id"], "turn": number, "text": turn["prompt"]})
                 for dims in order:
-                    rebuilt = home.vectors(dims)
-                    if rebuilt:
-                        entry["rebuilds"].append(dict(rebuilt, before=sample["id"], items=len(home.current())))
+                    runs = []
+                    try:
+                        home.vectors(dims, runs)
+                    finally:  # Also the runs of a rebuild that did not get the index whole.
+                        if runs:
+                            entry["rebuilds"].append(rebuilt(runs, dims=dims, before=sample["id"],
+                                                             items=len(home.current())))
                     for row, turn in zip(stage["prompts"], sample["turns"]):
                         row[str(dims)] = home.recalled(turn["host"], turn["prompt"])
                         for value in row[str(dims)]["candidates"]:
@@ -617,10 +718,15 @@ def replay(check, entry):
                             texts["items"][value["item"]] = {key: item.get(key) for key in ("kind", "title", "text")}
                 order.reverse()  # The next sample begins at the length that the index has now.
                 home.leave_out([])
+            # The stage's curation is the runs from here on: those that gave the index another length are
+            # read as rebuilds, and the curation record's attempts are those from this time on.
+            since = moment()
             home.take(sample)
-            home.curate()
-            stage["curation"] = reading(home, home.made[start:], since)
-            embedded([row for run in home.made[start:] for row in run["usage"] if row.get("call") == "embed-items"])
+            runs = home.curate()
+            try:
+                home.settle(runs)  # The next sample's prompts are ranked against a whole index.
+            finally:
+                stage["curation"] = reading(home, runs, since)
     finally:
         try:
             (check.out / "recall-texts.json").write_text(json.dumps(texts, ensure_ascii=False, indent=1),
@@ -659,7 +765,8 @@ def by_length(entry, dims):
             "embed_ms": spread([row["embed_ms"] for row in rows], 1),
             "best_score": spread([row["candidates"][0]["score"] for row in ranked]),
             "fifth_score": spread([row["candidates"][4]["score"] for row in ranked if len(row["candidates"]) > 4]),
-            "rebuilds": {"times": len(rebuilds), "requests": sum(value["requests"] for value in rebuilds),
+            "rebuilds": {"times": len(rebuilds), "attempts": sum(value["attempts"] for value in rebuilds),
+                         "failed_attempts": sum(sum(value["failed_attempts"].values()) for value in rebuilds),
                          "input": sum(value["input"] for value in rebuilds),
                          "usd": round(sum(value["usd"] for value in rebuilds), 6),
                          "ms": sum(value["ms"] for value in rebuilds)}}
@@ -720,7 +827,11 @@ def estimates(requests):
             seen.add(key)
             rows.append(row)
     found = {"requests": len(requests), "requests_with_a_count": sum(1 for row in requests if row.get("count")),
-             "documents_counted": len(rows)}
+             "documents_counted": len(rows),
+             "documents_counted_by_kind": dict(Counter(c2_real.kind_of(row) for row in rows)),
+             # Parts of a turn: the count is that of a document a few characters longer than the one that went.
+             "documents_counted_with_a_provisional_number_of_parts": sum(
+                 1 for row in rows if not row.get("count_is_of_this_document"))}
     if rows:
         curate = [(row["ascii"], row["other"], row["count"]) for row in rows
                   if c2_real.kind_of(row) == "curate" and row.get("ascii") is not None]
@@ -740,7 +851,8 @@ def by_effort(runs):
         if entry.get("outcome") != "measured":
             continue
         value = found.setdefault(entry["effort"], {
-            "runs": 0, "requests": 0, "input": 0, "output": 0, "usd": 0.0, "request_ms": 0, "items": 0,
+            "runs": 0, "requests": 0, "requests_by_kind": Counter(), "input": 0, "output": 0, "usd": 0.0,
+            "request_ms": 0, "items": 0,
             "state_lines": 0, "current_item_bytes": 0, "changes": Counter(), "current_items_by_kind": Counter(),
             "applied": 0, "dropped": 0, "dropped_by_reason": Counter(), "line_edits_dropped_by_reason": Counter(),
             "first_ms": []})
@@ -752,6 +864,7 @@ def by_effort(runs):
             value["line_edits_dropped_by_reason"].update(attempt.get("edit_reasons") or {})
         for row in entry["requests"]:
             value["requests"] += 1
+            value["requests_by_kind"][c2_real.kind_of(row)] += 1
             for name, key in (("input", "input"), ("output", "output"), ("request_ms", "total_ms")):
                 value[name] += row.get(key) or 0
             value["changes"].update(row.get("changes") or {})
@@ -764,6 +877,7 @@ def by_effort(runs):
         value["current_items_by_kind"].update(layer["current_items_by_kind"])
     for value in found.values():
         value.update(usd=round(value["usd"], 6), changes=dict(value["changes"]),
+                     requests_by_kind=dict(value["requests_by_kind"]),
                      current_items_by_kind=dict(value["current_items_by_kind"]),
                      dropped_by_reason=dict(value["dropped_by_reason"]),
                      line_edits_dropped_by_reason=dict(value["line_edits_dropped_by_reason"]),
@@ -858,8 +972,10 @@ class Measure(c2_real.Check):
         """The readings across what has run so far."""
         report = self.report
         requests = [row for entry in report["runs"].values() for row in entry.get("requests", [])]
-        requests += [row for stage in (report.get("recall") or {}).get("stages", [])
+        recalled = report.get("recall") or {}
+        requests += [row for stage in recalled.get("stages", [])
                      for row in (stage.get("curation") or {}).get("requests", [])]
+        requests += [row for value in recalled.get("rebuilds", []) for row in value.get("model_requests", [])]
         report["estimates"] = estimates(requests)
         report["by_effort"] = by_effort(report["runs"])
         if not self.real:
@@ -874,23 +990,20 @@ def ended(report):
 
 
 def summary(report):
-    text = ["== MEMORY measured at %s against %s ==" % (report["release"], report["provider"])]
-    if "runs" not in report:
-        return text + [report.get("crash", "the check did not begin")]
-    text.append("system: %s, Python %s; checkout: %s; keys: %s" % (
-        report["system"]["platform"], report["system"]["python"], json.dumps(report["checkout"]),
-        json.dumps(report["keys"])))
+    text, begun = c2_real.head(report, "MEMORY measured", "runs")
+    if not begun:
+        return text
     for name, entry in report["runs"].items():
         if entry["outcome"] != "measured":
             text.append("%s: %s %s" % (name, entry["outcome"], json.dumps(entry.get("why") or entry.get("crash"))))
             continue
         layer = entry["layer"]
         for row in entry["requests"]:
-            text.append("%s: working %s, safe %s, count %s (safe/count %s), billed input %s, output %s, %s ms, "
+            text.append("%s, %s: working %s, safe %s, count %s (safe/count %s), billed input %s, output %s, %s ms, "
                         "%s USD; %d items, %d state lines; changes dropped: %s" % (
-                            name, row["working"], row["safe"], row["count"], row.get("safe_over_count"),
-                            row["input"], row["output"], row["total_ms"], row["usd"], layer["items"],
-                            layer["state_lines"],
+                            name, row["instructions"], row["working"], row["safe"], row["count"],
+                            row.get("safe_over_count"), row["input"], row["output"], row["total_ms"], row["usd"],
+                            layer["items"], layer["state_lines"],
                             sum(attempt.get("dropped") or 0 for attempt in entry.get("attempts", []))))
     text.append("estimates against counts: %s" % json.dumps(report.get("estimates")))
     for level, value in report.get("by_effort", {}).items():
@@ -905,18 +1018,7 @@ def summary(report):
             text.append("  %s numbers: %s" % (dims, json.dumps(found)))
         for found in value.get("between_the_lengths") or []:
             text.append("  between the lengths: %s" % json.dumps(found))
-    text.append("requests to %s, by the usage log: %s" % (report["provider"], json.dumps(report.get("cost"))))
-    text.append("requests to the local server: %s" % report.get("local_requests"))
-    if c2_real.leaked(report):
-        text.append("A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND: in files %s; in the report: %s; in requests to the "
-                    "local server: %s" % (json.dumps(report.get("files_with_key")), bool(report.get("key_in_report")),
-                                          report.get("local_requests_with_key")))
-    if report.get("files_not_read"):
-        text.append("files that could not be read, so the search for a key is not complete: %s" % json.dumps(
-            report["files_not_read"]))
-    if "crash" in report:
-        text.append(report["crash"])
-    return text
+    return text + c2_real.tail(report)
 
 
 def passed(report):
@@ -952,6 +1054,8 @@ def given(chosen):
     if any(not SHORTEST <= dims <= LONGEST for dims in chosen.dims):
         raise ValueError("--dims is a number from %d to %d" % (SHORTEST, LONGEST))
     names = list(dict.fromkeys(chosen.sample or []))
+    if not all(NAME.match(name) for name in names):  # Before a name becomes part of a file's path.
+        raise ValueError("--sample is a sample's id: lower-case letters, digits and hyphens, 40 at most")
     if chosen.samples:
         samples = samples_of(chosen.samples, names)
     elif chosen.self_test:

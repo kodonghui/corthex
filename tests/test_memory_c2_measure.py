@@ -1,7 +1,7 @@
 """TASK-047: the readings, refusals and wrappers of the measurement check, and its self-test.
 
 No provider is called here: the readings get made-up request lines, usage lines and layers, and the one run of the
-script answers every request from its local server.
+script and the worker's flows at the end answer every request from a local server.
 """
 import contextlib
 import hashlib
@@ -46,30 +46,66 @@ SAMPLE = {"id": "one", "kind": "typed", "source": "a test", "turns": [
     {"host": "claude", "prompt": "PROMPT-TEXT-OF-A-SAMPLE", "reply": "REPLY-TEXT-OF-A-SAMPLE"}]}
 
 
-def request(document="a", instructions="curate-3", attempts=1, failure=None, answer=None, **more):
-    """A request's line of requests.jsonl, as c2_measure_worker.py writes it."""
-    digest = hashlib.sha256(document.encode("utf-8")).hexdigest()
+def moment(second, part=0):
+    """A time as the package writes one: `second` seconds and `part` thousandths into a made-up minute."""
+    return "2026-11-13T00:00:%02d.%03dZ" % (second, part)
+
+
+def digest(document):
+    return hashlib.sha256(document.encode("utf-8")).hexdigest()
+
+
+def request(document="a", instructions="curate-3", attempts=1, failure=None, answer=None, second=1, **more):
+    """A request's line of requests.jsonl, as c2_measure_worker.py writes it: sent in the second `second`."""
     row = {"kind": "request", "instructions": instructions, "document": "<request>%s</request>" % document,
            "answer": json.dumps(answer if answer is not None else {"changes": [], "state": {
                "change": [], "add": [], "remove": []}}),
            "failure": failure, "attempts": attempts, "model": "model-x", "effort": "high", "max_tokens": 64000,
-           "source_sha256": digest, "ascii": 4000, "other": 1000, "working": 2000, "safe": 4000, "estimate": 2000,
-           "size": {"turns": 1, "list": "full", "estimate": 2000}}
+           "source_sha256": digest(document), "ascii": 4000, "other": 1000, "working": 2000, "safe": 4000,
+           "estimate": 2000, "size": {"turns": 1, "list": "full", "estimate": 2000},
+           "began": moment(second), "ended": moment(second, 900), "logged": attempts}
     row.update(more)
     return row
 
 
-def count(document="a", tokens=3000, failure=None):
-    return {"kind": "count", "instructions": "curate-3", "tokens": tokens, "failure": failure,
-            "source_sha256": hashlib.sha256(document.encode("utf-8")).hexdigest()}
+def raised(document="a", instructions="curate-3", second=1, error="LostLock"):
+    """The line of a call of `send` that raised an error."""
+    row = request(document, instructions, second=second, raised=error)
+    return {key: value for key, value in row.items() if key not in ("document", "answer", "failure", "attempts",
+                                                                     "logged")}
 
 
-def usage(call="curate", result="ok", instructions="curate-3", **more):
-    row = {"call": call, "result": result, "instructions": instructions, "input": 3000, "output": 400,
-           "cache_write": 0, "cache_read": 0, "first_ms": 900, "total_ms": 1000, "cost": 0.001, "estimate": 2000,
-           "list": "full", "turns": 1}
+def count(document="a", tokens=3000, failure=None, instructions="curate-3"):
+    return {"kind": "count", "instructions": instructions, "tokens": tokens, "failure": failure,
+            "source_sha256": digest(document)}
+
+
+def sized(document="a", counted=3000, counts=1, instructions="curate-3", part=None):
+    """The line of a request that the package sized, with the count that let it go."""
+    return {"kind": "sized", "instructions": instructions, "source_sha256": digest(document), "counted": counted,
+            "counts": counts, "part": part}
+
+
+def index(reason="done", failed=(), embedded=0, **more):
+    """The line of a run's index step."""
+    row = {"kind": "index", "reason": reason, "rebuilt": None, "written": 0, "removed": 0, "embedded": embedded,
+           "requests": 1 if embedded or failed else 0, "failed": list(failed)}
     row.update(more)
     return row
+
+
+def usage(call="curate", result="ok", instructions="curate-3", second=1, **more):
+    """A usage line of an attempt that began in the second `second`."""
+    row = {"at": moment(second, 500), "call": call, "result": result, "instructions": instructions, "input": 3000,
+           "output": 400, "cache_write": 0, "cache_read": 0, "first_ms": 900, "total_ms": 1000, "cost": 0.001,
+           "estimate": 2000, "list": "full", "turns": 1}
+    row.update(more)
+    return row
+
+
+def run(rows=(), lines=()):
+    """A run of the worker as a home gives it: its lines of requests.jsonl and of the usage log."""
+    return {"requests": list(rows), "usage": list(lines), "failures": [], "seconds": 1.5}
 
 
 def layer(items=(), lines=(), candidates=(), waiting=0):
@@ -83,7 +119,7 @@ def item(number, kind="decision", status="current", title="제목", text="본문
 
 
 def measured_run(effort="high", **more):
-    row = measure.joined([request(), count()], [usage()])[0]
+    row = measure.joined([count(), sized(), request()], [usage()])[0]
     entry = {"sample": "one", "effort": effort, "outcome": "measured", "requests": [row], "usd": 0.001,
              "attempts": [{"kind": "curate", "result": "ok", "applied": 2, "dropped": 1, "reasons": {"quote": 1},
                            "edit_reasons": {"cite": 2}}],
@@ -172,6 +208,19 @@ class OptionTests(unittest.TestCase):
                                   "--dims", "1536"])
         self.assertEqual((chosen.part, chosen.effort, chosen.dims), (["efforts", "recall"], ["low", "xhigh"],
                                                                      [1536, 256]))
+
+    def test_a_sample_s_name_that_is_no_id_is_refused_before_it_is_part_of_a_path(self):
+        # A file beside the folder of the samples, which a name with `..` would reach.
+        folder = self.samples(dict(SAMPLE, id="outside")) / "samples"
+        folder.mkdir()
+        (folder / "one.json").write_text(json.dumps(SAMPLE), encoding="utf-8")
+        for name in ("../outside", "One", "a/b", "", "a" * 41, "one.json"):
+            with self.subTest(name):
+                code, text, base = self.run_main(["--self-test", "--samples", str(folder), "--sample", name])
+                self.assertEqual((code, list(base.iterdir())), (2, []))
+                self.assertIn("--sample is a sample's id", text)
+        with self.assertRaises(ValueError):
+            measure.given(measure.options(["out", "--self-test", "--sample", "../made-up-en"]))
 
     def test_a_self_test_without_a_folder_takes_the_made_up_samples_and_prompts(self):
         chosen = measure.options(["out", "--self-test", "--sample", "made-up-en"])
@@ -271,6 +320,17 @@ class SampleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             measure.prompts_of(folder / "none.json")
 
+    def test_a_file_that_begins_with_a_byte_order_mark_is_read_as_one_without(self):
+        # As an editor on Windows may save it.
+        folder = self.folder()
+        (folder / "one.json").write_bytes(b"\xef\xbb\xbf" + json.dumps(SAMPLE).encode("utf-8"))
+        (folder / "p.txt").write_bytes(b"\xef\xbb\xbf" + json.dumps([{"text": "가", "source": "chat"}],
+                                                                    ensure_ascii=False).encode("utf-8"))
+        self.assertEqual(measure.samples_of(folder, []), [SAMPLE])
+        self.assertEqual(measure.prompts_of(folder / "p.txt"), [{"source": "chat", "text": "가"}])
+        (folder / "one.json").write_bytes(json.dumps(SAMPLE).encode("utf-8"))
+        self.assertEqual(measure.samples_of(folder, ["one"]), [SAMPLE])
+
     def test_a_sample_in_numbers_has_none_of_its_text(self):
         value = {"id": "s", "kind": "chat", "source": "a test", "turns": [
             {"host": "claude", "prompt": "가나 ab", "reply": "다 cd"}, {"host": "codex", "prompt": "ef", "reply": "라"}]}
@@ -286,54 +346,104 @@ class SampleTests(unittest.TestCase):
 
 
 class ReadingTests(unittest.TestCase):
-    def test_a_request_gets_the_count_of_its_document_and_its_usage_line(self):
-        rows = [count("a", 3000), request("a"), count("b", 500), request("b", safe=400, working=200, estimate=200)]
+    def test_a_request_gets_the_count_that_let_it_go_and_the_usage_line_of_its_time(self):
+        rows = [count("a", 3000), sized("a", 3000), request("a"), count("b", 500), sized("b", 500),
+                request("b", second=2, safe=400, working=200, estimate=200)]
         lines = [usage(call="count-tokens", instructions=None), usage(cache_read=200, cache_write=100),
-                 usage(estimate=200, input=480, output=10, cost=0.0002)]
+                 usage(call="count-tokens", instructions=None, second=2),
+                 usage(second=2, estimate=200, input=480, output=10, cost=0.0002)]
         first, second = measure.joined(rows, lines)
         self.assertEqual({key: first[key] for key in (
-            "count", "count_calls", "input", "output", "usd", "result", "usage_lines", "estimate_agrees",
-            "safe_at_or_above_count", "safe_over_count", "working_over_count", "effort", "model", "list", "turns")},
-            {"count": 3000, "count_calls": 1, "input": 3300, "output": 400, "usd": 0.001, "result": "ok",
-             "usage_lines": 1, "estimate_agrees": True, "safe_at_or_above_count": True, "safe_over_count": 1.333,
-             "working_over_count": 0.667, "effort": "high", "model": "model-x", "list": "full", "turns": 1})
+            "count", "count_calls", "count_is_of_this_document", "input", "output", "usd", "result", "usage_lines",
+            "logged", "estimate_agrees", "safe_at_or_above_count", "safe_over_count", "working_over_count", "effort",
+            "model", "list", "turns")},
+            {"count": 3000, "count_calls": 1, "count_is_of_this_document": True, "input": 3300, "output": 400,
+             "usd": 0.001, "result": "ok", "usage_lines": 1, "logged": 1, "estimate_agrees": True,
+             "safe_at_or_above_count": True, "safe_over_count": 1.333, "working_over_count": 0.667, "effort": "high",
+             "model": "model-x", "list": "full", "turns": 1})
         self.assertEqual((second["count"], second["input"], second["safe_at_or_above_count"],
                           second["safe_over_count"]), (500, 480, False, 0.8))
         # Neither the document nor the answer is kept: their sizes are.
         self.assertEqual((first["document_bytes"], first["answer_bytes"]),
                          (len("<request>a</request>"), len(request("a")["answer"])))
-        self.assertFalse({"document", "answer", "size"} & set(first))
+        self.assertFalse({"document", "answer", "size", "began", "ended", "part", "raised"} & set(first))
 
     def test_a_request_that_was_tried_again_takes_a_line_for_each_attempt_and_reads_the_last(self):
-        rows = [count("a"), request("a", attempts=2), count("b"), request("b")]
+        rows = [sized("a"), request("a", attempts=2), sized("b"), request("b", second=2)]
         lines = [usage(result="failed", error="overloaded", cost=0.0, output=0, input=0), usage(output=700, cost=0.002),
-                 usage(output=5, cost=0.0001)]
+                 usage(second=2, output=5, cost=0.0001)]
         first, second = measure.joined(rows, lines)
         self.assertEqual((first["usage_lines"], first["result"], first["output"], first["usd"]), (2, "ok", 700, 0.002))
         self.assertEqual((second["usage_lines"], second["output"]), (1, 5))
 
     def test_requests_of_other_instructions_take_their_own_usage_lines(self):
+        # Both in the same second: a line is its request's only with that request's instructions.
         rows = [request("a"), request("m", instructions="merge-2", answer={"merges": [{}], "conflicts": []})]
         lines = [usage(call="consolidate", instructions="merge-2", output=9), usage(output=8)]
         first, second = measure.joined(rows, lines)
         self.assertEqual((first["output"], second["output"], second["merges"], second["conflicts"]), (8, 9, 1, 0))
 
-    def test_a_document_counted_twice_has_its_latest_count_and_a_failed_count_is_named(self):
-        rows = [count("a", None, "timeout"), count("a", 2900), request("a")]
-        row = measure.joined(rows, [usage()])[0]
-        self.assertEqual((row["count"], row["count_calls"], row["count_failures"]), (2900, 2, ["timeout"]))
+    def test_a_line_that_a_call_wrote_before_it_raised_is_that_call_s_and_no_later_request_s(self):
+        # The first call logged an attempt and then raised: the package's check failed after the answer.
+        rows = [sized("a"), raised("a"), sized("a"), request("a", second=3)]
+        lines = [usage(output=11, cost=0.004), usage(second=3, output=22)]
+        first, second = measure.joined(rows, lines)
+        self.assertEqual((first["raised"], first["usage_lines"], first["logged"], first["output"], first["usd"],
+                          first["attempts"], first["document_bytes"]), ("LostLock", 1, None, 11, 0.004, None, 0))
+        self.assertEqual((second["usage_lines"], second["output"], second.get("raised")), (1, 22, None))
+        found = {"requests": [first, second], "layer": {"turns_left_to_curate": 0}}
+        self.assertEqual(measure.lacking(found), ["request 1 ended with the error LostLock"])
+        # Paired by their order alone, the second request would have read the first call's line.
+        self.assertEqual(measure.lacking({"requests": [second], "layer": {"turns_left_to_curate": 0}}), [])
+
+    def test_a_request_takes_no_more_lines_than_its_call_wrote_and_none_outside_its_time(self):
+        # Two requests whose times meet in one thousandth of a second, each with a line that began then.
+        edge = moment(1, 900)
+        rows = [request("a"), request("b", began=edge, ended=moment(2, 900))]
+        lines = [usage(at=edge, output=1), usage(at=edge, output=2)]
+        first, second = measure.joined(rows, lines)
+        self.assertEqual((first["usage_lines"], first["output"], second["usage_lines"], second["output"]),
+                         (1, 1, 1, 2))
+        # A line from before a request began or from after it ended is not its line, nor is one without a time.
+        late = dict(usage(second=5), output=3)
+        row = measure.joined([request("a")], [late, {key: value for key, value in usage().items() if key != "at"}])[0]
+        self.assertEqual((row["usage_lines"], row["result"]), (0, None))
+        self.assertEqual(measure.joined([request("a", began=None)], [usage()])[0]["usage_lines"], 0)
+        self.assertTrue(measure.within(request(), usage()))
+        self.assertFalse(measure.within(request(), usage(second=2)))
+
+    def test_a_count_is_the_one_of_the_latest_sizing_of_the_document_before_the_request(self):
+        rows = [count("a", None, "timeout"), count("a", 2900), sized("a", 2900, 2), request("a"),
+                count("a", 2950), sized("a", 2950, 1), request("a", second=2)]
+        first, second = measure.joined(rows, [usage(), usage(second=2)])
+        self.assertEqual((first["count"], first["count_calls"], second["count"], second["count_calls"]),
+                         (2900, 2, 2950, 1))
+        # A sizing of other instructions' request with the same document is not this request's.
+        row = measure.joined([sized("a", 7, instructions="merge-2"), request("a")], [usage()])[0]
+        self.assertEqual((row["count"], row["count_calls"]), (None, 0))
+
+    def test_a_part_of_a_turn_has_the_count_of_its_provisional_document_and_says_so(self):
+        # The count was made of the document with a provisional number of parts, which has another digest.
+        rows = [count("part 1 of 999999", 60000), count("part 2 of 999999", 61000),
+                sized("part 1 of 2", 60000, 1, part=[1, 2]), sized("part 2 of 2", 61000, 1, part=[2, 2]),
+                request("part 1 of 2"), request("part 2 of 2", second=2)]
+        first, second = measure.joined(rows, [usage(), usage(second=2)])
+        self.assertEqual([(row["count"], row["count_calls"], row["part"], row["count_is_of_this_document"])
+                          for row in (first, second)], [(60000, 1, [1, 2], False), (61000, 1, [2, 2], False)])
+        self.assertEqual(measure.lacking({"requests": [first, second], "layer": {"turns_left_to_curate": 0}}), [])
 
     def test_a_request_without_a_count_or_a_usage_line_says_so_and_has_no_ratio(self):
         row = measure.joined([request("a")], [])[0]
         self.assertEqual((row["count"], row["result"], row["input"], row["usage_lines"], row["estimate_agrees"]),
                          (None, None, None, 0, False))
         self.assertNotIn("safe_over_count", row)
+        self.assertNotIn("count_is_of_this_document", row)
         self.assertEqual(measure.lacking({"requests": [row], "layer": {"turns_left_to_curate": 0}}),
                          ["request 1 has no count", "request 1 ended with no usage line",
                           "request 1: the usage line's estimate is not the one that was computed again"])
 
     def test_an_estimate_of_the_usage_line_that_is_not_the_wrapper_s_is_told(self):
-        row = measure.joined([count(), request()], [usage(estimate=1999)])[0]
+        row = measure.joined([sized(), request()], [usage(estimate=1999)])[0]
         self.assertFalse(row["estimate_agrees"])
 
     def test_an_answer_is_read_in_numbers(self):
@@ -348,15 +458,51 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(measure.answered({"answer": "[1]"}), {"answer": "no object"})
 
     def test_a_reading_lacks_what_it_names(self):
-        whole = {"requests": measure.joined([count(), request()], [usage()]), "layer": {"turns_left_to_curate": 0}}
+        whole = {"requests": measure.joined([sized(), request()], [usage()]), "layer": {"turns_left_to_curate": 0}}
         self.assertEqual(measure.lacking(whole), [])
         self.assertEqual(measure.lacking({"requests": [], "layer": {"turns_left_to_curate": 2}}),
                          ["no request was written", "2 turns are left to curate"])
-        failed = measure.joined([count(), request(failure="limit")], [usage(result="limit", error="max-tokens")])
+        failed = measure.joined([sized(), request(failure="limit")], [usage(result="limit", error="max-tokens")])
         self.assertEqual(measure.lacking({"requests": failed, "layer": {"turns_left_to_curate": 0}}),
                          ["request 1 ended with limit"])
         self.assertEqual(measure.lacking(dict(whole, lines_left_out_because_they_are_no_json={"usage": 1})),
                          ["a log has lines that are no JSON"])
+        self.assertEqual(measure.lacking(dict(whole, usage_lines_of_no_request=2)),
+                         ["2 usage lines are of no request that was written"])
+        # A call that says it wrote two lines and has one in its time.
+        fewer = measure.joined([sized(), request(attempts=2)], [usage()])
+        self.assertEqual(measure.lacking({"requests": fewer, "layer": {"turns_left_to_curate": 0}}),
+                         ["request 1 has 1 usage lines in its time and wrote 2"])
+
+    def test_a_run_that_also_consolidates_lacks_nothing_that_the_package_does_not_give_those_requests(self):
+        # The package counts a merge request and no state request, and gives a consolidation's usage lines no
+        # estimate.
+        rows = [sized("a"), request("a"), sized("m", 1500, instructions="merge-2"),
+                request("m", instructions="merge-2", second=2, answer={"merges": [], "conflicts": []}),
+                request("s", instructions="state-2", second=3, answer={"state": {}})]
+        lines = [usage(), usage(call="consolidate", instructions="merge-2", second=2, estimate=None),
+                 usage(call="consolidate", instructions="state-2", second=3, estimate=None)]
+        found = measure.joined(rows, lines)
+        self.assertEqual([(row["instructions"], row["count"], row["result"], row["estimate_agrees"]) for row in found],
+                         [("curate-3", 3000, "ok", True), ("merge-2", 1500, "ok", False),
+                          ("state-2", None, "ok", False)])
+        self.assertEqual(measure.lacking({"requests": found, "layer": {"turns_left_to_curate": 0}}), [])
+        # A merge request without the count that the package makes for it is told.
+        found = measure.joined([row for row in rows if row != rows[2]], lines)
+        self.assertEqual(measure.lacking({"requests": found, "layer": {"turns_left_to_curate": 0}}),
+                         ["request 2 has no count"])
+
+    def test_a_reading_counts_the_usage_lines_that_no_written_request_took_and_tells_each_index_step(self):
+        home = SimpleNamespace(record=lambda: {}, layer=lambda: layer())
+        # The second run's worker was ended while its request was under way: a usage line and no request's line.
+        runs = [run([sized(), request(), index("key")], [usage(), usage(call="count-tokens", instructions=None)]),
+                run([index(embedded=2)], [usage(second=7), usage(call="embed-items", instructions=None, second=8)])]
+        found = measure.reading(home, runs)
+        self.assertEqual((found["worker_runs"], found["seconds"], len(found["requests"]),
+                          found["usage_lines_of_no_request"]), (2, 3.0, 1, 1))
+        self.assertEqual([(step["reason"], step["embedded"]) for step in found["index"]], [("key", 0), ("done", 2)])
+        self.assertEqual(measure.lacking(found), ["1 usage lines are of no request that was written"])
+        self.assertNotIn("usage_lines_of_no_request", measure.reading(home, runs[:1]))
 
     def test_a_layer_is_read_in_numbers(self):
         found = measure.made(layer(
@@ -375,20 +521,32 @@ class ReadingTests(unittest.TestCase):
                  usage(call="embed-items", result="failed", error="insufficient_quota")]
         self.assertEqual(measure.results(lines), {"curate": {"ok": 1, "failed: overloaded": 1},
                                                  "embed-items": {"ok": 1, "failed: insufficient_quota": 1}})
+        self.assertEqual([real.result_of(row) for row in lines[:2] + [{}]], ["ok", "failed: overloaded", None])
 
     def test_the_estimates_are_read_once_for_each_document(self):
-        rows = measure.joined([count("a", 3000), request("a"), request("a"), count("b", 5000), request("b"),
-                               request("c")], [usage(), usage(), usage(input=5000), usage()])
+        rows = measure.joined(
+            [count("a", 3000), sized("a", 3000), request("a"), request("a", second=2), sized("b", 5000, part=[1, 2]),
+             request("b", second=3), request("c", second=4), sized("m", 4000, instructions="merge-2"),
+             count("m", 4000, instructions="merge-2"), request("m", instructions="merge-2", second=5)],
+            [usage(), usage(second=2), usage(second=3, input=5000), usage(second=4),
+             usage(call="consolidate", instructions="merge-2", second=5, input=4000)])
         found = measure.estimates(rows)
-        self.assertEqual({key: found[key] for key in ("requests", "requests_with_a_count", "documents_counted",
-                                                      "documents_with_the_safe_estimate_below_the_count")},
-                         {"requests": 4, "requests_with_a_count": 3, "documents_counted": 2,
-                          "documents_with_the_safe_estimate_below_the_count": 1})
+        self.assertEqual({key: found[key] for key in (
+            "requests", "requests_with_a_count", "documents_counted", "documents_counted_by_kind",
+            "documents_counted_with_a_provisional_number_of_parts",
+            "documents_with_the_safe_estimate_below_the_count")},
+            {"requests": 5, "requests_with_a_count": 4, "documents_counted": 3,
+             "documents_counted_by_kind": {"curate": 2, "merge": 1},
+             "documents_counted_with_a_provisional_number_of_parts": 1,
+             "documents_with_the_safe_estimate_below_the_count": 1})
+        found = measure.estimates(rows[:4])
         self.assertEqual(found["safe_over_count"], {"min": 0.8, "median": 1.067, "max": 1.333, "values": 2})
         self.assertEqual(found["working_over_count"], {"min": 0.4, "median": 0.533, "max": 0.667, "values": 2})
         self.assertEqual(found["count_over_billed_input"], {"min": 1.0, "median": 1.0, "max": 1.0, "values": 2})
         self.assertIsNone(found["line_of_curate_requests"])
-        self.assertEqual(measure.estimates([]), {"requests": 0, "requests_with_a_count": 0, "documents_counted": 0})
+        self.assertEqual(measure.estimates([]), {
+            "requests": 0, "requests_with_a_count": 0, "documents_counted": 0, "documents_counted_by_kind": {},
+            "documents_counted_with_a_provisional_number_of_parts": 0})
 
     def test_the_line_of_the_counts_is_found_where_the_documents_give_one(self):
         points = [(x, y, 0.3 * x + 1.5 * y + 400) for x, y in ((1000, 0), (0, 1000), (2000, 500), (700, 300))]
@@ -405,10 +563,11 @@ class ReadingTests(unittest.TestCase):
         found = measure.by_effort(runs)
         self.assertEqual(sorted(found), ["high", "xhigh"])
         self.assertEqual({key: found["high"][key] for key in (
-            "runs", "requests", "input", "output", "usd", "request_ms", "items", "state_lines", "changes",
-            "current_items_by_kind")},
-            {"runs": 2, "requests": 2, "input": 6000, "output": 800, "usd": 0.002, "request_ms": 2000, "items": 4,
-             "state_lines": 2, "changes": {}, "current_items_by_kind": {"decision": 2, "fact": 2}})
+            "runs", "requests", "requests_by_kind", "input", "output", "usd", "request_ms", "items", "state_lines",
+            "changes", "current_items_by_kind")},
+            {"runs": 2, "requests": 2, "requests_by_kind": {"curate": 2}, "input": 6000, "output": 800, "usd": 0.002,
+             "request_ms": 2000, "items": 4, "state_lines": 2, "changes": {},
+             "current_items_by_kind": {"decision": 2, "fact": 2}})
         self.assertEqual(found["high"]["first_ms"], {"min": 900, "median": 900, "max": 900, "values": 2})
         self.assertEqual({key: found["high"][key] for key in ("applied", "dropped", "dropped_by_reason",
                                                               "line_edits_dropped_by_reason")},
@@ -465,21 +624,93 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual([measure.percentile(list(range(1, 21)), share) for share in (0.5, 0.95, 1.0)], [10, 19, 20])
         self.assertEqual(measure.percentile([7], 0.95), 7)
 
-    def test_a_failed_embedding_of_the_items_stops_the_recall_part(self):
+    def test_the_attempts_of_item_embeddings_are_read_in_numbers_and_a_failed_one_stops_nothing(self):
         lines = [usage(call="embed-items", input=30, cost=0.000001, total_ms=40),
-                 usage(call="embed-items", input=10, cost=0.0, total_ms=20)]
-        self.assertEqual(measure.embedded(lines, dims=512), {"dims": 512, "requests": 2, "input": 40, "usd": 1e-06,
-                                                             "ms": 60})
+                 usage(call="embed-items", input=10, cost=0.0, total_ms=20),
+                 usage(call="embed-items", result="failed", error="overloaded", input=0, cost=0.0, total_ms=5)]
+        self.assertEqual(measure.embedded(lines), {"attempts": 3, "failed_attempts": {"overloaded": 1}, "input": 40,
+                                                   "usd": 1e-06, "ms": 65})
+        self.assertEqual(measure.embedded([]), {"attempts": 0, "failed_attempts": {}, "input": 0, "usd": 0.0, "ms": 0})
+
+    def test_the_index_is_whole_after_a_run_whose_last_index_step_was_done_without_a_failed_request(self):
+        for rows, whole in (([index()], True), ([index(embedded=3)], True),
+                            # A request that failed leaves its items without a vector until a later run.
+                            ([index(failed=["overloaded"], embedded=2)], False), ([index("failed")], False),
+                            ([index("key")], False), ([index("busy")], False), ([], False),
+                            ([{"kind": "index", "raised": "OperationalError"}], False),
+                            # The step that counts is the run's last one.
+                            ([index("failed", ["authentication_error"]), request(), index(embedded=2)], True),
+                            # A request to the model after the last index step may have changed the items.
+                            ([index(), request()], False), ([index(), raised()], False),
+                            ([request(), sized(), count(), index()], True)):
+            with self.subTest(rows=[row.get("reason", row["kind"]) for row in rows]):
+                self.assertEqual(measure.whole(run(rows)), whole)
+        self.assertEqual(measure.kept(run([request(), index("failed", ["overloaded"]), index(embedded=1)])), [
+            {"reason": "failed", "rebuilt": None, "written": 0, "removed": 0, "embedded": 0, "requests": 1,
+             "failed": ["overloaded"]},
+            {"reason": "done", "rebuilt": None, "written": 0, "removed": 0, "embedded": 1, "requests": 1,
+             "failed": []}])
+
+    def home(self, *runs):
+        """A home whose worker gives these runs, one for each time that it is run."""
+        home, waiting = measure.Home.__new__(measure.Home), list(runs)
+        home.work = lambda: waiting.pop(0)
+        home.left = waiting
+        return home
+
+    def test_the_worker_is_run_again_until_the_index_is_whole_and_no_more_than_five_times(self):
+        refused, done = run([index("failed", ["authentication_error"])]), run([index(embedded=2)])
+        home, runs = self.home(done), [refused]
+        home.settle(runs)
+        self.assertEqual((runs, home.left), ([refused, done], []))
+        # A last run that left the index whole is followed by none.
+        home, runs = self.home(done), [refused, done]
+        home.settle(runs)
+        self.assertEqual((len(runs), len(home.left)), (2, 1))
+        # Without a run before, one is made.
+        home, runs = self.home(done), []
+        home.settle(runs)
+        self.assertEqual(runs, [done])
+        home, runs = self.home(*[refused] * (measure.REBUILDS + 1)), [refused]
         with self.assertRaises(real.Stopped) as stopped:
-            measure.embedded(lines + [usage(call="embed-items", result="failed", error="insufficient_quota")])
-        self.assertIn("insufficient_quota", str(stopped.exception))
+            home.settle(runs)
+        self.assertEqual((len(runs), len(home.left)), (1 + measure.REBUILDS, 1))
+        self.assertIn("is not whole after 5 more runs", str(stopped.exception))
+        self.assertIn("authentication_error", str(stopped.exception))
+
+    def test_the_index_gets_another_length_only_when_it_does_not_have_it(self):
+        done = run([index(embedded=2, rebuilt="embedding")])
+        home, settings, runs = self.home(done), [], []
+        home.check = SimpleNamespace(defaults={"dims": 512})
+        home.configuration = lambda: {"models": dict(settings)}
+        home.setting = lambda section, name, value: settings.append((name, value))
+        home.vectors(512, runs)
+        self.assertEqual((runs, settings), ([], []))
+        home.vectors(1536, runs)
+        self.assertEqual((runs, settings), ([done], [("dims", 1536)]))
+        home.vectors(1536, runs)
+        self.assertEqual(len(runs), 1)
+
+    def test_the_runs_that_gave_the_index_another_length_are_read_with_any_request_to_the_model(self):
+        lines = [usage(call="embed-items", instructions=None, input=30, cost=0.000001, total_ms=40)]
+        found = measure.rebuilt([run([index(embedded=2, rebuilt="embedding")], lines)], dims=1536, before="b", items=2)
+        self.assertEqual(found, {"dims": 1536, "before": "b", "items": 2, "worker_runs": 1, "attempts": 1,
+                                 "failed_attempts": {}, "input": 30, "usd": 1e-06, "ms": 40,
+                                 "index": [{"reason": "done", "rebuilt": "embedding", "written": 0, "removed": 0,
+                                            "embedded": 2, "requests": 1, "failed": []}]})
+        # A consolidation that failed before is made again in such a run: its requests are read there.
+        merge = [sized("m", 900, instructions="merge-2"), request("m", instructions="merge-2"), index(embedded=2)]
+        found = measure.rebuilt([run(merge, lines + [usage(call="consolidate", instructions="merge-2")])], dims=1536)
+        self.assertEqual([(row["instructions"], row["count"], row["usage_lines"]) for row in found["model_requests"]],
+                         [("merge-2", 900, 1)])
 
     def recall_entry(self):
         def asked(outcome, ms, scores, scored="in the hook's time", embed=100):
             return {"outcome": outcome, "ms": ms, "embed_ms": embed, "scored": scored,
                     "candidates": [{"item": "i_%d" % number, "score": score} for number, score in scores]}
 
-        return {"rebuilds": [{"dims": 1536, "requests": 2, "input": 90, "usd": 0.000002, "ms": 300}],
+        return {"rebuilds": [{"dims": 1536, "attempts": 3, "failed_attempts": {"overloaded": 1}, "input": 90,
+                              "usd": 0.000002, "ms": 300}],
                 "stages": [{"prompts": []}, {"prompts": [
                     {"512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
                      "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)])},
@@ -499,8 +730,8 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(found["best_score"], {"min": 0.5, "median": 0.55, "max": 0.6, "values": 2})
         self.assertEqual(found["fifth_score"], {"min": 0.1, "median": 0.1, "max": 0.1, "values": 1})
         self.assertEqual(found["rebuilds"]["times"], 0)
-        self.assertEqual(measure.by_length(entry, 1536)["rebuilds"], {"times": 1, "requests": 2, "input": 90,
-                                                                      "usd": 2e-06, "ms": 300})
+        self.assertEqual(measure.by_length(entry, 1536)["rebuilds"], {
+            "times": 1, "attempts": 3, "failed_attempts": 1, "input": 90, "usd": 2e-06, "ms": 300})
         self.assertEqual(measure.by_length({"stages": [], "rebuilds": []}, 512)["hook_ms"], None)
 
     def test_two_lengths_are_compared_over_the_prompts_that_both_ranked(self):
@@ -533,7 +764,9 @@ class ReadingTests(unittest.TestCase):
                              "between_the_lengths": [{}]}, "files_with_key": ["f"], "files_not_read": ["g"],
                   "crash": "ended"}
         text = "\n".join(measure.summary(report))
-        for part in ("one-high-1: working 2000, safe 4000, count 3000 (safe/count 1.333)", "changes dropped: 1",
+        for part in ("== MEMORY measured at 0.3.0 against p ==", "system: x, Python 3",
+                     "one-high-1, curate-3: working 2000, safe 4000, count 3000 (safe/count 1.333)",
+                     "changes dropped: 1", "requests to the local server: None",
                      'one-low-1: crash "C"',
                      "effort high", "recall.skip", 'recall: partial ["w"]', "512 numbers", "between the lengths",
                      "A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND", "could not be read", "ended"):
@@ -669,17 +902,150 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual((found["working"], found["safe"]),
                          (-(-found["ascii"] // 4) + found["other"], -(-found["ascii"] // 2) + 2 * found["other"]))
 
-    def test_a_line_is_added_and_one_that_cannot_be_written_is_left_out(self):
+    def library(self, **changes):
+        """A stand-in for the staged library with the functions that the wrapper wraps, and what they were given."""
+        calls = []
+        times = iter(range(1, 100))
+
+        def said(name, value):
+            def function(*arguments, **options):
+                calls.append((name, arguments, options))
+                if isinstance(value, BaseException):
+                    raise value
+                return value
+            return function
+
+        failure = SimpleNamespace(code="overloaded")
+        sent = SimpleNamespace(response=SimpleNamespace(failure=None, text="ANSWER"), document="SENT", attempts=2,
+                               logged=2)
+        values = {"count": SimpleNamespace(tokens=None, failure=failure), "send": sent,
+                  "build": ({"body": {"model": "model-x", "max_tokens": 64000, "output_config": {"effort": "max"}}},
+                            "SENT"),
+                  "plan": SimpleNamespace(requests=(SimpleNamespace(source="one", counted=70, counts=2, part=(1, 2)),
+                                                    SimpleNamespace(source="two", counted=None, counts=3, part=None))),
+                  "merge_part": SimpleNamespace(source="merge", counted=40, counts=1),
+                  "keep": SimpleNamespace(reason="failed", rebuilt="embedding", written=("i_1",), removed=(),
+                                          embedded=("i_1", "i_2"), requests=2, failed=("overloaded",))}
+        values.update(changes)
+
+        def send(*arguments, **options):
+            calls.append(("send", arguments, options))
+            if isinstance(values["send"], BaseException):
+                raise values["send"]  # As when the package's check fails before a request is built.
+            library.model_request.build(config={})
+            return values["send"]
+
+        library = SimpleNamespace(
+            base=SimpleNamespace(utc_time=lambda: moment(next(times))),
+            model_prompts=model_prompts,
+            model_count=SimpleNamespace(count=said("count", values["count"])),
+            model_client=SimpleNamespace(send=send),
+            model_request=SimpleNamespace(build=said("build", values["build"])),
+            index_worker=SimpleNamespace(keep=said("keep", values["keep"])),
+            request_budget=SimpleNamespace(
+                UNCOUNTED=60000, plan=said("plan", values["plan"]), merge_part=said("merge_part", values["merge_part"]),
+                working=request_budget.working, safe=request_budget.safe, estimate=request_budget.estimate))
+        return library, calls, values
+
+    def tap(self):
         folder = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, str(folder), True)
-        tap = folder / "requests.jsonl"
-        self.assertTrue(worker.note(tap, {"kind": "count", "tokens": 7, "text": "반\ud83d"}))
-        self.assertTrue(worker.note(tap, {"kind": "count", "tokens": 8}))
-        rows = [json.loads(text) for text in tap.read_text(encoding="utf-8").split("\n") if text]
+        return folder / "requests.jsonl"
+
+    def rows(self, tap):
+        if not tap.exists():
+            return []
+        return [json.loads(text) for text in tap.read_text(encoding="utf-8").split("\n") if text]
+
+    def test_each_wrapped_function_gives_what_the_package_s_gave_and_adds_its_line(self):
+        library, calls, values = self.library()
+        tap = self.tap()
+        worker.wrap(library, tap)
+        self.assertEqual(library.request_budget.UNCOUNTED, -1)  # The package counts every request that it sizes.
+        schema = {"type": "object"}
+        options = dict(project="demo", instructions=model_prompts.CURATE, source="문서 one", schema=schema)
+        self.assertIs(library.model_count.count("memory", **options), values["count"])
+        self.assertIs(library.request_budget.plan("layer", "sessions", schema=schema), values["plan"])
+        self.assertIs(library.request_budget.merge_part(["i_1"], [], group="fact", schema=schema), values["merge_part"])
+        self.assertIs(library.model_client.send("memory", size={"turns": 1}, **options), values["send"])
+        self.assertEqual(library.model_request.build(config={"a": 1}), values["build"])
+        self.assertIs(library.index_worker.keep("memory", "demo", "owner", 9.5), values["keep"])
+        self.assertEqual([(name, arguments) for name, arguments, _ in calls], [
+            ("count", ("memory",)), ("plan", ("layer", "sessions")), ("merge_part", (["i_1"], [])),
+            ("send", ("memory",)), ("build", ()), ("build", ()), ("keep", ("memory", "demo", "owner", 9.5))])
+        self.assertEqual((calls[3][2], calls[5][2]), (dict(options, size={"turns": 1}), {"config": {"a": 1}}))
+        counted, first, second, merged, sent, kept = self.rows(tap)
+        self.assertEqual(counted, {"kind": "count", "instructions": model_prompts.CURATE, "tokens": None,
+                                   "source_sha256": worker.digest("문서 one"), "failure": "overloaded"})
+        self.assertEqual([first, second, merged], [
+            {"kind": "sized", "instructions": model_prompts.CURATE, "source_sha256": worker.digest("one"),
+             "counted": 70, "counts": 2, "part": [1, 2]},
+            {"kind": "sized", "instructions": model_prompts.CURATE, "source_sha256": worker.digest("two"),
+             "counted": None, "counts": 3, "part": None},
+            {"kind": "sized", "instructions": model_prompts.MERGE, "source_sha256": worker.digest("merge"),
+             "counted": 40, "counts": 1, "part": None}])
+        sizes = worker.sized(library, model_prompts.CURATE, schema, "문서 one")
+        self.assertEqual(sent, dict(
+            sizes, kind="request", instructions=model_prompts.CURATE, document="SENT", answer="ANSWER", failure=None,
+            attempts=2, logged=2, began=moment(1), ended=moment(2), model="model-x", effort="max", max_tokens=64000,
+            source_sha256=worker.digest("문서 one"), size={"turns": 1}))
+        self.assertEqual(kept, {"kind": "index", "reason": "failed", "rebuilt": "embedding", "written": 1,
+                                "removed": 0, "embedded": 2, "requests": 2, "failed": ["overloaded"]})
+
+    def test_a_call_of_send_that_raises_has_its_line_and_raises_the_same_error(self):
+        error = RuntimeError("the lease is gone")
+        library, _, _ = self.library(send=error, keep=error)
+        tap = self.tap()
+        worker.wrap(library, tap)
+        options = dict(instructions=model_prompts.CURATE, source="문서", schema={})
+        # No request was built in this call: the body of an earlier call's request is not this one's.
+        library.model_request.build(config={})
+        with self.assertRaises(RuntimeError) as raised_error:
+            library.model_client.send("memory", **options)
+        self.assertIs(raised_error.exception, error)
+        with self.assertRaises(RuntimeError) as raised_error:
+            library.index_worker.keep("memory", "demo", "owner", 9.5)
+        self.assertIs(raised_error.exception, error)
+        sent, kept = self.rows(tap)
+        self.assertEqual(sent, dict(worker.sized(library, model_prompts.CURATE, {}, "문서"), kind="request",
+                                    instructions=model_prompts.CURATE, raised="RuntimeError", began=moment(1),
+                                    ended=moment(2), source_sha256=worker.digest("문서"), size=None))
+        self.assertEqual(kept, {"kind": "index", "raised": "RuntimeError"})
+
+    def test_a_line_that_cannot_be_made_or_written_changes_nothing_of_what_the_worker_gets(self):
+        # Results without the fields that a line reads, a time that cannot be read, and a folder that is not there.
+        odd = object()
+        library, _, values = self.library(count=odd, plan=odd, merge_part=odd, keep=odd, build=({}, "SENT"))
+        library.base.utc_time = lambda: 1 / 0
+        tap = self.tap().parent / "none/requests.jsonl"
+        worker.wrap(library, tap)
+        options = dict(instructions=model_prompts.CURATE, source="문서", schema={})
+        self.assertIs(library.model_count.count("memory", **options), odd)
+        self.assertIs(library.request_budget.plan("layer", "sessions", schema={}), odd)
+        self.assertIs(library.request_budget.merge_part([], [], group="fact", schema={}), odd)
+        self.assertIs(library.index_worker.keep("memory", "demo", "owner", 9.5), odd)
+        self.assertIs(library.model_client.send("memory", **options), values["send"])
+        self.assertEqual(library.model_request.build(config={}), ({}, "SENT"))
+        self.assertFalse(tap.exists())
+        # With a folder, a line is written for what could be read, and a time that cannot be read is left out.
+        tap = self.tap()
+        worker.wrap(library, tap)
+        self.assertIs(library.model_client.send("memory", instructions=model_prompts.CURATE), values["send"])
+        (row,) = self.rows(tap)
+        self.assertEqual((row["kind"], row["began"], row["ended"], row["logged"], row["answer"]),
+                         ("request", None, None, 2, "ANSWER"))
+        self.assertNotIn("safe", row)
+
+    def test_a_line_is_added_and_one_that_cannot_be_written_is_left_out(self):
+        tap = self.tap()
+        write = worker.c2_real_worker.write
+        self.assertTrue(write(tap, {"kind": "count", "tokens": 7, "text": "반\ud83d"}))
+        self.assertTrue(write(tap, {"kind": "count", "tokens": 8}))
+        rows = self.rows(tap)
         self.assertEqual([row["tokens"] for row in rows], [7, 8])
         self.assertEqual(rows[0]["text"], "반\ud83d")
-        self.assertFalse(worker.note(folder / "none/requests.jsonl", {"kind": "count"}))
-        self.assertFalse(worker.note(tap, {"kind": object()}))
+        self.assertFalse(write(tap.parent / "none/requests.jsonl", {"kind": "count"}))
+        self.assertFalse(write(tap, {"kind": object()}))
 
     def test_a_document_s_digest_is_that_of_its_utf_8_bytes(self):
         self.assertEqual(worker.digest("문서"), hashlib.sha256("문서".encode("utf-8")).hexdigest())
@@ -730,11 +1096,14 @@ class SelfTestRun(unittest.TestCase):
                                  (entry["effort"], "ok", 1, 1))
                 self.assertTrue(row["estimate_agrees"])
                 self.assertGreater(row["count"], 500)
+                self.assertIs(row["count_is_of_this_document"], True)
                 self.assertEqual((row["working"], row["safe"]),
                                  (-(-row["ascii"] // 4) + row["other"], -(-row["ascii"] // 2) + 2 * row["other"]))
                 self.assertEqual(row["safe_at_or_above_count"], row["safe"] >= row["count"])
-                # The efforts part sends no embedding: its worker has no embedding key.
+                # The efforts part sends no embedding: its worker has no embedding key, and its index step says so.
                 self.assertEqual(sorted(entry["usage"]), ["count-tokens", "curate"])
+                self.assertEqual([step["reason"] for step in entry["index"]], ["key"])
+                self.assertNotIn("usage_lines_of_no_request", entry)
                 self.assertEqual(entry["layer"]["turns_left_to_curate"], 0)
                 self.assertEqual([(attempt["kind"], attempt["result"], attempt["dropped"])
                                   for attempt in entry["attempts"]], [("curate", "ok", 0)])
@@ -772,9 +1141,27 @@ class SelfTestRun(unittest.TestCase):
                 self.assertEqual(sorted(value["item"] for value in asked["candidates"]), sorted(texts["items"]))
                 self.assertGreater(asked["ms"], 0)
                 self.assertEqual(recall_part["by_dims"][dims]["ranked"], 1)
-        self.assertEqual([(value["dims"], value["items"], value["before"]) for value in recall_part["rebuilds"]],
-                         [(1536, 2, "made-up-en")])
-        self.assertGreaterEqual(recall_part["rebuilds"][0]["requests"], 1)
+        # The index got its other length once, in one run of the worker that sent embeddings only.
+        self.assertEqual([(value["dims"], value["items"], value["before"], value["worker_runs"])
+                          for value in recall_part["rebuilds"]], [(1536, 2, "made-up-en", 1)])
+        rebuild = recall_part["rebuilds"][0]
+        self.assertEqual([(step["reason"], step["rebuilt"], step["embedded"], step["failed"])
+                          for step in rebuild["index"]], [("done", "embedding", 2, [])])
+        self.assertEqual((rebuild["attempts"], rebuild["failed_attempts"]), (1, {}))
+        self.assertNotIn("model_requests", rebuild)
+        self.assertEqual([recall_part["by_dims"][dims]["rebuilds"]["times"] for dims in ("512", "1536")], [0, 1])
+        # A stage's curation is its own run and nothing of that rebuild or of the stage before it: one request,
+        # one embedding request for what it added, and the one attempt of the curation record.
+        for stage, applied in ((first, 2), (second, 1)):
+            with self.subTest(stage["sample"]):
+                curation = stage["curation"]
+                self.assertEqual((curation["worker_runs"], len(curation["requests"]), curation["usage"]),
+                                 (1, 1, {"count-tokens": {"ok": 1}, "curate": {"ok": 1}, "embed-items": {"ok": 1}}))
+                self.assertEqual([(step["reason"], step["embedded"], step["failed"]) for step in curation["index"]],
+                                 [("done", applied, [])])
+                self.assertEqual([(attempt["kind"], attempt["applied"]) for attempt in curation["attempts"]],
+                                 [("curate", applied)])
+                self.assertEqual(measure.lacking(curation), [])
         self.assertEqual(recall_part["between_the_lengths"][0]["prompts_ranked_at_both"], 1)
         # The texts for the judging are beside the report, and the prompt that was asked was recorded once.
         self.assertEqual(texts["prompts"], [{"sample": "made-up-en", "turn": 1,
@@ -845,6 +1232,153 @@ class SelfTestRun(unittest.TestCase):
         self.assertEqual(len(more["candidates"]), 3)
         self.assertEqual([path.relative_to(self.out).as_posix() for path in self.out.rglob("*")
                           if path.name == "__pycache__" or path.suffix == ".pyc"], [])
+
+
+# A turn that no one request can carry: the package sends it in parts.
+LONG = {"id": "long", "kind": "made-up", "source": "a test", "turns": [
+    {"host": "claude", "prompt": "결정: 긴 입력도 나눠서 보냅니다. " + "word " * 112000, "reply": "네."}]}
+
+
+class Once(measure.Counting):
+    """The local server of the flows below: it refuses the first embedding request, as a provider refuses a key."""
+
+    def __init__(self):
+        super().__init__()
+        self.refusals = 0
+
+    def embeddings(self, value):
+        if not self.refusals:
+            self.refusals += 1
+            return None
+        return super().embeddings(value)
+
+
+class Flows(measure.Measure):
+    """The measurement check with three flows of the worker as its steps, each in a home of its own."""
+    Server = Once
+    FLOWS = ("consolidation", "parts", "refused")
+
+    def steps(self):
+        return list(self.FLOWS)
+
+    def step(self, name):
+        entry = self.report["runs"][name] = {"outcome": "not run"}
+        self.guard(entry, lambda: entry.update(getattr(self, name)(), outcome="read"))
+
+    def consolidation(self):
+        """A run that curates a sample and then consolidates: a curate, a merge and a state request."""
+        home = self.home("consolidation")
+        home.take(measure.MADE_UP[0])
+        home.due()
+        return measure.reading(home, home.curate())
+
+    def parts(self):
+        home = self.home("parts")
+        home.take(LONG)
+        return measure.reading(home, home.curate())
+
+    def refused(self):
+        """A curation whose items' embedding is refused, and the run of the worker that makes it good."""
+        home = self.home("refused")
+        self.embedding = True
+        try:
+            home.take(measure.MADE_UP[0])
+            runs = home.curate()
+            first = measure.whole(runs[-1])
+            home.settle(runs)
+        finally:
+            self.embedding = False
+        return dict(measure.reading(home, runs), whole_after_the_curation=first,
+                    whole_at_the_end=measure.whole(runs[-1]))
+
+
+class WorkerFlows(unittest.TestCase):
+    """The readings over runs of the staged worker against the local server.
+
+    The tests of the readings above give them made-up lines, which can agree with a reading and not with the
+    package. Here the lines are the ones that the package and the wrapper write.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.base, True)
+        out = Path(cls.base) / "c2-measure"
+        out.mkdir()
+        chosen = measure.options([cls.base, "--self-test"])
+        chosen.loaded, chosen.pool = measure.given(chosen)
+        # The staged copy that a check points the runner at, and the path that it adds, are put back.
+        with mock.patch.dict(os.environ, {ANTHROPIC: SECRETS[0], OPENAI: SECRETS[1]}), \
+                mock.patch.object(real.hookcheck, "REPO", real.hookcheck.REPO), \
+                mock.patch.object(real.hookcheck, "MEMORY", real.hookcheck.MEMORY), \
+                mock.patch.object(sys, "path", list(sys.path)):
+            cls.report = real.carry_out(out, chosen, kind=Flows)
+
+    def flow(self, name):
+        entry = self.report.get("runs", {}).get(name, {})
+        self.assertEqual(entry.get("outcome"), "read",
+                         entry.get("crash") or entry.get("why") or self.report.get("crash"))
+        return entry
+
+    def test_the_check_ran_each_flow_to_its_end_and_found_no_key(self):
+        report = self.report
+        self.assertNotIn("crash", report)
+        self.assertEqual(measure.ended(report), {name: "read" for name in Flows.FLOWS})
+        self.assertEqual((report["files_with_key"], report["local_requests_with_key"], report["files_not_read"]),
+                         ([], 0, []))
+        self.assertNotIn("key_in_report", report)
+
+    def test_a_run_that_also_consolidates_has_for_each_request_what_the_package_gives_its_kind(self):
+        entry = self.flow("consolidation")
+        rows = entry["requests"]
+        self.assertEqual([real.kind_of(row) for row in rows], ["curate", "merge", "state"])
+        # The package counts a curate and a merge request before it sends one, and a state request never.
+        self.assertEqual([(row["count"] is not None, row["count_calls"], row.get("count_is_of_this_document"))
+                          for row in rows], [(True, 1, True), (True, 1, True), (False, 0, None)])
+        self.assertEqual([(row["usage_lines"], row["logged"], row["result"]) for row in rows], [(1, 1, "ok")] * 3)
+        # Only a curate request's usage line has an estimate.
+        self.assertEqual([row["estimate_agrees"] for row in rows], [True, False, False])
+        self.assertEqual(entry["usage"], {"count-tokens": {"ok": 2}, "curate": {"ok": 1}, "consolidate": {"ok": 2}})
+        self.assertEqual([attempt["kind"] for attempt in entry["attempts"]], ["consolidate", "curate"])
+        self.assertEqual((entry["worker_runs"], measure.lacking(entry)), (1, []))
+        self.assertNotIn("usage_lines_of_no_request", entry)
+        found = measure.estimates(rows)
+        self.assertEqual((found["requests"], found["requests_with_a_count"], found["documents_counted_by_kind"],
+                          found["documents_counted_with_a_provisional_number_of_parts"]),
+                         (3, 2, {"curate": 1, "merge": 1}, 0))
+
+    def test_each_part_of_a_turn_has_the_count_that_let_it_go_which_is_of_its_provisional_document(self):
+        entry = self.flow("parts")
+        rows = entry["requests"]
+        total = len(rows)
+        self.assertGreater(total, 1)
+        self.assertEqual([row["part"] for row in rows], [[number, total] for number in range(1, total + 1)])
+        for row in rows:
+            with self.subTest(part=row["part"]):
+                self.assertEqual((row["instructions"], row["turns"], row["usage_lines"], row["logged"],
+                                  row["result"]), ("curate-3", 1, 1, 1, "ok"))
+                self.assertGreater(row["count"], 0)
+                self.assertGreaterEqual(row["count_calls"], 1)
+                self.assertIs(row["count_is_of_this_document"], False)
+                self.assertTrue(row["estimate_agrees"])
+                self.assertEqual(row["safe_at_or_above_count"], row["safe"] >= row["count"])
+        self.assertEqual(list(entry["usage"]["count-tokens"]), ["ok"])
+        self.assertGreaterEqual(entry["usage"]["count-tokens"]["ok"], total)
+        self.assertEqual((entry["usage"]["curate"], measure.lacking(entry)), ({"ok": total}, []))
+        found = measure.estimates(rows)
+        self.assertEqual((found["documents_counted"], found["documents_counted_with_a_provisional_number_of_parts"]),
+                         (total, total))
+
+    def test_a_refused_embedding_leaves_the_index_not_whole_and_a_later_run_makes_it_good(self):
+        entry = self.flow("refused")
+        self.assertEqual((entry["whole_after_the_curation"], entry["whole_at_the_end"], entry["worker_runs"]),
+                         (False, True, 2))
+        self.assertEqual([(step["reason"], step["embedded"], step["failed"]) for step in entry["index"]],
+                         [("failed", 0, ["authentication_error"]), ("done", 2, [])])
+        self.assertEqual(entry["usage"]["embed-items"], {"failed: authentication_error": 1, "ok": 1})
+        self.assertEqual(entry["failures"], [{"step": "embed", "error": "authentication_error"}])
+        # The curation itself lacks nothing: the refusal is the index step's.
+        self.assertEqual((len(entry["requests"]), measure.lacking(entry)), (1, []))
 
 
 if __name__ == "__main__":

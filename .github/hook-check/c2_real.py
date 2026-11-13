@@ -1038,7 +1038,7 @@ class Check:
             value = calls.setdefault(row["call"], {"requests": 0, "results": Counter(), "input": 0, "output": 0,
                                                     "usd": 0.0})
             value["requests"] += 1
-            value["results"][row["result"] if row["result"] != "failed" else "failed: %s" % row.get("error")] += 1
+            value["results"][result_of(row)] += 1
             for name in ("input", "output"):
                 value[name] += row.get(name) or 0
             value["usd"] += row.get("cost") or 0
@@ -1047,23 +1047,31 @@ class Check:
         return {"calls": calls, "usd": round(self.spent, 6), "requests": len(self.usage)}
 
 
-def summary(report):
-    text = ["== MEMORY's requests at %s against %s ==" % (report["release"], report["provider"])]
-    if "cases" not in report:
-        return text + [report.get("crash", "the check did not begin")]
+def result_of(row):
+    """How a usage line's request ended: its result, and for one that failed the error's code with it."""
+    return row.get("result") if row.get("result") != "failed" else "failed: %s" % row.get("error")
+
+
+def head(report, title, filled):
+    """A summary's first lines, and whether the check began.
+
+    `filled` is the report's key that the check fills. Without it the lines say why the check did not begin, and
+    they are the whole summary.
+    """
+    text = ["== %s at %s against %s ==" % (title, report["release"], report["provider"])]
+    if filled not in report:
+        return text + [report.get("crash", "the check did not begin")], False
     text.append("system: %s, Python %s; checkout: %s; keys: %s" % (
         report["system"]["platform"], report["system"]["python"], json.dumps(report["checkout"]),
         json.dumps(report["keys"])))
-    for name, entry in report["cases"].items():
-        text.append("%s: %s" % (name, entry["outcome"]))
-        for number, run in enumerate(entry["runs"], 1):
-            shown = {key: value for key, value in run.get("observed", {}).items()
-                     if isinstance(value, (bool, str, int)) or key in ("curate", "merge", "state")}
-            text.append("  run %d: %s %s" % (number, run["outcome"], json.dumps(
-                shown or run.get("why") or run.get("crash"), ensure_ascii=False)))
-    text.append("requests to %s, by the usage log: %s" % (report["provider"], json.dumps(report.get("cost"))))
-    text.append("requests to the local server, for the seeds%s: %s" % (
-        " and the self-test" if report["self_test"] else "", report.get("local_requests")))
+    return text, True
+
+
+def tail(report, local=""):
+    """A summary's last lines: the requests by the usage log, those to the local server, of which `local` says
+    more, a memory key that was found, the files that could not be searched, and the error that ended the check."""
+    text = ["requests to %s, by the usage log: %s" % (report["provider"], json.dumps(report.get("cost"))),
+            "requests to the local server%s: %s" % (local, report.get("local_requests"))]
     if leaked(report):
         text.append("A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND: in files %s; in the report: %s; in requests to the "
                     "local server: %s" % (json.dumps(report.get("files_with_key")), bool(report.get("key_in_report")),
@@ -1074,6 +1082,20 @@ def summary(report):
     if "crash" in report:
         text.append(report["crash"])
     return text
+
+
+def summary(report):
+    text, begun = head(report, "MEMORY's requests", "cases")
+    if not begun:
+        return text
+    for name, entry in report["cases"].items():
+        text.append("%s: %s" % (name, entry["outcome"]))
+        for number, run in enumerate(entry["runs"], 1):
+            shown = {key: value for key, value in run.get("observed", {}).items()
+                     if isinstance(value, (bool, str, int)) or key in ("curate", "merge", "state")}
+            text.append("  run %d: %s %s" % (number, run["outcome"], json.dumps(
+                shown or run.get("why") or run.get("crash"), ensure_ascii=False)))
+    return text + tail(report, ", for the seeds%s" % (" and the self-test" if report["self_test"] else ""))
 
 
 def leaked(report):

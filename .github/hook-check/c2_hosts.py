@@ -296,12 +296,11 @@ class MemoryServer:
                         return outer.send(self, json.dumps({"input_tokens": tokens}).encode("utf-8"), 200,
                                           "application/json")
                     if self.path.endswith("/embeddings"):
-                        dims = value.get("dimensions", DIMS)
-                        data = [{"object": "embedding", "index": n, "embedding": vector(text, dims)}
-                                for n, text in enumerate(value["input"])]
-                        reply = {"object": "list", "model": value["model"], "data": data,
-                                 "usage": {"prompt_tokens": 9 * len(data), "total_tokens": 9 * len(data)}}
+                        reply = outer.embeddings(value)
                         row["kind"] = "embeddings"
+                        if reply is None:
+                            return outer.send(self, b'{"error":{"type":"invalid_request_error"}}', 401,
+                                              "application/json")
                         return outer.send(self, json.dumps(reply).encode("utf-8"), 200, "application/json")
                     row["kind"] = request_kind(value)
                     row["decisions"] = outer.decisions(value)
@@ -327,6 +326,15 @@ class MemoryServer:
     def count(self, value):
         """The count that a count request gets; None for the provider's error, which is what these checks expect."""
         return None
+
+    def embeddings(self, value):
+        """The answer that an embedding request gets: a vector of the length that it asks for, for each of its
+        texts. None is the provider's refusal of the request, HTTP 401, which the package does not try again."""
+        dims = value.get("dimensions", DIMS)
+        data = [{"object": "embedding", "index": n, "embedding": vector(text, dims)}
+                for n, text in enumerate(value["input"])]
+        return {"object": "list", "model": value["model"], "data": data,
+                "usage": {"prompt_tokens": 9 * len(data), "total_tokens": 9 * len(data)}}
 
     @staticmethod
     def send(handler, body, status, mime):

@@ -42,23 +42,31 @@ import time
 WATCH_SECONDS = 0.5  # How often the watch looks, where it cannot wait for the check's end itself.
 
 
-def record(tap, instructions, result, **more):
-    """Add a request's line to TAP, with `more` when given; whether it was written. It never raises, so the worker
-    keeps its answer.
+def write(tap, row):
+    """Add a line to TAP; whether it was written. It never raises, so the worker keeps what it was given.
 
     A character that UTF-8 cannot hold, such as half of a surrogate pair in an answer, is written as its JSON
     escape, so the line reads back as the same value.
     """
     try:
-        failure = result.response.failure
-        row = {"instructions": instructions, "document": result.document, "answer": result.response.text,
-               "failure": None if failure is None else failure.code, "attempts": result.attempts}
-        row.update(more)
         with open(str(tap), "ab") as target:
             target.write(json.dumps(row, ensure_ascii=False).encode("utf-8", "backslashreplace") + b"\n")
     except Exception:
         return False
     return True
+
+
+def record(tap, instructions, result, **more):
+    """Add a request's line to TAP, with `more` when given; whether it was written. It never raises, so the worker
+    keeps its answer."""
+    try:
+        failure = result.response.failure
+        row = {"instructions": instructions, "document": result.document, "answer": result.response.text,
+               "failure": None if failure is None else failure.code, "attempts": result.attempts}
+        row.update(more)
+    except Exception:
+        return False
+    return write(tap, row)
 
 
 def gone(check):
