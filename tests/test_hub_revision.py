@@ -60,7 +60,8 @@ def text_of(lines, characters):
 
 
 # Runs hub.py as the CLI does, and writes to stderr where an error other than the lease's own refusals
-# leaves the lease, the outbox or the session reads: the cause that a result's words do not name.
+# leaves the lease, the outbox or the session reads, and where a resolved path keeps Windows'
+# extended-length prefix: the cause that a result's words do not name (run 749 found TC-1695's so).
 TRACED_HUB = """import functools, importlib.util, pathlib, sys, traceback
 resolve = pathlib.Path.resolve
 def kept(self, *args, **kwargs):

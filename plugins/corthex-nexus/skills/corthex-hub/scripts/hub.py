@@ -268,7 +268,20 @@ def same_folder(path, root):
         return False
 
 
+def plain_path(path):
+    """A resolved path without Windows' extended-length prefix, which Python 3.10 and later can keep on a path that
+    does not exist when a folder missing from it appears while it is resolved (outbox.plain_path)."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return type(path)("\\\\" + text[8:])
+    if text.startswith("\\\\?\\") and text[5:7] == ":\\":
+        return type(path)(text[4:])
+    return path
+
+
 def inside(path, root):
+    """Whether a resolved path is the resolved root or lies in it, whichever of the two kept the prefix."""
+    path, root = plain_path(path), plain_path(root)
     return path == root or root in path.parents
 
 

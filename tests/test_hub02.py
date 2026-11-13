@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from unittest import mock
 
@@ -790,38 +790,40 @@ class OutboxTest(HubCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Busy", result.stderr)
 
-    def test_a_scanner_that_holds_a_new_lock_is_waited_for_on_windows(self):
-        # Windows' os.utime opens the file for itself alone, which a scanner reading a file just written refuses.
-        real, calls = os.utime, []
+    def test_an_outbox_whose_resolved_folder_kept_the_extended_length_prefix_stays_available(self):
+        # TC-1695 on Windows with Python 3.10 or later: ntpath.realpath takes \\?\ off a path that does not exist only
+        # when its second lookup fails as its first did. Another hub's first lease makes the outbox folder between
+        # the two, the error changes from a missing folder to a missing file, and the project's folder keeps the
+        # prefix while the outbox folder, resolved after, has none (runs 744 and 746: "outbox unavailable").
+        class Raced(PureWindowsPath):
+            def resolve(self):
+                return type(self)("\\\\?\\" + str(self)) if self.name == "acme" else self
 
-        def utime(path, times):
-            calls.append(path)
-            if len(calls) <= 2:
-                raise PermissionError(13, "the file is in use")
-            return real(path, times)
+            def is_symlink(self):
+                return False
 
-        with mock.patch.object(BOX, "WINDOWS", True), mock.patch.object(BOX.os, "utime", utime):
-            with self.box.lease() as lease:
-                self.assertEqual(lease.read()["owner"], lease.owner)
-                self.assertEqual(int(lease.path.stat().st_mtime), int(self.now))
-        self.assertEqual(len(calls), 3)
-        self.assertFalse(self.box.lease().path.exists())
+        with mock.patch.object(BOX, "Path", Raced):
+            box = BOX.Outbox("C:\\base", "acme")
+        self.assertEqual(str(box.folder), "C:\\base\\.corthex\\hub\\outbox\\acme")
 
-    def test_a_refused_time_stamp_is_waited_for_only_on_windows_and_for_two_seconds(self):
-        target = self.base / "stamped"
-        with mock.patch.object(BOX, "WINDOWS", False), \
-                mock.patch.object(BOX.os, "utime", side_effect=PermissionError(13, "denied")) as utime:
-            with self.assertRaises(PermissionError):
-                BOX.touch(target, self.now)
-        self.assertEqual(utime.call_count, 1)
-        clock = iter([0.0, 0.5, 1.0, 2.5])
-        fake = SimpleNamespace(monotonic=lambda: next(clock), sleep=lambda seconds: None)
-        refusals = [PermissionError(13, "in use")] * 3 + [AssertionError("tried after two seconds")]
-        with mock.patch.object(BOX, "WINDOWS", True), mock.patch.object(BOX, "time", fake), \
-                mock.patch.object(BOX.os, "utime", side_effect=refusals) as utime:
-            with self.assertRaises(PermissionError):
-                BOX.touch(target, self.now)
-        self.assertEqual(utime.call_count, 3)
+    def test_a_path_that_kept_the_extended_length_prefix_is_compared_without_it(self):
+        outbox = PureWindowsPath("C:\\base\\.corthex\\hub\\outbox")
+        for module in (BOX, hub):
+            with self.subTest(module=module.__name__):
+                # As in ntpath.realpath, a drive's path and a server's path lose the prefix and any other keeps it.
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\" + str(outbox))), outbox)
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\UNC\\server\\share\\hub")), PureWindowsPath("\\\\server\\share\\hub"))
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\Volume{0}\\hub")), PureWindowsPath("\\\\?\\Volume{0}\\hub"))
+                self.assertEqual(module.plain_path(PurePosixPath("/srv/base")), PurePosixPath("/srv/base"))
+                self.assertTrue(module.inside(PureWindowsPath("\\\\?\\" + str(outbox / "acme")), outbox))
+                self.assertTrue(module.inside(outbox / "acme", PureWindowsPath("\\\\?\\" + str(outbox))))
+                self.assertTrue(module.inside(outbox, PureWindowsPath("\\\\?\\" + str(outbox))))
+                self.assertTrue(module.inside(PureWindowsPath("\\\\?\\UNC\\server\\share\\hub\\outbox\\acme"),
+                                              PureWindowsPath("\\\\server\\share\\hub\\outbox")))
+                self.assertFalse(module.inside(PureWindowsPath("\\\\?\\C:\\other\\acme"), outbox))
+                self.assertTrue(module.inside(PurePosixPath("/srv/base/.corthex/hub/outbox/acme"),
+                                              PurePosixPath("/srv/base/.corthex/hub/outbox")))
+                self.assertFalse(module.inside(PurePosixPath("/srv/other/acme"), PurePosixPath("/srv/base/.corthex/hub/outbox")))
 
     def test_corrupt_or_redirected_file_is_never_sent(self):
         self.keep()

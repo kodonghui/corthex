@@ -22,7 +22,6 @@ PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
 SEVEN_DAYS = 7 * 24 * 60 * 60
 COMMENT = re.compile(r"nc_[0-9a-hjkmnp-tv-z]{12}\Z")
-WINDOWS = os.name == "nt"
 
 
 class Busy(RuntimeError):
@@ -48,18 +47,23 @@ def atomic(path, data):
             pass
 
 
-def touch(path, when):
-    """Set a file's times. On Windows os.utime opens the file for itself alone, which a scanner that reads a file just
-    written refuses for a moment, so it tries again for up to two seconds."""
-    start = time.monotonic()
-    while True:
-        try:
-            os.utime(path, (when, when))
-            return
-        except PermissionError:
-            if not WINDOWS or time.monotonic() - start >= 2:
-                raise
-            time.sleep(0.01)
+def plain_path(path):
+    """A resolved path without Windows' extended-length prefix. From Python 3.10 Windows' realpath can keep the
+    prefix on a path that does not exist when a folder missing from it appears while it resolves the path, as
+    another hub's first outbox makes the hub's folders; Python 3.8 always took it off. A drive's or a server's
+    path loses it, and any other path keeps it."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return type(path)("\\\\" + text[8:])
+    if text.startswith("\\\\?\\") and text[5:7] == ":\\":
+        return type(path)(text[4:])
+    return path
+
+
+def inside(path, root):
+    """Whether a resolved path is the resolved root or lies in it, whichever of the two kept the prefix."""
+    path, root = plain_path(path), plain_path(root)
+    return path == root or root in path.parents
 
 
 @contextlib.contextmanager
@@ -148,7 +152,7 @@ class Lease:
                 self.path.unlink()
             with open(self.path, "x", encoding="utf8") as handle:
                 json.dump(self.payload(), handle)
-            touch(self.path, self.clock())
+            os.utime(self.path, (self.clock(), self.clock()))
         return self
 
     @contextlib.contextmanager
@@ -161,7 +165,7 @@ class Lease:
     def renew(self):
         with self.owned():
             atomic(self.path, self.payload())
-            touch(self.path, self.clock())
+            os.utime(self.path, (self.clock(), self.clock()))
 
     def __exit__(self, *args):
         with guard(self.guard_path):
@@ -250,11 +254,7 @@ class Outbox:
         self.order_path = self.root / (project + ".order")
         self.project, self.clock = project, clock
         self.attempts, self.replies = {}, {}
-        try:
-            self.folder.resolve().relative_to(self.root.resolve())
-            within = True
-        except ValueError:
-            within = False
+        within = inside(self.folder.resolve(), self.root.resolve())
         if len(project) > 100 or self.root.is_symlink() or self.folder.is_symlink() or not within:
             raise ValueError("outbox paths must stay in this device's hub")
 
