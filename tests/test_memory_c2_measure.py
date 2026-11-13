@@ -407,11 +407,16 @@ class SampleTests(unittest.TestCase):
             "kind": "chat", "source": "a test", "turns": 2, "hosts": {"claude": 1, "codex": 1},
             "prompt_characters": 7, "reply_characters": 5, "hangul_share_of_letters": 0.4})
 
-    def test_the_made_up_samples_are_samples_and_each_prompt_of_them_has_its_script(self):
+    def test_the_made_up_samples_are_samples_and_each_prompt_that_recall_does_not_skip_has_its_script(self):
         for sample in measure.MADE_UP:
             self.assertEqual(measure.valid(sample, sample["id"]), sample)
         prompts = [turn["prompt"] for sample in measure.MADE_UP for turn in sample["turns"]]
-        self.assertEqual(sorted(measure.SCRIPTS), sorted(prompts))
+        skipped = [prompt for prompt in prompts if recall.skipped(prompt, 8)]
+        # One prompt is shorter than the default of `recall.skip`, so that a self-test reads one without the skip;
+        # it is the last of the second sample, whose prompts are asked.
+        self.assertEqual((skipped, [recall.skipped(prompt, 8) for prompt in skipped]),
+                         ([measure.MADE_UP[1]["turns"][-1]["prompt"]], ["short"]))
+        self.assertEqual(sorted(measure.SCRIPTS), sorted(set(prompts) - set(skipped)))
 
 
 class ReadingTests(unittest.TestCase):
@@ -801,6 +806,11 @@ class ReadingTests(unittest.TestCase):
             return {"outcome": outcome, "ms": ms, "embed_ms": embed, "scored": scored, "asked": turn,
                     "candidates": [{"item": "i_%d" % number, "score": score} for number, score in scores]}
 
+        def unskipped(outcome, ms, scores, scored="in the hook's time"):
+            found = asked(outcome, ms, scores, scored)
+            del found["asked"]
+            return found
+
         def taken(turn, ms, outcome, embed=None):
             return {"turn": turn, "host": "claude", "ms": ms, "outcome": outcome, "embed_ms": embed}
 
@@ -812,8 +822,11 @@ class ReadingTests(unittest.TestCase):
                          "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)], turn=2)},
                         {"512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
                          "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)], turn=2)},
-                        {"512": asked("short", 200.0, [], "no", None),
-                         "1536": asked("short", 210.0, [], "no", None, turn=2)}],
+                        # A prompt that recall skipped, with what it ranked for it without the skip.
+                        {"512": dict(asked("short", 200.0, [], "no", None),
+                                     without_the_skip=unskipped("below", 420.0, [(3, 0.25), (1, 0.2)])),
+                         "1536": dict(asked("short", 210.0, [], "no", None, turn=2),
+                                      without_the_skip=unskipped("late", 930.0, [(3, 0.21)], "with 30 seconds"))}],
                     "recorded": {"dims": 1536, "prompts": [
                         taken(1, 700.0, "below", 110), taken(2, 990.0, "late", 800), taken(3, 250.0, "short")]}},
                     # A stage that ended before its turns were recorded; it began at the length that the stage
@@ -859,6 +872,12 @@ class ReadingTests(unittest.TestCase):
              "embed_ms": {"min": 100, "median": 100, "max": 100, "values": 2}}))
         self.assertEqual(found["best_score"], {"min": 0.5, "median": 0.55, "max": 0.6, "values": 2})
         self.assertEqual(found["fifth_score"], {"min": 0.1, "median": 0.1, "max": 0.1, "values": 1})
+        # What recall ranked for a skipped prompt without the skip is in none of the numbers above: it is apart.
+        self.assertEqual((found["without_the_skip"], longer["without_the_skip"]), (
+            {"prompts": 1, "outcomes": {"below": 1}, "scored_with_more_time": 0, "ranked": 1,
+             "best_score": {"min": 0.25, "median": 0.25, "max": 0.25, "values": 1}},
+            {"prompts": 1, "outcomes": {"late": 1}, "scored_with_more_time": 1, "ranked": 1,
+             "best_score": {"min": 0.21, "median": 0.21, "max": 0.21, "values": 1}}))
         self.assertEqual(found["rebuilds"]["times"], 0)
         self.assertEqual(measure.by_length(entry, 1536)["rebuilds"], {
             "times": 1, "attempts": 3, "failed_attempts": 1, "input": 90, "usd": 2e-06, "ms": 300})
@@ -866,9 +885,12 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual((empty["hook_ms"], empty["recorded"]["prompts"], empty["recorded"]["hook_ms"]),
                          (None, 0, None))
         self.assertEqual(empty["asked_first"], {"prompts": 0, "outcomes": {}, "hook_ms": None, "embed_ms": None})
+        self.assertEqual(empty["without_the_skip"], {"prompts": 0, "outcomes": {}, "scored_with_more_time": 0,
+                                                     "ranked": 0, "best_score": None})
 
     def test_two_lengths_are_compared_over_the_prompts_that_both_ranked(self):
         found = measure.between(self.recall_entry(), 512, 1536)
+        # The skipped prompt, which was ranked at both lengths only without the skip, is not one of them.
         self.assertEqual(found, {"dims": [512, 1536], "prompts_ranked_at_both": 2, "same_best_item": 1,
                                  "shared_candidates": {"min": 1, "median": 1.5, "max": 2, "values": 2},
                                  "best_score_difference": {"min": -0.05, "median": 0.025, "max": 0.1, "values": 2}})
@@ -905,6 +927,9 @@ class ReadingTests(unittest.TestCase):
                      "A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND", "could not be read", "ended"):
             self.assertIn(part, text)
         self.assertNotIn("skipped_prompts", text)
+        # A recall part that was measured has no reason to give.
+        report["recall"] = {"outcome": "measured", "by_dims": {}, "between_the_lengths": []}
+        self.assertIn("recall: measured", measure.summary(report))
 
 
 class CheckTests(unittest.TestCase):
@@ -1064,7 +1089,8 @@ class CheckTests(unittest.TestCase):
             "outcome": "late", "ms": 950.0, "embed_ms": None, "scored": "no", "outcome_with_more_time": "no-index",
             "candidates": []})
         self.assertEqual(asked, [None, measure.MORE_SECONDS])
-        # A prompt that was ranked in the hook's time is asked once, and one that recall skips is scored nowhere.
+        # A prompt that was ranked in the hook's time is asked once, and one that recall skips as a command is
+        # scored nowhere. None of these reads the home's configuration, which this home does not have.
         del asked[:]
         ranked = {"ms": 400.0, "outcome": "below", "candidates": [{"item": "i_2", "score": 0.3}], "embed_ms": 90,
                   "embed_error": None}
@@ -1073,10 +1099,84 @@ class CheckTests(unittest.TestCase):
             "outcome": "below", "ms": 400.0, "embed_ms": 90, "scored": "in the hook's time",
             "candidates": [{"item": "i_2", "score": 0.3}]})
         self.assertEqual(asked, [None])
-        home.ask = lambda host, prompt, seconds=None: {"ms": 300.0, "outcome": "short", "candidates": [],
+        home.ask = lambda host, prompt, seconds=None: {"ms": 300.0, "outcome": "command", "candidates": [],
                                                        "embed_ms": None, "embed_error": None}
-        self.assertEqual(home.recalled("claude", "응"), {"outcome": "short", "ms": 300.0, "embed_ms": None,
-                                                        "scored": "no", "candidates": []})
+        self.assertEqual(home.recalled("claude", "/status"), {"outcome": "command", "ms": 300.0, "embed_ms": None,
+                                                              "scored": "no", "candidates": []})
+
+    def skipping(self, document, answers):
+        """A home whose hook is not run: it skips a prompt as short while `recall.skip` is not 0, and then gives
+        `answers` in turn. What was asked: the hook's seconds and the `recall.skip` that the home had then."""
+        home = measure.Home.__new__(measure.Home)
+        home.store = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(home.store), True)
+        home.configure(document)
+        asked, left = [], list(answers)
+        short = {"ms": 190.0, "outcome": "short", "candidates": [], "embed_ms": None, "embed_error": None}
+
+        def ask(host, prompt, seconds=None):
+            skip = home.configuration().get("recall", {}).get("skip")
+            asked.append((seconds, skip))
+            if skip != 0:
+                return dict(short)
+            answer = left.pop(0)
+            if isinstance(answer, BaseException):
+                raise answer
+            return answer
+
+        home.ask = ask
+        return home, asked
+
+    def test_a_prompt_that_recall_skipped_as_short_is_read_once_more_without_the_skip(self):
+        ranked = {"ms": 610.0, "outcome": "below", "candidates": [{"item": "i_3", "score": 0.25}], "embed_ms": 410,
+                  "embed_error": None}
+        late = {"ms": 990.0, "outcome": "late", "candidates": [], "embed_ms": 800, "embed_error": "timeout"}
+        document = {"recall": {"threshold": 2}, "projects": {"demo": {"enabled": True}}}
+        home, asked = self.skipping(document, [ranked])
+        self.assertEqual(home.recalled("codex", "응"), {
+            "outcome": "short", "ms": 190.0, "embed_ms": None, "scored": "no", "candidates": [],
+            "without_the_skip": {"outcome": "below", "ms": 610.0, "embed_ms": 410, "scored": "in the hook's time",
+                                 "candidates": [{"item": "i_3", "score": 0.25}]}})
+        # Asked as the home was, then with `recall.skip` 0; and the configuration is then as it was, without one.
+        self.assertEqual(asked, [(None, None), (None, 0)])
+        self.assertEqual(home.configuration(), document)
+        # Without the skip the prompt is read as any other: late in the hook's time, it gets more time.
+        home, asked = self.skipping(document, [late, ranked])
+        found = home.recalled("codex", "응")
+        self.assertEqual(asked, [(None, None), (None, 0), (measure.MORE_SECONDS, 0)])
+        self.assertEqual((found["outcome"], found["candidates"], found["without_the_skip"]), ("short", [], {
+            "outcome": "late", "ms": 990.0, "embed_ms": 800, "embed_error": "timeout", "scored": "with 30 seconds",
+            "outcome_with_more_time": "below", "candidates": [{"item": "i_3", "score": 0.25}]}))
+        self.assertEqual(home.configuration(), document)
+
+    def test_the_skip_that_a_home_had_is_put_back_also_when_the_hook_without_it_breaks(self):
+        document = {"recall": {"threshold": 2, "skip": 12}, "projects": {"demo": {"enabled": True}}}
+        home, asked = self.skipping(document, [RuntimeError("the prompt hook ended with 1")])
+        with self.assertRaisesRegex(RuntimeError, "ended with 1"):
+            home.recalled("claude", "짧은 질문")
+        self.assertEqual(asked, [(None, 12), (None, 0)])
+        self.assertEqual(home.configuration(), document)
+        # An interrupt while the hook runs leaves the home's own skip too.
+        home, asked = self.skipping(document, [KeyboardInterrupt()])
+        with self.assertRaises(KeyboardInterrupt):
+            home.recalled("claude", "짧은 질문")
+        self.assertEqual(home.configuration(), document)
+
+    def test_a_setting_is_given_a_value_or_taken_out_for_its_default(self):
+        home = measure.Home.__new__(measure.Home)
+        home.store = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(home.store), True)
+        home.configure({"recall": {"threshold": 2}, "제목": "한글"})
+        home.setting("recall", "skip", 0)
+        self.assertEqual(home.configuration(), {"recall": {"threshold": 2, "skip": 0}, "제목": "한글"})
+        home.setting("recall", "skip", None)
+        self.assertEqual(home.configuration(), {"recall": {"threshold": 2}, "제목": "한글"})
+        # Taking out a setting that is not there, or of a section that is not there, changes nothing.
+        home.setting("recall", "skip", None)
+        home.setting("models", "dims", None)
+        self.assertEqual(home.configuration(), {"recall": {"threshold": 2}, "제목": "한글"})
+        home.setting("models", "dims", 1536)
+        self.assertEqual(home.configuration()["models"], {"dims": 1536})
 
     def test_a_session_s_prompt_lines_are_read_from_its_own_file_of_the_injection_log(self):
         from memory_lib import raw_log
@@ -1266,6 +1366,50 @@ class CheckTests(unittest.TestCase):
                          (["b", "c"], ["i_000000000001"]))
         self.assertEqual(sorted(path.name for path in out.iterdir() if path.is_file()),
                          ["recall-texts.json", "report.json"])
+
+    def test_the_items_that_recall_ranked_for_a_skipped_prompt_are_among_the_texts_for_the_judging(self):
+        def recalled(host, prompt):
+            return {"outcome": "short", "ms": 190.0, "embed_ms": None, "scored": "no", "candidates": [],
+                    "without_the_skip": {"outcome": "below", "ms": 600.0, "embed_ms": 400,
+                                         "scored": "in the hook's time",
+                                         "candidates": [{"item": "i_000000000001", "score": 0.3}]}}
+
+        check, entry, _, out = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b")], recalled=recalled)
+        measure.replay(check, entry)
+        texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
+        self.assertEqual(texts["items"], {"i_000000000001": {"kind": "decision", "title": "제목", "text": "본문"}})
+        # The reading is the prompt's row, under the length at which it was asked, and it is no ranked prompt.
+        (row,) = entry["stages"][1]["prompts"]
+        self.assertEqual((row["512"]["outcome"], row["512"]["without_the_skip"]["candidates"][0]["score"],
+                          row["1536"]["without_the_skip"]["outcome"]), ("short", 0.3, "below"))
+        self.assertEqual([(entry["by_dims"][dims]["ranked"], entry["by_dims"][dims]["without_the_skip"]["ranked"])
+                          for dims in ("512", "1536")], [(0, 1), (0, 1)])
+        self.assertEqual((entry["outcome"], entry["between_the_lengths"][0]["prompts_ranked_at_both"]),
+                         ("measured", 0))
+
+    def test_a_prompt_that_no_hook_ranked_leaves_the_recall_part_partial(self):
+        def reading(outcome, **more):
+            return dict({"outcome": outcome, "ms": 300.0, "embed_ms": None, "scored": "no", "candidates": []}, **more)
+
+        ranked = reading("below", scored="in the hook's time", candidates=[{"item": "i_000000000001", "score": 0.5}])
+        # Sample b is asked at 512 numbers and then at 1536, sample c the other way round.
+        readings = [reading("short", without_the_skip=reading("failed", outcome_with_more_time="failed")),
+                    reading("short", without_the_skip=reading("late", outcome_with_more_time="late")),
+                    reading("late", outcome_with_more_time="late"), ranked]
+        check, entry, _, _ = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b", "c")],
+                                           recalled=lambda host, prompt: readings.pop(0))
+        measure.replay(check, entry)
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "at 512 numbers the recall of a skipped prompt without the skip ended with failed",
+            "at 1536 numbers 2 of the prompts whose recall ended late were not ranked with more time either"]))
+        # A prompt that ended late and was ranked with more time, with the skip or without it, leaves it whole.
+        more = reading("late", scored="with 30 seconds", outcome_with_more_time="below",
+                       candidates=[{"item": "i_000000000001", "score": 0.5}])
+        readings.extend([reading("short", without_the_skip=more), more])
+        check, entry, _, _ = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b")],
+                                           recalled=lambda host, prompt: readings.pop(0))
+        measure.replay(check, entry)
+        self.assertEqual((entry["outcome"], readings), ("measured", []))
 
     def test_an_interrupt_in_the_recall_part_leaves_the_stages_before_it_and_its_own_in_the_files(self):
         curations = []
@@ -1539,9 +1683,9 @@ class SelfTestRun(unittest.TestCase):
         first, second = recall_part["stages"]
         self.assertEqual((first["sample"], first["current_items_before"], first["prompts"]), ("made-up-ko", 0, []))
         self.assertEqual((second["sample"], second["current_items_before"], len(second["prompts"])),
-                         ("made-up-en", 2, 1))
+                         ("made-up-en", 2, 2))
         texts = json.loads((self.out / "recall-texts.json").read_text(encoding="utf-8"))
-        row = second["prompts"][0]
+        row, short = second["prompts"]
         self.assertEqual((row["turn"], row["host"], row["language"]), (1, "claude", "en"))
         for dims in ("512", "1536"):
             with self.subTest(dims):
@@ -1553,11 +1697,29 @@ class SelfTestRun(unittest.TestCase):
                 self.assertEqual(sorted(value["item"] for value in asked["candidates"]), sorted(texts["items"]))
                 self.assertGreater(asked["ms"], 0)
                 self.assertEqual(recall_part["by_dims"][dims]["ranked"], 1)
+        # The sample's last prompt is shorter than `recall.skip`. Recall skipped it at both lengths, and with
+        # `recall.skip` 0 it ranked the same two items for it, which no number of the ranked prompts counts.
+        self.assertEqual((short["turn"], short["host"], short["characters"], short["language"]), (2, "codex", 7, "en"))
+        for dims in ("512", "1536"):
+            with self.subTest(dims, prompt="short"):
+                asked = short[dims]
+                self.assertEqual((asked["outcome"], asked["scored"], asked["candidates"]), ("short", "no", []))
+                unskipped = asked["without_the_skip"]
+                self.assertIn(unskipped["outcome"], ("below", "late"))
+                self.assertEqual(unskipped["scored"] == "in the hook's time", unskipped["outcome"] == "below")
+                self.assertEqual(sorted(value["item"] for value in unskipped["candidates"]), sorted(texts["items"]))
+                found = recall_part["by_dims"][dims]["without_the_skip"]
+                self.assertEqual((found["prompts"], found["ranked"], found["best_score"]["values"]), (1, 1, 1))
+        # The home's own setting was put back each time: it has no `recall.skip`, so the default holds again.
+        configuration = json.loads((self.out / "recall/home/.corthex/corthex-memory/configuration.json").read_text(
+            encoding="utf-8"))
+        self.assertEqual(configuration["recall"], {"threshold": measure.THRESHOLD})
         # The one sample with prompts to ask began at the default length.
-        self.assertEqual((row["512"]["asked"], row["1536"]["asked"]), (1, 2))
+        self.assertEqual([(value["512"]["asked"], value["1536"]["asked"]) for value in (row, short)],
+                         [(1, 2), (1, 2)])
         self.assertEqual([(recall_part["by_dims"][dims]["asked_first"]["prompts"],
                            recall_part["by_dims"][dims]["asked_later"]["prompts"]) for dims in ("512", "1536")],
-                         [(1, 0), (0, 1)])
+                         [(2, 0), (0, 2)])
         # The index got its other length once, in one run of the worker that sent embeddings only.
         self.assertEqual([(value["dims"], value["items"], value["before"], value["worker_runs"])
                           for value in recall_part["rebuilds"]], [(1536, 2, "made-up-en", 1)])
@@ -1586,23 +1748,26 @@ class SelfTestRun(unittest.TestCase):
                                                       for row in first["recorded"]["prompts"]]),
                          (512, [(1, "claude", "no-index", None), (2, "codex", "no-index", None)]))
         taken = second["recorded"]["prompts"]
-        self.assertEqual((second["recorded"]["dims"], len(taken), taken[0]["turn"]), (1536, 1, 1))
+        self.assertEqual((second["recorded"]["dims"], len(taken), taken[0]["turn"]), (1536, 2, 1))
         self.assertIn(taken[0]["outcome"], ("below", "late"))
         self.assertGreater(taken[0]["ms"], 0)
-        self.assertEqual([recall_part["by_dims"][dims]["recorded"]["prompts"] for dims in ("512", "1536")], [2, 1])
+        # The short prompt's own hook skipped it again, by the default that the home has once more.
+        self.assertEqual((taken[1]["turn"], taken[1]["host"], taken[1]["outcome"], taken[1]["embed_ms"]),
+                         (2, "codex", "short", None))
+        self.assertEqual([recall_part["by_dims"][dims]["recorded"]["prompts"] for dims in ("512", "1536")], [2, 2])
         if taken[0]["outcome"] == "below":  # Its embedding's usage line was read with the turn, and counted.
             self.assertIsNotNone(taken[0]["embed_ms"])
             self.assertGreaterEqual(self.report["cost"]["calls"]["embed-prompt"]["requests"], 3)
         self.assertEqual(recall_part["between_the_lengths"][0]["prompts_ranked_at_both"], 1)
-        # The texts for the judging are beside the report, and the prompt that was asked was recorded once.
-        self.assertEqual(texts["prompts"], [{"sample": "made-up-en", "turn": 1,
-                                             "text": measure.MADE_UP[1]["turns"][0]["prompt"]}])
+        # The texts for the judging are beside the report, and each prompt that was asked was recorded once.
+        self.assertEqual(texts["prompts"], [{"sample": "made-up-en", "turn": number, "text": turn["prompt"]}
+                                            for number, turn in enumerate(measure.MADE_UP[1]["turns"], 1)])
         self.assertEqual(sorted(value["title"] for value in texts["items"].values()),
                          sorted(script["title"] for script in list(measure.SCRIPTS.values())[:2]))
         entries = [json.loads(text) for path in sorted(
             (self.out / "recall/home/.corthex/corthex-memory/projects/demo/raw").glob("*.jsonl"))
             for text in path.read_text(encoding="utf-8").split("\n") if text]
-        self.assertEqual(dict(real.Counter(entry["kind"] for entry in entries)), {"prompt": 3, "answer": 3})
+        self.assertEqual(dict(real.Counter(entry["kind"] for entry in entries)), {"prompt": 4, "answer": 4})
 
     def test_the_report_has_no_text_of_a_sample_and_no_key_and_nothing_left_bytecode(self):
         self.assertTrue(self.text)

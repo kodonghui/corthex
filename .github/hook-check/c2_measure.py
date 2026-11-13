@@ -70,12 +70,16 @@ The parts, of which `efforts`, and `skip` when FILE is given, run unless
   ended are given apart, as `recorded`, for the one length of each sample. A
   prompt whose recall ended late or failed is given once more to
   `c2_measure_hook.py`, the same hook with 30 seconds: its scores are
-  recorded as such and its time is not. Between two lengths every item is
-  embedded again, which the report counts. An embedding request that failed
-  leaves its items without a vector until a later run of the worker, so the
-  worker is run again, five times at most, until its index step says that
-  every current item has one; the part stops where it does not. It needs
-  CORTHEX_MEMORY_OPENAI_API_KEY.
+  recorded as such and its time is not. A prompt that recall skipped as
+  shorter than `recall.skip` is given once more with `recall.skip` 0, and
+  what recall ranks for it then is recorded apart, as `without_the_skip`:
+  TASK-048 judges from it what the skip keeps from a session. A prompt
+  that recall skipped as a command is not asked again. Between two lengths
+  every item is embedded again, which the report counts. An embedding
+  request that failed leaves its items without a vector until a later run
+  of the worker, so the worker is run again, five times at most, until its
+  index step says that every current item has one; the part stops where it
+  does not. It needs CORTHEX_MEMORY_OPENAI_API_KEY.
 
 report.json holds numbers, the names of settings and the IDs that the package
 made: no text of a sample, of a prompt, of an item or of an answer. Those stay
@@ -102,11 +106,13 @@ system, and nothing about a provider, a model or an estimate.
 
 It prints a summary and exits 1 when a run broke, was not made, or left a
 request that failed or that lacks its usage lines or a count that the package
-makes for its kind, when a memory key of this process's environment is in a
-file under the folder, in the report or in a request to the local server, or
-when a file there could not be read for that search. Whether the safe
-estimate is at or above each count is a reading that the report gives; it
-does not change the exit.
+makes for its kind, when a prompt of the recall part gave no reading (its
+recall failed, or ended late and was not ranked with more time either, or,
+against the providers, no prompt was ranked at a length), when a memory key of
+this process's environment is in a file under the folder, in the report or in a
+request to the local server, or when a file there could not be read for that
+search. Whether the safe estimate is at or above each count is a reading that
+the report gives; it does not change the exit.
 """
 import argparse
 from collections import Counter
@@ -165,7 +171,9 @@ MADE_UP = (
          "reply": "네, 샘플 원문은 비공개 폴더에만 두겠습니다."}]},
     {"id": "made-up-en", "kind": "made-up", "source": "this file", "turns": [
         {"host": "claude", "prompt": "Decision: a measurement run keeps its numbers in report.json only.",
-         "reply": "Understood. A measurement run keeps its numbers in report.json only."}]},
+         "reply": "Understood. A measurement run keeps its numbers in report.json only."},
+        # Shorter than the default of `recall.skip`, so recall skips it; the scripted curator makes nothing of it.
+        {"host": "codex", "prompt": "Why so?", "reply": "A report with numbers only can be shown to anyone."}]},
 )
 SCRIPTS = {
     MADE_UP[0]["turns"][0]["prompt"]: c2_real.script("decision", "측정 보고서에는 숫자와 ID만",
@@ -318,8 +326,12 @@ class Home(c2_real.Home):
         return run
 
     def setting(self, section, name, value):
+        """Give a setting of the home's configuration a value; None takes the setting out, for its default."""
         document = self.configuration()
-        document.setdefault(section, {})[name] = value
+        if value is None:
+            document.get(section, {}).pop(name, None)
+        else:
+            document.setdefault(section, {})[name] = value
         self.configure(document)
 
     def leave_out(self, kinds):
@@ -428,6 +440,22 @@ class Home(c2_real.Home):
                 "embed_error": sent[-1].get("error") if sent else None}
 
     def recalled(self, host, prompt):
+        """A prompt's recall as `ranking` reads it, and what recall ranks for a prompt that it skipped as short.
+
+        Such a prompt is read once more with `recall.skip` 0, as `without_the_skip`, and the setting is then as
+        it was. A prompt that recall skipped as a command is not read again: no `recall.skip` lets it through.
+        """
+        found = self.ranking(host, prompt)
+        if found["outcome"] == "short":
+            before = self.configuration().get("recall", {}).get("skip")
+            self.setting("recall", "skip", 0)
+            try:
+                found["without_the_skip"] = self.ranking(host, prompt)
+            finally:
+                self.setting("recall", "skip", before)
+        return found
+
+    def ranking(self, host, prompt):
         """A prompt's recall in the hook as it is and, when that ended late or failed, once more with more time.
 
         `scored` says which of the two gave the candidates, or `no` where neither ranked anything.
@@ -774,8 +802,9 @@ def replay(check, entry):
                                                              items=len(home.current())))
                     for row, turn in zip(stage["prompts"], sample["turns"]):
                         # The length at which a prompt is asked first sends a text that no request has sent yet.
-                        row[str(dims)] = dict(home.recalled(turn["host"], turn["prompt"]), asked=turn_of_length)
-                        for value in row[str(dims)]["candidates"]:
+                        found = row[str(dims)] = dict(home.recalled(turn["host"], turn["prompt"]),
+                                                      asked=turn_of_length)
+                        for value in found["candidates"] + found.get("without_the_skip", {}).get("candidates", []):
                             item = items.get(value["item"]) or c2_hosts.items(home.home).get(value["item"]) or {}
                             texts["items"][value["item"]] = {key: item.get(key) for key in ("kind", "title", "text")}
                 order.reverse()  # The next sample begins at the length that the index has now.
@@ -799,6 +828,16 @@ def replay(check, entry):
         other = sorted(name for name in value["outcomes"] if name not in c2_hosts.RANKED + ("late", "short", "command"))
         if other:
             why.append("at %s numbers a prompt's recall ended with %s" % (dims, ", ".join(other)))
+        other = sorted(name for name in value["without_the_skip"]["outcomes"]
+                       if name not in c2_hosts.RANKED + ("late",))
+        if other:
+            why.append("at %s numbers the recall of a skipped prompt without the skip ended with %s" % (
+                dims, ", ".join(other)))
+        unranked = sum(1 for row in asked(entry, dims) for found in (row, row.get("without_the_skip") or {})
+                       if found.get("outcome") == "late" and not found["candidates"])
+        if unranked:
+            why.append("at %s numbers %d of the prompts whose recall ended late were not ranked with more time "
+                       "either" % (dims, unranked))
         if check.real and not value["ranked"]:
             why.append("at %s numbers no prompt was ranked" % dims)
     entry["outcome"] = "partial" if why else "measured"
@@ -819,10 +858,13 @@ def by_length(entry, dims):
     installed one runs, for the turns that were recorded while the index had this length. A prompt is asked at
     one length after the other, the lengths taking turns to be the first from sample to sample, and a text that
     was sent a moment before may come back sooner: `asked_first` and `asked_later` give the times apart, so that
-    the difference between two lengths is not read from the order in which they were asked.
+    the difference between two lengths is not read from the order in which they were asked. `without_the_skip`
+    is of the prompts that recall skipped as short, asked once more with `recall.skip` 0: what recall ranks for
+    them is in no other number here, and the time of a hook that was asked a second time is not given.
     """
     rows = asked(entry, dims)
     ranked = [row for row in rows if row["candidates"]]
+    unskipped = [row["without_the_skip"] for row in rows if "without_the_skip" in row]
     rebuilds = [value for value in entry["rebuilds"] if value["dims"] == dims]
     taken = [row for stage in entry["stages"] if (stage.get("recorded") or {}).get("dims") == dims
              for row in stage["recorded"]["prompts"]]
@@ -844,6 +886,11 @@ def by_length(entry, dims):
             "embed_ms": spread([row["embed_ms"] for row in rows], 1),
             "best_score": spread([row["candidates"][0]["score"] for row in ranked]),
             "fifth_score": spread([row["candidates"][4]["score"] for row in ranked if len(row["candidates"]) > 4]),
+            "without_the_skip": {
+                "prompts": len(unskipped), "outcomes": dict(Counter(row["outcome"] for row in unskipped)),
+                "scored_with_more_time": sum(1 for row in unskipped if row["scored"] == MORE),
+                "ranked": sum(1 for row in unskipped if row["candidates"]),
+                "best_score": spread([row["candidates"][0]["score"] for row in unskipped if row["candidates"]])},
             "rebuilds": {"times": len(rebuilds), "attempts": sum(value["attempts"] for value in rebuilds),
                          "failed_attempts": sum(sum(value["failed_attempts"].values()) for value in rebuilds),
                          "input": sum(value["input"] for value in rebuilds),
@@ -1106,7 +1153,8 @@ def summary(report):
         text.append("recall.skip: %s" % json.dumps(shown))
     if "recall" in report:
         value = report["recall"]
-        text.append("recall: %s %s" % (value["outcome"], json.dumps(value.get("why") or value.get("crash") or "")))
+        why = value.get("why") or value.get("crash")
+        text.append("recall: %s%s" % (value["outcome"], " %s" % json.dumps(why) if why else ""))
         for dims, found in (value.get("by_dims") or {}).items():
             text.append("  %s numbers: %s" % (dims, json.dumps(found)))
         for found in value.get("between_the_lengths") or []:
