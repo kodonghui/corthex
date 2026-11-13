@@ -50,13 +50,17 @@ session; a worker that is still there after SETTLE_SECONDS, before or after,
 fails the case, since its requests could not be told from the session's own.
 A worker's command line names its plugin's folder and its project, never its
 home. The hosts install the plugin under this run's folder, so a worker is
-this run's only when its command line holds that folder: the memory workers of
-another home, such as those of the user's own sessions on the same machine,
-are neither waited for nor kept in the report. A wait that ran out leaves in
+this run's only when the path of its script begins with that folder: the
+memory workers of another home, such as those of the user's own sessions on the
+same machine, are neither waited for nor kept in the report. A run empties
+OUTDIR/c2-hosts and uses it again, so it does not start while a memory worker
+whose script lies there still runs, such as one that an interrupted run left
+going: that worker would count as this run's. A wait that ran out leaves in
 the report what it saw as it ended: the lease at its last look, for how long no
 lease had been seen, and this run's memory workers' command lines by the last
 reading since a look last met the lease or, when there was none, by one made
-then, after which the lease is looked at once more.
+then, after which the lease is looked at once more; that reading is kept
+whatever the look after it met.
 
 Any failure that the worker or a hook notes in the failure log fails TC-253,
 with two exceptions that the summary lists: a lock that stayed busy, and a
@@ -71,8 +75,11 @@ The report keeps the number of command lines that were read for TC-254: every
 line of the sessions' readings and of the readings of the waits that follow a
 session, when no session's readings run. Of the lines themselves it keeps only
 this run's memory workers', with a key in them masked.
-It writes report.json and prints a summary, and exits 1 when a case fails.
+It writes report.json and prints a summary, and exits 1 when a case fails. It
+exits 2 without a run, and leaves the folder as it was, while a memory worker
+of the folder still runs or when the command lines cannot be read to tell.
 """
+from collections import Counter
 from datetime import datetime, timezone
 import json
 import os
@@ -448,9 +455,15 @@ def command_lines():
     return lines
 
 
+# The system's own rule for the case of a path, which `comparable` uses: a test gives `comparable` alone the rule
+# of Windows through this name.
+normcase = os.path.normcase
+WORKER_SCRIPT = "scripts/worker.py"
+
+
 def comparable(text):
     """A path or a command line as `workers` compares them: with one kind of slash and, on Windows, one case."""
-    return os.path.normcase(text).replace("\\", "/")
+    return normcase(text).replace("\\", "/")
 
 
 def workers(lines, run_folder=None):
@@ -458,19 +471,37 @@ def workers(lines, run_folder=None):
 
     A worker's command line names its plugin's folder and its project, never its home. The hosts install the
     plugin under this run's folder, so `run_folder`, that folder as `comparable` gives it, tells a worker of
-    another home, such as one of the user's own sessions, apart.
+    another home, such as one of the user's own sessions, apart. Only the path of the worker's script counts:
+    the folder begins it, at the start of the line or after a space, a quote or `=`, and it reaches
+    `scripts/worker.py` with no space or quote on the way and ends there. A line that names the folder anywhere
+    else, such as in the interpreter's path, at the end of a longer path or in a file beside the script
+    (`worker.py.bak`), is not one of the run's workers. Without `run_folder` every memory worker counts, of any
+    home; each reading that `Hosts` makes gives its folder (`run_folder_of`).
     """
-    inside = None if run_folder is None else run_folder.rstrip("/") + "/"
-    return [text for text in lines
-            if "scripts/worker.py" in comparable(text) and (inside is None or inside in comparable(text))]
+    # The script's name ends at a space, a quote or the line's end.
+    end = re.escape(WORKER_SCRIPT) + r"(?=$|[\s\"'])"
+    if run_folder is None:
+        script = re.compile(end)
+    else:
+        script = re.compile(r"(?:^|(?<=[\s\"'=]))" + re.escape(run_folder.rstrip("/") + "/") + r"[^\s\"']*" + end)
+    return [text for text in lines if script.search(comparable(text))]
+
+
+def run_folder_of(out):
+    """The run's folder as `workers` takes it: resolved, as the hosts install the plugin under it, then `comparable`.
+
+    An OUTDIR given through a link, or on Windows by a short name, names the folder that the workers' script paths
+    hold only once it is resolved (on macOS /var is /private/var).
+    """
+    return comparable(str(Path(out).resolve()))
 
 
 def running(text, seen=None, run_folder=None):
     """Whether one of the memory workers (`workers`) runs whose line holds `text`; a failed reading counts as one.
 
     `seen`, a dict, is given what this reading showed: under `workers` those workers' lines, or under `unread`
-    the error that it failed with. Under `lines` it keeps every line of this reading and of each reading that
-    it was given before, for TC-254.
+    the error that it failed with. Under `lines`, a Counter, it keeps every line of this reading and of each
+    reading that it was given before, for TC-254: a line read more than once is kept once, with its count.
     """
     try:
         lines = command_lines()
@@ -481,8 +512,39 @@ def running(text, seen=None, run_folder=None):
         seen.pop("workers", None)
         seen.pop("unread", None)
         seen.update({"workers": found} if error is None else {"unread": error})
-        seen.setdefault("lines", []).extend(lines)
+        seen.setdefault("lines", Counter()).update(lines)
     return error is not None or bool(found)
+
+
+def tried(read):
+    """Calls `read`, which says whether it worked, until it works, LAST_READINGS times at most; whether it did.
+
+    What made a reading fail may pass, so LAST_READING_PAUSE seconds come between two tries.
+    """
+    for left in range(LAST_READINGS, 0, -1):
+        if read():
+            return True
+        if left > 1:
+            time.sleep(LAST_READING_PAUSE)
+    return False
+
+
+def left_running(out):
+    """The memory workers whose script lies under `out` and that still run, and the error of a reading that failed.
+
+    A run empties OUTDIR/c2-hosts and uses it again, and `workers` takes a worker whose script lies there for one
+    of the run's own: a worker that an interrupted run left going would count as this run's, and the waits would
+    wait for it. The reading is tried as a session's last one is (`tried`); one that keeps failing cannot tell,
+    and gives its last error as `repr` shows it, which names a program that is missing.
+
+    A host that such a run left going is not looked for: `run` ends a host and its children when the run is
+    interrupted or the session runs out of time, so only a run killed outright leaves one, and a host's command
+    line names no path in the folder.
+    """
+    sampler = Sampler(run_folder_of(out))
+    if tried(sampler.read):
+        return sampler.workers, None
+    return [], sampler.errors[-1]
 
 
 def configure(home, turns):
@@ -611,8 +673,10 @@ def quiet(root, timeout=SETTLE_SECONDS, turns=True, worker=None, seen=None, run_
     `workers` or `unread` is the last reading of the command lines since a look last met the project busy, and
     `lines` every reading's lines (`running`). A wait that ran out also gives `calm`, the seconds since a look
     last met the project busy or since the wait began. With `worker`, when no reading was made since that look,
-    it then reads the command lines once more and looks at the project once more after that reading, which
-    takes the reading's time as well: the look, the reading and `calm` show one moment, the wait's end.
+    it then reads the command lines once more, which takes the reading's time as well, and looks at the project
+    once more right after that reading. That reading is kept whatever the look after it met: the two, and
+    `calm` after them, show the wait's end, apart by no more than the reading's own time. Within the wait a
+    busy look drops the reading before it, since another reading may follow; at the end none does.
     """
     # `counted_from` is the moment from which QUIET seconds are counted, `last_busy` that of the last busy look.
     started = counted_from = last_busy = time.time()
@@ -714,10 +778,11 @@ class Hosts:
         hookcheck.REPO, hookcheck.MEMORY = self.source, self.plugin
         self.home, self.demo = hookcheck.prepare(out / "shared")
         # Both hosts install the plugin under this run's folder, which tells this run's memory workers apart.
-        self.run_folder = comparable(str(Path(out).resolve()))
+        self.run_folder = run_folder_of(out)
         self.keys = marker_keys()
-        # The command lines read stay here, out of the report: a crash writes the report as it stands.
-        self.lines, self.count, self.label = [], 0, None
+        # The command lines read stay here, out of the report: a crash writes the report as it stands. A line
+        # read more than once is kept once, with its count.
+        self.lines, self.count, self.label = Counter(), 0, None
         self.report = {"release": RELEASE, "store": self.store_kind(), "installs": {}, "sessions": [],
                        "command_lines": 0}
 
@@ -844,12 +909,13 @@ class Hosts:
         readings counts for TC-254. A wait that ran out leaves in the report the session that it followed and
         what it saw as it ended (`quiet`): the lease at its last look, for how many seconds no lease had been
         seen, and this run's workers' command lines or the error of the last reading since the lease was last
-        seen. A reading that failed counts as a worker.
+        seen, or else of the reading made as the wait ended, which is kept although the look after it may have
+        met the lease. A reading that failed counts as a worker.
         """
         seen = {}
         gone = quiet(self.home / ".corthex/corthex-memory/projects/demo", turns=False, worker="", seen=seen,
                      run_folder=self.run_folder)
-        self.lines.extend(seen.get("lines", []))
+        self.lines.update(seen.get("lines", ()))
         if not gone:
             left = {"after": self.label, "lease": seen.get("busy"), "calm_seconds": seen.get("calm")}
             if "workers" in seen:
@@ -894,9 +960,9 @@ class Hosts:
         result["workers"] = self.shown(sampler.workers)
         result["reasons"] = sorted({match for text in sampler.workers for match in REASON.findall(text)})
         result["expected_reason"] = "end-of-turn" if turns == 1 else "end"
-        result["command_reads"] = {"reads": sampler.reads, "lines": len(sampler.lines),
+        result["command_reads"] = {"reads": sampler.reads, "lines": sum(sampler.lines.values()),
                                    "errors": [self.mask(text) for text in sampler.errors[:5]]}
-        self.lines.extend(sampler.lines)
+        self.lines.update(sampler.lines)
         # The curator's line for the earlier decision, which only the start summary or recall can carry.
         earlier = [line(DECISIONS[number - 1][2])] if number else []
         result["shows_earlier"] = {text: any(text in body for body in result["bodies"]) for text in earlier}
@@ -916,7 +982,7 @@ class Hosts:
                               extra={"CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1"}, label="scrub")
         sampler = result.pop("sampler")
         sampler.stop()
-        self.lines.extend(sampler.lines)
+        self.lines.update(sampler.lines)
         bodies = result.pop("bodies")
         # A worker that has the keys sends its requests before it ends. Without them this session's turn
         # stays unprocessed, so the count waits for the workers and not for the turn.
@@ -969,7 +1035,7 @@ class Hosts:
         result = self.session(host, exe, AGAIN, label="recall again (%s)" % host)
         sampler = result.pop("sampler")
         sampler.stop()
-        self.lines.extend(sampler.lines)
+        self.lines.update(sampler.lines)
         result.pop("bodies")
         # Its worker ends before another session asks a recall, which reads the index that the worker keeps.
         result["rested"] = self.rested()
@@ -982,13 +1048,13 @@ class Hosts:
         found = {}
         stored, unread = marked_files(self.home, self.keys)
         for name, key in self.keys.items():
-            lines = sum(1 for line in self.lines if key in line)
+            lines = sum(count for text, count in self.lines.items() if key in text)
             sent = sum(1 for row in self.memory.requests if carries(row, key))
             found[name] = {"files_with_marker": stored[name], "command_lines_with_marker": lines,
                            "requests_with_key": sent}
         self.report["keys"] = found
         self.report["unread_files"] = unread
-        self.report["command_lines"] = len(self.lines)
+        self.report["command_lines"] = sum(self.lines.values())
         # The recall half of the case: each host's prompt hook ranked the items with the OpenAI key.
         recalls = {}
         for host, outcome in prompt_injections(self.home):
@@ -1001,13 +1067,14 @@ class Hosts:
 class Sampler(threading.Thread):
     """Reads the processes' command lines every SAMPLE_SECONDS while it runs.
 
-    It keeps every line, for TC-254, and apart from them the memory workers' lines of `run_folder` (`workers`),
-    this run's folder as `comparable` gives it; without it, every memory worker's.
+    It keeps every line, for TC-254, a line read more than once once with its count (a Counter), and apart from
+    them the memory workers' lines of `run_folder` (`workers`), this run's folder as `comparable` gives it;
+    without it, every memory worker's.
     """
 
     def __init__(self, run_folder=None):
         super().__init__(daemon=True)
-        self.lines, self.workers, self.errors, self.halt = [], [], [], threading.Event()
+        self.lines, self.workers, self.errors, self.halt = Counter(), [], [], threading.Event()
         self.reads, self.run_folder = 0, run_folder
 
     def read(self):
@@ -1018,7 +1085,7 @@ class Sampler(threading.Thread):
             self.errors.append(repr(error))
             return False
         self.reads += 1
-        self.lines.extend(found)
+        self.lines.update(found)
         for line in workers(found, self.run_folder):
             if line not in self.workers:
                 self.workers.append(line)
@@ -1034,11 +1101,7 @@ class Sampler(threading.Thread):
         self.halt.set()
         self.join(timeout=150)
         if last:
-            for left in range(LAST_READINGS, 0, -1):
-                if self.read():
-                    break
-                if left > 1:
-                    time.sleep(LAST_READING_PAUSE)  # What made the reading fail may pass.
+            tried(self.read)
 
 
 def verdicts(report):
@@ -1118,12 +1181,31 @@ def verdicts(report):
             if all(reached.values()) else "only one key reached the hooks"}
 
 
+def summarize(text):
+    """Adds `text` to the job's summary when the run is a step of GitHub Actions."""
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+            handle.write("```\n%s\n```\n" % text)
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except AttributeError:
         pass
     out = Path(sys.argv[1]).resolve() / "c2-hosts"
+    left, unread = left_running(out)
+    if left or unread:
+        # The folder stays as it was, with no report: the worker that is left may still be writing into it. The
+        # reason goes to the error output and, in CI, to the job's summary.
+        said = "c2_hosts.py did not run: " + (
+            "memory workers whose script lies in %s are still running (%d); run it again once they have ended, "
+            "or give another OUTDIR" % (out, len(left)) if left else
+            "the command lines could not be read (%s), so no memory worker left in %s by an earlier run could be "
+            "ruled out" % (unread, out))
+        print(said, file=sys.stderr)
+        summarize(said)
+        return 2
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
@@ -1145,7 +1227,7 @@ def main():
     finally:
         if hosts is not None:
             hosts.memory.close()
-            report["command_lines"] = len(hosts.lines)
+            report["command_lines"] = sum(hosts.lines.values())
             if "crash" in report:
                 report["crash"] = hosts.mask(report["crash"])
             report["memory_requests"] = [{key: row.get(key) for key in ("path", "kind", "decisions", "released",
@@ -1193,9 +1275,7 @@ def main():
         for case in cases:
             text.append("%s: %s" % (case, "pass" if report["verdicts"][case] else "FAIL"))
     print("\n".join(text))
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
-            handle.write("```\n%s\n```\n" % "\n".join(text))
+    summarize("\n".join(text))
     return 0 if report["verdicts"] and all(report["verdicts"][case] for case in cases) else 1
 
 
