@@ -22,6 +22,7 @@ PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
 SEVEN_DAYS = 7 * 24 * 60 * 60
 COMMENT = re.compile(r"nc_[0-9a-hjkmnp-tv-z]{12}\Z")
+WINDOWS = os.name == "nt"
 
 
 class Busy(RuntimeError):
@@ -45,6 +46,20 @@ def atomic(path, data):
             os.unlink(name)
         except FileNotFoundError:
             pass
+
+
+def touch(path, when):
+    """Set a file's times. On Windows os.utime opens the file for itself alone, which a scanner that reads a file just
+    written refuses for a moment, so it tries again for up to two seconds."""
+    start = time.monotonic()
+    while True:
+        try:
+            os.utime(path, (when, when))
+            return
+        except PermissionError:
+            if not WINDOWS or time.monotonic() - start >= 2:
+                raise
+            time.sleep(0.01)
 
 
 @contextlib.contextmanager
@@ -133,7 +148,7 @@ class Lease:
                 self.path.unlink()
             with open(self.path, "x", encoding="utf8") as handle:
                 json.dump(self.payload(), handle)
-            os.utime(self.path, (self.clock(), self.clock()))
+            touch(self.path, self.clock())
         return self
 
     @contextlib.contextmanager
@@ -146,7 +161,7 @@ class Lease:
     def renew(self):
         with self.owned():
             atomic(self.path, self.payload())
-            os.utime(self.path, (self.clock(), self.clock()))
+            touch(self.path, self.clock())
 
     def __exit__(self, *args):
         with guard(self.guard_path):

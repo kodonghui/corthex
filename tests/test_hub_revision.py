@@ -213,7 +213,8 @@ class RevisionCase(unittest.TestCase):
             process.kill()
             process.communicate()
             raise
-        out, err = raw_out.decode("utf8"), raw_err.decode("utf8")
+        # Windows writes a line's end in the text that people read as CR LF.
+        out, err = raw_out.decode("utf8").replace("\r\n", "\n"), raw_err.decode("utf8").replace("\r\n", "\n")
         for secret in TOKEN.values():
             self.assertNotIn(secret, out + err)
         if not json_lines:

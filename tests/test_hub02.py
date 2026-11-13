@@ -790,6 +790,39 @@ class OutboxTest(HubCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Busy", result.stderr)
 
+    def test_a_scanner_that_holds_a_new_lock_is_waited_for_on_windows(self):
+        # Windows' os.utime opens the file for itself alone, which a scanner reading a file just written refuses.
+        real, calls = os.utime, []
+
+        def utime(path, times):
+            calls.append(path)
+            if len(calls) <= 2:
+                raise PermissionError(13, "the file is in use")
+            return real(path, times)
+
+        with mock.patch.object(BOX, "WINDOWS", True), mock.patch.object(BOX.os, "utime", utime):
+            with self.box.lease() as lease:
+                self.assertEqual(lease.read()["owner"], lease.owner)
+                self.assertEqual(int(lease.path.stat().st_mtime), int(self.now))
+        self.assertEqual(len(calls), 3)
+        self.assertFalse(self.box.lease().path.exists())
+
+    def test_a_refused_time_stamp_is_waited_for_only_on_windows_and_for_two_seconds(self):
+        target = self.base / "stamped"
+        with mock.patch.object(BOX, "WINDOWS", False), \
+                mock.patch.object(BOX.os, "utime", side_effect=PermissionError(13, "denied")) as utime:
+            with self.assertRaises(PermissionError):
+                BOX.touch(target, self.now)
+        self.assertEqual(utime.call_count, 1)
+        clock = iter([0.0, 0.5, 1.0, 2.5])
+        fake = SimpleNamespace(monotonic=lambda: next(clock), sleep=lambda seconds: None)
+        refusals = [PermissionError(13, "in use")] * 3 + [AssertionError("tried after two seconds")]
+        with mock.patch.object(BOX, "WINDOWS", True), mock.patch.object(BOX, "time", fake), \
+                mock.patch.object(BOX.os, "utime", side_effect=refusals) as utime:
+            with self.assertRaises(PermissionError):
+                BOX.touch(target, self.now)
+        self.assertEqual(utime.call_count, 3)
+
     def test_corrupt_or_redirected_file_is_never_sent(self):
         self.keep()
         target = self.box.files()[0]
