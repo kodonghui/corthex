@@ -295,6 +295,9 @@ def augment(snapshot, project, home, api, parse_picture):
     if parts:
         snapshot["project"]["parts"] = parts
     snapshot["ask_before"] = ask_before(project.settings, home, checks, h)
+    if "on_nexus" in project.settings and not isinstance(project.settings["on_nexus"], bool):
+        # 0.4.0: on_nexus says only whether the project is expected on a NEXUS server (SPEC-190).
+        checks.append(h.check("on-nexus-invalid", "warn", "on_nexus is not true or false, so it counts as not set"))
     tree, default = default_tree(project, snapshot, h)
     snapshot["pictures"], snapshot["left_out"] = [], []
     records(snapshot, project, parts, tree, default, checks, h)

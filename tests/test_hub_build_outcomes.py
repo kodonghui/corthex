@@ -19,7 +19,7 @@ import hub_cli_fixture as fixture
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "qa-build-fixture"
 PRIVATE_MARKER = fixture.PRIVATE_MARKER
-ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
+ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
 
 
 def file_state(folder):

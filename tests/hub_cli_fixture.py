@@ -16,6 +16,8 @@ import sys
 import threading
 from pathlib import Path
 
+from hub_cli_reviewed import REVIEWED_040
+
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "hub_cli"
 PIN = "3570fb0c755b50c314ca26f0361c72a71fe22d0d"
@@ -24,7 +26,7 @@ RUNTIME = ("hub.py", "commands.py", "domain.py", "erd.py", "outbox.py", "records
 WRITES = {"comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record"}
 SESSIONS = WRITES | {"claim", "release"}
 EXITS = {"done": 0, "command-line-invalid": 2, "failed": 1, "refused": 1, "kept": 3}
-ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
+ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
 WRITE_RE = re.compile(r'"(nw_[0-9a-hjkmnp-tv-z]{12})"\Z')
 PRIVATE_MARKER = "qa-sensitive@example.com"
 # Reviewed release changes after the accepted pin, each mapped back to the audited bytes.
@@ -32,6 +34,8 @@ PRIVATE_MARKER = "qa-sensitive@example.com"
 # entry it repeats with a qualifier, as "deletions (data)" keeps "deletions". 0.3.0 changes
 # the version fields again, lets `comment` take any of the 13 stages, with an empty item for
 # the stage as a whole and no quote needed, and gives `comment` and `reply` `--asks`; nothing else.
+# 0.4.0's changes, the design revision's commands, are in hub_cli_reviewed.py and are applied first,
+# so that these pairs then meet the 0.3.0 bytes that they were made for.
 REVIEWED = {
     "hub.py": ((b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),),
     "transport.py": ((b'version="0.3.0", timeout=30', b'version="0.2.0", timeout=30'),),
@@ -121,7 +125,7 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        for new, old in REVIEWED.get(name, ()):
+        for new, old in REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
             if source.count(new) == 1:
                 source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:

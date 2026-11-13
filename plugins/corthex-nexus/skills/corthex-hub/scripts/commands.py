@@ -9,6 +9,12 @@ from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
 
 NETWORK = {"push", "remove", "todo", "comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record", "show", "claim", "release", "outbox"}
+# 0.4.0: can-send says whether a session can send, and never contacts the server (API-179).
+ANSWERED = NETWORK | {"can-send"}
+TOKEN = ("CORTHEX_NEXUS_CLIENT_ID", "CORTHEX_NEXUS_CLIENT_SECRET")
+REMARKS = {"push-variable-ignored": "CORTHEX_NEXUS_PUSH is ignored, since this device has a profile or a list of projects",
+           "server-older": "the server is of before the design revision, so the hub did what it could in the older form",
+           "sent-as-reply": "the stage had an open checkpoint request, so the request went as a reply on it"}
 WRITES = {"comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record"}
 SESSION_REQUIRED = WRITES | {"claim", "release"}
 PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")
@@ -26,11 +32,15 @@ class CommandLine(ValueError):
     pass
 
 
-def outcome(command, project, value=None, stats=None):
+def outcome(command, project, value=None, stats=None, remarks=()):
     value = value or {"outcome": "done"}
     row = {"command": command, "project": project, "outcome": value["outcome"],
             "answer": value.get("answer"), "problem": value.get("problem"), "failure": value.get("failure"),
-            "outbox": stats or {"sent": 0, "dropped": 0, "waiting": 0}}
+            "outbox": stats or {"sent": 0, "dropped": 0, "waiting": 0},
+            "remarks": list(dict.fromkeys(list(remarks) + list(value.get("remarks") or ())))}
+    for key in ("read", "since", "new", "address"):
+        if key in value:
+            row[key] = value[key]
     if value.get("recovery") is not None:
         row["recovery"] = value["recovery"]
     return row
@@ -204,18 +214,71 @@ def commit_replacement(snapshot, held, project, replace_held, h):
     return "default branch diverged: held " + current + ", incoming " + incoming + "; use --replace-held only after the user agrees"
 
 
+def where(args, home, env, h):
+    """Where the address and the push list come from: the profile, or a session's environment (SPEC-192)."""
+    url = getattr(args, "url", None)
+    if h.environment_mode(home):
+        listed = [x.strip() for x in (env.get("CORTHEX_NEXUS_PUSH") or "").split(",") if x.strip()]
+        return SimpleNamespace(source="environment", allowed=listed, push="CORTHEX_NEXUS_PUSH", url=url or env.get("CORTHEX_NEXUS_URL"),
+                               url_name="CORTHEX_NEXUS_URL", remarks=[], own=h.select_projects(home, [], None)[0])
+    profile = h.profile_of(home)
+    config = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}
+    allowed = config.get("push") if isinstance(config.get("push"), list) else []
+    # A variable left in a shell never widens what a device with a profile sends.
+    ignored = ["push-variable-ignored"] if (env.get("CORTHEX_NEXUS_PUSH") or "").strip() else []
+    return SimpleNamespace(source="profile", allowed=allowed, push="nexus.push", url=url or env.get("CORTHEX_NEXUS_URL") or config.get("url"),
+                           url_name="CORTHEX_NEXUS_URL" if not url and env.get("CORTHEX_NEXUS_URL") else "nexus.url", remarks=ignored, own=None)
+
+
+def can_send(args, home, env, h, place):
+    """API-179: whether the session can send for the project, by the names of what is missing (SPEC-190)."""
+    name = args.project
+    if place.source == "environment":
+        own, project, _ = place.own
+        if project is None or name != own:
+            failure = "no project in this checkout" if project is None else "not this checkout's project: the checkout holds %s, not %s" % (own, name)
+            return outcome("can-send", name, {"outcome": "refused", "failure": failure})
+    else:
+        _, project, failure = h.select_projects(home, [name])[0]
+        if project is None:
+            here = h.select_projects(home, [], None)[0]
+            project = here[1] if here[0] == name else None
+        if project is None:
+            return outcome("can-send", name, {"outcome": "refused", "failure": failure})
+    missing, local = [], False
+    try:
+        if not isinstance(place.url, str) or not place.url.strip():
+            raise ValueError("no NEXUS address")
+        local = h.companion("transport").Client(place.url, env, version=h.VERSION).local
+    except ValueError:
+        missing.append(place.url_name)
+    if name not in place.allowed:
+        missing.append(place.push)
+    if not local:
+        missing += [key for key in TOKEN if not env.get(key)]
+    answer = {"can_send": not missing, "missing": missing,
+              "expected": project.settings.get("on_nexus") is True or name in place.allowed, "source": place.source}
+    return outcome("can-send", name, {"outcome": "done", "answer": answer})
+
+
 def execute(args, home, api, env=None, client_factory=None):
     h = SimpleNamespace(**api)
     env = os.environ if env is None else env
     session = validate(args, env, h)
     transport, boxes = h.companion("transport"), h.companion("outbox")
     command = args.command
-    profile = h.profile_of(home)
-    config = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}
-    allowed = config.get("push") if isinstance(config.get("push"), list) else []
+    place = where(args, home, env, h)
+    if command == "can-send":
+        return scrub([can_send(args, home, env, h, place)], home, env, h)
+    allowed = place.allowed
     raw_names = args.project if isinstance(args.project, list) else [args.project]
     names = raw_names or allowed
-    if command == "outbox" and not raw_names:
+    if place.source == "environment":
+        own = place.own[0] if place.own[1] is not None else None
+        if not raw_names and own is None:
+            return [outcome(command, "", {"outcome": "refused", "failure": "no project in this checkout"})]
+        names = raw_names or [own]
+    elif command == "outbox" and not raw_names:
         root = Path(home) / ".corthex" / "hub" / "outbox"
         names = sorted(x.name for x in root.iterdir() if x.is_dir() and h.NAME.fullmatch(x.name)) if root.is_dir() else []
     if any(not isinstance(name, str) or len(name) > 100 or not h.NAME.fullmatch(name) for name in names):
@@ -223,10 +286,12 @@ def execute(args, home, api, env=None, client_factory=None):
     if not names and command == "push":
         return [outcome(command, "", {"outcome": "refused", "failure": "no project is listed in nexus.push"})]
     request = write_request(args, names[0], home, env, h) if command in WRITES else None
+    reaches = not (command == "outbox" and not args.send)
+    remarks = place.remarks if reaches else []
     client, setup_failure = None, None
-    if not (command == "outbox" and not args.send):
+    if reaches:
         try:
-            base = getattr(args, "url", None) or env.get("CORTHEX_NEXUS_URL") or config.get("url")
+            base = place.url
             if not isinstance(base, str) or not base:
                 raise ValueError("no NEXUS address")
             client = (client_factory or transport.Client)(base, env, version=h.VERSION)
@@ -235,8 +300,13 @@ def execute(args, home, api, env=None, client_factory=None):
     rows = []
     for name in names:
         stats = {"sent": 0, "dropped": 0, "waiting": 0}
-        if command != "remove" and not (command == "outbox" and not args.send) and name not in allowed:
-            rows.append(outcome(command, name, {"outcome": "refused", "failure": "not in nexus.push"})); continue
+        if place.source == "environment" and name != place.own[0]:
+            failure = ("no project in this checkout" if place.own[1] is None else
+                       "not this checkout's project: the checkout holds %s, not %s" % (place.own[0], name))
+            rows.append(outcome(command, name, {"outcome": "refused", "failure": failure})); continue
+        # In a session's environment every command that reaches the server needs the push list, removal too.
+        if reaches and (command != "remove" or place.source == "environment") and name not in allowed:
+            rows.append(outcome(command, name, {"outcome": "refused", "failure": "not in " + place.push}, remarks=remarks)); continue
         pending = None
         try:
             box = boxes.Outbox(home, name)
@@ -245,7 +315,7 @@ def execute(args, home, api, env=None, client_factory=None):
             if command in WRITES:
                 pending = boxes.new_write(name, request[0], request[1], session, request[2])
                 value.update(failure="write lost: outbox could not be written", recovery=pending)
-            rows.append(outcome(command, name, value, stats))
+            rows.append(outcome(command, name, value, stats, remarks))
             continue
         if command in WRITES:
             pending = box.make(request[0], request[1], session, request[2])
@@ -253,17 +323,17 @@ def execute(args, home, api, env=None, client_factory=None):
         if command == "push":
             selected = h.select_projects(home, [name])[0]
             if selected[1] is None:
-                rows.append(outcome(command, name, {"outcome": "refused", "failure": selected[2]})); continue
+                rows.append(outcome(command, name, {"outcome": "refused", "failure": selected[2]}, remarks=remarks)); continue
             project = selected[1]
             if args.dry_run:
                 if setup_failure:
-                    rows.append(outcome(command, name, {"outcome": "refused", "failure": setup_failure})); continue
+                    rows.append(outcome(command, name, {"outcome": "refused", "failure": setup_failure}, remarks=remarks)); continue
                 snapshot = h.make_snapshot(project, h.load_status(home, name), home=home)
                 h.save_snapshot(home, snapshot)
                 answer = {"bytes": len(h.dump(snapshot, compact=True).encode("utf8")), "summary": snapshot["summary"],
                     "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
                     "held_commit": "checked when sent"}
-                rows.append(outcome(command, name, {"outcome": "done", "answer": answer})); continue
+                rows.append(outcome(command, name, {"outcome": "done", "answer": answer}, remarks=remarks)); continue
         value = None
         try:
             with box.lease() as lease:
@@ -335,7 +405,7 @@ def execute(args, home, api, env=None, client_factory=None):
             value = interrupted(box, pending, value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
         # Lease release can itself fail. Publish exactly one outcome only
         # after that cleanup has either completed or been handled above.
-        rows.append(outcome(command, name, value, stats))
+        rows.append(outcome(command, name, value, stats, remarks))
     return scrub(rows, home, env, h)
 
 
@@ -372,6 +442,8 @@ def emit(args, rows, h):
                 h.say("  " + h.one_line(row["problem"].get("code", "refused")) + ": " + h.one_line(row["problem"].get("detail", ""), 300))
             if row["answer"]:
                 h.say(json.dumps(row["answer"], ensure_ascii=False, indent=2))
+            for remark in row.get("remarks") or ():
+                h.say("  " + remark + ": " + REMARKS.get(remark, ""))
             if "recovery" in row:
                 h.say("  Recovery copy for the calling agent, once; keep it in this session, never a log:")
                 h.say(json.dumps(row["recovery"], ensure_ascii=False, indent=2))
@@ -398,6 +470,9 @@ def configure(top, commands, existing, h):
     for name in ("part", "by", "where", "nexus"):
         status.add_argument("--" + name, default="" if name == "part" else None)
     status.add_argument("--repository", action="store_true")
+    sendable = commands.add_parser("can-send", help="say whether this session can send for a project, without contacting the server")
+    sendable.add_argument("project")
+    sendable.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     for name in ("todo", "comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record", "show", "claim", "release", "outbox"):
         parser = commands.add_parser(name)
         parser.add_argument("project", nargs="*" if name == "outbox" else None)

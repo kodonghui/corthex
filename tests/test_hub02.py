@@ -847,8 +847,9 @@ class CommandOutcomesTest(HubCase):
     def test_all_eighteen_commands_exist(self):
         parser = hub.parser()
         actions = next(action for action in parser._actions if hasattr(action, "choices") and isinstance(action.choices, dict))
-        self.assertEqual(set(actions.choices), {"snapshot", "status", "build"} | CMD.NETWORK)
-        self.assertEqual(len(actions.choices), 18)
+        self.assertEqual(set(actions.choices), {"snapshot", "status", "build"} | CMD.ANSWERED)
+        self.assertEqual(CMD.ANSWERED - CMD.NETWORK, {"can-send"})
+        self.assertEqual(len(actions.choices), 19)
 
     def test_agent_writes_match_paths_bodies_and_new_write_ids(self):
         cases = [
@@ -1005,7 +1006,7 @@ class CommandOutcomesTest(HubCase):
                 rows = [json.loads(line) for line in result.stdout.decode("utf8").splitlines()]
                 self.assertEqual(len(rows), 1)
                 self.assertEqual((rows[0]["command"], rows[0]["project"], rows[0]["outcome"]), (words[0], "acme-shop", "done"))
-                self.assertEqual(set(rows[0]), {"command", "project", "outcome", "answer", "problem", "failure", "outbox"})
+                self.assertEqual(set(rows[0]), {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"})
 
     def test_local_json_errors_do_not_crash_the_error_handler(self):
         output = io.StringIO()

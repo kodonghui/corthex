@@ -62,6 +62,12 @@ The checks and the forms of source the hub reads are in [references/reading.md](
 
 `hub.py remove <project>` deletes a project from the server; ask before you run it. Taking a project out of `nexus.push` stops further pushes but leaves what the server holds.
 
+### A session without a profile, and can-send
+
+On a device with neither a profile nor `~/.corthex/projects.json`, such as a cloud session, the hub takes the address from `CORTHEX_NEXUS_URL`, the push list from `CORTHEX_NEXUS_PUSH` (project names separated by commas), the token from its two variables and the session label from `CORTHEX_NEXUS_SESSION`. It reads only the checkout's own project: the nearest `.corthex/project.json` from the current folder up to the repository's root, under its `name`. Another project is refused with `not this checkout's project`, a folder without such a file with `no project in this checkout`, and a project that the variable does not name, for each command that reaches the server, with `not in CORTHEX_NEXUS_PUSH`. On a device with a profile or a list of projects the variable is ignored, and a command that reaches the server carries the remark `push-variable-ignored`. These are the user's own settings: never set them, and never ask for the token's value.
+
+`hub.py can-send PROJECT` says whether this session can send for the project, without contacting the server or sending the outbox. Its answer has `can_send`; `missing`, the names of the settings or variables that are missing, never a value; `expected`, true when the project settings' `on_nexus` is `true` or the push list names the project; and `source`, `profile` or `environment`. It is `done` either way, and `refused` only for a project that the hub cannot find. When `can_send` is false and `expected` is true, tell the user once in the session, in one line that names what is missing and says that these are their own settings, and go on with the work; when `expected` is false, say nothing.
+
 ## Agent work in NEXUS
 
 Use these commands only for a project in `nexus.push`. They contact the configured server; local snapshot/build/status and listing the outbox stay offline. Each has `--help`, `--url` and `--json`. Text and reason/change values may come from the matching UTF-8 `--*-file`, with `-` for standard input. Never pass service-token values in arguments.
@@ -84,6 +90,8 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 When your comment or reply leaves a question for the user, `--asks` says what it asks, so that the user's page offers the right answer: `answer` for an answer in words, `recommended` when the text holds a recommendation that the user can take as recommended, and `checkpoint` when it asks the user to pass the stage's checkpoint as recommended. The user's next entry clears it. A NEXUS server from before the redesign takes comments only on the pictured stages (`01-domain`, `05-erd`, `07-sitemap`), with `--quote` when `--item` is left out, and no `--asks`; it refuses the rest as `invalid_request`, so comment there without them.
 
 Writes and claims require `--session` or `CORTHEX_NEXUS_SESSION`. Choose a label without personal data. Check source and explicit user work before taking agent work. A proposal is a suggestion, an accepted proposal is authorization to prepare the described change, and a passed checkpoint must come from the user; the agent never passes one.
+
+Every result also has `remarks`, names for what the hub did otherwise than the command line says, which the lines for a person say in words; the list is usually empty.
 
 An unsent agent write is kept for seven days under its original ID and session. Offline/token failures and retryable HTTP errors keep it; permanent refusals and expiry drop it with their reasons. Drain oldest first and stop at the first retained write. `--json` prints one outcome per project; exit 0 is done, 1 refused/failed, 2 invalid CLI and 3 kept. A kept write is not evidence that the server received it.
 

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = json.loads((ROOT / "tests/fixtures/hub_cli/wire.json").read_text(encoding="utf8"))
 PROJECT = BUNDLE["project"]
 PRIVATE_MARKER = fixture.PRIVATE_MARKER
-ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
+ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
 EMPTY_TODO = {key: {"total": 0, "entries": []}
               for key in ("comments", "discrepancies", "reflections", "checkpoints")}
 EMPTY_TODO.update(waiting_for_user=0, taken=0)
