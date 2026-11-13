@@ -20,6 +20,16 @@ REVIEWED_040 = {
          b'The 18 commands have --help. Snapshot/build/status work locally. Explicit\n'
          b'server commands use only the configured NEXUS address and permitted projects.\n'
          b'It reads profile/registration/project settings and stage sources; pictures and\n'),
+        (b'from types import SimpleNamespace\n'
+         b'\n'
+         b'VERSION = "0.4.0"\n'
+         b'SCHEMA = "corthex-hub/0.2"\n'
+         b'PAGE_SCHEMA = "corthex-hub-page/0.2"\n',
+         b'from types import SimpleNamespace\n'
+         b'\n'
+         b'VERSION = "0.3.0"\n'
+         b'SCHEMA = "corthex-hub/0.2"\n'
+         b'PAGE_SCHEMA = "corthex-hub-page/0.2"\n'),
         (b'\n'
          b'\n'
          b'def environment_mode(home):\n'
@@ -923,5 +933,17 @@ REVIEWED_040 = {
          b'    snapshot["ask_before"] = ask_before(project.settings, home, checks, h)\n'
          b'    tree, default = default_tree(project, snapshot, h)\n'
          b'    snapshot["pictures"], snapshot["left_out"] = [], []\n'),
+    ),
+    'transport.py': (
+        (b'\n'
+         b'class Client:\n'
+         b'    def __init__(self, base, env, version="0.4.0", timeout=30):\n'
+         b'        parsed = urllib.parse.urlsplit(base)\n'
+         b'        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")\n',
+         b'\n'
+         b'class Client:\n'
+         b'    def __init__(self, base, env, version="0.3.0", timeout=30):\n'
+         b'        parsed = urllib.parse.urlsplit(base)\n'
+         b'        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")\n'),
     ),
 }

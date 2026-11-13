@@ -1105,5 +1105,70 @@ class PushJobTest(RevisionCase):
         self.assertEqual(self.peer.calls, [])
 
 
+
+class VersionsMeetTest(RevisionCase):
+    """TASK-294: how versions meet (stage 06): a hub of the revision with a server of before, and the skills of before
+    with a hub of the revision (TC-1758, TC-1762)."""
+
+    TODO = "/api/spaces/acme/todo"
+    COMMENTS = "/api/spaces/acme/comments"
+
+    def setUp(self):
+        super().setUp()
+        self.profile()
+        self.register()
+        self.reads_path = self.home / ".corthex/hub/reads/acme.json"
+
+    def test_TC_1758_a_hub_of_the_revision_with_a_server_of_before(self):
+        # The built contract of before: no read_at, comments without look_first, no project's data, API-110's dry run.
+        space = Todo()
+        space.with_read_at = False
+        self.peer.on("GET", self.TODO, (space, None))
+        self.peer.on("POST", self.COMMENTS, (201, {"id": "nc_" + "q" * 12, "state": "open"}))
+        dry = RemoveTest.data()["removal"]
+        self.peer.on("GET", "/api/snapshots/acme/removal", (200, dry))
+        for words in ([], ["--if-due"], ["--if-due"]):
+            with self.subTest(words=words):
+                calls = len(self.peer.calls)
+                code, rows, err = self.hub("todo", "acme", "--session", "s-1", *words)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["read"], rows[0]["since"], rows[0]["new"], rows[0]["remarks"]),
+                                 (0, "done", True, None, None, ["server-older"]), err)
+                self.assertEqual(len(self.peer.calls), calls + 1, "--if-due reads each time")
+        self.assertFalse(self.reads_path.exists(), "the hub keeps no session read")
+        text = self.base / "request.txt"
+        self.write(text, "Stage 04 is ready for your checkpoint.")
+        code, rows, err = self.hub("comment", "acme", "--stage", "04-functional-spec", "--asks", "checkpoint", "--look-first", "SPEC-194",
+                                   "--text-file", str(text), "--session", "s-1")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["server-older"]), err)
+        posts = [call for call in self.peer.calls if call["method"] == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertNotIn("look_first", posts[0]["body"])
+        self.assertEqual(posts[0]["body"]["text"].split("\n")[-1], "SPEC-194", "the ID is the text's last line")
+        # The hub's own check came first: the request followed a read of the to-do.
+        self.assertEqual([call["path"] for call in self.peer.calls[-2:]], [self.TODO, self.COMMENTS])
+        calls = len(self.peer.calls)
+        code, rows, err = self.hub("remove", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["answer"], rows[0]["remarks"]), (0, "done", dry, ["server-older"]), err)
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls[calls:]],
+                         [("GET", "/api/spaces/acme/data"), ("GET", "/api/snapshots/acme/removal")], "remove sends nothing")
+        code, out, _ = self.hub("remove", "acme", json_lines=False)
+        self.assertIn("  no removal was sent: this server has no project's data yet", out)
+
+    def test_TC_1762_the_skills_of_before_with_a_hub_of_the_revision(self):
+        text = self.base / "request.txt"
+        self.write(text, "Stage 04 is ready for your checkpoint.")
+        # A checkpoint request as the skills of before give it, without --look-first.
+        code, out, err = self.hub("comment", "acme", "--stage", "04-functional-spec", "--asks", "checkpoint", "--text-file", str(text),
+                                  "--session", "s-1", json_lines=False)
+        self.assertEqual(code, 2, out)
+        self.assertIn("add --look-first", err)
+        # The first push of a project, as the skills of before give it, without --first.
+        self.peer.on("GET", "/api/snapshots/acme/held", problem(404, "project_not_found"))
+        code, rows, err = self.hub("push", "acme")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "refused", "first push needs --first"), err)
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("GET", "/api/snapshots/acme/held")], "nothing is sent")
+        self.assertEqual(list((self.home / ".corthex/hub/outbox").glob("acme/*.json")), [])
+
+
 if __name__ == "__main__":
     unittest.main()
