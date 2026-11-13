@@ -602,6 +602,7 @@ class Home:
         self.root = self.store / "projects/demo"
         self.tap = self.base / "requests.jsonl"
         self.sessions, self.read, self.broken = {}, {"usage": 0, "failures": 0, "requests": 0}, {}
+        self.took = {}  # Of the turn recorded last: each hook's time in ms, from outside its process.
 
     def configuration(self):
         return json.loads((self.store / "configuration.json").read_text(encoding="utf-8"))
@@ -629,7 +630,7 @@ class Home:
         """Record a turn through the staged hooks as its host sends them; the IDs of its prompt and its answer."""
         env = self.check.host_environment(self.home, turn.host)
         session = self.sessions.setdefault(turn.host, str(uuid.uuid4()))
-        number, before = str(uuid.uuid4()), set(self.entries())
+        number, before, self.took = str(uuid.uuid4()), set(self.entries()), {}
         for name, event, values in (("prompt", "UserPromptSubmit", {"prompt": turn.prompt}),
                                     ("end-of-turn", "Stop", {"last_assistant_message": turn.reply})):
             data = json.dumps(host_input(turn.host, event, self.demo, session, number, **values), ensure_ascii=False)
@@ -637,6 +638,7 @@ class Home:
                                  str(self.demo), stdin=data, timeout=120)
             if done["exit"] != 0:
                 raise RuntimeError("the %s hook %s" % (name, how_ended(done, self.check.shown)))
+            self.took[name] = round((done["ended_monotonic_ns"] - done["started_monotonic_ns"]) / 1e6, 1)
         found = {entry["kind"]: ident for ident, entry in self.entries().items() if ident not in before}
         if sorted(found) != ["answer", "prompt"]:
             raise RuntimeError("the hooks recorded %s for a turn" % (sorted(found) or "nothing"))
@@ -682,9 +684,12 @@ class Home:
             raise RuntimeError("the worker %s" % how_ended(done, lambda text: check.shown(text, 600)))
         return run
 
-    def logged(self, run, provider):
-        """Add to a run the lines that were written since the run before it, and count a provider's cost."""
-        for name in ("usage", "failures", "requests"):
+    def logged(self, run, provider, names=("usage", "failures", "requests")):
+        """Add to a run the lines that were written since the run before it, and count a provider's cost.
+
+        `names` are the logs to read, of which `usage` is one: what wrote no request need not read their file.
+        """
+        for name in names:
             rows = self.rows(name)
             run[name], self.read[name] = rows[self.read[name]:], len(rows)
         run["usage"] = [{key: value for key, value in row.items() if key != "prices"} for row in run["usage"]]
@@ -1147,18 +1152,26 @@ def write(out, report, check):
     """
     text = json.dumps(report, indent=1, ensure_ascii=False, default=str)
     masked = text if check is None else check.mask(text)
-    fresh = out / "report.json.new"
-    fresh.write_bytes(masked.encode("utf-8", "backslashreplace"))
+    put(out / "report.json", masked)
+    return masked != text
+
+
+def put(path, text):
+    """Write a file's text to a file beside it, `<name>.new`, that then takes its place.
+
+    Half of a surrogate pair is written as its escape, which in JSON reads back as the same value.
+    """
+    fresh = path.with_name(path.name + ".new")
+    fresh.write_bytes(text.encode("utf-8", "backslashreplace"))
     until = time.monotonic() + REPLACE_SECONDS
     while True:
         try:
-            os.replace(str(fresh), str(out / "report.json"))
+            os.replace(str(fresh), str(path))
             break
         except PermissionError:  # On Windows, while a scanner or another reader holds one of the two files open.
             if not WINDOWS or time.monotonic() >= until:
                 raise
             time.sleep(0.05)
-    return masked != text
 
 
 def earlier(out):
@@ -1252,6 +1265,8 @@ def carry_out(out, chosen, signals=None, kind=None):
             for name in check.steps():
                 write(out, report, check)
                 check.step(name)
+        except Stopped as stopped:  # A check that refuses to begin, as for what it was given: its reason alone.
+            noted(report, check, str(stopped))
         except Exception:
             noted(report, check)
         if signals is not None:
@@ -1283,11 +1298,12 @@ def main(arguments=None):
     return launch(chosen, "c2-real")
 
 
-def launch(chosen, folder, kind=None, told=None, held=None):
+def launch(chosen, folder, kind=None, told=None, held=None, free=False):
     """What follows a check's options: its refusals, its folder under OUTDIR, its run and its summary; the exit.
 
     Another check of this folder that is made of the same parts gives its class as `kind`, with the function
-    that tells its report (`told`) and the one that says whether it holds (`held`).
+    that tells its report (`told`) and the one that says whether it holds (`held`). `free` says that what was
+    chosen sends nothing to a provider: then neither CI nor a missing key refuses it.
     """
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -1296,7 +1312,7 @@ def launch(chosen, folder, kind=None, told=None, held=None):
     if chosen.repeat < 1 or not 0 < chosen.limit < math.inf:
         print("--repeat is at least 1 and --limit is a number above 0")
         return 2
-    if not chosen.self_test:
+    if not chosen.self_test and not free:
         if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
             print("This check calls the providers at a cost and is never run in CI; --self-test calls none.")
             return 2

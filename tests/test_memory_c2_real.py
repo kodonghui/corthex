@@ -391,6 +391,44 @@ class RefusalTests(unittest.TestCase):
         self.assertIn("could not be staged", text)
         self.assertIsNone(real.earlier(base / "c2-real"))  # The next self-test may take the folder.
 
+    def test_a_check_that_refuses_to_begin_says_why_in_one_line_and_runs_no_case(self):
+        ran = []
+
+        class Refusing(real.Check):
+            def steps(self):
+                raise real.Stopped("Nothing was run. What it was given cannot be recorded.")
+
+            def step(self, name):
+                ran.append(name)
+
+        with mock.patch.object(real, "Check", Refusing):
+            code, text, base = self.run_main(["--self-test"])
+        report = self.report(base)
+        # The reason alone: no traceback of a refusal that the check made itself.
+        self.assertEqual((code, ran, report["crash"], report["cases"]),
+                         (1, [], "Nothing was run. What it was given cannot be recorded.", {}))
+        self.assertEqual(text.splitlines()[-1], report["crash"])
+        self.assertEqual((report["cost"]["requests"], report["files_with_key"], report["files_not_read"]),
+                         (0, [], []))
+
+    def test_what_sends_nothing_to_a_provider_is_refused_neither_in_ci_nor_without_a_key(self):
+        launch = real.launch
+        for environment in ({"CI": "true"}, {"GITHUB_ACTIONS": "true"}, {}):
+            with self.subTest(environment):
+                with mock.patch.dict(real.RUNNERS, {"TC-258": passing}), \
+                        mock.patch.object(real, "launch", lambda chosen, folder: launch(chosen, folder, free=True)):
+                    code, _, base = self.run_main(["--case", "TC-258"], **environment)
+                report = self.report(base)
+                self.assertEqual((code, report["self_test"], report["cases"]["TC-258"]["outcome"]),
+                                 (0, False, "pass"))
+                self.assertEqual(report["keys"], {ANTHROPIC: "missing", OPENAI: "missing"})
+        # Its other refusals hold: a folder that may be an earlier run's record is not replaced.
+        with mock.patch.dict(real.RUNNERS, {"TC-258": passing}), \
+                mock.patch.object(real, "launch", lambda chosen, folder: launch(chosen, folder, free=True)):
+            code, text, base = self.run_main(["--case", "TC-258"], prepare=lambda out: (
+                out.mkdir(), (out / "report.json").write_text(json.dumps({"self_test": False}), encoding="utf-8")))
+        self.assertEqual((code, self.report(base)), (2, {"self_test": False}))
+
     def test_a_report_that_cannot_be_written_stops_the_cases_after_it_and_is_written_at_the_end(self):
         ran, writes, write = [], [], real.write
 
@@ -919,6 +957,28 @@ class ReadingTests(unittest.TestCase):
                 real.write(out, {"cases": {"TC-258": {"outcome": "pass"}, "TC-259": {"outcome": "pass"}}}, None)
         self.assertEqual(json.loads((out / "report.json").read_text(encoding="utf-8")), first)
 
+    def test_any_file_of_a_check_is_written_beside_itself_and_then_takes_its_place(self):
+        out = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(out), True)
+        path = out / "recall-texts.json"
+        half = {"text": "잘린 \ud83d 글자", "한글": "그대로"}
+        real.put(path, json.dumps(half, ensure_ascii=False))
+        data = path.read_bytes()
+        self.assertIn("그대로".encode("utf-8"), data)  # Only what UTF-8 cannot hold is written as its escape.
+        self.assertEqual((json.loads(data.decode("utf-8")), sorted(entry.name for entry in out.iterdir())),
+                         (half, ["recall-texts.json"]))
+
+        def broken(target, *_, **__):
+            open(str(target), "wb").close()  # As a write that is cut short leaves its file: without its text.
+            raise OSError("No space left on device")
+
+        with mock.patch.object(Path, "write_bytes", broken), mock.patch.object(Path, "write_text", broken):
+            with self.assertRaises(OSError):
+                real.put(path, "{}")
+        # The file that was there is whole; what could not be written is beside it, under the name with `.new`.
+        self.assertEqual((json.loads(path.read_text(encoding="utf-8")), sorted(entry.name for entry in out.iterdir())),
+                         (half, ["recall-texts.json", "recall-texts.json.new"]))
+
     def test_on_windows_the_report_waits_for_its_place_and_elsewhere_a_refusal_is_raised_at_once(self):
         out = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, str(out), True)
@@ -1091,6 +1151,62 @@ class WorkTests(unittest.TestCase):
                 home.work()
         self.assertNotIn("REAL", str(error.exception))
         self.assertIn("the worker ended with 1", str(error.exception))
+
+    def test_a_recorded_turn_keeps_each_hook_s_time_from_outside_its_process(self):
+        _, home = self.home(False)
+        home.root, home.sessions, home.took = home.base, {}, {"prompt": 1.0, "end-of-turn": 1.0, "other": 1.0}
+        (home.root / "raw").mkdir()
+        times = iter([(5000000000, 5250400000), (7000000000, 7031260000)])
+        started = []
+
+        def run(args, env, cwd=None, stdin="", timeout=180, line=None):
+            data = json.loads(stdin)
+            started.append((args[-1], data["hook_event_name"], data["session_id"]))
+            kind = "prompt" if args[-1] == "prompt" else "answer"
+            with open(str(home.root / "raw/2026-11.jsonl"), "a", encoding="utf-8") as log:
+                log.write(json.dumps({"id": "e_" + kind, "kind": kind}) + "\n")
+            begun, ended = next(times)
+            return {"exit": 0, "stdout": "", "stderr": "", "started_monotonic_ns": begun,
+                    "ended_monotonic_ns": ended}
+
+        with mock.patch.object(real.hookcheck, "run", run):
+            found = home.turn(real.SEED_262[0])
+        self.assertEqual(found, {"prompt": "e_prompt", "answer": "e_answer"})
+        # Of this turn alone: nothing of a turn before it stays.
+        self.assertEqual(home.took, {"prompt": 250.4, "end-of-turn": 31.3})
+        session = home.sessions[real.SEED_262[0].host]
+        self.assertEqual(started, [("prompt", "UserPromptSubmit", session), ("end-of-turn", "Stop", session)])
+
+    def test_a_reading_names_the_logs_that_it_reads_and_leaves_the_others_for_the_next(self):
+        check, home = self.home(True)
+        logs = home.store / "logs"
+        (logs / "usage-2026-11.jsonl").write_text(json.dumps(usage("embed-prompt", cost=0.25)) + "\n",
+                                                  encoding="utf-8")
+        (logs / "failures-2026-11.jsonl").write_text(json.dumps({"hook": "prompt", "step": "recall"}) + "\n",
+                                                     encoding="utf-8")
+        home.tap.write_text(json.dumps(written("curate-3", EMPTY)) + "\n", encoding="utf-8")
+        rows, read = home.rows, []
+
+        def noting(name):
+            read.append(name)
+            return rows(name)
+
+        home.rows = noting
+        hook = {}
+        home.logged(hook, True, ("usage",))
+        # A hook's lines: the usage log alone was opened, its line is counted, and its prices are left out.
+        self.assertEqual((read, sorted(hook), [row["call"] for row in hook["usage"]], check.spent),
+                         (["usage"], ["usage"], ["embed-prompt"], 0.25))
+        self.assertNotIn("prices", hook["usage"][0])
+        with open(str(logs / "usage-2026-11.jsonl"), "a", encoding="utf-8") as log:
+            log.write(json.dumps(usage("curate", cost=0.5)) + "\n")
+        run = {}
+        home.logged(run, True)
+        # The run after it reads every log: the usage line that the hook's reading took is not its own, and the
+        # failure line and the request that nothing read yet are.
+        self.assertEqual(([row["call"] for row in run["usage"]], run["failures"], len(run["requests"]), check.spent),
+                         (["curate"], [{"hook": "prompt", "step": "recall"}], 1, 0.75))
+        self.assertEqual(home.read, {"usage": 2, "failures": 1, "requests": 1})
 
     def test_a_file_s_whole_lines_are_read_and_the_others_counted(self):
         base = Path(tempfile.mkdtemp())

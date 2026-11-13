@@ -171,6 +171,67 @@ class OptionTests(unittest.TestCase):
         self.assertIn("--samples DIR is needed", text)
         self.assertEqual(list(base.iterdir()), [])
 
+    def prompts(self, *texts):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(folder), True)
+        path = folder / "prompts.json"
+        path.write_text(json.dumps([{"text": text, "source": "a test"} for text in texts], ensure_ascii=False),
+                        encoding="utf-8")
+        return path
+
+    @staticmethod
+    def report(base):
+        return json.loads((base / "c2-measure/report.json").read_text(encoding="utf-8"))
+
+    def test_the_part_skip_alone_sends_nothing_so_neither_ci_nor_a_missing_key_refuses_it(self):
+        path = str(self.prompts("응", "이 결정을 다시 알려 줘", "/status"))
+        for environment in ({}, {"CI": "true"}, {"GITHUB_ACTIONS": "true"}):
+            with self.subTest(environment):
+                code, text, base = self.run_main(["--part", "skip", "--prompts", path], **environment)
+                report = self.report(base)
+                self.assertEqual((code, report["self_test"], measure.ended(report)), (0, False, {"skip": "measured"}))
+                self.assertEqual(report["skip"]["all"], {"prompts": 3, "short": 1, "command": 1, "skipped": 2,
+                                                         "share": 0.667})
+                self.assertEqual(report["keys"], {ANTHROPIC: "missing", OPENAI: "missing"})
+                self.assertEqual((report["cost"]["requests"], report["local_requests"]), (0, 0))
+                # No home was made: the staged package and the report are all that the folder has.
+                self.assertEqual(sorted(path.name for path in (base / "c2-measure").iterdir()),
+                                 ["report.json", "source"])
+        # Beside a part that sends, both refusals hold.
+        arguments = ["--samples", str(self.samples()), "--part", "skip", "--part", "efforts", "--prompts", path]
+        code, text, base = self.run_main(arguments, CI="true", **{ANTHROPIC: "made-up"})
+        self.assertEqual((code, list(base.iterdir())), (2, []))
+        self.assertIn("never run in CI", text)
+        code, text, base = self.run_main(arguments)
+        self.assertEqual((code, list(base.iterdir())), (2, []))
+        self.assertIn(ANTHROPIC + " is not set", text)
+
+    def test_nothing_is_run_when_a_sample_s_prompt_begins_as_one_that_a_host_makes(self):
+        turn = SAMPLE["turns"][0]
+        made = dict(SAMPLE, id="two",
+                    turns=[turn, dict(turn, prompt="\n <task-notification>\nPROMPT-TEXT-OF-A-SAMPLE")])
+        code, text, base = self.run_main(["--self-test", "--samples", str(self.samples(SAMPLE, made)), "--part",
+                                          "efforts", "--part", "recall"])
+        report = self.report(base)
+        self.assertEqual((code, report["runs"], "recall" in report, report["local_requests"]), (1, {}, False, 0))
+        self.assertTrue(report["crash"].startswith("Nothing was run. The prompt of turn 2 of the sample two begins "
+                                                   "as one that a host makes (<task-notification>, "), report["crash"])
+        self.assertNotIn("Traceback", report["crash"])
+        self.assertEqual(text.splitlines()[-1], report["crash"])
+        self.assertNotIn("PROMPT-TEXT", text + json.dumps(report))
+        # Neither a hook nor a worker ran: no home was made.
+        self.assertEqual(sorted(path.name for path in (base / "c2-measure").iterdir()), ["report.json", "source"])
+
+    def test_a_sample_with_half_of_a_surrogate_pair_is_refused_before_anything_is_written(self):
+        # As a text that was cut inside a character has one; JSON's escape of it reads as that half.
+        folder = self.samples()
+        (folder / "one.json").write_text(json.dumps(SAMPLE).replace("REPLY-TEXT", "REPLY\\ud83d-TEXT"),
+                                         encoding="utf-8")
+        code, text, base = self.run_main(["--self-test", "--samples", str(folder)])
+        self.assertEqual((code, list(base.iterdir())), (2, []))
+        self.assertIn("one.json is no sample: the reply of turn 1 has half of a surrogate pair", text)
+        self.assertNotIn("TEXT-OF-A-SAMPLE", text)
+
     def test_the_part_skip_needs_the_prompts_and_the_part_recall_the_embedding_key(self):
         folder = str(self.samples())
         code, text, base = self.run_main(["--samples", folder, "--part", "skip"], **{ANTHROPIC: "made-up"})
@@ -270,6 +331,9 @@ class SampleTests(unittest.TestCase):
     def test_a_sample_keeps_its_id_kind_source_and_turns_and_nothing_else(self):
         value = dict(SAMPLE, extra="x", turns=[dict(SAMPLE["turns"][0], more="y")])
         self.assertEqual(measure.valid(value, "one.json"), SAMPLE)
+        # A character outside the basic plane is a whole pair in UTF-16 and one character here.
+        whole = dict(SAMPLE, turns=[dict(SAMPLE["turns"][0], prompt="\U0001f600 as JSON's \\ud83d\\ude00 reads")])
+        self.assertEqual(measure.valid(json.loads(json.dumps(whole)), "one.json"), whole)
 
     def test_what_is_no_sample_is_refused_with_the_file_s_name_and_none_of_its_text(self):
         turn = SAMPLE["turns"][0]
@@ -279,7 +343,12 @@ class SampleTests(unittest.TestCase):
                             ({"turns": [dict(turn, host="gemini")]}, "turn 1 names no host"),
                             ({"turns": [turn, dict(turn, prompt="  ")]}, "turn 2 has no prompt"),
                             ({"turns": [dict(turn, reply=None)]}, "turn 1 has no reply"),
-                            ({"turns": ["x"]}, "turn 1 names no host")):
+                            ({"turns": ["x"]}, "turn 1 names no host"),
+                            # Half of a surrogate pair, which no hook can be given as UTF-8.
+                            ({"turns": [dict(turn, prompt="cut \ud83d")]},
+                             "the prompt of turn 1 has half of a surrogate pair"),
+                            ({"turns": [turn, dict(turn, reply="\ude00 cut")]},
+                             "the reply of turn 2 has half of a surrogate pair")):
             with self.subTest(change):
                 with self.assertRaises(ValueError) as refused:
                     measure.valid(dict(SAMPLE, **change), "one.json")
@@ -618,11 +687,34 @@ class ReadingTests(unittest.TestCase):
         for prompt in prompts:
             self.assertNotIn(prompt["text"].strip(), text)
 
+    def test_what_each_other_value_would_skip_is_asked_of_the_package_s_rule_too(self):
+        asked = []
+
+        def skipped(text, skip):  # A rule that no count of characters gives: at 6 it skips a prompt with a digit.
+            asked.append(skip)
+            if text.startswith("/"):
+                return "command"
+            return "short" if skip == 6 and any(character.isdigit() for character in text) else None
+
+        prompts = [{"source": "chat", "text": text} for text in ("가나다 1", "a long prompt without one", "/7", "22")]
+        found = measure.skip_share(prompts, 8, skipped)
+        self.assertEqual(found["all"], {"prompts": 4, "short": 0, "command": 1, "skipped": 1, "share": 0.25})
+        self.assertEqual({value: row["all"] for value, row in found["short_at_other_values"].items()},
+                         {"2": 0, "4": 0, "6": 2, "8": 0, "10": 0, "12": 0, "16": 0})
+        self.assertEqual(found["short_at_other_values"]["6"], {"all": 2, "ko": 1, "en": 0, "none": 1})
+        self.assertEqual(set(asked), set(measure.SKIPS))
+        self.assertNotIn("가나다", json.dumps(found, ensure_ascii=False))
+
     def test_the_spread_and_the_percentile_of_some_numbers(self):
         self.assertEqual(measure.spread([3, None, 1, 2]), {"min": 1, "median": 2, "max": 3, "values": 3})
         self.assertIsNone(measure.spread([None]))
         self.assertEqual([measure.percentile(list(range(1, 21)), share) for share in (0.5, 0.95, 1.0)], [10, 19, 20])
         self.assertEqual(measure.percentile([7], 0.95), 7)
+        # The percentile is the timing check's own, and a list of times has it beside its spread.
+        self.assertEqual(measure.percentile.__module__, "c2_recall_timing")
+        self.assertEqual(measure.timed([float(value) for value in range(1, 21)]),
+                         {"min": 1.0, "median": 10.5, "max": 20.0, "values": 20, "p95": 19.0})
+        self.assertIsNone(measure.timed([]))
 
     def test_the_attempts_of_item_embeddings_are_read_in_numbers_and_a_failed_one_stops_nothing(self):
         lines = [usage(call="embed-items", input=30, cost=0.000001, total_ms=40),
@@ -709,30 +801,51 @@ class ReadingTests(unittest.TestCase):
             return {"outcome": outcome, "ms": ms, "embed_ms": embed, "scored": scored,
                     "candidates": [{"item": "i_%d" % number, "score": score} for number, score in scores]}
 
+        def taken(turn, ms, outcome, embed=None):
+            return {"turn": turn, "host": "claude", "ms": ms, "outcome": outcome, "embed_ms": embed}
+
         return {"rebuilds": [{"dims": 1536, "attempts": 3, "failed_attempts": {"overloaded": 1}, "input": 90,
                               "usd": 0.000002, "ms": 300}],
-                "stages": [{"prompts": []}, {"prompts": [
-                    {"512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
-                     "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)])},
-                    {"512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
-                     "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)])},
-                    {"512": asked("short", 200.0, [], embed=None), "1536": asked("short", 210.0, [], embed=None)}]}]}
+                "stages": [{"prompts": [], "recorded": {"dims": 512, "prompts": [
+                    taken(1, 300.0, "no-index"), taken(2, 280.0, "no-index")]}}, {"prompts": [
+                        {"512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
+                         "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)])},
+                        {"512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
+                         "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)])},
+                        {"512": asked("short", 200.0, [], "no", None), "1536": asked("short", 210.0, [], "no", None)}],
+                    "recorded": {"dims": 1536, "prompts": [
+                        taken(1, 700.0, "below", 110), taken(2, 990.0, "late", 800), taken(3, 250.0, "short")]}},
+                    # A stage that ended before its turns were recorded.
+                    {"prompts": [{"512": asked("late", 900.0, [], "no", None)}]}]}
 
     def test_the_recall_part_is_read_at_each_length(self):
         entry = self.recall_entry()
         found = measure.by_length(entry, 512)
+        # A prompt that was asked again and still not ranked is not one that more time scored.
         self.assertEqual({key: found[key] for key in ("prompts", "outcomes", "scored_with_more_time", "ranked")},
-                         {"prompts": 3, "outcomes": {"below": 1, "late": 1, "short": 1}, "scored_with_more_time": 1,
+                         {"prompts": 4, "outcomes": {"below": 1, "late": 2, "short": 1}, "scored_with_more_time": 1,
                           "ranked": 2})
-        self.assertEqual(found["hook_ms"], {"min": 200.0, "median": 400.0, "max": 950.0, "values": 3, "p95": 950.0})
+        self.assertEqual(found["hook_ms"], {"min": 200.0, "median": 650.0, "max": 950.0, "values": 4, "p95": 950.0})
         self.assertEqual(found["hook_ms_of_ranked_in_time"]["values"], 1)
+        # The turns that were recorded while the index had this length: the hook as an installed one runs.
+        self.assertEqual(found["recorded"], {
+            "prompts": 2, "outcomes": {"no-index": 2},
+            "hook_ms": {"min": 280.0, "median": 290.0, "max": 300.0, "values": 2, "p95": 300.0},
+            "hook_ms_of_ranked_in_time": None, "embed_ms": None})
+        self.assertEqual(measure.by_length(entry, 1536)["recorded"], {
+            "prompts": 3, "outcomes": {"below": 1, "late": 1, "short": 1},
+            "hook_ms": {"min": 250.0, "median": 700.0, "max": 990.0, "values": 3, "p95": 990.0},
+            "hook_ms_of_ranked_in_time": {"min": 700.0, "median": 700.0, "max": 700.0, "values": 1},
+            "embed_ms": {"min": 110, "median": 455.0, "max": 800, "values": 2}})
         self.assertEqual(found["embed_ms"], {"min": 100, "median": 100, "max": 100, "values": 1})
         self.assertEqual(found["best_score"], {"min": 0.5, "median": 0.55, "max": 0.6, "values": 2})
         self.assertEqual(found["fifth_score"], {"min": 0.1, "median": 0.1, "max": 0.1, "values": 1})
         self.assertEqual(found["rebuilds"]["times"], 0)
         self.assertEqual(measure.by_length(entry, 1536)["rebuilds"], {
             "times": 1, "attempts": 3, "failed_attempts": 1, "input": 90, "usd": 2e-06, "ms": 300})
-        self.assertEqual(measure.by_length({"stages": [], "rebuilds": []}, 512)["hook_ms"], None)
+        empty = measure.by_length({"stages": [], "rebuilds": []}, 512)
+        self.assertEqual((empty["hook_ms"], empty["recorded"]["prompts"], empty["recorded"]["hook_ms"]),
+                         (None, 0, None))
 
     def test_two_lengths_are_compared_over_the_prompts_that_both_ranked(self):
         found = measure.between(self.recall_entry(), 512, 1536)
@@ -800,20 +913,28 @@ class CheckTests(unittest.TestCase):
         self.assertEqual((env.get(ANTHROPIC), env.get(OPENAI)), ("MARKER-ANTHROPIC", None))
         self.assertEqual(env["CORTHEX_MEMORY_ANTHROPIC_BASE_URL"], "http://127.0.0.1:9")
 
-    def test_a_recall_s_hook_gets_the_embedding_key_alone_and_a_self_test_s_goes_to_the_local_server(self):
+    def test_a_hook_gets_the_embedding_key_alone_in_the_recall_part_and_no_key_in_the_others(self):
+        # Every hook of the recall part: the one that is asked a prompt and those that record a sample's turns.
         check, home = self.check()
         with mock.patch.dict(os.environ, {"HTTPS_PROXY": "http://proxy.invalid:1"}):
-            env = check.recall_environment(home, "codex")
+            env = check.host_environment(home, "codex")
+            self.assertEqual((env.get(OPENAI), env.get(ANTHROPIC), env.get("HTTPS_PROXY"), env.get("PLUGIN_ROOT")),
+                             (None, None, None, "plugin"))
+            check.embedding = True
+            env = check.host_environment(home, "codex")
         self.assertEqual((env.get(OPENAI), env.get(ANTHROPIC), env.get("HTTPS_PROXY"), env.get("PLUGIN_ROOT")),
                          ("REAL-OPENAI", None, "http://proxy.invalid:1", "plugin"))
         self.assertFalse([name for name in env if name.endswith("_BASE_URL")])
-        check, home = self.check(real=False)
-        env = check.recall_environment(home, "claude")
+        check, home = self.check(real=False, embedding=True)
+        env = check.host_environment(home, "claude")
         self.assertEqual((env.get(OPENAI), env.get(ANTHROPIC), env.get("CORTHEX_MEMORY_OPENAI_BASE_URL"),
                           env.get("CLAUDECODE")), ("MARKER-OPENAI", None, "http://127.0.0.1:9", "1"))
+        check.embedding = False
+        env = check.host_environment(home, "claude")
+        self.assertEqual((env.get(OPENAI), [name for name in env if name.endswith("_BASE_URL")]), (None, []))
 
     def test_the_steps_are_each_sample_at_each_effort_and_then_the_other_parts(self):
-        check, _ = self.check(samples=[{"id": "a"}, {"id": "b"}],
+        check, _ = self.check(samples=[dict(SAMPLE, id="a"), dict(SAMPLE, id="b")],
                               options=SimpleNamespace(part=["efforts", "skip", "recall"], effort=["low", "max"],
                                                       repeat=2))
         steps = check.steps()
@@ -823,6 +944,45 @@ class CheckTests(unittest.TestCase):
                           ("efforts", "b", "max", 1), ("efforts", "b", "max", 2), ("skip",), ("recall",)])
         check.options.part = ["skip"]
         self.assertEqual(check.steps(), [("skip",)])
+
+    def test_there_is_no_step_where_the_hooks_would_leave_a_sample_s_prompt_out_as_host_made(self):
+        from memory_lib import hooks
+        turn = SAMPLE["turns"][0]
+        options = SimpleNamespace(part=["recall"], effort=["low"], repeat=1)
+        for prompt in ["%s> PROMPT-TEXT" % hooks.HOST_PROMPTS[0].rstrip(">"), "  \n\t" + hooks.HOST_PROMPTS[0],
+                       "\u3000" + hooks.HOST_PROMPTS[-1] + " from=\"x\">"] + list(hooks.HOST_PROMPTS):
+            with self.subTest(prompt):
+                made = dict(SAMPLE, id="b", turns=[turn, turn, dict(turn, prompt=prompt)])
+                check, _ = self.check(samples=[SAMPLE, made], options=options)
+                with self.assertRaises(real.Stopped) as stopped:
+                    check.steps()
+                self.assertIn("Nothing was run. The prompt of turn 3 of the sample b begins", str(stopped.exception))
+                self.assertNotIn("PROMPT-TEXT", str(stopped.exception))
+                # The part skip records no sample, so it has its step.
+                check.options = SimpleNamespace(part=["skip"])
+                self.assertEqual(check.steps(), [("skip",)])
+        # The hooks' rule and no wider one: such a tag later in a prompt, or in an answer, leaves nothing out.
+        kept = dict(SAMPLE, turns=[dict(turn, prompt="What is a %s?" % hooks.HOST_PROMPTS[0],
+                                        reply=hooks.HOST_PROMPTS[0])])
+        check, _ = self.check(samples=[kept], options=options)
+        self.assertEqual(check.steps(), [("recall",)])
+
+    def test_the_sums_are_made_after_a_step_that_was_interrupted_too(self):
+        check, _ = self.check(report={"runs": {}}, spent=0.0, real=False, options=SimpleNamespace(limit=1.0),
+                              server=SimpleNamespace(efforts=["high"]))
+
+        def interrupted(check, entry, sample, level, label):
+            entry.update(requests=measured_run()["requests"])  # What the run had made when it was interrupted.
+            raise KeyboardInterrupt()
+
+        with mock.patch.object(measure, "measured", interrupted):
+            with self.assertRaises(KeyboardInterrupt):
+                check.step(("efforts", SAMPLE, "high", 1))
+        entry = check.report["runs"]["one-high-1"]
+        self.assertEqual((entry["outcome"], entry["why"]), ("not run", "interrupted during this run"))
+        self.assertEqual((check.report["estimates"]["requests"], check.report["efforts_that_the_local_server_got"]),
+                         (1, {"high": 1}))
+        self.assertIn("by_effort", check.report)
 
     def test_a_step_that_breaks_or_is_stopped_is_noted_and_an_interrupt_is_raised_again(self):
         check, _ = self.check(spent=0.0, options=SimpleNamespace(limit=1.0))
@@ -875,10 +1035,236 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(found, {"outcome": "late", "ms": 950.0, "embed_ms": 800, "embed_error": "timeout",
                                  "scored": "with 30 seconds", "outcome_with_more_time": "below",
                                  "candidates": [{"item": "i_1", "score": 0.4}]})
+        # Where the hook with more time ranks nothing either, nothing was scored with more time.
+        del asked[:]
+        late = {"ms": 950.0, "outcome": "late", "candidates": [], "embed_ms": None, "embed_error": None}
+        home.ask = lambda host, prompt, seconds=None: asked.append(seconds) or dict(
+            late, outcome="late" if seconds is None else "no-index")
+        self.assertEqual(home.recalled("claude", "prompt"), {
+            "outcome": "late", "ms": 950.0, "embed_ms": None, "scored": "no", "outcome_with_more_time": "no-index",
+            "candidates": []})
+        self.assertEqual(asked, [None, measure.MORE_SECONDS])
+        # A prompt that was ranked in the hook's time is asked once, and one that recall skips is scored nowhere.
+        del asked[:]
+        ranked = {"ms": 400.0, "outcome": "below", "candidates": [{"item": "i_2", "score": 0.3}], "embed_ms": 90,
+                  "embed_error": None}
+        home.ask = lambda host, prompt, seconds=None: asked.append(seconds) or ranked
+        self.assertEqual(home.recalled("claude", "prompt"), {
+            "outcome": "below", "ms": 400.0, "embed_ms": 90, "scored": "in the hook's time",
+            "candidates": [{"item": "i_2", "score": 0.3}]})
+        self.assertEqual(asked, [None])
         home.ask = lambda host, prompt, seconds=None: {"ms": 300.0, "outcome": "short", "candidates": [],
                                                        "embed_ms": None, "embed_error": None}
         self.assertEqual(home.recalled("claude", "응"), {"outcome": "short", "ms": 300.0, "embed_ms": None,
-                                                        "scored": "in the hook's time", "candidates": []})
+                                                        "scored": "no", "candidates": []})
+
+    def test_a_session_s_prompt_lines_are_read_from_its_own_file_of_the_injection_log(self):
+        from memory_lib import raw_log
+        home = measure.Home.__new__(measure.Home)
+        home.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(home.root), True)
+        folder = home.root / "injections"
+        self.assertEqual(home.injected("claude", "s-1"), [])  # Before any line was written.
+        folder.mkdir()
+        line = {"at": moment(1), "session": "s-1", "where": "prompt", "items": [], "outcome": "below", "한글": "줄"}
+        (folder / (raw_log.log_name("claude-code", "s-1") + ".jsonl")).write_bytes("".join(
+            json.dumps(value, ensure_ascii=False) + "\n"
+            for value in ({"session": "s-1", "where": "start", "items": []}, line)).encode("utf-8"))
+        # The other host's session of that name has a file of its own, which here could not even be read.
+        (folder / (raw_log.log_name("codex", "s-1") + ".jsonl")).write_bytes(b"no JSON\n")
+        self.assertEqual(home.injected("claude", "s-1"), [line])
+        self.assertEqual(home.injected("claude", "s-2"), [])
+        with self.assertRaises(ValueError):
+            home.injected("codex", "s-1")
+
+    def asking(self, check, base):
+        """A home whose prompt hook is not run: what it was started with, and what was then read."""
+        home = measure.Home.__new__(measure.Home)
+        home.check, home.home, home.demo = check, base, base
+        seen = SimpleNamespace(started=[], read=[], sessions=[])
+
+        def run(args, env, cwd=None, stdin="", timeout=180, line=None):
+            seen.started.append((args, env, json.loads(stdin)))
+            return {"exit": 0, "stdout": "", "stderr": "", "started_monotonic_ns": 1000000,
+                    "ended_monotonic_ns": 251500000}
+
+        def logged(found, provider, names):
+            seen.read.append((provider, names))
+            found.update(usage=[usage(call="embed-items"), usage(call="embed-prompt", total_ms=140)], failures=[])
+
+        def injected(host, session):
+            seen.sessions.append((host, session))
+            return [{"where": "prompt", "outcome": "below", "items": [],
+                     "candidates": [{"item": "i_1", "score": 0.4, "more": "x"}]}]
+
+        home.logged, home.injected = logged, injected
+        return home, seen, mock.patch.object(real.hookcheck, "run", run)
+
+    def test_an_asked_prompt_s_hook_has_the_embedding_key_and_only_what_it_wrote_is_read(self):
+        check, base = self.check(embedding=True, plugin=Path("/staged"))
+        home, seen, patched = self.asking(check, base)
+        with patched:
+            found = home.ask("codex", "PROMPT-TEXT")
+            more = home.ask("claude", "PROMPT-TEXT", 30)
+        self.assertEqual(found, {"ms": 250.5, "outcome": "below", "items": 0,
+                                 "candidates": [{"item": "i_1", "score": 0.4}], "embed_ms": 140,
+                                 "embed_result": "ok", "embed_error": None})
+        self.assertEqual(more, found)
+        (args, env, data), (again, more_env, _) = seen.started
+        self.assertEqual(args[1:], [str(Path("/staged") / "scripts/hook.py"), "prompt"])
+        self.assertEqual(again[1:], [str(measure.HOOK), str(Path("/staged")), "30"])
+        self.assertEqual((env.get(OPENAI), env.get(ANTHROPIC), more_env.get(OPENAI), data["prompt"]),
+                         ("REAL-OPENAI", None, "REAL-OPENAI", "PROMPT-TEXT"))
+        # A hook writes no request, so that file is not read again for each prompt; and of the injection log
+        # the one file of the prompt's own session is.
+        self.assertEqual(seen.read, [(True, ("usage", "failures"))] * 2)
+        self.assertEqual(seen.sessions[0], ("codex", data["session_id"]))
+        self.assertEqual(len({session for _, session in seen.sessions}), 2)
+
+    def test_a_recorded_turn_has_its_hook_s_time_its_own_line_s_outcome_and_its_usage_lines(self):
+        home = measure.Home.__new__(measure.Home)
+        home.sessions = {"claude": "the session of the sample before"}
+        seen, read, waiting = [], [], []
+        lines = {"claude": [{"where": "prompt", "prompt": "e_0", "outcome": "injected"}], "codex": []}
+        outcomes = ("below", None, "no-index")  # The second turn's line could not be written.
+
+        def turn(value):
+            number = len(seen) + 1
+            seen.append((value.host, value.prompt, value.reply, value.script, home.sessions.get(value.host)))
+            home.sessions.setdefault(value.host, "a new session of " + value.host)
+            home.took = {"prompt": 100.0 * number, "end-of-turn": 5.0}
+            if outcomes[number - 1]:
+                lines[value.host].append({"where": "prompt", "prompt": "e_%d" % number,
+                                          "outcome": outcomes[number - 1]})
+            if number == 1:
+                waiting.extend([usage(call="embed-prompt", total_ms=120)])
+            return {"prompt": "e_%d" % number, "answer": "a_%d" % number}
+
+        def logged(found, provider, names):
+            read.append((provider, names))
+            found["usage"] = list(waiting)
+            del waiting[:]
+
+        home.turn, home.logged = turn, logged
+        home.injected = lambda host, session: list(lines[host])
+        sample = {"turns": [{"host": "claude", "prompt": "P1", "reply": "R1"},
+                            {"host": "claude", "prompt": "P2", "reply": "R2"},
+                            {"host": "codex", "prompt": "P3", "reply": "R3"}]}
+        self.assertEqual(home.take(sample), [
+            {"turn": 1, "host": "claude", "ms": 100.0, "outcome": "below", "embed_ms": 120},
+            # Not the line of the turn before it, which is the last of its session's file.
+            {"turn": 2, "host": "claude", "ms": 200.0, "outcome": "no-line", "embed_ms": None},
+            {"turn": 3, "host": "codex", "ms": 300.0, "outcome": "no-index", "embed_ms": None}])
+        # The sample's turns went into sessions of their own, each with its answer and no script.
+        self.assertEqual(seen, [("claude", "P1", "R1", None, None),
+                                ("claude", "P2", "R2", None, "a new session of claude"),
+                                ("codex", "P3", "R3", None, None)])
+        # After each turn the hooks' usage lines were read and counted, so that no run of the worker takes them.
+        self.assertEqual(read, [(True, ("usage",))] * 3)
+
+    def replayed(self, samples, **changes):
+        """The recall part over a home whose hooks and worker are not run, and what the files held each time
+        the part came to a sample and to a curation."""
+        check, out = self.check(real=False, dims=[512, 1536], defaults={"skip": 8, "dims": 512}, spent=0.0,
+                                keys={}, options=SimpleNamespace(limit=1.0), server=SimpleNamespace(efforts=[]),
+                                samples=samples)
+        entry, seen = {"outcome": "not run"}, []
+        check.out, check.report = out, {"runs": {}, "recall": entry}
+
+        def on_disk(where):
+            report = json.loads((out / "report.json").read_text(encoding="utf-8"))["recall"]
+            texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
+            seen.append((where, [stage["sample"] for stage in report["stages"]],
+                         sum(1 for stage in report["stages"] if "curation" in stage), len(texts["prompts"]),
+                         report["by_dims"]["512"]["prompts"], report["by_dims"]["512"]["recorded"]["prompts"]))
+
+        class Replayed:
+            home, dims, items = out, 512, {}
+
+            def setting(self, section, name, value):
+                pass
+
+            def leave_out(self, kinds):
+                pass
+
+            def settle(self, runs):
+                pass
+
+            def current(self):
+                on_disk("sample")
+                return dict(self.items)
+
+            def vectors(self, dims, runs):
+                self.dims = dims
+
+            def configuration(self):
+                return {"models": {"dims": self.dims}}
+
+            def recalled(self, host, prompt):
+                return {"outcome": "below", "ms": 300.0, "embed_ms": 100, "scored": "in the hook's time",
+                        "candidates": [{"item": "i_000000000001", "score": 0.5}]}
+
+            def take(self, sample):
+                return [{"turn": 1, "host": "claude", "ms": 400.0, "outcome": "below", "embed_ms": 100}]
+
+            def curate(self):
+                on_disk("curation")
+                self.items = {"i_000000000001": item(1)}
+                return [run([count(), sized(), request(), index(embedded=1)], [usage()])]
+
+            def record(self):
+                return {}
+
+            def layer(self):
+                return layer([item(1)])
+
+        home = Replayed()
+        for name, value in changes.items():
+            setattr(home, name, value)
+        check.home = lambda label: home
+        return check, entry, seen, out
+
+    def test_the_recall_part_writes_what_it_has_before_each_sample_and_before_each_curation(self):
+        check, entry, seen, out = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b", "c")])
+        measure.replay(check, entry)
+        # Where it stood; the stages that the report had, how many of them with their curation, the prompts of
+        # recall-texts.json, and the prompts asked and recorded at 512 numbers by the report's sums.
+        self.assertEqual(seen, [("sample", [], 0, 0, 0, 0), ("curation", ["a"], 0, 0, 0, 1),
+                                ("sample", ["a"], 1, 0, 0, 1), ("curation", ["a", "b"], 1, 1, 1, 1),
+                                ("sample", ["a", "b"], 2, 1, 1, 1), ("curation", ["a", "b", "c"], 2, 2, 2, 2)])
+        self.assertEqual((entry["outcome"], [stage["recorded"]["dims"] for stage in entry["stages"]]),
+                         ("measured", [512, 1536, 512]))
+        self.assertIn("estimates", check.report)
+        texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
+        self.assertEqual(([row["sample"] for row in texts["prompts"]], list(texts["items"])),
+                         (["b", "c"], ["i_000000000001"]))
+        self.assertEqual(sorted(path.name for path in out.iterdir() if path.is_file()),
+                         ["recall-texts.json", "report.json"])
+
+    def test_an_interrupt_in_the_recall_part_leaves_the_stages_before_it_and_its_own_in_the_files(self):
+        curations = []
+
+        def curate():
+            curations.append(1)
+            if len(curations) == 2:
+                raise KeyboardInterrupt()
+            home.items = {"i_000000000001": item(1)}
+            return [run([count(), sized(), request(), index(embedded=1)], [usage()])]
+
+        check, entry, seen, out = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b", "c")], curate=curate)
+        home = check.home("recall")
+        with self.assertRaises(KeyboardInterrupt):
+            measure.replay(check, entry)
+        report = json.loads((out / "report.json").read_text(encoding="utf-8"))["recall"]
+        first, second = report["stages"]
+        # The hooks' times, which are in no file of the home, were written before the curation began.
+        self.assertEqual((first["sample"], "curation" in first, second["sample"], "curation" in second),
+                         ("a", True, "b", False))
+        self.assertEqual((second["prompts"][0]["512"]["ms"], second["prompts"][0]["1536"]["ms"],
+                          second["recorded"]["prompts"][0]["ms"]), (300.0, 300.0, 400.0))
+        self.assertEqual(report["by_dims"]["512"]["prompts"], 1)
+        texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
+        self.assertEqual([row["sample"] for row in texts["prompts"]], ["b"])
 
     def test_the_local_server_counts_by_the_request_s_size_and_notes_each_effort(self):
         server = measure.Counting()
@@ -1162,6 +1548,20 @@ class SelfTestRun(unittest.TestCase):
                 self.assertEqual([(attempt["kind"], attempt["applied"]) for attempt in curation["attempts"]],
                                  [("curate", applied)])
                 self.assertEqual(measure.lacking(curation), [])
+        # The turns were then recorded by the hook as an installed one runs, with the embedding key: the first
+        # sample's while there was no index yet, the second's at the length that the index had by then. Their
+        # embedding is in no curation's usage above.
+        self.assertEqual((first["recorded"]["dims"], [(row["turn"], row["host"], row["outcome"], row["embed_ms"])
+                                                      for row in first["recorded"]["prompts"]]),
+                         (512, [(1, "claude", "no-index", None), (2, "codex", "no-index", None)]))
+        taken = second["recorded"]["prompts"]
+        self.assertEqual((second["recorded"]["dims"], len(taken), taken[0]["turn"]), (1536, 1, 1))
+        self.assertIn(taken[0]["outcome"], ("below", "late"))
+        self.assertGreater(taken[0]["ms"], 0)
+        self.assertEqual([recall_part["by_dims"][dims]["recorded"]["prompts"] for dims in ("512", "1536")], [2, 1])
+        if taken[0]["outcome"] == "below":  # Its embedding's usage line was read with the turn, and counted.
+            self.assertIsNotNone(taken[0]["embed_ms"])
+            self.assertGreaterEqual(self.report["cost"]["calls"]["embed-prompt"]["requests"], 3)
         self.assertEqual(recall_part["between_the_lengths"][0]["prompts_ranked_at_both"], 1)
         # The texts for the judging are beside the report, and the prompt that was asked was recorded once.
         self.assertEqual(texts["prompts"], [{"sample": "made-up-en", "turn": 1,

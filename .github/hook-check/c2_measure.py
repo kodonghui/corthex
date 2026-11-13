@@ -12,7 +12,8 @@ each run gets a made-up home with a demo project whose memory is on, the turns
 are recorded by the staged hooks with each host's own input fields, and the
 staged worker runs in the foreground with the memory keys of this process's
 environment. Without CORTHEX_MEMORY_ANTHROPIC_API_KEY the check says so and
-ends, and it refuses when CI or GITHUB_ACTIONS is set.
+ends, and it refuses when CI or GITHUB_ACTIONS is set. The part `skip` alone
+sends nothing, so neither refuses it.
 
 The samples are real conversations that were picked and redacted before this
 script gets them; it redacts nothing and changes no sample. DIR holds one
@@ -20,9 +21,12 @@ file <id>.json for each: `{"id", "kind", "source", "turns": [{"host", "prompt",
 "reply"}]}`, where `host` is `claude` or `codex` and each turn is a prompt as
 it was submitted with the last answer of its turn. `--sample` names the
 samples to take, in that order; without it every sample of DIR is taken, by
-file name. FILE is a JSON list of prompts that a person typed, each
-`{"text"[, "source"]}`. Neither the samples nor the prompts belong in a public
-repository, and neither does OUTDIR.
+file name. A sample is refused where it is loaded when a text of it has half
+of a surrogate pair, which no hook can be given as UTF-8, and nothing is run
+when a prompt begins as one that a host makes (`hooks.HOST_PROMPTS` of the
+staged package), since the hooks leave such a prompt out. FILE is a JSON list
+of prompts that a person typed, each `{"text"[, "source"]}`. Neither the
+samples nor the prompts belong in a public repository, and neither does OUTDIR.
 
 The parts, of which `efforts`, and `skip` when FILE is given, run unless
 `--part` names others:
@@ -58,8 +62,14 @@ The parts, of which `efforts`, and `skip` when FILE is given, run unless
   (`left_out.kinds`), and recorded with its answer afterwards. Then the
   sample is curated at the default effort and its items are embedded. The
   hook's time is taken from outside, from before its process is created until
-  it has ended. A prompt whose recall ended late or failed is given once more
-  to `c2_measure_hook.py`, the same hook with 30 seconds: its scores are
+  it has ended. Left out of recording, the hook does not record the prompt
+  before it ranks, as an installed hook does, so these times and the share
+  that ended late are below an installed hook's. When the sample's turns are
+  then recorded, each prompt hook runs as an installed one, with the embedding
+  key, at the length that the index has by then: its time and how its recall
+  ended are given apart, as `recorded`, for the one length of each sample. A
+  prompt whose recall ended late or failed is given once more to
+  `c2_measure_hook.py`, the same hook with 30 seconds: its scores are
   recorded as such and its time is not. Between two lengths every item is
   embedded again, which the report counts. An embedding request that failed
   leaves its items without a vector until a later run of the worker, so the
@@ -78,9 +88,11 @@ script.
 Before each run the cost so far, by the usage log's lines, is compared with
 `--limit` (1 USD unless given); once it is reached no run starts. A run that
 has begun is finished. The report is written when the check begins, before
-each run and at its end, and an interrupt ends the worker that is running, as
-in `c2_real.py`. A folder OUTDIR/c2-measure that is there already is replaced
-only when it is empty or its report says that it was a self-test's.
+each run and at its end, and in the recall part, with recall-texts.json,
+before each sample and before each curation. An interrupt ends the worker
+that is running, as in `c2_real.py`. A folder OUTDIR/c2-measure that is there
+already is replaced only when it is empty or its report says that it was a
+self-test's.
 
 `--self-test` is for the tests: the samples and prompts are made up in this
 file unless DIR or FILE is given, a local server stands in for both providers
@@ -100,7 +112,6 @@ import argparse
 from collections import Counter
 from datetime import datetime, timezone
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -117,6 +128,7 @@ if __name__ == "__main__":
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import c2_hosts  # noqa: E402
 import c2_real  # noqa: E402
+from c2_recall_timing import percentile  # noqa: E402
 import run as hookcheck  # noqa: E402
 
 # Whole paths: before Python 3.9 a script's `__file__` is the path as it was typed, and both run elsewhere.
@@ -129,6 +141,7 @@ LENGTHS = (512, 1536)                                # TC-251's vector lengths.
 SHORTEST, LONGEST = 64, 3072                         # What `models.dims` takes.
 THRESHOLD = 2       # The highest `recall.threshold`: above any score, so every ranked prompt's line has candidates.
 MORE_SECONDS = 30   # The time of the hook that is asked again for a prompt whose recall ended late or failed.
+MORE = "with %d seconds" % MORE_SECONDS
 AGAIN = ("late", "failed", "no-line")
 RUNS = 3            # Runs of the worker for the turns that one sample leaves waiting.
 REBUILDS = 5        # Runs of the worker until the index has a vector for every current item.
@@ -139,6 +152,7 @@ COUNTED = ("curate", "merge")
 INDEX = ("reason", "rebuilt", "written", "removed", "embedded", "requests", "failed")
 SKIPS = (2, 4, 6, 8, 10, 12, 16)
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}\Z")
+LONE = re.compile(r"[\ud800-\udfff]")  # Half of a surrogate pair, as a text cut inside a character has one.
 KOREAN = re.compile("[가-힣ᄀ-ᇿㄱ-ㆎ]")
 LATIN = re.compile("[A-Za-z]")
 
@@ -187,10 +201,9 @@ def spread(values, digits=3):
             "max": round(max(values), digits), "values": len(values)}
 
 
-def percentile(values, share):
-    """The nearest-rank percentile of the values."""
-    ordered = sorted(values)
-    return ordered[max(0, math.ceil(share * len(ordered)) - 1)]
+def timed(values):
+    """Some times in ms: their spread with the 95th percentile, or None without any."""
+    return dict(spread(values, 1), p95=round(percentile(values, 0.95), 1)) if values else None
 
 
 def valid(value, name):
@@ -211,6 +224,8 @@ def valid(value, name):
         for key in ("prompt", "reply"):
             if not isinstance(turn.get(key), str) or not turn[key].strip():
                 raise wrong("turn %d has no %s" % (number, key))
+            if LONE.search(turn[key]):  # A hook gets its input as UTF-8, which has no half of a pair.
+                raise wrong("the %s of turn %d has half of a surrogate pair" % (key, number))
     return {"id": value["id"], "kind": value["kind"], "source": value["source"],
             "turns": [{key: turn[key] for key in ("host", "prompt", "reply")} for turn in value["turns"]]}
 
@@ -316,11 +331,36 @@ class Home(c2_real.Home):
             document["projects"]["demo"].pop("left_out", None)
         self.configure(document)
 
+    def injected(self, host, session):
+        """A session's prompt lines of the injection log, from its own file, which the staged package names."""
+        from memory_lib import raw_log
+        path = self.root / "injections" / (raw_log.log_name(c2_hosts.HOST_NAMES[host], session) + ".jsonl")
+        lines = c2_real.lines_of(path.read_text(encoding="utf-8")) if path.exists() else []
+        return [value for value in map(json.loads, lines) if value.get("where") == "prompt"]
+
     def take(self, sample):
-        """Record a sample's turns through the staged hooks, in sessions of their own."""
-        self.sessions = {}
-        for turn in sample["turns"]:
-            self.turn(c2_real.Turn(turn["host"], turn["prompt"], turn["reply"], None))
+        """Record a sample's turns through the staged hooks, in sessions of their own.
+
+        For each turn, its prompt hook's time from outside, how its recall ended and the time of its embedding
+        request: the hook as an installed one runs, which records the prompt before it ranks. A hook's usage
+        lines are read here and counted towards the cost, so that the worker's run after them does not take
+        them for its own. A failure that a hook noted stays in the failure log, under the hook's name, for the
+        reading of that run.
+        """
+        self.sessions, found = {}, []
+        for number, turn in enumerate(sample["turns"], 1):
+            ids = self.turn(c2_real.Turn(turn["host"], turn["prompt"], turn["reply"], None))
+            logged = {}
+            self.logged(logged, True, ("usage",))
+            # The line of this turn's prompt, which names the prompt's raw entry: a line that could not be
+            # written leaves the session's last line an earlier turn's.
+            lines = [line for line in self.injected(turn["host"], self.sessions[turn["host"]])
+                     if line.get("prompt") == ids["prompt"]]
+            sent = [row for row in logged["usage"] if row.get("call") == "embed-prompt"]
+            found.append({"turn": number, "host": turn["host"], "ms": self.took.get("prompt"),
+                          "outcome": lines[-1].get("outcome", "no-line") if lines else "no-line",
+                          "embed_ms": sent[-1].get("total_ms") if sent else None})
+        return found
 
     def curate(self):
         """Run the worker until no turn waits, RUNS times at most; those runs."""
@@ -370,14 +410,13 @@ class Home(c2_real.Home):
         command = [sys.executable, str(check.plugin / "scripts/hook.py"), "prompt"]
         if seconds is not None:
             command = [sys.executable, str(HOOK), str(check.plugin), str(seconds)]
-        done = hookcheck.run(command, check.recall_environment(self.home, host), str(self.demo), stdin=data,
+        done = hookcheck.run(command, check.host_environment(self.home, host), str(self.demo), stdin=data,
                              timeout=120)
         logged = {}
-        self.logged(logged, True)
+        self.logged(logged, True, ("usage", "failures"))  # A hook writes no request.
         if done["exit"] != 0:
             raise RuntimeError("the prompt hook %s" % c2_real.how_ended(done, check.shown))
-        lines = [value for _, value in c2_hosts.injection_lines(self.root)
-                 if value.get("session") == session and value.get("where") == "prompt"]
+        lines = self.injected(host, session)
         line = lines[-1] if lines else {}
         sent = [row for row in logged["usage"] if row.get("call") == "embed-prompt"]
         return {"ms": round((done["ended_monotonic_ns"] - done["started_monotonic_ns"]) / 1e6, 1),
@@ -389,16 +428,20 @@ class Home(c2_real.Home):
                 "embed_error": sent[-1].get("error") if sent else None}
 
     def recalled(self, host, prompt):
-        """A prompt's recall in the hook as it is and, when that ended late or failed, once more with more time."""
+        """A prompt's recall in the hook as it is and, when that ended late or failed, once more with more time.
+
+        `scored` says which of the two gave the candidates, or `no` where neither ranked anything.
+        """
         first = self.ask(host, prompt)
         found = {"outcome": first["outcome"], "ms": first["ms"], "embed_ms": first["embed_ms"],
-                 "scored": "in the hook's time", "candidates": first["candidates"]}
+                 "scored": "in the hook's time" if first["candidates"] else "no", "candidates": first["candidates"]}
         if first["embed_error"]:
             found["embed_error"] = first["embed_error"]
         if first["outcome"] in AGAIN:
             again = self.ask(host, prompt, MORE_SECONDS)
-            found.update(scored="with %d seconds" % MORE_SECONDS, outcome_with_more_time=again["outcome"],
-                         candidates=again["candidates"])
+            found["outcome_with_more_time"] = again["outcome"]
+            if again["candidates"]:
+                found.update(scored=MORE, candidates=again["candidates"])
         return found
 
 
@@ -650,8 +693,9 @@ def measured(check, entry, sample, level, label):
 def skip_share(prompts, skip, skipped):
     """Which prompts recall skips, by language and by source, and what other ways of counting would skip.
 
-    `skipped` is the staged package's `recall.skipped`. No text is kept: a skipped prompt is named by its
-    number in the file, from 1.
+    `skipped` is the staged package's `recall.skipped`, which is asked at the default and at each other value.
+    The count in which a Hangul syllable is 2 is this file's own, over the characters as `counted` gives them.
+    No text is kept: a skipped prompt is named by its number in the file, from 1.
     """
     def share(rows):
         found = Counter(row["why"] or "kept" for row in rows)
@@ -663,7 +707,7 @@ def skip_share(prompts, skip, skipped):
         return sum(2 if "가" <= character <= "힣" else 1 for character in text)
 
     rows = [{"number": number, "language": language(prompt["text"]), "source": prompt["source"],
-             "text": counted(prompt["text"]), "why": skipped(prompt["text"], skip)}
+             "prompt": prompt["text"], "text": counted(prompt["text"]), "why": skipped(prompt["text"], skip)}
             for number, prompt in enumerate(prompts, 1)]
     plain = [row for row in rows if row["why"] != "command"]
     groups = [("all", plain)] + [(name, [row for row in plain if row["language"] == name])
@@ -674,8 +718,9 @@ def skip_share(prompts, skip, skipped):
             "by_source": {name: share([row for row in rows if row["source"] == name])
                           for name in sorted({row["source"] for row in rows})},
             "characters": spread([len(row["text"]) for row in rows], 0),
-            "short_at_other_values": {str(value): {name: sum(1 for row in group if len(row["text"]) < value)
-                                                   for name, group in groups} for value in SKIPS},
+            "short_at_other_values": {
+                str(value): {name: sum(1 for row in group if skipped(row["prompt"], value) == "short")
+                             for name, group in groups} for value in SKIPS},
             "short_when_a_hangul_syllable_counts_2": {
                 str(value): {name: sum(1 for row in group if weight(row["text"]) < value)
                              for name, group in groups} for value in SKIPS},
@@ -684,15 +729,31 @@ def skip_share(prompts, skip, skipped):
 
 
 def replay(check, entry):
-    """The recall part: the samples in their order in one home, each prompt ranked before its sample is recorded."""
+    """The recall part: the samples in their order in one home, each prompt ranked before its sample is recorded.
+
+    What the part has is written before each sample and before each curation, as the report is before each run
+    of the other parts: the hooks' times are taken from outside and are in no file of the home.
+    """
     home = check.home("recall")
     home.setting("recall", "threshold", THRESHOLD)
     entry.update(threshold=THRESHOLD, dims=list(check.dims), recall_skip=check.defaults["skip"], stages=[],
                  rebuilds=[])
     texts, order = {"prompts": [], "items": {}}, list(check.dims)
+
+    def sums():
+        entry["by_dims"] = {str(dims): by_length(entry, dims) for dims in check.dims}
+        entry["between_the_lengths"] = [between(entry, check.dims[0], dims) for dims in check.dims[1:]]
+
+    def keep():
+        sums()
+        check.totals()
+        c2_real.put(check.out / "recall-texts.json", json.dumps(texts, ensure_ascii=False, indent=1))
+        c2_real.write(check.out, check.report, check)
+
     try:
         for sample in check.samples:
             check.afford()
+            keep()
             items = home.current()
             stage = {"sample": sample["id"], "current_items_before": len(items), "prompts": []}
             entry["stages"].append(stage)
@@ -721,19 +782,17 @@ def replay(check, entry):
             # The stage's curation is the runs from here on: those that gave the index another length are
             # read as rebuilds, and the curation record's attempts are those from this time on.
             since = moment()
-            home.take(sample)
+            stage["recorded"] = {"dims": home.configuration().get("models", {}).get("dims", check.defaults["dims"]),
+                                 "prompts": home.take(sample)}
+            keep()
             runs = home.curate()
             try:
                 home.settle(runs)  # The next sample's prompts are ranked against a whole index.
             finally:
                 stage["curation"] = reading(home, runs, since)
     finally:
-        try:
-            (check.out / "recall-texts.json").write_text(json.dumps(texts, ensure_ascii=False, indent=1),
-                                                         encoding="utf-8")
-        finally:
-            entry["by_dims"] = {str(dims): by_length(entry, dims) for dims in check.dims}
-            entry["between_the_lengths"] = [between(entry, check.dims[0], dims) for dims in check.dims[1:]]
+        sums()
+        c2_real.put(check.out / "recall-texts.json", json.dumps(texts, ensure_ascii=False, indent=1))
     why = [text for stage in entry["stages"] for text in lacking(stage["curation"])]
     for dims, value in entry["by_dims"].items():
         other = sorted(name for name in value["outcomes"] if name not in c2_hosts.RANKED + ("late", "short", "command"))
@@ -752,16 +811,27 @@ def asked(entry, dims):
 
 
 def by_length(entry, dims):
-    """The recall part's readings at one length of the vectors."""
+    """The recall part's readings at one length of the vectors.
+
+    `hook_ms` and the outcomes beside it are of the prompts as they were asked, left out of recording, so they
+    are without the hook's recording step and its share of the hook's time. `recorded` has the same hook as an
+    installed one runs, for the turns that were recorded while the index had this length.
+    """
     rows = asked(entry, dims)
     ranked = [row for row in rows if row["candidates"]]
-    times = [row["ms"] for row in rows]
     rebuilds = [value for value in entry["rebuilds"] if value["dims"] == dims]
+    taken = [row for stage in entry["stages"] if (stage.get("recorded") or {}).get("dims") == dims
+             for row in stage["recorded"]["prompts"]]
     return {"prompts": len(rows), "outcomes": dict(Counter(row["outcome"] for row in rows)),
-            "scored_with_more_time": sum(1 for row in rows if row["scored"] != "in the hook's time"),
+            "scored_with_more_time": sum(1 for row in rows if row["scored"] == MORE),
             "ranked": len(ranked),
-            "hook_ms": dict(spread(times, 1), p95=round(percentile(times, 0.95), 1)) if times else None,
+            "hook_ms": timed([row["ms"] for row in rows]),
             "hook_ms_of_ranked_in_time": spread([row["ms"] for row in rows if row["outcome"] in c2_hosts.RANKED], 1),
+            "recorded": {"prompts": len(taken), "outcomes": dict(Counter(row["outcome"] for row in taken)),
+                         "hook_ms": timed([row["ms"] for row in taken]),
+                         "hook_ms_of_ranked_in_time": spread([row["ms"] for row in taken
+                                                              if row["outcome"] in c2_hosts.RANKED], 1),
+                         "embed_ms": spread([row["embed_ms"] for row in taken], 1)},
             "embed_ms": spread([row["embed_ms"] for row in rows], 1),
             "best_score": spread([row["candidates"][0]["score"] for row in ranked]),
             "fifth_score": spread([row["candidates"][4]["score"] for row in ranked if len(row["candidates"]) > 4]),
@@ -907,26 +977,38 @@ class Measure(c2_real.Check):
     def home(self, label):
         return Home(self, label)
 
+    def host_environment(self, home, host):
+        """A host's environment for a hook. In the recall part it has the embedding key, as an installed hook
+        has, and nothing else of the memory keys; in the other parts it has no key and the hooks send nothing."""
+        env = super().host_environment(home, host)
+        if self.embedding and self.real:
+            env.update({name: os.environ[name] for name in c2_real.NETWORK if name in os.environ})
+            env[c2_real.OPENAI] = self.keys[c2_real.OPENAI]
+        elif self.embedding:
+            env[c2_real.OPENAI] = self.markers[c2_real.OPENAI]
+            env.update(c2_hosts.memory_urls(self.server.url))
+        return env
+
     def worker_environment(self, home, provider):
         env = super().worker_environment(home, provider)
         if not self.embedding:
             env.pop(c2_real.OPENAI, None)
         return env
 
-    def recall_environment(self, home, host):
-        """The prompt hook's environment for a recall: the host's, with the embedding key and nothing else of the
-        memory keys."""
-        env = self.host_environment(home, host)
-        if self.real:
-            env.update({name: os.environ[name] for name in c2_real.NETWORK if name in os.environ})
-            env[c2_real.OPENAI] = self.keys[c2_real.OPENAI]
-        else:
-            env[c2_real.OPENAI] = self.markers[c2_real.OPENAI]
-            env.update(c2_hosts.memory_urls(self.server.url))
-        return env
-
     def steps(self):
-        """What is run one by one, with the report written before each."""
+        """What is run one by one, with the report written before each.
+
+        Nothing is, where the staged hooks would leave a sample's prompt out as one that the host made: its turn
+        could not be recorded, and in the recall part that would end the part after samples that were paid for.
+        """
+        from memory_lib import hooks
+        for sample in self.samples if set(self.options.part) - {"skip"} else ():  # The part skip records none.
+            for number, turn in enumerate(sample["turns"], 1):
+                if turn["prompt"].lstrip().startswith(hooks.HOST_PROMPTS):
+                    raise c2_real.Stopped(
+                        "Nothing was run. The prompt of turn %d of the sample %s begins as one that a host makes "
+                        "(%s), and the hooks leave such a prompt out, so the turn cannot be recorded. Take the "
+                        "turn or the sample out." % (number, sample["id"], ", ".join(hooks.HOST_PROMPTS)))
         found = []
         if "efforts" in self.options.part:
             found += [("efforts", sample, level, number) for sample in self.samples
@@ -934,24 +1016,26 @@ class Measure(c2_real.Check):
         return found + [(name,) for name in ("skip", "recall") if name in self.options.part]
 
     def step(self, name):
-        if name[0] == "skip":
-            from memory_lib import recall
-            entry = self.report["skip"] = {"outcome": "not run"}
-            self.guard(entry, lambda: entry.update(skip_share(self.pool, self.defaults["skip"], recall.skipped),
-                                                   outcome="measured"), free=True)
-        elif name[0] == "recall":
-            entry = self.report["recall"] = {"outcome": "not run"}
-            self.embedding = True
-            try:
-                self.guard(entry, lambda: replay(self, entry))
-            finally:
-                self.embedding = False
-        else:
-            _, sample, level, number = name
-            label = "%s-%s-%d" % (sample["id"], level, number)
-            entry = self.report["runs"][label] = {"sample": sample["id"], "effort": level, "outcome": "not run"}
-            self.guard(entry, lambda: measured(self, entry, sample, level, label))
-        self.totals()
+        try:
+            if name[0] == "skip":
+                from memory_lib import recall
+                entry = self.report["skip"] = {"outcome": "not run"}
+                self.guard(entry, lambda: entry.update(skip_share(self.pool, self.defaults["skip"], recall.skipped),
+                                                       outcome="measured"), free=True)
+            elif name[0] == "recall":
+                entry = self.report["recall"] = {"outcome": "not run"}
+                self.embedding = True
+                try:
+                    self.guard(entry, lambda: replay(self, entry))
+                finally:
+                    self.embedding = False
+            else:
+                _, sample, level, number = name
+                label = "%s-%s-%d" % (sample["id"], level, number)
+                entry = self.report["runs"][label] = {"sample": sample["id"], "effort": level, "outcome": "not run"}
+                self.guard(entry, lambda: measured(self, entry, sample, level, label))
+        finally:  # Also after an interrupt, which `guard` raises again: what the step had made is in the sums.
+            self.totals()
 
     def guard(self, entry, action, free=False):
         """Run a step that fills `entry`; no step that costs starts once the limit is reached, and an interrupt
@@ -1086,7 +1170,8 @@ def main(arguments=None):
     except ValueError as error:
         print(error)
         return 2
-    return c2_real.launch(chosen, "c2-measure", Measure, summary, passed)
+    # The part skip is this machine's own count: alone, it is refused neither in CI nor for a missing key.
+    return c2_real.launch(chosen, "c2-measure", Measure, summary, passed, free=chosen.part == ["skip"])
 
 
 if __name__ == "__main__":
