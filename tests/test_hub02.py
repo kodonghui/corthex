@@ -923,8 +923,8 @@ class CommandOutcomesTest(HubCase):
         # --item and without --quote, and --asks on the agent's comment or reply.
         self.assertEqual(CMD.STAGE_KEYS, hub.STAGE_KEYS)
         cases = [
-            (["comment", "acme-shop", "--stage", "04-functional-spec", "--text", "Whole stage", "--asks", "checkpoint"],
-             "/comments", {"stage": "04-functional-spec", "item": "", "text": "Whole stage", "asks": "checkpoint"}),
+            (["comment", "acme-shop", "--stage", "04-functional-spec", "--text", "Whole stage", "--asks", "checkpoint", "--look-first", "SPEC-001"],
+             "/comments", {"stage": "04-functional-spec", "item": "", "text": "Whole stage", "asks": "checkpoint", "look_first": "SPEC-001"}),
             (["comment", "acme-shop", "--stage", "02-prd", "--item", "REQ-001", "--text", "On an item"],
              "/comments", {"stage": "02-prd", "item": "REQ-001", "text": "On an item"}),
             (["comment", "acme-shop", "--stage", "05-erd", "--item", "TBL-001", "--text", "Asks", "--asks", "answer"],
@@ -933,10 +933,16 @@ class CommandOutcomesTest(HubCase):
              "/comments/" + COMMENT + "/replies", {"text": "Recommend B", "asks": "recommended"}),
             (["reply", "acme-shop", COMMENT, "--text", "Done"], "/comments/" + COMMENT + "/replies", {"text": "Done"}),
         ]
+        # 0.4.0: a checkpoint request reads the agent to-do first (SPEC-191), here a server's answer with read_at.
+        lists = {key: {"total": 0, "entries": []} for key in ("comments", "discrepancies", "reflections", "checkpoints")}
+        todo = dict(lists, project="acme-shop", default_commit=None, session=SESSION, read_at="2026-11-13T00:00:00.000Z", waiting_for_user=0, taken=0)
         for words, suffix, expected in cases:
             with self.subTest(words=words):
-                _, rows, client = self.execute(words + ["--session", SESSION])
+                first = [HTTP.result("done", answer=todo)] if "checkpoint" in words else []
+                _, rows, client = self.execute(words + ["--session", SESSION], FakeClient(first))
                 self.assertEqual(rows[0]["outcome"], "done")
+                if first:
+                    self.assertEqual(client.calls[0][:2], ("GET", "/api/spaces/acme-shop/todo"))
                 method, path, body, _, _ = client.calls[-1]
                 self.assertEqual((method, path), ("POST", "/api/spaces/acme-shop" + suffix))
                 for key, value in expected.items():

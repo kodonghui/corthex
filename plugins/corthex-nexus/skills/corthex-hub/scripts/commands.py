@@ -27,6 +27,7 @@ TRACE = re.compile(r"[A-Z][A-Z0-9]*-[0-9]{1,6}\Z")
 COMMIT = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?\Z")
 ENTRY = re.compile(r"n([cpdek])_[0-9a-hjkmnp-tv-z]{12}\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
+PART = re.compile(r"(?:[a-z0-9]+(?:-[a-z0-9]+)*)?\Z")
 # 0.4.0: the session reads file (TBL-125) keeps each session's last read of the agent to-do, by the
 # server's time, so that todo --if-due reads again only once a day has passed (SPEC-191).
 TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z\Z")
@@ -35,7 +36,11 @@ HOUR, DAY, WEEK = 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60
 SINCE = (("comments", "last_at"), ("discrepancies", "opened_at"), ("reflections", "made_at"), ("checkpoints", "passed_at"))
 # 0.4.0: a project's first push waits for the user's yes, which --first carries (SPEC-111, REQ-107).
 FIRST_PUSH = "first push needs --first"
-NOTES = {FIRST_PUSH: "the first push of this project to this server waits for the user's yes: push it with --first only after the user agrees"}
+# 0.4.0: a checkpoint request is taken only in form, and the hub reads the to-do before it (SPEC-197, SPEC-191).
+READ_FIRST = "read the to-do first"
+UNKNOWN_STAGE = "the comment's stage could not be read, so nothing was kept; send the request again"
+NOTES = {READ_FIRST: "entries came in since the session's read before: answer those on the stage, or name them in the request as open, and send it again",
+         FIRST_PUSH: "the first push of this project to this server waits for the user's yes: push it with --first only after the user agrees"}
 
 
 class CommandLine(ValueError):
@@ -51,8 +56,9 @@ def outcome(command, project, value=None, stats=None, remarks=()):
     if command == "todo":
         # API-138: whether the hub read the server, the session's read before, and what is new since.
         row.update(read=value.get("read", False), since=value.get("since"), new=value.get("new"))
-    if "address" in value:
-        row["address"] = value["address"]
+    for key in ("new", "address"):
+        if key in value and key not in row:
+            row[key] = value[key]
     if value.get("recovery") is not None:
         row["recovery"] = value["recovery"]
     return row
@@ -145,7 +151,43 @@ def validate(args, env, h):
     return session
 
 
-def write_request(args, project, home, env, h):
+def look_first(args, project, home, env, h, url):
+    """SPEC-197: the thing to look at first, a trace ID, an https address or the stage's page; None for a reply's stage."""
+    value = args.look_first
+    if TRACE.fullmatch(value) and len(value) <= 30:
+        return value
+    if value == "stage":
+        if args.command == "reply":
+            return "stage"
+        try:
+            base = h.companion("transport").Client(url, env, version=h.VERSION).base if isinstance(url, str) and url else None
+        except ValueError:
+            base = None
+        if base is None:
+            raise CommandLine("--look-first stage needs the NEXUS address: name an item's trace ID or an https address instead")
+        return base + "/p/" + project + "/" + (args.part or "_") + "/" + args.stage
+    if link(value, home, env, h):
+        return value
+    raise CommandLine("--look-first needs an item's trace ID, an https address without secrets or email addresses, or the word stage")
+
+
+def checkpoint_form(args, body, home, env, h):
+    """SPEC-197: a checkpoint request has no --item, at most 10 lines and 1,200 characters after redaction, and --look-first."""
+    wrong = []
+    if args.command == "comment" and args.item:
+        wrong.append("leave out --item, since a checkpoint request is on the stage as a whole")
+    text = scrub(body["text"], home, env, h)
+    lines = text.count("\n") + 1
+    if lines > 10 or len(text) > 1200:
+        wrong.append("the text has %d line%s and %d characters after redaction; shorten it to at most 10 lines and 1,200 characters" %
+                     (lines, "" if lines == 1 else "s", len(text)))
+    if args.look_first is None:
+        wrong.append("add --look-first with an item's trace ID, an https address or the word stage")
+    if wrong:
+        raise CommandLine("a checkpoint request is out of form: " + "; ".join(wrong))
+
+
+def write_request(args, project, home, env, h, url=None):
     base = "/api/spaces/" + project
     command = args.command
     body = {}
@@ -201,6 +243,12 @@ def write_request(args, project, home, env, h):
         if args.event == "reflected" and "commit" not in body:
             raise CommandLine("reflected needs --commit")
         name, path = ("report-edit", base + "/edits/" + args.entry + "/report") if command == "reflect" else ("report-checkpoint", base + "/checkpoints/" + args.entry + "/report")
+    if command in ("comment", "reply"):
+        if args.look_first is not None and args.asks != "checkpoint":
+            raise CommandLine("--look-first goes only with --asks checkpoint")
+        if args.asks == "checkpoint":
+            checkpoint_form(args, body, home, env, h)
+            body["look_first"] = look_first(args, project, home, env, h, url)
     return name, path, scrub(body, home, env, h)
 
 
@@ -366,6 +414,78 @@ def read_todo(client, home, project, session, kept, boxes):
     return dict(value, read=True, since=kept, new=new_entries(answer, kept, boxes))
 
 
+def comment_stage(client, lease, project, comment, read):
+    """The part and stage of the comment that a reply asks again on, from the to-do or else from the server."""
+    listed = ((read.get("answer") or {}).get("comments") or {}).get("entries")
+    found = next((entry for entry in listed if isinstance(entry, dict) and entry.get("id") == comment), None) if isinstance(listed, list) else None
+    if found is None:
+        lease.renew()
+        shown = client.call("GET", "/api/spaces/" + project + "/comments/" + comment)
+        found = shown.get("answer") if shown["outcome"] == "done" else None
+    if (not isinstance(found, dict) or found.get("stage") not in STAGE_KEYS or not isinstance(found.get("part"), str) or
+            len(found["part"]) > 100 or not PART.fullmatch(found["part"])):
+        return None
+    return found["part"], found["stage"]
+
+
+def keepable(pending):
+    """A write that can wait in the outbox: a reply whose thing to look at first is its stage needs that stage first."""
+    return None if pending is not None and pending["body"].get("look_first") == "stage" else pending
+
+
+def ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, origin):
+    """Send a checkpoint request after the outbox and a read of the to-do, or hold it back once (SPEC-191, SPEC-197).
+
+    Returns the outcome, the outbox's counts and the remarks. When the read gets no answer the request waits
+    in the outbox, as any write does; a reply that names its stage then cannot, and nothing is kept.
+    """
+    stats, _ = box.drain(client, lease)
+    replied = bool(box.replies)
+    unresolved = keepable(pending) is None
+    if stats["waiting"]:
+        if unresolved:
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, []
+        box.save(pending, None, lease, count_attempt=False)
+        stats["waiting"] = len(box.files())
+        return {"outcome": "kept", "failure": "an earlier outbox write is waiting"}, stats, []
+    lease.renew()
+    read = read_todo(client, home, name, session, kept, boxes)
+    if read["outcome"] != "done" and not read.get("retry"):
+        # The server answered the read with a refusal: the request is not sent, and not kept.
+        return {"outcome": read["outcome"], "problem": read.get("problem"), "failure": read.get("failure")}, stats, []
+    if read["outcome"] != "done":
+        if unresolved:
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, []
+        box.save(pending, read, lease, count_attempt=False)
+        stats["waiting"] = len(box.files())
+        return {"outcome": "kept", "failure": boxes.failure_of(read)}, stats, []
+    remarks = list(read.get("remarks") or ())
+    if read.get("new") and any(read["new"].values()):
+        return {"outcome": "refused", "failure": READ_FIRST, "new": read["new"]}, stats, remarks
+    body = dict(pending["body"])
+    if unresolved:
+        where = comment_stage(client, lease, name, pending["path"].split("/")[-2], read)
+        if where is None:
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, remarks
+        body["look_first"] = origin + "/p/" + name + "/" + (where[0] or "_") + "/" + where[1]
+    if "server-older" in remarks:
+        # How versions meet: the old form, whose last line is the thing to look at first.
+        body["text"] = body["text"] + "\n" + body.pop("look_first")
+    pending = dict(pending, body=body)
+    box.save(pending, None, lease, count_attempt=False)
+    sent, _ = box.drain(client, lease)
+    stats = {"sent": stats["sent"] + sent["sent"], "dropped": stats["dropped"] + sent["dropped"], "waiting": sent["waiting"],
+             "notices": stats["notices"] + sent["notices"]}
+    value = box.attempts.get(box.replies.get(pending["write"], pending["write"]))
+    if value is None:
+        value = {"outcome": "kept", "failure": "an earlier outbox write is waiting"}
+    elif value.get("retry"):
+        value = dict(value, outcome="kept")
+    if replied or box.replies:
+        remarks.append("sent-as-reply")
+    return value, stats, remarks
+
+
 def execute(args, home, api, env=None, client_factory=None):
     h = SimpleNamespace(**api)
     env = os.environ if env is None else env
@@ -390,7 +510,8 @@ def execute(args, home, api, env=None, client_factory=None):
         raise CommandLine("a project name uses lowercase letters, digits and hyphens")
     if not names and command == "push":
         return [outcome(command, "", {"outcome": "refused", "failure": "no project is listed in nexus.push"})]
-    request = write_request(args, names[0], home, env, h) if command in WRITES else None
+    request = write_request(args, names[0], home, env, h, place.url) if command in WRITES else None
+    asks_checkpoint = request is not None and request[2].get("asks") == "checkpoint"
     reaches = not (command == "outbox" and not args.send)
     remarks = place.remarks if reaches else []
     client, setup_failure = None, None
@@ -417,7 +538,7 @@ def execute(args, home, api, env=None, client_factory=None):
             box = boxes.Outbox(home, name)
         except (ValueError, OSError):
             value = {"outcome": "failed", "failure": "outbox unavailable"}
-            if command in WRITES:
+            if command in WRITES and request[2].get("look_first") != "stage":
                 pending = boxes.new_write(name, request[0], request[1], session, request[2])
                 value.update(failure="write lost: outbox could not be written", recovery=pending)
             rows.append(outcome(command, name, value, stats, remarks))
@@ -439,25 +560,33 @@ def execute(args, home, api, env=None, client_factory=None):
                     "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
                     "held_commit": "checked when sent", "first_push": "checked when sent"}
                 rows.append(outcome(command, name, {"outcome": "done", "answer": answer}, remarks=remarks)); continue
-        kept = None
-        if command == "todo":
+        kept, extra = None, []
+        if command == "todo" or asks_checkpoint:
             reads = session_reads(home, name, boxes)
             kept = last_read(reads, session)
-            if getattr(args, "if_due", False) and not read_due(reads, session, time.time(), boxes):
+            if command == "todo" and getattr(args, "if_due", False) and not read_due(reads, session, time.time(), boxes):
                 # Not due: no server and no outbox (SPEC-191).
                 rows.append(outcome(command, name, {"outcome": "done", "read": False, "since": kept}, remarks=remarks)); continue
         value = None
         try:
             with box.lease() as lease:
-                if pending is not None:
+                if asks_checkpoint and client is not None:
+                    value, stats, extra = ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, place.url.rstrip("/"))
+                elif asks_checkpoint and keepable(pending) is None:
+                    # A reply that names its stage as the thing to look at first cannot wait unresolved.
+                    value = {"outcome": "failed", "failure": setup_failure}
+                if value is None and pending is not None:
                     # Publish the original ID before any send; this command
                     # then uses exactly the same ordered drain as a retry.
                     box.save(pending, {"failure": setup_failure} if setup_failure else None, lease, count_attempt=False)
-                if command != "remove":
+                if value is None and command != "remove":
                     stats, waiting = box.drain(client, lease, send=client is not None and not (command == "outbox" and not args.send))
+                    extra = ["sent-as-reply"] if box.replies else []
                 else:
                     waiting = []
-                if command == "outbox":
+                if value is not None:
+                    pass
+                elif command == "outbox":
                     value = {"outcome": "done", "answer": {"writes": waiting}}
                     if args.send and setup_failure:
                         value = {"outcome": "failed", "answer": {"writes": waiting}, "failure": setup_failure}
@@ -510,17 +639,17 @@ def execute(args, home, api, env=None, client_factory=None):
                     value = client.call("POST" if command == "claim" else "DELETE", "/api/spaces/" + name + "/claims/" + args.entry, session=session)
         except boxes.Busy:
             failure = "another hub is sending this project's outbox"
-            value = interrupted(box, pending, value, failure, stats)
+            value = interrupted(box, keepable(pending), value, failure, stats)
         except boxes.Lost:
             failure = "the outbox lock was taken over"
-            value = interrupted(box, pending, value, failure, stats)
+            value = interrupted(box, keepable(pending), value, failure, stats)
         except (OSError, ValueError):
-            value = interrupted(box, pending, value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
+            value = interrupted(box, keepable(pending), value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
         # Lease release can itself fail. Publish exactly one outcome only
         # after that cleanup has either completed or been handled above.
         if command == "todo" and "since" not in value:
             value = dict(value, since=kept)
-        rows.append(outcome(command, name, value, stats, remarks))
+        rows.append(outcome(command, name, value, stats, remarks + extra))
     return scrub(rows, home, env, h)
 
 
@@ -565,6 +694,9 @@ def emit(args, rows, h):
                     h.say("  since: " + row["since"])
                 if row["new"] is not None:
                     h.say("  new: " + json.dumps(row["new"], ensure_ascii=False))
+            elif row.get("new") is not None:
+                # A checkpoint request held back names what came in since the session's read before.
+                h.say("  new: " + json.dumps(row["new"], ensure_ascii=False))
             for remark in row.get("remarks") or ():
                 h.say("  " + remark + ": " + REMARKS.get(remark, ""))
             if "recovery" in row:
@@ -614,6 +746,7 @@ def configure(top, commands, existing, h):
             text(parser, "text", required=name != "decide")
         if name in ("comment", "reply"):
             parser.add_argument("--asks", choices=ASKS)
+            parser.add_argument("--look-first", help="with --asks checkpoint: an item's trace ID, an https address, or the word stage for the stage's page")
         if name == "comment":
             parser.add_argument("--quote")
         if name == "decide":

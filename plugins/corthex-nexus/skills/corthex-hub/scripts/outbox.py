@@ -21,6 +21,7 @@ WRITE = re.compile(r"nw_[0-9a-hjkmnp-tv-z]{12}\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
 SEVEN_DAYS = 7 * 24 * 60 * 60
+COMMENT = re.compile(r"nc_[0-9a-hjkmnp-tv-z]{12}\Z")
 
 
 class Busy(RuntimeError):
@@ -206,6 +207,25 @@ def new_write(project, request, path, session, body, clock=time.time):
     return data
 
 
+def as_reply(data, attempt, clock=time.time):
+    """SPEC-197: a checkpoint request that the server refuses because its stage has an open one goes as a reply on it.
+
+    The reply has a new write ID and keeps the request's text, look_first, session and time, so that it takes the
+    request's place in the outbox and its seven days.
+    """
+    problem = attempt.get("problem") or {}
+    comment = problem.get("comment")
+    if (attempt.get("outcome") != "refused" or problem.get("code") != "checkpoint_requested" or
+            data["request"] not in ("comment", "reply") or data["body"].get("asks") != "checkpoint" or
+            not isinstance(comment, str) or not COMMENT.fullmatch(comment)):
+        return None
+    body = {key: data["body"][key] for key in ("text", "asks", "look_first") if key in data["body"]}
+    reply = new_write(data["project"], "reply", "/api/spaces/" + data["project"] + "/comments/" + comment + "/replies",
+                      data["session"], body, clock)
+    reply["made"] = data["made"]
+    return reply
+
+
 class Outbox:
     def __init__(self, home, project, clock=time.time):
         if not isinstance(project, str) or not PROJECT.fullmatch(project):
@@ -214,7 +234,7 @@ class Outbox:
         self.folder = self.root / project
         self.order_path = self.root / (project + ".order")
         self.project, self.clock = project, clock
-        self.attempts = {}
+        self.attempts, self.replies = {}, {}
         try:
             self.folder.resolve().relative_to(self.root.resolve())
             within = True
@@ -298,8 +318,21 @@ class Outbox:
         expected = made.strftime("%Y%m%dT%H%M%S") + ("%03d" % (made.microsecond // 1000)) + "Z." + data["write"] + ".json"
         return data if path.name == expected else None
 
+    def as_reply_in_place(self, path, data, reply, lease):
+        """Put the reply where the request was, in the same admission order."""
+        made = datetime.fromtimestamp(timestamp(reply["made"]), timezone.utc)
+        target = self.folder / (made.strftime("%Y%m%dT%H%M%S") + ("%03d" % (made.microsecond // 1000)) + "Z." + reply["write"] + ".json")
+        with lease.owned():
+            order = self.order()
+            if data["write"] in order:
+                order[order.index(data["write"])] = reply["write"]
+                atomic(self.order_path, order)
+            atomic(target, reply)
+            path.unlink()
+        return target
+
     def drain(self, client, lease, send=True):
-        self.attempts = {}
+        self.attempts, self.replies = {}, {}
         stats = {"sent": 0, "dropped": 0, "waiting": 0, "notices": []}
         waiting, stopped = [], False
         for path in self.files():
@@ -320,6 +353,15 @@ class Outbox:
                 continue
             lease.renew()
             attempt = client.call("POST", data["path"], data["body"], data["session"], data["write"])
+            reply = as_reply(data, attempt, self.clock)
+            if reply is not None:
+                # Once: the reply's own answer stands, whatever it is.
+                path = self.as_reply_in_place(path, data, reply, lease)
+                self.replies[data["write"]] = reply["write"]
+                data = reply
+                info = {key: data[key] for key in ("write", "request", "made", "tries")}
+                lease.renew()
+                attempt = client.call("POST", data["path"], data["body"], data["session"], data["write"])
             self.attempts[data["write"]] = attempt
             with lease.owned():
                 if attempt["outcome"] == "done":

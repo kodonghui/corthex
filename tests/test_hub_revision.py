@@ -47,6 +47,18 @@ def session_reads_valid(data, project):
     return times == sorted(times, reverse=True) and len(set(sessions)) == len(sessions)
 
 
+def text_of(lines, characters):
+    """A request's text of the given lines and characters, in plain words that no redaction changes."""
+    filler = "Stage 04 is ready for your checkpoint. "
+    width = characters - (lines - 1)
+    each, rest = divmod(width, lines)
+    rows = [(filler * (each // len(filler) + 2))[:each + (1 if index < rest else 0)].rstrip(" ") or "x" for index in range(lines)]
+    rows = [row + "." * (each + (1 if index < rest else 0) - len(row)) for index, row in enumerate(rows)]
+    text = "\n".join(rows)
+    assert len(text) == characters and text.count("\n") == lines - 1, (len(text), text.count("\n"))
+    return text
+
+
 class Peer:
     """A scripted NEXUS on 127.0.0.1 that records each request. Not the product's handler."""
 
@@ -642,6 +654,245 @@ class FirstPushTest(RevisionCase):
         self.assertEqual(code, 0)
         self.assertIn('"first_push": "checked when sent"', out)
         self.assertEqual(self.peer.calls, [])
+
+
+class CheckpointRequestTest(RevisionCase):
+    """TASK-291: a checkpoint request in form, after a read of the to-do (API-139, API-140, SPEC-197, SPEC-191, TC-1427, TC-1452)."""
+
+    MADE = "nc_" + "q" * 12
+    OPEN = "nc_" + "r" * 12
+    TODO = "/api/spaces/acme/todo"
+    COMMENTS = "/api/spaces/acme/comments"
+
+    def setUp(self):
+        super().setUp()
+        self.reads_path = self.home / ".corthex/hub/reads/acme.json"
+        self.box = self.home / ".corthex/hub/outbox/acme"
+        self.replies = self.COMMENTS + "/" + self.OPEN + "/replies"
+        self.space = Todo()
+        self.peer.on("GET", self.TODO, (self.space, None))
+        self.peer.on("POST", self.COMMENTS, (201, {"id": self.MADE, "state": "open", "asks": "checkpoint"}))
+        self.peer.on("POST", self.replies, (201, {"comment": {"id": self.OPEN, "asks": "checkpoint"}, "reply": {"seq": 2}}))
+        self.profile()
+        self.register()
+        self.kept(utc(-60))
+
+    def kept(self, at):
+        self.write(self.reads_path, {"format": 1, "project": "acme", "reads": [{"session": "s-1", "at": at}]})
+
+    def request(self, *words, text="Stage 04 is ready for your checkpoint.\nLook at SPEC-194 first.", look="SPEC-194",
+                command=("comment", "acme", "--stage", "04-functional-spec"), asks=True, json_lines=True, env=None):
+        path = self.base / "request.txt"
+        self.write(path, text)
+        argv = list(command) + (["--asks", "checkpoint"] if asks else []) + ["--text-file", str(path), "--session", "s-1"]
+        if look is not None:
+            argv += ["--look-first", look]
+        return self.hub(*(argv + list(words)), json_lines=json_lines, env=env)
+
+    def posts(self):
+        return [call for call in self.peer.calls if call["method"] == "POST"]
+
+    @staticmethod
+    def counts(row):
+        return {key: row["outbox"][key] for key in ("sent", "dropped", "waiting")}
+
+    @staticmethod
+    def key(call):
+        """The write ID that a call carries, without the quotes of its Idempotency-Key header."""
+        return (call["write"] or "").strip('"')
+
+    def waiting(self):
+        return [json.loads(path.read_text(encoding="utf8")) for path in sorted(self.box.glob("*.json"))] if self.box.is_dir() else []
+
+    def queue(self, write, body, made):
+        """A checkpoint request that waits in the outbox, in the contract's OutboxFile form."""
+        moment = datetime.strptime(made, "%Y-%m-%dT%H:%M:%S.%fZ")
+        name = moment.strftime("%Y%m%dT%H%M%S") + ("%03d" % (moment.microsecond // 1000)) + "Z." + write + ".json"
+        self.write(self.box / name, {"format": 1, "write": write, "project": "acme", "request": "comment", "path": self.COMMENTS,
+                                     "session": "s-1", "made": made, "body": body, "tries": 1, "failure": "no network"})
+
+    def test_TC_1697_comment_asks_checkpoint_done(self):
+        text = text_of(10, 1200)
+        code, rows, err = self.request(text=text)
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"], rows[0]["remarks"]), (0, "done", None, []), err)
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("GET", self.TODO), ("POST", self.COMMENTS)])
+        self.assertEqual(self.posts()[0]["body"], {"part": "", "stage": "04-functional-spec", "item": "", "text": text,
+                                                   "asks": "checkpoint", "look_first": "SPEC-194"})
+        self.assertEqual(self.posts()[0]["session"], "s-1")
+        self.assertEqual(rows[0]["answer"]["id"], self.MADE)
+        self.assertEqual((self.waiting(), self.counts(rows[0])), ([], {"sent": 1, "dropped": 0, "waiting": 0}))
+        # The read before the request is now the session's last.
+        self.assertEqual(json.loads(self.reads_path.read_text(encoding="utf8"))["reads"], [{"session": "s-1", "at": self.space.answered[-1][1]}])
+
+    def test_TC_1698_the_three_forms_of_the_thing_to_look_at_first(self):
+        cases = [("SPEC-194", [], "SPEC-194"),
+                 ("https://example.invalid/review/7?tab=diff", [], "https://example.invalid/review/7?tab=diff"),
+                 ("stage", ["--part", "orders"], self.peer.url + "/p/acme/orders/04-functional-spec"),
+                 ("stage", [], self.peer.url + "/p/acme/_/04-functional-spec")]
+        for look, words, sent in cases:
+            with self.subTest(look=look, words=words):
+                code, rows, err = self.request(*words, look=look)
+                self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+                body = self.posts()[-1]["body"]
+                self.assertEqual((body["look_first"], body["part"]), (sent, words[1] if words else ""))
+
+    def test_TC_1699_wrong_command_line_out_of_form(self):
+        # 1,196 characters as written and 1,201 once the token's value, pasted in by mistake, is masked as [redacted].
+        masked = text_of(1, 1190) + " cid-1"
+        cases = [("--item", dict(words=("--item", "SPEC-194")), "leave out --item"),
+                 ("11 lines", dict(text=text_of(11, 300)), "the text has 11 lines and 300 characters"),
+                 ("1,201 characters after redaction", dict(text=masked, env={"CORTHEX_NEXUS_CLIENT_ID": "cid-1"}),
+                  "the text has 1 line and 1201 characters"),
+                 ("no --look-first", dict(look=None), "add --look-first"),
+                 ("--look-first without --asks checkpoint", dict(asks=False), "--look-first goes only with --asks checkpoint")]
+        for name, options, said in cases:
+            with self.subTest(name):
+                words = options.pop("words", ())
+                code, out, err = self.request(*words, json_lines=False, **options)
+                self.assertEqual((code, out), (2, ""), err)
+                self.assertIn(said, err)
+        self.assertEqual((self.peer.calls, self.waiting()), ([], []))
+
+    def test_TC_1452_a_request_of_twelve_lines_sends_nothing(self):
+        code, out, err = self.request(text=text_of(12, 600), json_lines=False)
+        self.assertEqual(code, 2, err)
+        self.assertIn("shorten it to at most 10 lines and 1,200 characters", err)
+        self.assertEqual((self.peer.calls, self.waiting()), ([], []))
+
+    def test_TC_1427_the_to_do_is_read_first_whatever_the_time_of_the_last_read(self):
+        # A read a minute old, two days old, an hour ahead, and none at all.
+        for at in (utc(-60), utc(-2 * 24 * 3600), utc(3600), None):
+            with self.subTest(at=at):
+                if at is None:
+                    self.reads_path.unlink()
+                else:
+                    self.kept(at)
+                calls = len(self.peer.calls)
+                code, rows, err = self.request()
+                self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+                self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls[calls:]],
+                                 [("GET", self.TODO), ("POST", self.COMMENTS)])
+
+    def test_TC_1700_refused_read_the_to_do_first(self):
+        self.kept(utc(-600))
+        # The user's reply on the stage's comment came after the session's read before.
+        self.space.add("comments", self.OPEN, utc(-60), part="", stage="04-functional-spec")
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "refused", "read the to-do first"), err)
+        self.assertEqual(rows[0]["new"], {"comments": [self.OPEN], "discrepancies": [], "reflections": [], "checkpoints": []})
+        self.assertEqual((self.posts(), self.waiting()), ([], []))
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (0, "done", None), err)
+        self.assertEqual([call["path"] for call in self.posts()], [self.COMMENTS])
+
+    def test_a_request_held_back_says_why_in_words(self):
+        self.kept(utc(-600))
+        self.space.add("discrepancies", "nd_" + "c" * 12, utc(-60))
+        code, out, err = self.request(json_lines=False)
+        self.assertEqual(code, 1, err)
+        self.assertIn("acme: comment refused\n  read the to-do first\n  entries came in since the session's read before", out)
+        self.assertIn('"discrepancies": ["nd_' + "c" * 12 + '"]', out)
+
+    def test_TC_1701_done_sent_as_a_reply(self):
+        self.peer.on("POST", self.COMMENTS, problem(409, "checkpoint_requested", comment=self.OPEN))
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["sent-as-reply"]), err)
+        first, second = self.posts()
+        self.assertEqual((first["path"], second["path"]), (self.COMMENTS, self.replies))
+        self.assertEqual(second["body"], {"text": first["body"]["text"], "asks": "checkpoint", "look_first": "SPEC-194"})
+        self.assertNotEqual(self.key(second), self.key(first))
+        self.assertEqual(second["session"], "s-1")
+        self.assertEqual(rows[0]["answer"], {"comment": {"id": self.OPEN, "asks": "checkpoint"}, "reply": {"seq": 2}})
+        self.assertEqual((self.waiting(), self.counts(rows[0])), ([], {"sent": 1, "dropped": 0, "waiting": 0}))
+        code, out, _ = self.request(json_lines=False)
+        self.assertIn("  sent-as-reply: the stage had an open checkpoint request, so the request went as a reply on it", out)
+        # From the outbox: a request kept earlier goes the same way at the next contact.
+        body = {"part": "", "stage": "04-functional-spec", "item": "", "text": "Kept request", "asks": "checkpoint", "look_first": "SPEC-194"}
+        self.queue("nw_" + "k" * 12, body, utc(-300))
+        calls = len(self.peer.calls)
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["sent-as-reply"]), err)
+        sent = self.peer.calls[calls:]
+        self.assertEqual([(call["path"], self.key(call) == "nw_" + "k" * 12) for call in sent], [(self.COMMENTS, True), (self.replies, False)])
+        self.assertEqual(sent[1]["body"], {"text": "Kept request", "asks": "checkpoint", "look_first": "SPEC-194"})
+        self.assertEqual(self.waiting(), [])
+        self.assertFalse((self.home / ".corthex/hub/outbox/acme.order").exists())
+
+    def test_TC_1702_queued(self):
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        # No answer to the read of the to-do: the request waits with its write ID.
+        self.profile("http://127.0.0.1:%d" % port)
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (3, "kept", "no network"), err)
+        kept = self.waiting()
+        self.assertEqual([(entry["request"], entry["body"]["look_first"]) for entry in kept], [("comment", "SPEC-194")])
+        self.profile()
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["outbox"]["sent"]), (0, "done", 1), err)
+        self.assertEqual([(call["path"], self.key(call)) for call in self.posts()], [(self.COMMENTS, kept[0]["write"])])
+        self.hub("outbox", "acme", "--send")
+        self.assertEqual(len(self.posts()), 1, "sent once")
+        # The read answered and the write not: it waits again with its write ID.
+        self.peer.on("POST", self.COMMENTS, problem(503, "unavailable"), (201, {"id": self.MADE, "state": "open"}))
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["problem"]["status"]), (3, "kept", 503), err)
+        kept = self.waiting()
+        self.assertEqual(len(kept), 1)
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["outbox"]["sent"]), (0, "done", 1), err)
+        self.assertEqual([self.key(call) for call in self.posts()[1:]], [kept[0]["write"]] * 2)
+        self.assertEqual(self.waiting(), [])
+
+    def test_TC_1703_reply_asks_again(self):
+        # The user replied on the stage's request before the session's last read.
+        self.space.add("comments", self.OPEN, utc(-120), part="", stage="04-functional-spec")
+        code, rows, err = self.request(look="stage", command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", []), err)
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("GET", self.TODO), ("POST", self.replies)])
+        self.assertEqual(self.posts()[0]["body"], {"text": "Stage 04 is ready for your checkpoint.\nLook at SPEC-194 first.", "asks": "checkpoint",
+                                                   "look_first": self.peer.url + "/p/acme/_/04-functional-spec"})
+        self.assertEqual(rows[0]["answer"]["comment"], {"id": self.OPEN, "asks": "checkpoint"})
+
+    def test_a_reply_reads_its_stage_from_the_server(self):
+        self.peer.on("GET", self.COMMENTS + "/" + self.OPEN, (200, {"id": self.OPEN, "part": "orders", "stage": "05-erd", "replies": []}))
+        code, rows, err = self.request(look="stage", command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual([call["path"] for call in self.peer.calls], [self.TODO, self.COMMENTS + "/" + self.OPEN, self.replies])
+        self.assertEqual(self.posts()[0]["body"]["look_first"], self.peer.url + "/p/acme/orders/05-erd")
+
+    def test_a_reply_whose_stage_cannot_be_read_keeps_nothing(self):
+        said = "the comment's stage could not be read, so nothing was kept; send the request again"
+        code, rows, err = self.request(look="stage", command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "failed", said), err)
+        self.assertEqual((self.posts(), self.waiting()), ([], []))
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        self.profile("http://127.0.0.1:%d" % port)
+        code, rows, err = self.request(look="stage", command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"]), (1, "failed", said), err)
+        self.assertEqual(self.waiting(), [])
+        # A reply with the stage's ID or address waits as any write does.
+        code, rows, err = self.request(command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"]), (3, "kept"), err)
+
+    def test_a_server_of_before_gets_the_old_form(self):
+        self.space.with_read_at = False
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["server-older"]), err)
+        body = self.posts()[0]["body"]
+        self.assertNotIn("look_first", body)
+        self.assertEqual((body["text"], body["asks"]), ("Stage 04 is ready for your checkpoint.\nLook at SPEC-194 first.\nSPEC-194", "checkpoint"))
+
+    def test_a_refused_read_sends_and_keeps_nothing(self):
+        self.peer.on("GET", self.TODO, problem(403, "not_allowed"))
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["problem"]["code"]), (1, "refused", "not_allowed"), err)
+        self.assertEqual((self.posts(), self.waiting()), ([], []))
 
 
 if __name__ == "__main__":

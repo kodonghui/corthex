@@ -23,7 +23,7 @@ class RuntimeVersionPinTest(unittest.TestCase):
     def test_actual_version_hashes_are_retained_with_the_old_protocol_anchor(self):
         _, rows = fixture.verify_runtime(self.root)
         changed = {row['file'] for row in rows if row['reviewedNormalization']}
-        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py'})
+        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py', 'outbox.py'})
         manifest = json.loads((ROOT / 'plugins/corthex-nexus/plugin.json').read_text(encoding='utf-8'))
         self.assertEqual(manifest['version'], '0.3.0')
         self.assertIn('VERSION = "0.3.0"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
