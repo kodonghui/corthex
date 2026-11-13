@@ -101,7 +101,9 @@ begins, before each run and at its end, and in the recall part, with
 recall-texts.json, before each sample and before each curation. An interrupt
 ends the worker that is running, as in `c2_real.py`. A folder
 OUTDIR/c2-measure that is there already is replaced only when it is empty or
-its report says that it was a self-test's.
+its report says that it was a self-test's. OUTDIR is to be a folder that no
+other user of the system can write: the staged package runs from it with the
+memory keys.
 
 `--self-test` is for the tests: the samples and prompts are made up in this
 file unless DIR or FILE is given, a local server stands in for both providers
