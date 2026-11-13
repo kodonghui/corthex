@@ -59,6 +59,40 @@ def text_of(lines, characters):
     return text
 
 
+# Runs hub.py as the CLI does, and writes to stderr where an error other than the lease's own refusals
+# leaves the lease, the outbox or the session reads: the cause that a result's words do not name.
+TRACED_HUB = """import functools, importlib.util, pathlib, sys, traceback
+resolve = pathlib.Path.resolve
+def kept(self, *args, **kwargs):
+    result = resolve(self, *args, **kwargs)
+    if str(result).startswith("\\\\\\\\?\\\\"):
+        sys.stderr.write("traced resolve kept the extended-length prefix: " + str(result) + "\\n")
+    return result
+pathlib.Path.resolve = kept
+spec = importlib.util.spec_from_file_location("traced_hub", sys.argv[1])
+hub = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hub)
+boxes, commands = hub.companion("outbox"), hub.companion("commands")
+def traced(owner, name):
+    original = getattr(owner, name)
+    @functools.wraps(original)
+    def wrapper(*args, **kwargs):
+        try:
+            return original(*args, **kwargs)
+        except (boxes.Busy, boxes.Lost):
+            raise
+        except BaseException:
+            sys.stderr.write("traced " + name + "\\n" + traceback.format_exc())
+            raise
+    setattr(owner, name, wrapper)
+for owner, names in ((boxes.Lease, ("__enter__", "__exit__", "renew")), (boxes.Outbox, ("__init__", "drain")),
+                     (commands, ("read_todo", "keep_read", "session_reads"))):
+    for name in names:
+        traced(owner, name)
+raise SystemExit(hub.main(sys.argv[2:]))
+"""
+
+
 class Peer:
     """A scripted NEXUS on 127.0.0.1 that records each request. Not the product's handler."""
 
@@ -192,7 +226,7 @@ class RevisionCase(unittest.TestCase):
                           "session": "s-1", "made": made, "body": {"text": "Waiting reply"}, "tries": 0})
         return path
 
-    def start(self, *words, env=None, cwd=None, json_lines=True):
+    def start(self, *words, env=None, cwd=None, json_lines=True, probe=None):
         git = shutil.which("git")
         folders = [str(Path(sys.executable).parent)] + ([str(Path(git).parent)] if git else [])
         environment = {"HOME": str(self.home), "USERPROFILE": str(self.home), "PATH": os.pathsep.join(folders),
@@ -203,7 +237,8 @@ class RevisionCase(unittest.TestCase):
             if os.name == "nt" and key in os.environ:
                 environment[key] = os.environ[key]
         environment.update(env or {})
-        argv = [sys.executable, "-B", str(SCRIPT), "--home", str(self.home)] + list(words) + (["--json"] if json_lines else [])
+        program = [str(probe), str(SCRIPT)] if probe else [str(SCRIPT)]
+        argv = [sys.executable, "-B"] + program + ["--home", str(self.home)] + list(words) + (["--json"] if json_lines else [])
         return subprocess.Popen(argv, cwd=str(cwd or self.repo), env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def finish(self, process, json_lines=True):
@@ -540,6 +575,18 @@ class SessionReadsTest(RevisionCase):
                 self.assertEqual((code, rows[0]["outcome"], rows[0]["read"]), (0, "done", not mine), err)
                 self.assertEqual(len(self.peer.calls), calls + (0 if mine else 1), "a session whose entry was lost reads again as due")
         self.assertEqual(sorted(entry["session"] for entry in self.reads()["reads"]), ["s-1", "s-2"])
+
+    def test_TC_1695_two_hubs_at_once_from_a_new_hub_folder_twenty_times(self):
+        # TC-1695 again from a hub folder that does not exist yet, with each round's cause written to stderr.
+        probe = self.base / "traced-hub.py"
+        probe.write_text(TRACED_HUB, encoding="utf8")
+        allowed = [(0, "done", None), (1, "failed", "another hub is sending this project's outbox")]
+        for round_number in range(20):
+            shutil.rmtree(str(self.home / ".corthex/hub"), ignore_errors=True)
+            processes = [self.start("todo", "acme", "--session", label, probe=probe) for label in ("s-1", "s-2")]
+            for process in processes:
+                code, rows, err = self.finish(process)
+                self.assertIn((code, rows[0]["outcome"], rows[0]["failure"]), allowed, "round %d\n%s" % (round_number, err))
 
     def test_TC_1696_todo_sessions_without_a_label_share_one_entry(self):
         code, rows, err = self.hub("todo", "acme")
