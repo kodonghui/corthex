@@ -29,11 +29,10 @@ request in TAP. These things differ:
   the estimate as the worker gives it to the usage line, and the size that the
   worker gives with it. It also has the model, the effort and the `max_tokens`
   of the request's body as `model_request.build` made it, which is wrapped
-  only to read them; the times, as the package writes a time, right before and
-  right after the call of `send`, between which each attempt of the request
-  began; and how many usage lines the call says that it wrote. A call that
-  raised an error has a line too, with the error's name in `raised` and
-  neither a document nor an answer: it may have logged an attempt before.
+  only to read them. Between the line's two times, which that wrapper's line
+  has too, each attempt of the request began. A call that raised an error has
+  a line too, with the error's name in `raised`, its times and neither a
+  document nor an answer: it may have logged an attempt before.
 - `index_worker.keep`, the worker's index step, is wrapped only to read how it
   ended: a line of the kind `index` has its reason, why the index was built
   again if it was, how many rows it wrote and removed, how many items got a
@@ -83,10 +82,7 @@ def wrap(library, tap):
     body = {}  # Of the request built last in the call of `send` under way: its attempts are built one after another.
 
     def moment():
-        try:
-            return library.base.utc_time()
-        except Exception:
-            return None
+        return c2_real_worker.moment(library)
 
     def built(**options):
         payload, sent = build(**options)
@@ -150,8 +146,7 @@ def wrap(library, tap):
             write(tap, dict(more, instructions=options.get("instructions"), raised=type(error).__name__))
             raise
         ended()
-        c2_real_worker.record(tap, options.get("instructions"), result, logged=getattr(result, "logged", None),
-                              **more)
+        c2_real_worker.record(tap, options.get("instructions"), result, **more)
         return result
 
     def kept(*arguments, **options):

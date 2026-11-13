@@ -51,6 +51,11 @@ def moment(second, part=0):
     return "2026-11-13T00:00:%02d.%03dZ" % (second, part)
 
 
+def throw(error):
+    """Raise `error`, where an expression is wanted."""
+    raise error
+
+
 def digest(document):
     return hashlib.sha256(document.encode("utf-8")).hexdigest()
 
@@ -120,7 +125,7 @@ def item(number, kind="decision", status="current", title="제목", text="본문
 
 def measured_run(effort="high", **more):
     row = measure.joined([count(), sized(), request()], [usage()])[0]
-    entry = {"sample": "one", "effort": effort, "outcome": "measured", "requests": [row], "usd": 0.001,
+    entry = {"sample": "one", "effort": effort, "repeat": 1, "outcome": "measured", "requests": [row], "usd": 0.001,
              "attempts": [{"kind": "curate", "result": "ok", "applied": 2, "dropped": 1, "reasons": {"quote": 1},
                            "edit_reasons": {"cite": 2}}],
              "layer": measure.made(layer([item(1), item(2, kind="fact")], [{"part": "decisions", "text": "한 줄"}]))}
@@ -358,6 +363,18 @@ class SampleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             measure.valid([SAMPLE], "one.json")
 
+    def test_a_host_that_is_no_text_is_refused_as_any_other_that_is_no_host(self):
+        # A list, or a table, is no key of the hosts' table: looking it up there would raise an error of its own.
+        for host in (["claude"], {"name": "claude"}, None, 7, "", "Claude", "claude-code"):
+            with self.subTest(host=host):
+                value = dict(SAMPLE, turns=[dict(SAMPLE["turns"][0], host=host)])
+                with self.assertRaises(ValueError) as refused:
+                    measure.valid(value, "one.json")
+                self.assertEqual(str(refused.exception),
+                                 "one.json is no sample: turn 1 names no host that is claude or codex")
+        for host in ("claude", "codex"):
+            measure.valid(dict(SAMPLE, turns=[dict(SAMPLE["turns"][0], host=host)]), "one.json")
+
     def test_the_samples_are_those_named_in_that_order_or_all_by_file_name(self):
         folder = self.folder(b=dict(SAMPLE, id="b"), a=dict(SAMPLE, id="a"), c=dict(SAMPLE, id="c"))
         self.assertEqual([sample["id"] for sample in measure.samples_of(folder, [])], ["a", "b", "c"])
@@ -547,6 +564,37 @@ class ReadingTests(unittest.TestCase):
         fewer = measure.joined([sized(), request(attempts=2)], [usage()])
         self.assertEqual(measure.lacking({"requests": fewer, "layer": {"turns_left_to_curate": 0}}),
                          ["request 1 has 1 usage lines in its time and wrote 2"])
+        # A request without a usage line whose call says that it wrote its line: the log lost it, or the check.
+        gone = measure.joined([sized(), request()], [])
+        self.assertEqual(measure.lacking({"requests": gone, "layer": {"turns_left_to_curate": 0}}),
+                         ["request 1 ended with no usage line",
+                          "request 1: the usage line's estimate is not the one that was computed again"])
+
+    def test_a_usage_line_that_the_package_did_not_write_is_told_as_that(self):
+        def lacking(rows, lines):
+            return measure.lacking({"requests": measure.joined([sized()] + rows, lines),
+                                    "layer": {"turns_left_to_curate": 0}})
+
+        # The call itself says that it wrote no line: there is none whose estimate could differ.
+        self.assertEqual(lacking([request(logged=0)], []), [
+            "request 1: its call says that it did not write the usage line of 1 of its 1 attempts"])
+        # A request that was answered at its second attempt and has one line, the failed attempt's: it did not
+        # end as that line did. And one that has the answer's line: the numbers of its other attempt are missing.
+        told = ["request 1: its call says that it did not write the usage line of 1 of its 2 attempts"]
+        self.assertEqual(lacking([request(attempts=2, logged=1)], [usage(result="failed", error="overloaded")]), told)
+        self.assertEqual(lacking([request(attempts=2, logged=1)], [usage()]), told)
+        # How such a request ended is its own line's word.
+        self.assertEqual(lacking([request(attempts=2, logged=1, failure="limit")],
+                                 [usage(result="limit", error="max-tokens")]),
+                         [told[0] + ", and it ended with limit"])
+        # A line that the call says it wrote and that is not there is told beside it, and so is an estimate of a
+        # line that is there.
+        for line in (usage(), usage(result="failed", error="overloaded")):
+            self.assertEqual(lacking([request(attempts=3, logged=2)], [line]), [
+                "request 1: its call says that it did not write the usage line of 1 of its 3 attempts",
+                "request 1 has 1 usage lines in its time and wrote 2"])
+        self.assertEqual(lacking([request(attempts=2, logged=1)], [usage(estimate=1999)]), told + [
+            "request 1: the usage line's estimate is not the one that was computed again"])
 
     def test_a_run_that_also_consolidates_lacks_nothing_that_the_package_does_not_give_those_requests(self):
         # The package counts a merge request and no state request, and gives a consolidation's usage lines no
@@ -566,8 +614,58 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(measure.lacking({"requests": found, "layer": {"turns_left_to_curate": 0}}),
                          ["request 2 has no count"])
 
+    def test_a_reading_tells_a_line_that_is_no_json_once_however_many_runs_name_it(self):
+        home = SimpleNamespace(record=lambda: {}, layer=lambda: layer(), told={})
+        # A run names what its logs hold when it is read: the same broken line again in each run after it.
+        first = dict(run([sized(), request()], [usage()]), **{measure.BROKEN: {"usage": 0, "failures": 1}})
+        second = dict(run([], []), **{measure.BROKEN: {"usage": 0, "failures": 1, "requests": 0}})
+        found = measure.reading(home, [first, second])
+        self.assertEqual(found["lines_left_out_because_they_are_no_json"], {"usage": 0, "failures": 1, "requests": 0})
+        self.assertEqual(measure.lacking(found), ["a log has lines that are no JSON"])
+        # The next reading of the home, whose runs name that line still, has none of its own.
+        later = dict(run([sized(), request(second=3)], [usage(second=3)]),
+                     **{measure.BROKEN: {"usage": 0, "failures": 1, "requests": 0}})
+        found = measure.reading(home, [later])
+        self.assertNotIn("lines_left_out_because_they_are_no_json", found)
+        self.assertEqual(measure.lacking(found), [])
+        # A line that broke since then is this reading's, and only that one.
+        more = dict(run([sized(), request(second=5)], [usage(second=5)]),
+                    **{measure.BROKEN: {"usage": 2, "failures": 1, "requests": 0}})
+        self.assertEqual(measure.reading(home, [more])["lines_left_out_because_they_are_no_json"],
+                         {"usage": 2, "failures": 0, "requests": 0})
+        # Another home's lines are its own.
+        other = SimpleNamespace(record=lambda: {}, layer=lambda: layer(), told={})
+        self.assertEqual(measure.reading(other, [more])["lines_left_out_because_they_are_no_json"],
+                         {"usage": 2, "failures": 1, "requests": 0})
+
+    def test_a_reading_says_when_the_curation_record_may_have_dropped_attempts_of_its_runs(self):
+        from memory_lib import curation_worker
+
+        def attempt(second):
+            return {"at": moment(second), "kind": "curate", "result": "ok", "applied": 1, "dropped": 1}
+
+        def home(count):
+            # The record keeps its latest attempts first, and no more than the package's number of them.
+            recent = [attempt(second) for second in range(count, 0, -1)][:curation_worker.RECENT]
+            return SimpleNamespace(record=lambda: {"recent": recent}, layer=lambda: layer(), told={})
+
+        runs = [run([sized(), request()], [usage()])]
+        full = curation_worker.RECENT
+        # Fewer attempts than the record keeps: all of them are there.
+        found = measure.reading(home(full - 1), runs)
+        self.assertEqual(len(found["attempts"]), full - 1)
+        self.assertNotIn("older_attempts_may_be_missing", found)
+        # A full record whose attempts are all of these runs may have let earlier ones of them go.
+        found = measure.reading(home(full), runs)
+        self.assertEqual((len(found["attempts"]), found["older_attempts_may_be_missing"]), (full, True))
+        self.assertTrue(measure.reading(home(full + 3), runs)["older_attempts_may_be_missing"])
+        # A full record with an attempt from before these runs has every attempt of them.
+        found = measure.reading(home(full), runs, moment(2))
+        self.assertEqual(len(found["attempts"]), full - 1)
+        self.assertNotIn("older_attempts_may_be_missing", found)
+
     def test_a_reading_counts_the_usage_lines_that_no_written_request_took_and_tells_each_index_step(self):
-        home = SimpleNamespace(record=lambda: {}, layer=lambda: layer())
+        home = SimpleNamespace(record=lambda: {}, layer=lambda: layer(), told={})
         # The second run's worker was ended while its request was under way: a usage line and no request's line.
         runs = [run([sized(), request(), index("key")], [usage(), usage(call="count-tokens", instructions=None)]),
                 run([index(embedded=2)], [usage(second=7), usage(call="embed-items", instructions=None, second=8)])]
@@ -627,26 +725,56 @@ class ReadingTests(unittest.TestCase):
         found = measure.line(points)
         self.assertEqual((found["documents"], found["tokens_per_ascii_character"], found["tokens_per_other_character"],
                           found["constant"], found["largest_error_tokens"]), (4, 0.3, 1.5, 400.0, 0.0))
+        # By hand: the sums of squares 2,067,500 and 530,000 and the sum of products -455,000.
+        self.assertEqual(found["correlation_of_the_two_numbers_of_characters"], -0.435)
         self.assertIsNone(measure.line(points[:2]))
+        # Three documents fix the three numbers exactly, whatever their counts: there is no error to read.
+        self.assertIsNone(measure.line(points[:3]))
+        self.assertIsNone(measure.line([(1000, 0, 700), (0, 1000, 1900), (2000, 500, 12345)]))
         # Documents whose other characters are in step with their ASCII characters give no line.
-        self.assertIsNone(measure.line([(1000, 100, 500), (2000, 200, 900), (3000, 300, 1300)]))
+        self.assertIsNone(measure.line([(1000, 100, 500), (2000, 200, 900), (3000, 300, 1300), (4000, 400, 1700)]))
+        # Documents that are nearly in step give a line that tells little of each kind of character apart: the
+        # correlation of their two numbers says so beside it.
+        near = [(1000, 100, 500), (2000, 201, 900), (3000, 299, 1300), (4000, 402, 1700)]
+        self.assertGreater(measure.line(near)["correlation_of_the_two_numbers_of_characters"], 0.99)
 
-    def test_each_effort_sums_its_measured_runs_only(self):
-        runs = {"a": measured_run(), "b": measured_run(), "c": measured_run("xhigh"),
-                "d": dict(measured_run(), outcome="partial"), "e": {"effort": "high", "outcome": "crash"}}
-        found = measure.by_effort(runs)
+    def test_each_effort_sums_the_runs_that_were_measured_at_every_effort(self):
+        # A request that was sent twice: its tokens are those of the attempt that was answered, its cost of both.
+        twice = measure.joined([count(), sized(), request(attempts=2)],
+                               [usage(result="failed", error="overloaded", cost=0.0005), usage()])[0]
+        runs = {"one-high-1": measured_run(), "one-xhigh-1": measured_run("xhigh"),
+                "two-high-1": measured_run(sample="two", requests=[twice], usd=0.0015,
+                                           older_attempts_may_be_missing=True),
+                "two-xhigh-1": measured_run("xhigh", sample="two"),
+                # The second run of `one` was measured at high and not at xhigh, and `three` the other way round.
+                "one-high-2": measured_run(repeat=2),
+                "one-xhigh-2": dict(measured_run("xhigh", repeat=2), outcome="partial"),
+                "three-high-1": {"sample": "three", "effort": "high", "repeat": 1, "outcome": "crash"},
+                "three-xhigh-1": measured_run("xhigh", sample="three")}
+        found = measure.by_effort(runs, ["high", "xhigh"])
         self.assertEqual(sorted(found), ["high", "xhigh"])
+        # Each effort's sums are of the same two runs, `one` and `two` of the first time.
+        self.assertEqual({level: (found[level]["runs"], found[level]["measured_runs_left_out"]) for level in found},
+                         {"high": (2, 1), "xhigh": (2, 1)})
         self.assertEqual({key: found["high"][key] for key in (
-            "runs", "requests", "requests_by_kind", "input", "output", "usd", "request_ms", "items", "state_lines",
-            "changes", "current_items_by_kind")},
-            {"runs": 2, "requests": 2, "requests_by_kind": {"curate": 2}, "input": 6000, "output": 800, "usd": 0.002,
-             "request_ms": 2000, "items": 4, "state_lines": 2, "changes": {},
-             "current_items_by_kind": {"decision": 2, "fact": 2}})
+            "runs", "requests", "usage_lines", "requests_by_kind", "input", "output", "usd", "request_ms", "items",
+            "state_lines", "changes", "current_items_by_kind", "runs_whose_older_attempts_may_be_missing")},
+            {"runs": 2, "requests": 2, "usage_lines": 3, "requests_by_kind": {"curate": 2}, "input": 6000,
+             "output": 800, "usd": 0.0025, "request_ms": 2000, "items": 4, "state_lines": 2, "changes": {},
+             "current_items_by_kind": {"decision": 2, "fact": 2}, "runs_whose_older_attempts_may_be_missing": 1})
+        self.assertEqual((found["xhigh"]["usage_lines"], found["xhigh"]["usd"],
+                          found["xhigh"]["runs_whose_older_attempts_may_be_missing"]), (2, 0.002, 0))
         self.assertEqual(found["high"]["first_ms"], {"min": 900, "median": 900, "max": 900, "values": 2})
         self.assertEqual({key: found["high"][key] for key in ("applied", "dropped", "dropped_by_reason",
                                                               "line_edits_dropped_by_reason")},
                          {"applied": 4, "dropped": 2, "dropped_by_reason": {"quote": 2},
                           "line_edits_dropped_by_reason": {"cite": 4}})
+        # An effort at which nothing was measured yet leaves every run out: nothing is summed over other samples.
+        found = measure.by_effort(runs, ["medium", "high", "xhigh"])
+        self.assertEqual({level: (value["runs"], value["measured_runs_left_out"], value["requests"], value["usd"],
+                                  value["first_ms"]) for level, value in found.items()},
+                         {"high": (0, 3, 0, 0.0, None), "xhigh": (0, 3, 0, 0.0, None)})
+        self.assertEqual(measure.by_effort({}, ["high"]), {})
 
     def test_the_curation_record_s_attempts_are_kept_in_the_package_s_names_from_a_time_on(self):
         record = {"recent": [
@@ -660,6 +788,27 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(len(measure.attempts(record, "2026-11-13T00:00:02.000Z")), 1)
         self.assertEqual(measure.attempts({}), [])
         self.assertRegex(measure.moment(), r"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z\Z")
+
+    def test_the_settings_that_the_script_names_are_the_package_s_own(self):
+        from memory_lib import base, configuration
+        values = configuration.prepare({}).values
+        self.assertEqual(measure.DEFAULTS, {"effort": values["models"]["effort"], "dims": values["models"]["dims"],
+                                            "skip": values["recall"]["skip"]})
+        # The package takes each effort, each end of the lengths and the threshold, and nothing beyond them.
+        for document in [{"models": {"effort": level}} for level in measure.EFFORTS] + [
+                {"models": {"dims": measure.SHORTEST}}, {"models": {"dims": measure.LONGEST}},
+                {"recall": {"threshold": measure.THRESHOLD}}]:
+            configuration.validate(document)
+        for document in ({"models": {"effort": "none"}}, {"models": {"dims": measure.SHORTEST - 1}},
+                         {"models": {"dims": measure.LONGEST + 1}},
+                         {"recall": {"threshold": measure.THRESHOLD + 0.01}}):
+            with self.subTest(document), self.assertRaises(configuration.ConfigurationInvalid):
+                configuration.validate(document)
+        self.assertEqual(set(measure.MEASURED) - set(measure.EFFORTS), set())
+        self.assertTrue(all(measure.SHORTEST <= dims <= measure.LONGEST for dims in measure.LENGTHS))
+        # A time of the check is the package's own, so that the two are in order as texts.
+        with mock.patch.object(base, "utc_time", lambda: "THE PACKAGE'S TIME"):
+            self.assertEqual(measure.moment(), "THE PACKAGE'S TIME")
 
     def test_a_language_is_korean_with_a_hangul_letter_english_with_latin_ones_only_else_none(self):
         self.assertEqual([measure.language(text) for text in ("응", "ㅇㅋ go", "go on", "1234 !!", "", "日本語")],
@@ -816,23 +965,24 @@ class ReadingTests(unittest.TestCase):
 
         return {"rebuilds": [{"dims": 1536, "attempts": 3, "failed_attempts": {"overloaded": 1}, "input": 90,
                               "usd": 0.000002, "ms": 300}],
-                "stages": [{"prompts": [], "recorded": {"dims": 512, "prompts": [
-                    taken(1, 300.0, "no-index"), taken(2, 280.0, "no-index")]}}, {"prompts": [
-                        {"512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
+                # The first sample's prompts were not asked: there was no item yet to rank them against.
+                "stages": [{"sample": "a", "prompts": [], "recorded": {"dims": 512, "prompts": [
+                    taken(1, 300.0, "no-index"), taken(2, 280.0, "no-index")]}}, {"sample": "b", "prompts": [
+                        {"turn": 1, "512": asked("below", 400.0, [(1, 0.5), (2, 0.4), (3, 0.3), (4, 0.2), (5, 0.1)]),
                          "1536": asked("below", 500.0, [(1, 0.45), (3, 0.35)], turn=2)},
-                        {"512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
+                        {"turn": 2, "512": asked("late", 950.0, [(2, 0.6)], "with 30 seconds", None),
                          "1536": asked("below", 450.0, [(4, 0.7), (2, 0.2)], turn=2)},
                         # A prompt that recall skipped, with what it ranked for it without the skip.
-                        {"512": dict(asked("short", 200.0, [], "no", None),
-                                     without_the_skip=unskipped("below", 420.0, [(3, 0.25), (1, 0.2)])),
+                        {"turn": 3, "512": dict(asked("short", 200.0, [], "no", None),
+                                                without_the_skip=unskipped("below", 420.0, [(3, 0.25), (1, 0.2)])),
                          "1536": dict(asked("short", 210.0, [], "no", None, turn=2),
                                       without_the_skip=unskipped("late", 930.0, [(3, 0.21)], "with 30 seconds"))}],
                     "recorded": {"dims": 1536, "prompts": [
                         taken(1, 700.0, "below", 110), taken(2, 990.0, "late", 800), taken(3, 250.0, "short")]}},
                     # A stage that ended before its turns were recorded; it began at the length that the stage
                     # before it had left, and nothing was ranked at its second.
-                    {"prompts": [{"1536": asked("failed", 480.0, [], "no", 90),
-                                  "512": asked("late", 900.0, [], "no", None, turn=2)}]}]}
+                    {"sample": "c", "prompts": [{"turn": 1, "1536": asked("failed", 480.0, [], "no", 90),
+                                                 "512": asked("late", 900.0, [], "no", None, turn=2)}]}]}
 
     def test_the_recall_part_is_read_at_each_length(self):
         entry = self.recall_entry()
@@ -847,12 +997,25 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(found["recorded"], {
             "prompts": 2, "outcomes": {"no-index": 2},
             "hook_ms": {"min": 280.0, "median": 290.0, "max": 300.0, "values": 2, "p95": 300.0},
-            "hook_ms_of_ranked_in_time": None, "embed_ms": None})
+            "hook_ms_of_ranked_in_time": None, "embed_ms": None, "embedded_after_the_same_text_was_asked": 0})
+        # The second sample's turns were recorded at the length at which its prompts had been asked a moment
+        # before: both embedding requests of the recorded hooks sent a text again, and the third prompt, which
+        # recall skipped, sent none.
         self.assertEqual(measure.by_length(entry, 1536)["recorded"], {
             "prompts": 3, "outcomes": {"below": 1, "late": 1, "short": 1},
             "hook_ms": {"min": 250.0, "median": 700.0, "max": 990.0, "values": 3, "p95": 990.0},
             "hook_ms_of_ranked_in_time": {"min": 700.0, "median": 700.0, "max": 700.0, "values": 1},
-            "embed_ms": {"min": 110, "median": 455.0, "max": 800, "values": 2}})
+            "embed_ms": {"min": 110, "median": 455.0, "max": 800, "values": 2},
+            "embedded_after_the_same_text_was_asked": 2})
+        # A recorded prompt that was not asked at that length before, as one of a sample without items before
+        # it, sends its text for the first time.
+        fresh = {"rebuilds": [], "stages": [{"sample": "a", "prompts": [], "recorded": {"dims": 512, "prompts": [
+            {"turn": 1, "host": "claude", "ms": 600.0, "outcome": "below", "embed_ms": 300}]}},
+            {"sample": "b", "prompts": [{"turn": 1, "1536": entry["stages"][1]["prompts"][0]["1536"]}],
+             "recorded": {"dims": 512, "prompts": [
+                 {"turn": 1, "host": "claude", "ms": 500.0, "outcome": "below", "embed_ms": 200}]}}]}
+        self.assertEqual(measure.by_length(fresh, 512)["recorded"]["embedded_after_the_same_text_was_asked"], 0)
+        self.assertEqual(measure.by_length(fresh, 512)["recorded"]["embed_ms"]["values"], 2)
         self.assertEqual(found["embed_ms"], {"min": 100, "median": 100, "max": 100, "values": 1})
         # A prompt's text goes out once for each length, and what was sent a moment before may come back sooner:
         # the readings of the length that was asked first are apart from those of a length asked after it.
@@ -927,6 +1090,10 @@ class ReadingTests(unittest.TestCase):
                      "A MEMORY KEY OF THIS ENVIRONMENT WAS FOUND", "could not be read", "ended"):
             self.assertIn(part, text)
         self.assertNotIn("skipped_prompts", text)
+        self.assertNotIn("or more", text)
+        # A run whose curation record may have dropped attempts of it has the least number that it can be.
+        report["runs"]["one-high-1"]["older_attempts_may_be_missing"] = True
+        self.assertIn("changes dropped: 1 or more", "\n".join(measure.summary(report)))
         # A recall part that was measured has no reason to give.
         report["recall"] = {"outcome": "measured", "by_dims": {}, "between_the_lengths": []}
         self.assertIn("recall: measured", measure.summary(report))
@@ -1013,8 +1180,8 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(check.steps(), [("recall",)])
 
     def test_the_sums_are_made_after_a_step_that_was_interrupted_too(self):
-        check, _ = self.check(report={"runs": {}}, spent=0.0, real=False, options=SimpleNamespace(limit=1.0),
-                              server=SimpleNamespace(efforts=["high"]))
+        check, _ = self.check(report={"runs": {}, "efforts": ["high"]}, spent=0.0, real=False,
+                              options=SimpleNamespace(limit=1.0), server=SimpleNamespace(efforts=["high"]))
 
         def interrupted(check, entry, sample, level, label):
             entry.update(requests=measured_run()["requests"])  # What the run had made when it was interrupted.
@@ -1027,7 +1194,8 @@ class CheckTests(unittest.TestCase):
         self.assertEqual((entry["outcome"], entry["why"]), ("not run", "interrupted during this run"))
         self.assertEqual((check.report["estimates"]["requests"], check.report["efforts_that_the_local_server_got"]),
                          (1, {"high": 1}))
-        self.assertIn("by_effort", check.report)
+        # The run was not measured, so no effort has a sum of it.
+        self.assertEqual(check.report["by_effort"], {})
 
     def test_a_step_that_breaks_or_is_stopped_is_noted_and_an_interrupt_is_raised_again(self):
         check, _ = self.check(spent=0.0, options=SimpleNamespace(limit=1.0))
@@ -1069,9 +1237,10 @@ class CheckTests(unittest.TestCase):
 
         def ask(host, prompt, seconds=None):
             asked.append(seconds)
-            late = {"ms": 950.0, "outcome": "late", "candidates": [], "embed_ms": 800, "embed_error": "timeout"}
+            late = {"ms": 950.0, "outcome": "late", "candidates": [], "embed_ms": 800, "embed_error": "timeout",
+                    "failures": []}
             ranked = {"ms": 1500.0, "outcome": "below", "candidates": [{"item": "i_1", "score": 0.4}],
-                      "embed_ms": 1200, "embed_error": None}
+                      "embed_ms": 1200, "embed_error": None, "failures": []}
             return late if seconds is None else ranked
 
         home.ask = ask
@@ -1082,7 +1251,8 @@ class CheckTests(unittest.TestCase):
                                  "candidates": [{"item": "i_1", "score": 0.4}]})
         # Where the hook with more time ranks nothing either, nothing was scored with more time.
         del asked[:]
-        late = {"ms": 950.0, "outcome": "late", "candidates": [], "embed_ms": None, "embed_error": None}
+        late = {"ms": 950.0, "outcome": "late", "candidates": [], "embed_ms": None, "embed_error": None,
+                "failures": []}
         home.ask = lambda host, prompt, seconds=None: asked.append(seconds) or dict(
             late, outcome="late" if seconds is None else "no-index")
         self.assertEqual(home.recalled("claude", "prompt"), {
@@ -1093,16 +1263,34 @@ class CheckTests(unittest.TestCase):
         # scored nowhere. None of these reads the home's configuration, which this home does not have.
         del asked[:]
         ranked = {"ms": 400.0, "outcome": "below", "candidates": [{"item": "i_2", "score": 0.3}], "embed_ms": 90,
-                  "embed_error": None}
+                  "embed_error": None, "failures": []}
         home.ask = lambda host, prompt, seconds=None: asked.append(seconds) or ranked
         self.assertEqual(home.recalled("claude", "prompt"), {
             "outcome": "below", "ms": 400.0, "embed_ms": 90, "scored": "in the hook's time",
             "candidates": [{"item": "i_2", "score": 0.3}]})
         self.assertEqual(asked, [None])
         home.ask = lambda host, prompt, seconds=None: {"ms": 300.0, "outcome": "command", "candidates": [],
-                                                       "embed_ms": None, "embed_error": None}
+                                                       "embed_ms": None, "embed_error": None, "failures": []}
         self.assertEqual(home.recalled("claude", "/status"), {"outcome": "command", "ms": 300.0, "embed_ms": None,
                                                               "scored": "no", "candidates": []})
+        # What either hook wrote to the failure log is beside its reading, in the package's own names: where a
+        # recall failed short of its embedding request, no other file says why.
+        first = [{"hook": "prompt", "step": "recall", "error": "lock-busy"}]
+        more = [{"hook": "prompt", "step": "recall", "error": "timeout"}]
+        home.ask = lambda host, prompt, seconds=None: dict(
+            late, outcome="failed", failures=first if seconds is None else more)
+        self.assertEqual(home.recalled("claude", "prompt"), {
+            "outcome": "failed", "ms": 950.0, "embed_ms": None, "scored": "no", "outcome_with_more_time": "failed",
+            "candidates": [], "failures": first, "failures_with_more_time": more})
+        # Each is given where its hook wrote a line: here the hook in its own time did and the other did not.
+        home.ask = lambda host, prompt, seconds=None: dict(
+            late, outcome="failed" if seconds is None else "no-index", failures=first if seconds is None else [])
+        found = home.recalled("claude", "prompt")
+        self.assertEqual((found["failures"], "failures_with_more_time" in found), (first, False))
+        # And a hook that ranked the prompt may have written one too, as when a line of its usage was lost.
+        lost = [{"hook": "prompt", "step": "embed", "error": "lock-busy"}]
+        home.ask = lambda host, prompt, seconds=None: dict(ranked, failures=lost)
+        self.assertEqual(home.recalled("claude", "prompt")["failures"], lost)
 
     def skipping(self, document, answers):
         """A home whose hook is not run: it skips a prompt as short while `recall.skip` is not 0, and then gives
@@ -1112,7 +1300,8 @@ class CheckTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, str(home.store), True)
         home.configure(document)
         asked, left = [], list(answers)
-        short = {"ms": 190.0, "outcome": "short", "candidates": [], "embed_ms": None, "embed_error": None}
+        short = {"ms": 190.0, "outcome": "short", "candidates": [], "embed_ms": None, "embed_error": None,
+                 "failures": []}
 
         def ask(host, prompt, seconds=None):
             skip = home.configuration().get("recall", {}).get("skip")
@@ -1129,8 +1318,9 @@ class CheckTests(unittest.TestCase):
 
     def test_a_prompt_that_recall_skipped_as_short_is_read_once_more_without_the_skip(self):
         ranked = {"ms": 610.0, "outcome": "below", "candidates": [{"item": "i_3", "score": 0.25}], "embed_ms": 410,
-                  "embed_error": None}
-        late = {"ms": 990.0, "outcome": "late", "candidates": [], "embed_ms": 800, "embed_error": "timeout"}
+                  "embed_error": None, "failures": []}
+        late = {"ms": 990.0, "outcome": "late", "candidates": [], "embed_ms": 800, "embed_error": "timeout",
+                "failures": []}
         document = {"recall": {"threshold": 2}, "projects": {"demo": {"enabled": True}}}
         home, asked = self.skipping(document, [ranked])
         self.assertEqual(home.recalled("codex", "응"), {
@@ -1201,7 +1391,7 @@ class CheckTests(unittest.TestCase):
         """A home whose prompt hook is not run: what it was started with, and what was then read."""
         home = measure.Home.__new__(measure.Home)
         home.check, home.home, home.demo = check, base, base
-        seen = SimpleNamespace(started=[], read=[], sessions=[])
+        seen = SimpleNamespace(started=[], read=[], sessions=[], failures=[])
 
         def run(args, env, cwd=None, stdin="", timeout=180, line=None):
             seen.started.append((args, env, json.loads(stdin)))
@@ -1210,7 +1400,8 @@ class CheckTests(unittest.TestCase):
 
         def logged(found, provider, names):
             seen.read.append((provider, names))
-            found.update(usage=[usage(call="embed-items"), usage(call="embed-prompt", total_ms=140)], failures=[])
+            found.update(usage=[usage(call="embed-items"), usage(call="embed-prompt", total_ms=140)],
+                         failures=list(seen.failures))
 
         def injected(host, session):
             seen.sessions.append((host, session))
@@ -1228,7 +1419,7 @@ class CheckTests(unittest.TestCase):
             more = home.ask("claude", "PROMPT-TEXT", 30)
         self.assertEqual(found, {"ms": 250.5, "outcome": "below", "items": 0,
                                  "candidates": [{"item": "i_1", "score": 0.4}], "embed_ms": 140,
-                                 "embed_result": "ok", "embed_error": None})
+                                 "embed_result": "ok", "embed_error": None, "failures": []})
         self.assertEqual(more, found)
         (args, env, data), (again, more_env, _) = seen.started
         self.assertEqual(args[1:], [str(Path("/staged") / "scripts/hook.py"), "prompt"])
@@ -1240,6 +1431,14 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(seen.read, [(True, ("usage", "failures"))] * 2)
         self.assertEqual(seen.sessions[0], ("codex", data["session_id"]))
         self.assertEqual(len({session for _, session in seen.sessions}), 2)
+        # What the hook wrote to the failure log is given in the package's names for the hook, the step and the
+        # kind of error, without the line's time or anything of the home; a name that a line lacks is left out.
+        seen.failures.extend([{"at": moment(1), "hook": "prompt", "host": "codex", "project": "p_1", "log": "l_1",
+                               "step": "recall", "error": "timeout"},
+                              {"at": moment(2), "step": "embed", "error": "lock-busy", "count": 2}])
+        with patched:
+            self.assertEqual(home.ask("codex", "PROMPT-TEXT")["failures"], [
+                {"hook": "prompt", "step": "recall", "error": "timeout"}, {"step": "embed", "error": "lock-busy"}])
 
     def test_a_recorded_turn_has_its_hook_s_time_its_own_line_s_outcome_and_its_usage_lines(self):
         home = measure.Home.__new__(measure.Home)
@@ -1289,7 +1488,7 @@ class CheckTests(unittest.TestCase):
                                 keys={}, options=SimpleNamespace(limit=1.0), server=SimpleNamespace(efforts=[]),
                                 samples=samples)
         entry, seen = {"outcome": "not run"}, []
-        check.out, check.report = out, {"runs": {}, "recall": entry}
+        check.out, check.report = out, {"runs": {}, "efforts": [], "recall": entry}
 
         def on_disk(where):
             report = json.loads((out / "report.json").read_text(encoding="utf-8"))["recall"]
@@ -1299,7 +1498,7 @@ class CheckTests(unittest.TestCase):
                          report["by_dims"]["512"]["prompts"], report["by_dims"]["512"]["recorded"]["prompts"]))
 
         class Replayed:
-            home, dims, items = out, 512, {}
+            home, dims, items, told = out, 512, {}, {}
 
             def setting(self, section, name, value):
                 pass
@@ -1435,6 +1634,87 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(report["by_dims"]["512"]["prompts"], 1)
         texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
         self.assertEqual([row["sample"] for row in texts["prompts"]], ["b"])
+        # The part says itself how it ended: two of its three samples were begun, and what it read of them is
+        # judged as a whole part's readings are.
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "the part ended after 2 of 3 samples were begun: it was interrupted"]))
+
+    def test_an_interrupted_recall_part_keeps_its_own_word_on_how_it_ended_once_a_sample_was_begun(self):
+        def interrupted():
+            raise KeyboardInterrupt()
+
+        samples = [dict(SAMPLE, id=name) for name in ("a", "b")]
+        check, entry, _, _ = self.replayed(samples, curate=interrupted)
+        with self.assertRaises(KeyboardInterrupt):
+            check.guard(entry, lambda: measure.replay(check, entry))
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "the part ended after 1 of 2 samples were begun: it was interrupted"]))
+        self.assertEqual([(stage["sample"], "curation" in stage, len(stage["recorded"]["prompts"]))
+                          for stage in entry["stages"]], [("a", False, 1)])
+        # Before any sample was begun the part was not run, as an interrupted step of any other part.
+        check, entry, _, _ = self.replayed(samples, current=interrupted)
+        with self.assertRaises(KeyboardInterrupt):
+            check.guard(entry, lambda: measure.replay(check, entry))
+        self.assertEqual((entry["outcome"], entry["why"], entry["stages"]),
+                         ("not run", "interrupted during this run", []))
+
+    def test_a_recall_part_that_stops_after_a_sample_was_begun_is_partial_with_what_it_read(self):
+        samples = [dict(SAMPLE, id=name) for name in ("a", "b", "c")]
+        check, entry, _, out = self.replayed(samples)
+        looks = []
+
+        def afford():  # The limit of the cost is reached when the part comes to its third sample.
+            looks.append(1)
+            if len(looks) == 3:
+                raise real.Stopped("the cost so far has reached the limit")
+
+        check.afford = afford
+        measure.replay(check, entry)
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "the part ended after 2 of 3 samples were begun: the cost so far has reached the limit"]))
+        # What it read of the two samples is whole and in the sums and the texts, as in a part that ran on.
+        self.assertEqual([(stage["sample"], "curation" in stage) for stage in entry["stages"]],
+                         [("a", True), ("b", True)])
+        self.assertEqual([entry["by_dims"][dims]["prompts"] for dims in ("512", "1536")], [1, 1])
+        self.assertEqual(entry["between_the_lengths"][0]["prompts_ranked_at_both"], 1)
+        texts = json.loads((out / "recall-texts.json").read_text(encoding="utf-8"))
+        self.assertEqual([row["sample"] for row in texts["prompts"]], ["b"])
+
+        # An index that does not get whole ends the part in the same way, in the sample that it was in: that
+        # one's prompts were asked at the first length only, and it has neither recorded turns nor a curation.
+        def vectors(dims, runs):
+            if dims == 1536:
+                raise real.Stopped("the index is not whole after 5 more runs of the worker")
+
+        check, entry, _, _ = self.replayed(samples, vectors=vectors)
+        measure.replay(check, entry)
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "the part ended after 2 of 3 samples were begun: the index is not whole after 5 more runs of the "
+            "worker"]))
+        self.assertEqual([(stage["sample"], "recorded" in stage, "curation" in stage) for stage in entry["stages"]],
+                         [("a", True, True), ("b", False, False)])
+        self.assertEqual([entry["by_dims"][dims]["prompts"] for dims in ("512", "1536")], [1, 0])
+        # The reasons that a whole part would give are given beside it.
+        readings = [{"outcome": "failed", "ms": 300.0, "embed_ms": None, "scored": "no", "candidates": [],
+                     "outcome_with_more_time": "failed"}] * 2
+        check, entry, _, _ = self.replayed(samples, recalled=lambda host, prompt: readings.pop(0))
+        check.afford = lambda: len(entry["stages"]) < 2 or throw(real.Stopped("the limit"))
+        measure.replay(check, entry)
+        self.assertEqual((entry["outcome"], entry["why"]), ("partial", [
+            "the part ended after 2 of 3 samples were begun: the limit",
+            "at 512 numbers a prompt's recall ended with failed",
+            "at 1536 numbers a prompt's recall ended with failed"]))
+
+    def test_a_recall_part_that_stops_before_any_sample_was_begun_was_not_run(self):
+        check, entry, seen, out = self.replayed([dict(SAMPLE, id=name) for name in ("a", "b")])
+        check.afford = lambda: throw(real.Stopped("the cost so far has reached the limit"))
+        with self.assertRaisesRegex(real.Stopped, "has reached the limit"):
+            measure.replay(check, entry)
+        # Nothing of it is judged: the step that ran it notes why it was not run. The files have its empty sums.
+        self.assertEqual((entry["outcome"], entry["stages"], "why" in entry, seen), ("not run", [], False, []))
+        self.assertEqual(entry["by_dims"]["512"]["prompts"], 0)
+        self.assertEqual(json.loads((out / "recall-texts.json").read_text(encoding="utf-8")),
+                         {"prompts": [], "items": {}})
 
     def test_the_local_server_counts_by_the_request_s_size_and_notes_each_effort(self):
         server = measure.Counting()
@@ -1668,7 +1948,13 @@ class SelfTestRun(unittest.TestCase):
         self.assertEqual(self.report["runs"]["made-up-en-medium-1"]["requests"][0]["changes"], {"add decision": 1})
         # The two samples at two efforts, and the recall part's two curations at the default.
         self.assertEqual(self.report["efforts_that_the_local_server_got"], {"medium": 2, "xhigh": 4})
-        self.assertEqual(self.report["by_effort"]["medium"]["runs"], 2)
+        self.assertEqual({entry["repeat"] for entry in self.report["runs"].values()}, {1})
+        for level in ("medium", "xhigh"):
+            with self.subTest(level):
+                found = self.report["by_effort"][level]
+                self.assertEqual((found["runs"], found["measured_runs_left_out"], found["requests"],
+                                  found["usage_lines"], found["runs_whose_older_attempts_may_be_missing"]),
+                                 (2, 0, 2, 2, 0))
         self.assertEqual(self.report["estimates"]["documents_counted"], self.report["estimates"]["requests"])
 
     def test_the_share_that_recall_skips_is_that_of_the_made_up_prompts(self):

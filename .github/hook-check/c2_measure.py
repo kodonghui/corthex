@@ -67,19 +67,21 @@ The parts, of which `efforts`, and `skip` when FILE is given, run unless
   that ended late are below an installed hook's. When the sample's turns are
   then recorded, each prompt hook runs as an installed one, with the embedding
   key, at the length that the index has by then: its time and how its recall
-  ended are given apart, as `recorded`, for the one length of each sample. A
-  prompt whose recall ended late or failed is given once more to
-  `c2_measure_hook.py`, the same hook with 30 seconds: its scores are
-  recorded as such and its time is not. A prompt that recall skipped as
-  shorter than `recall.skip` is given once more with `recall.skip` 0, and
-  what recall ranks for it then is recorded apart, as `without_the_skip`:
-  TASK-048 judges from it what the skip keeps from a session. A prompt
-  that recall skipped as a command is not asked again. Between two lengths
-  every item is embedded again, which the report counts. An embedding
-  request that failed leaves its items without a vector until a later run
-  of the worker, so the worker is run again, five times at most, until its
-  index step says that every current item has one; the part stops where it
-  does not. It needs CORTHEX_MEMORY_OPENAI_API_KEY.
+  ended are given apart, as `recorded`, for the one length of each sample.
+  That length is the one at which the sample's prompts were asked last, a
+  moment before, so `recorded` times a text that is sent again, and the
+  report counts those. A prompt whose recall ended late or failed is given
+  once more to `c2_measure_hook.py`, the same hook with 30 seconds: its
+  scores are recorded as such and its time is not. A prompt that recall
+  skipped as shorter than `recall.skip` is given once more with
+  `recall.skip` 0, and what recall ranks for it then is recorded apart, as
+  `without_the_skip`: TASK-048 judges from it what the skip keeps from a
+  session. A prompt that recall skipped as a command is not asked again.
+  Between two lengths every item is embedded again, which the report counts.
+  An embedding request that failed leaves its items without a vector until a
+  later run of the worker, so the worker is run again, five times at most,
+  until its index step says that every current item has one; the part stops
+  where it does not. It needs CORTHEX_MEMORY_OPENAI_API_KEY.
 
 report.json holds numbers, the names of settings and the IDs that the package
 made: no text of a sample, of a prompt, of an item or of an answer. Those stay
@@ -91,12 +93,15 @@ script.
 
 Before each run the cost so far, by the usage log's lines, is compared with
 `--limit` (1 USD unless given); once it is reached no run starts. A run that
-has begun is finished. The report is written when the check begins, before
-each run and at its end, and in the recall part, with recall-texts.json,
-before each sample and before each curation. An interrupt ends the worker
-that is running, as in `c2_real.py`. A folder OUTDIR/c2-measure that is there
-already is replaced only when it is empty or its report says that it was a
-self-test's.
+has begun is finished. The recall part compares before each of its samples:
+one that stops after its first sample was begun, there or at an index that
+does not get whole, or that is interrupted then, is `partial`, and what it
+read until then is in the report. The report is written when the check
+begins, before each run and at its end, and in the recall part, with
+recall-texts.json, before each sample and before each curation. An interrupt
+ends the worker that is running, as in `c2_real.py`. A folder
+OUTDIR/c2-measure that is there already is replaced only when it is empty or
+its report says that it was a self-test's.
 
 `--self-test` is for the tests: the samples and prompts are made up in this
 file unless DIR or FILE is given, a local server stands in for both providers
@@ -116,7 +121,6 @@ the report gives; it does not change the exit.
 """
 import argparse
 from collections import Counter
-from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -141,11 +145,18 @@ import run as hookcheck  # noqa: E402
 WORKER = Path(__file__).resolve().with_name("c2_measure_worker.py")
 HOOK = Path(__file__).resolve().with_name("c2_measure_hook.py")
 PARTS = ("efforts", "skip", "recall")
-EFFORTS = ("low", "medium", "high", "xhigh", "max")  # What `models.effort` takes.
-MEASURED = ("medium", "high", "xhigh")               # TC-251's efforts.
-LENGTHS = (512, 1536)                                # TC-251's vector lengths.
-SHORTEST, LONGEST = 64, 3072                         # What `models.dims` takes.
-THRESHOLD = 2       # The highest `recall.threshold`: above any score, so every ranked prompt's line has candidates.
+# What the package's configuration takes, by its schema in the checkout, which a check stages as it is.
+SETTINGS = json.loads((c2_real.REPO / "plugins/corthex-memory/skills/corthex-memory/scripts/memory_lib"
+                       / "configuration.schema.json").read_text(encoding="utf-8"))["properties"]
+EFFORTS = tuple(SETTINGS["models"]["properties"]["effort"]["enum"])
+SHORTEST, LONGEST = (SETTINGS["models"]["properties"]["dims"][name] for name in ("minimum", "maximum"))
+DEFAULTS = {"effort": SETTINGS["models"]["properties"]["effort"]["default"],
+            "dims": SETTINGS["models"]["properties"]["dims"]["default"],
+            "skip": SETTINGS["recall"]["properties"]["skip"]["default"]}
+# The highest `recall.threshold`: above any score, so every ranked prompt's line has candidates.
+THRESHOLD = SETTINGS["recall"]["properties"]["threshold"]["maximum"]
+MEASURED = ("medium", "high", "xhigh")  # TC-251's efforts.
+LENGTHS = (512, 1536)                   # TC-251's vector lengths.
 MORE_SECONDS = 30   # The time of the hook that is asked again for a prompt whose recall ended late or failed.
 MORE = "with %d seconds" % MORE_SECONDS
 AGAIN = ("late", "failed", "no-line")
@@ -156,6 +167,7 @@ MODEL_CALLS = ("curate", "consolidate")  # The usage lines' calls of the request
 # request's list is chosen beside no turns, which keeps it far below the limit without a count.
 COUNTED = ("curate", "merge")
 INDEX = ("reason", "rebuilt", "written", "removed", "embedded", "requests", "failed")
+BROKEN = "lines left out because they are no JSON"  # A run's name for them, as `c2_real.Home.logged` gives it.
 SKIPS = (2, 4, 6, 8, 10, 12, 16)
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,39}\Z")
 LONE = re.compile(r"[\ud800-\udfff]")  # Half of a surrogate pair, as a text cut inside a character has one.
@@ -227,7 +239,9 @@ def valid(value, name):
         if not isinstance(value.get(key), str) or not value[key] or len(value[key]) > 40:
             raise wrong("its %s is not a text of 40 characters at most" % key)
     for number, turn in enumerate(value["turns"], 1):
-        if not isinstance(turn, dict) or turn.get("host") not in c2_hosts.HOST_NAMES:
+        # A host that is no text is no key of a table either: a list there would raise its own error.
+        if (not isinstance(turn, dict) or not isinstance(turn.get("host"), str) or
+                turn["host"] not in c2_hosts.HOST_NAMES):
             raise wrong("turn %d names no host that is claude or codex" % number)
         for key in ("prompt", "reply"):
             if not isinstance(turn.get(key), str) or not turn[key].strip():
@@ -315,6 +329,7 @@ class Home(c2_real.Home):
     def __init__(self, check, label):
         super().__init__(check, label)
         self.made = []
+        self.told = {}  # The lines of each log that are no JSON and that a reading of this home has told.
 
     def wrapper(self, cut):
         # This check cuts no answer short, so its wrapper takes no `cut`.
@@ -413,7 +428,9 @@ class Home(c2_real.Home):
     def ask(self, host, prompt, seconds=None):
         """Give a prompt to the staged prompt hook as the first of a new session; its time, outcome and candidates.
 
-        With `seconds` the hook runs through c2_measure_hook.py, with that much time.
+        With `seconds` the hook runs through c2_measure_hook.py, with that much time. What the hook wrote to the
+        failure log is read here, so that no run of the worker takes it for its own, and is given as `failures`,
+        in the package's own names: it is the only place that says why a recall failed short of its embedding.
         """
         check = self.check
         session = str(uuid.uuid4())
@@ -437,7 +454,8 @@ class Home(c2_real.Home):
                                for value in line.get("candidates") or []],
                 "embed_ms": sent[-1].get("total_ms") if sent else None,
                 "embed_result": sent[-1].get("result") if sent else None,
-                "embed_error": sent[-1].get("error") if sent else None}
+                "embed_error": sent[-1].get("error") if sent else None,
+                "failures": noted(logged["failures"])}
 
     def recalled(self, host, prompt):
         """A prompt's recall as `ranking` reads it, and what recall ranks for a prompt that it skipped as short.
@@ -458,19 +476,29 @@ class Home(c2_real.Home):
     def ranking(self, host, prompt):
         """A prompt's recall in the hook as it is and, when that ended late or failed, once more with more time.
 
-        `scored` says which of the two gave the candidates, or `no` where neither ranked anything.
+        `scored` says which of the two gave the candidates, or `no` where neither ranked anything. What either
+        hook wrote to the failure log is given beside it, where it wrote any.
         """
         first = self.ask(host, prompt)
         found = {"outcome": first["outcome"], "ms": first["ms"], "embed_ms": first["embed_ms"],
                  "scored": "in the hook's time" if first["candidates"] else "no", "candidates": first["candidates"]}
         if first["embed_error"]:
             found["embed_error"] = first["embed_error"]
+        if first["failures"]:
+            found["failures"] = first["failures"]
         if first["outcome"] in AGAIN:
             again = self.ask(host, prompt, MORE_SECONDS)
             found["outcome_with_more_time"] = again["outcome"]
+            if again["failures"]:
+                found["failures_with_more_time"] = again["failures"]
             if again["candidates"]:
                 found.update(scored=MORE, candidates=again["candidates"])
         return found
+
+
+def noted(rows):
+    """Some lines of the failure log in the package's own names: the hook, the step and the kind of error."""
+    return [{key: row.get(key) for key in ("hook", "step", "error") if row.get(key) is not None} for row in rows]
 
 
 def kept(run):
@@ -636,9 +664,10 @@ def results(usage):
 
 
 def moment():
-    """The time now as the package writes a time."""
-    now = datetime.now(timezone.utc)
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (now.microsecond // 1000)
+    """The time now as the staged package writes a time: its own function, so that a time of this check and
+    the times in the package's files are in order as texts."""
+    from memory_lib import base
+    return base.utc_time()
 
 
 def attempts(record, since=None):
@@ -653,32 +682,44 @@ def attempts(record, since=None):
 def reading(home, runs, since=None):
     """Some runs of a home's worker in numbers: each request with its estimates, its count and its usage lines,
     what the usage and failure logs and the curation record say of the runs, how each index step ended, and the
-    layer as it is now."""
+    layer as it is now.
+
+    The curation record keeps its latest attempts only. Where it is full and every attempt that it keeps is of
+    these runs, earlier attempts of these runs may have left it: `older_attempts_may_be_missing` says so, and
+    what is added up over the attempts, as the changes that were dropped, is then the least that it can be.
+    """
+    from memory_lib import curation_worker
+    record = home.record()
     usage = [row for run in runs for row in run["usage"]]
     requests = joined([row for run in runs for row in run["requests"]], usage)
     found = {"worker_runs": len(runs), "seconds": round(sum(run.get("seconds") or 0 for run in runs), 1),
              "requests": requests, "usage": results(usage),
              "usd": round(sum(row.get("cost") or 0 for row in usage), 6),
-             "failures": [{key: row.get(key) for key in ("hook", "step", "error") if row.get(key) is not None}
-                          for run in runs for row in run["failures"]],
+             "failures": noted(row for run in runs for row in run["failures"]),
              "index": [step for run in runs for step in kept(run)],
-             "attempts": attempts(home.record(), since), "layer": made(home.layer())}
+             "attempts": attempts(record, since), "layer": made(home.layer())}
+    kept_by_the_record = len(record.get("recent") or [])
+    if kept_by_the_record >= curation_worker.RECENT and len(found["attempts"]) == kept_by_the_record:
+        found["older_attempts_may_be_missing"] = True
     loose = sum(1 for row in usage if row.get("call") in MODEL_CALLS) - sum(row["usage_lines"] for row in requests)
     if loose:  # As of a request whose process was ended before its line could be written.
         found["usage_lines_of_no_request"] = loose
-    broken = Counter()
-    for run in runs:
-        broken.update(run.get("lines left out because they are no JSON") or {})
+    # A run names the lines that are no JSON as its logs have them when it is read, those of earlier runs and
+    # of the hooks too: this reading's are the ones that no reading of the home has told yet.
+    counts = next((run[BROKEN] for run in reversed(runs) if run.get(BROKEN)), {})
+    broken = {name: number - home.told.get(name, 0) for name, number in counts.items()}
+    home.told.update(counts)
     if any(broken.values()):
-        found["lines_left_out_because_they_are_no_json"] = dict(broken)
+        found["lines_left_out_because_they_are_no_json"] = broken
     return found
 
 
 def lacking(found):
     """Why a reading is not whole, as a list; empty when every request has what the package gives its kind.
 
-    That is an `ok` usage line, as many usage lines as its call wrote, for a curate and a merge request a count,
-    and for a curate request a usage line with the estimate that was computed again.
+    That is a usage line for each of its attempts, as many as its call says that it wrote, of which the last is
+    `ok`; for a curate and a merge request a count; and for a curate request a usage line with the estimate that
+    was computed again.
     """
     why = []
     if not found["requests"]:
@@ -690,12 +731,20 @@ def lacking(found):
         kind = c2_real.kind_of(row)
         if kind in COUNTED and row["count"] is None:
             why.append("request %d has no count" % number)
-        if row["result"] != "ok":
+        lost = c2_real.unlogged([row])
+        if lost:
+            # The package writes a usage line in one try and goes on without it when that fails
+            # (c2_real.unlogged). Which attempt's line is missing is in no file, so the last line that is there
+            # is not read as the answer's: the request's own line says how it ended.
+            why.append("request %d: its call says that it did not write the usage line of %d of its %d attempts%s"
+                       % (number, lost, row["attempts"],
+                          "" if row["failure"] is None else ", and it ended with %s" % row["failure"]))
+        elif row["result"] != "ok":
             why.append("request %d ended with %s" % (number, row["result"] or "no usage line"))
-        elif row.get("logged") is not None and row["usage_lines"] != row["logged"]:
+        if (lost or row["result"] == "ok") and row.get("logged") is not None and row["usage_lines"] != row["logged"]:
             why.append("request %d has %d usage lines in its time and wrote %d" % (number, row["usage_lines"],
                                                                                    row["logged"]))
-        if kind == "curate" and not row["estimate_agrees"]:
+        if kind == "curate" and not row["estimate_agrees"] and (row["usage_lines"] or not lost):
             why.append("request %d: the usage line's estimate is not the one that was computed again" % number)
     if found.get("usage_lines_of_no_request"):
         why.append("%d usage lines are of no request that was written" % found["usage_lines_of_no_request"])
@@ -761,6 +810,10 @@ def replay(check, entry):
 
     What the part has is written before each sample and before each curation, as the report is before each run
     of the other parts: the hooks' times are taken from outside and are in no file of the home.
+
+    A part that stops before its last sample, at the limit of the cost or at an index that does not get whole,
+    or that is interrupted, is `partial` once a sample was begun: what it read of the samples before is in the
+    report and was paid for, and is judged as the readings of a part that ran to its end are.
     """
     home = check.home("recall")
     home.setting("recall", "threshold", THRESHOLD)
@@ -778,7 +831,34 @@ def replay(check, entry):
         c2_real.put(check.out / "recall-texts.json", json.dumps(texts, ensure_ascii=False, indent=1))
         c2_real.write(check.out, check.report, check)
 
-    try:
+    def close(early=None):
+        """How the part ended: `partial` with each reason, or `measured`."""
+        why = ["the part ended after %d of %d samples were begun: %s" % (
+            len(entry["stages"]), len(check.samples), early)] if early else []
+        # A stage that the part ended in may have no curation.
+        why += [text for stage in entry["stages"] if "curation" in stage for text in lacking(stage["curation"])]
+        for dims, value in entry["by_dims"].items():
+            other = sorted(name for name in value["outcomes"]
+                           if name not in c2_hosts.RANKED + ("late", "short", "command"))
+            if other:
+                why.append("at %s numbers a prompt's recall ended with %s" % (dims, ", ".join(other)))
+            other = sorted(name for name in value["without_the_skip"]["outcomes"]
+                           if name not in c2_hosts.RANKED + ("late",))
+            if other:
+                why.append("at %s numbers the recall of a skipped prompt without the skip ended with %s" % (
+                    dims, ", ".join(other)))
+            unranked = sum(1 for row in asked(entry, dims) for found in (row, row.get("without_the_skip") or {})
+                           if found.get("outcome") == "late" and not found["candidates"])
+            if unranked:
+                why.append("at %s numbers %d of the prompts whose recall ended late were not ranked with more "
+                           "time either" % (dims, unranked))
+            if check.real and not value["ranked"]:
+                why.append("at %s numbers no prompt was ranked" % dims)
+        entry["outcome"] = "partial" if why else "measured"
+        if why:
+            entry["why"] = why
+
+    def stages():
         for sample in check.samples:
             check.afford()
             keep()
@@ -820,29 +900,21 @@ def replay(check, entry):
                 home.settle(runs)  # The next sample's prompts are ranked against a whole index.
             finally:
                 stage["curation"] = reading(home, runs, since)
-    finally:
-        sums()
-        c2_real.put(check.out / "recall-texts.json", json.dumps(texts, ensure_ascii=False, indent=1))
-    why = [text for stage in entry["stages"] for text in lacking(stage["curation"])]
-    for dims, value in entry["by_dims"].items():
-        other = sorted(name for name in value["outcomes"] if name not in c2_hosts.RANKED + ("late", "short", "command"))
-        if other:
-            why.append("at %s numbers a prompt's recall ended with %s" % (dims, ", ".join(other)))
-        other = sorted(name for name in value["without_the_skip"]["outcomes"]
-                       if name not in c2_hosts.RANKED + ("late",))
-        if other:
-            why.append("at %s numbers the recall of a skipped prompt without the skip ended with %s" % (
-                dims, ", ".join(other)))
-        unranked = sum(1 for row in asked(entry, dims) for found in (row, row.get("without_the_skip") or {})
-                       if found.get("outcome") == "late" and not found["candidates"])
-        if unranked:
-            why.append("at %s numbers %d of the prompts whose recall ended late were not ranked with more time "
-                       "either" % (dims, unranked))
-        if check.real and not value["ranked"]:
-            why.append("at %s numbers no prompt was ranked" % dims)
-    entry["outcome"] = "partial" if why else "measured"
-    if why:
-        entry["why"] = why
+
+    try:
+        try:
+            stages()
+        finally:  # Also after an error: the sums are of every prompt that was asked before it.
+            sums()
+            c2_real.put(check.out / "recall-texts.json", json.dumps(texts, ensure_ascii=False, indent=1))
+    except (c2_real.Stopped, KeyboardInterrupt) as early:
+        if not entry["stages"]:
+            raise  # No sample was begun: the part was not run.
+        close(str(early) if isinstance(early, c2_real.Stopped) else "it was interrupted")
+        if isinstance(early, KeyboardInterrupt):
+            raise
+    else:
+        close()
 
 
 def asked(entry, dims):
@@ -858,16 +930,25 @@ def by_length(entry, dims):
     installed one runs, for the turns that were recorded while the index had this length. A prompt is asked at
     one length after the other, the lengths taking turns to be the first from sample to sample, and a text that
     was sent a moment before may come back sooner: `asked_first` and `asked_later` give the times apart, so that
-    the difference between two lengths is not read from the order in which they were asked. `without_the_skip`
-    is of the prompts that recall skipped as short, asked once more with `recall.skip` 0: what recall ranks for
-    them is in no other number here, and the time of a hook that was asked a second time is not given.
+    the difference between two lengths is not read from the order in which they were asked. The same holds for
+    `recorded`: a sample's turns are recorded right after its prompts were asked, at the length that was asked
+    last, so the embedding request of a recorded prompt repeats one that went out moments before.
+    `embedded_after_the_same_text_was_asked` counts those requests, and where they are all of them, `recorded`'s
+    times are those of a text that is sent again, to be read beside `asked_later`: no reading here is of the
+    installed hook with a text that is new to the provider. `without_the_skip` is of the prompts that recall
+    skipped as short, asked once more with `recall.skip` 0: what recall ranks for them is in no other number
+    here, and the time of a hook that was asked a second time is not given.
     """
     rows = asked(entry, dims)
     ranked = [row for row in rows if row["candidates"]]
     unskipped = [row["without_the_skip"] for row in rows if "without_the_skip" in row]
     rebuilds = [value for value in entry["rebuilds"] if value["dims"] == dims]
-    taken = [row for stage in entry["stages"] if (stage.get("recorded") or {}).get("dims") == dims
-             for row in stage["recorded"]["prompts"]]
+    stages = [stage for stage in entry["stages"] if (stage.get("recorded") or {}).get("dims") == dims]
+    taken = [row for stage in stages for row in stage["recorded"]["prompts"]]
+    # The turns whose prompt was asked at this length before its turn was recorded, by sample and number.
+    before = {(stage["sample"], row["turn"]) for stage in stages for row in stage["prompts"] if str(dims) in row}
+    again = sum(1 for stage in stages for row in stage["recorded"]["prompts"]
+                if row["embed_ms"] is not None and (stage["sample"], row["turn"]) in before)
     turns = (("asked_first", [row for row in rows if row.get("asked") == 1]),
              ("asked_later", [row for row in rows if row.get("asked", 1) > 1]))
     return {"prompts": len(rows), "outcomes": dict(Counter(row["outcome"] for row in rows)),
@@ -882,7 +963,8 @@ def by_length(entry, dims):
                          "hook_ms": timed([row["ms"] for row in taken]),
                          "hook_ms_of_ranked_in_time": spread([row["ms"] for row in taken
                                                               if row["outcome"] in c2_hosts.RANKED], 1),
-                         "embed_ms": spread([row["embed_ms"] for row in taken], 1)},
+                         "embed_ms": spread([row["embed_ms"] for row in taken], 1),
+                         "embedded_after_the_same_text_was_asked": again},
             "embed_ms": spread([row["embed_ms"] for row in rows], 1),
             "best_score": spread([row["candidates"][0]["score"] for row in ranked]),
             "fifth_score": spread([row["candidates"][4]["score"] for row in ranked if len(row["candidates"]) > 4]),
@@ -915,11 +997,15 @@ def between(entry, first, other):
 def line(points):
     """The least-squares line count = a * ASCII + b * other + c over some documents, or None where they give none.
 
-    Each point is (ASCII characters, other characters, count). Documents whose two numbers of characters are in
-    step with each other, or that have no character of one of the two kinds, give no line.
+    Each point is (ASCII characters, other characters, count). Fewer than four documents give no line: three fix
+    the three numbers exactly and leave no error to read. Documents whose two numbers of characters are in step
+    with each other, or that have no character of one of the two kinds, give none either.
+    `correlation_of_the_two_numbers_of_characters` says how nearly in step the documents are: near 1 or -1 they
+    hardly tell a token of an ASCII character from one of another, and the two numbers per character say little
+    apart, however small the largest error is.
     """
     most = [max(point[index] for point in points) for index in (0, 1)] if points else [0, 0]
-    if len(points) < 3 or not all(most):
+    if len(points) < 4 or not all(most):
         return None
     table = [[0.0] * 4 for _ in range(3)]  # The normal equations of the three unknowns, each number of
     for ascii_count, other, count in points:  # characters as a share of the greatest, so that all are near 1.
@@ -939,9 +1025,13 @@ def line(points):
                 table[row] = [value - factor * base for value, base in zip(table[row], table[i])]
     a, b, c = table[0][3] / table[0][0] / most[0], table[1][3] / table[1][1] / most[1], table[2][3] / table[2][2]
     errors = [abs(a * x + b * y + c - count) for x, y, count in points]
+    means = [sum(point[index] for point in points) / len(points) for index in (0, 1)]
+    spreads = [sum((point[index] - means[index]) ** 2 for point in points) for index in (0, 1)]
+    together = sum((x - means[0]) * (y - means[1]) for x, y, _ in points)
     return {"documents": len(points), "tokens_per_ascii_character": round(a, 4),
             "tokens_per_other_character": round(b, 4), "constant": round(c, 1),
-            "largest_error_tokens": round(max(errors), 1)}
+            "largest_error_tokens": round(max(errors), 1),
+            "correlation_of_the_two_numbers_of_characters": round(together / (spreads[0] * spreads[1]) ** 0.5, 3)}
 
 
 def estimates(requests):
@@ -970,19 +1060,34 @@ def estimates(requests):
     return found
 
 
-def by_effort(runs):
-    """The measured runs' sums at each effort."""
+def by_effort(runs, efforts):
+    """The sums at each effort, over the runs that were measured at every one of `efforts`.
+
+    A run is one sample curated once at one effort, the sample's run of some number. Where that run was not
+    measured at one effort, the sample's runs of that number are left out at the others too
+    (`measured_runs_left_out`): the efforts' sums are of the same runs of the same samples, or they would differ
+    by what a sample makes and not by the effort. `input`, `output` and the times are those of the attempt that
+    gave each request its answer, and `usd` is of every attempt: `usage_lines` is the number of attempts, which
+    is the number of requests where none was sent again. `runs_whose_older_attempts_may_be_missing` says of how
+    many runs the numbers of applied and dropped changes are the least that they can be.
+    """
+    measured = {(entry["sample"], entry["repeat"], entry["effort"]): entry for entry in runs.values()
+                if entry.get("outcome") == "measured"}
+    whole = {(sample, repeat) for sample, repeat, _ in measured
+             if all((sample, repeat, level) in measured for level in efforts)}
     found = {}
-    for entry in runs.values():
-        if entry.get("outcome") != "measured":
-            continue
-        value = found.setdefault(entry["effort"], {
-            "runs": 0, "requests": 0, "requests_by_kind": Counter(), "input": 0, "output": 0, "usd": 0.0,
-            "request_ms": 0, "items": 0,
+    for (sample, repeat, level), entry in measured.items():
+        value = found.setdefault(level, {
+            "runs": 0, "measured_runs_left_out": 0, "requests": 0, "usage_lines": 0, "requests_by_kind": Counter(),
+            "input": 0, "output": 0, "usd": 0.0, "request_ms": 0, "items": 0,
             "state_lines": 0, "current_item_bytes": 0, "changes": Counter(), "current_items_by_kind": Counter(),
             "applied": 0, "dropped": 0, "dropped_by_reason": Counter(), "line_edits_dropped_by_reason": Counter(),
-            "first_ms": []})
+            "runs_whose_older_attempts_may_be_missing": 0, "first_ms": []})
+        if (sample, repeat) not in whole:
+            value["measured_runs_left_out"] += 1
+            continue
         value["runs"] += 1
+        value["runs_whose_older_attempts_may_be_missing"] += bool(entry.get("older_attempts_may_be_missing"))
         for attempt in entry.get("attempts", []):
             value["applied"] += attempt.get("applied") or 0
             value["dropped"] += attempt.get("dropped") or 0
@@ -990,6 +1095,7 @@ def by_effort(runs):
             value["line_edits_dropped_by_reason"].update(attempt.get("edit_reasons") or {})
         for row in entry["requests"]:
             value["requests"] += 1
+            value["usage_lines"] += row["usage_lines"]
             value["requests_by_kind"][c2_real.kind_of(row)] += 1
             for name, key in (("input", "input"), ("output", "output"), ("request_ms", "total_ms")):
                 value[name] += row.get(key) or 0
@@ -1019,11 +1125,7 @@ class Measure(c2_real.Check):
         scripts = self.plugin / "skills/corthex-memory/scripts"
         if str(scripts) not in sys.path:
             sys.path.insert(0, str(scripts))
-        schema = json.loads((scripts / "memory_lib/configuration.schema.json").read_text(encoding="utf-8"))
-        properties = schema["properties"]
-        self.defaults = {"effort": properties["models"]["properties"]["effort"]["default"],
-                         "dims": properties["models"]["properties"]["dims"]["default"],
-                         "skip": properties["recall"]["properties"]["skip"]["default"]}
+        self.defaults = dict(DEFAULTS)
         self.samples, self.pool, self.dims = options.loaded, options.pool, options.dims
         self.embedding = False  # Whether the worker gets the embedding key: only in the recall part.
         del self.report["cases"]
@@ -1088,7 +1190,8 @@ class Measure(c2_real.Check):
             else:
                 _, sample, level, number = name
                 label = "%s-%s-%d" % (sample["id"], level, number)
-                entry = self.report["runs"][label] = {"sample": sample["id"], "effort": level, "outcome": "not run"}
+                entry = self.report["runs"][label] = {"sample": sample["id"], "effort": level, "repeat": number,
+                                                      "outcome": "not run"}
                 self.guard(entry, lambda: measured(self, entry, sample, level, label))
         finally:  # Also after an interrupt, which `guard` raises again: what the step had made is in the sums.
             self.totals()
@@ -1103,7 +1206,8 @@ class Measure(c2_real.Check):
         except c2_real.Stopped as stopped:
             entry.update(outcome="not run", why=str(stopped))
         except KeyboardInterrupt:
-            entry.update(outcome="not run", why="interrupted during this run")
+            if entry["outcome"] == "not run":  # The recall part says itself how it ended once a sample was begun.
+                entry["why"] = "interrupted during this run"
             raise
         except Exception:
             entry.update(outcome="crash", crash=self.mask(traceback.format_exc()))
@@ -1117,7 +1221,7 @@ class Measure(c2_real.Check):
                      for row in (stage.get("curation") or {}).get("requests", [])]
         requests += [row for value in recalled.get("rebuilds", []) for row in value.get("model_requests", [])]
         report["estimates"] = estimates(requests)
-        report["by_effort"] = by_effort(report["runs"])
+        report["by_effort"] = by_effort(report["runs"], report["efforts"])
         if not self.real:
             report["efforts_that_the_local_server_got"] = dict(Counter(str(value) for value in self.server.efforts))
 
@@ -1138,13 +1242,14 @@ def summary(report):
             text.append("%s: %s %s" % (name, entry["outcome"], json.dumps(entry.get("why") or entry.get("crash"))))
             continue
         layer = entry["layer"]
+        dropped = "%d%s" % (sum(attempt.get("dropped") or 0 for attempt in entry.get("attempts", [])),
+                            " or more" if entry.get("older_attempts_may_be_missing") else "")
         for row in entry["requests"]:
             text.append("%s, %s: working %s, safe %s, count %s (safe/count %s), billed input %s, output %s, %s ms, "
                         "%s USD; %d items, %d state lines; changes dropped: %s" % (
                             name, row["instructions"], row["working"], row["safe"], row["count"],
                             row.get("safe_over_count"), row["input"], row["output"], row["total_ms"], row["usd"],
-                            layer["items"], layer["state_lines"],
-                            sum(attempt.get("dropped") or 0 for attempt in entry.get("attempts", []))))
+                            layer["items"], layer["state_lines"], dropped))
     text.append("estimates against counts: %s" % json.dumps(report.get("estimates")))
     for level, value in report.get("by_effort", {}).items():
         text.append("effort %s: %s" % (level, json.dumps(value)))

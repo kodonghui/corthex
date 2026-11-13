@@ -8,8 +8,14 @@ PLUGIN, once two functions of that package's library are wrapped:
 - `model_client.send`, through which every curate, merge and state request
   goes: after each call one JSON line is added to TAP with the request's
   instructions, the document that was sent, the answer's text, its failure
-  code and the number of attempts. No header and no key is written; the
-  document is the one that the package redacted before it sent it.
+  code, the number of attempts, how many usage lines the call says that it
+  wrote for them, and the times, as the package writes a time, right before
+  and right after the call. The package writes an attempt's usage line in
+  one try of at most a second and goes on without the line when that fails,
+  so the number says which requests the usage log does not have, and the
+  times say how long a call took beyond its request. No header and no key is
+  written; the document is the one that the package redacted before it sent
+  it.
 - `model_request.build`, only when CUT is above zero: the request's
   `max_tokens` becomes CUT, so that the provider cuts the answer (TC-259). The
   package itself always asks for 64,000.
@@ -56,13 +62,25 @@ def write(tap, row):
     return True
 
 
+def moment(library):
+    """The time now as the staged package `library` writes a time, or None where it cannot. It never raises."""
+    try:
+        return library.base.utc_time()
+    except Exception:
+        return None
+
+
 def record(tap, instructions, result, **more):
     """Add a request's line to TAP, with `more` when given; whether it was written. It never raises, so the worker
-    keeps its answer."""
+    keeps its answer.
+
+    `logged` is how many usage lines the call says that it wrote, where the package's result says so.
+    """
     try:
         failure = result.response.failure
         row = {"instructions": instructions, "document": result.document, "answer": result.response.text,
-               "failure": None if failure is None else failure.code, "attempts": result.attempts}
+               "failure": None if failure is None else failure.code, "attempts": result.attempts,
+               "logged": getattr(result, "logged", None)}
         row.update(more)
     except Exception:
         return False
@@ -136,6 +154,7 @@ def main():
     if check > 0:
         watch(check)
     sys.path.insert(0, str(plugin / "skills/corthex-memory/scripts"))
+    import memory_lib
     from memory_lib import model_client, model_request
     if cut > 0:
         build = model_request.build
@@ -149,8 +168,9 @@ def main():
     send = model_client.send
 
     def written(memory, **options):
+        began = moment(memory_lib)
         result = send(memory, **options)
-        record(tap, options.get("instructions"), result)
+        record(tap, options.get("instructions"), result, began=began, ended=moment(memory_lib))
         return result
 
     model_client.send = written

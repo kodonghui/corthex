@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -87,9 +88,9 @@ def usage(call, result="ok", instructions=None, **more):
     return dict(call=call, result=result, instructions=instructions, **more)
 
 
-def written(instructions, answer, failure=None):
-    return {"instructions": instructions, "document": "<request/>", "failure": failure, "attempts": 1,
-            "answer": answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False)}
+def written(instructions, answer, failure=None, **more):
+    return dict({"instructions": instructions, "document": "<request/>", "failure": failure, "attempts": 1,
+                 "answer": answer if isinstance(answer, str) else json.dumps(answer, ensure_ascii=False)}, **more)
 
 
 def started(mark, seconds=60):
@@ -255,6 +256,32 @@ class RefusalTests(unittest.TestCase):
         # A case that would begin at the limit builds no home: its runner is not called at all.
         self.assertEqual(check.report["cases"]["TC-262"]["outcome"], "not run")
         self.assertEqual([run["outcome"] for run in check.report["cases"]["TC-262"]["runs"]], ["not run"])
+
+    def test_a_run_of_a_case_shows_the_usage_lines_that_were_not_written_whatever_the_case(self):
+        check = real.Check.__new__(real.Check)
+        check.report, check.keys, check.real = {"cases": {}}, {}, False
+        check.options = SimpleNamespace(repeat=2)
+        runs = iter([[{"usage": []}, {"usage": [], real.LOST: 1}, {"usage": [], real.LOST: 2}], [{"usage": []}]])
+
+        def runner(*_):
+            return {"outcome": "recorded", "observed": {"answers": 1}, "runs": next(runs)}
+
+        def bare(*_):
+            return {"outcome": "fail", "runs": [{"usage": [], real.LOST: 1}]}
+
+        with mock.patch.dict(real.RUNNERS, {"TC-345": runner, "TC-259": bare}):
+            check.case("TC-345")
+            check.case("TC-259")
+        first, second = check.report["cases"]["TC-345"]["runs"]
+        self.assertEqual((first["observed"], second["observed"]), ({"answers": 1, real.LOST: 3}, {"answers": 1}))
+        # Also where a case's reading has nothing else to show, and the outcome is the case's own.
+        self.assertEqual(check.report["cases"]["TC-259"], {"outcome": "fail", "runs": [
+            {"outcome": "fail", "runs": [{"usage": [], real.LOST: 1}], "observed": {real.LOST: 1}}] * 2})
+        text = "\n".join(real.summary(dict(check.report, release="0.3.0", provider="a provider", self_test=True,
+                                           system={"platform": "a system", "python": "3"}, checkout={}, keys={})))
+        self.assertIn('  run 1: recorded {"answers": 1, "%s": 3}' % real.LOST, text)
+        self.assertIn('  run 2: recorded {"answers": 1}', text)
+        self.assertIn('  run 1: fail {"%s": 1}' % real.LOST, text)
 
     def test_an_interrupt_is_noted_on_its_run_and_raised_again(self):
         check = real.Check.__new__(real.Check)
@@ -694,6 +721,49 @@ class ReadingTests(unittest.TestCase):
                 change(other)
                 self.assertFalse(real.accepted(real.schemas(other)))
 
+    def test_tc258_takes_a_request_whose_usage_line_the_package_says_that_it_did_not_write(self):
+        merged = {"merges": [], "conflicts": []}
+        lines = [usage("curate", instructions="curate-3"), usage("consolidate", instructions="merge-2"),
+                 usage("consolidate", instructions="state-2")]
+        asked = [written("curate-3", EMPTY, logged=1), written("merge-2", merged, logged=0),
+                 written("merge-2", merged, logged=1), written("state-2", KEPT, logged=1)]
+        # Two merge requests were answered and one `ok` line is there: the first call wrote none, and says so.
+        found = real.schemas({"usage": lines, "requests": asked})
+        self.assertEqual(found["merge"], {"usage results": {"ok": 1}, "answers": 2, "answers that fit the schema": 2,
+                                          real.LOST: 1})
+        self.assertNotIn(real.LOST, found["curate"])
+        self.assertTrue(real.accepted(found))
+        # A call that says that it wrote its line, whose line is not in the log, is not such a request.
+        said = [dict(row, logged=1) for row in asked]
+        self.assertNotIn(real.LOST, real.schemas({"usage": lines, "requests": said})["merge"])
+        self.assertFalse(real.accepted(real.schemas({"usage": lines, "requests": said})))
+        # Nor does a line that was not written excuse an answer that does not fit, or a request that failed.
+        for name, row in (("an answer that does not fit", written("merge-2", EMPTY, logged=0)),
+                          ("a request that failed", written("merge-2", "", "overloaded", logged=0))):
+            with self.subTest(name):
+                self.assertFalse(real.accepted(real.schemas({"usage": lines, "requests": [
+                    asked[0], row, asked[2], asked[3]]})))
+        # Of a request that was tried twice, either attempt's line may be the one that is missing.
+        twice = [asked[0], written("merge-2", merged, attempts=2, logged=1), asked[3]]
+        for name, line in (("the failed attempt's line is there", usage("consolidate", "failed", "merge-2",
+                                                                         error="overloaded")),
+                           ("the answer's line is there", usage("consolidate", instructions="merge-2"))):
+            with self.subTest(name):
+                found = real.schemas({"usage": [lines[0], line, lines[2]], "requests": twice})
+                self.assertEqual(found["merge"][real.LOST], 1)
+                self.assertTrue(real.accepted(found))
+
+    def test_the_lines_not_written_are_the_attempts_beyond_what_each_call_says_that_it_wrote(self):
+        rows = [written("curate-3", EMPTY, attempts=3, logged=1), written("merge-2", EMPTY, attempts=1, logged=1),
+                written("state-2", KEPT, attempts=1, logged=0),
+                # A line that says neither number, or says one that is no number, counts as written.
+                written("curate-3", EMPTY), written("curate-3", EMPTY, logged=None),
+                written("curate-3", EMPTY, attempts=None, logged=0), written("curate-3", EMPTY, logged=True),
+                {"kind": "index", "requests": 2}]
+        self.assertEqual(real.unlogged(rows), 3)
+        self.assertEqual(real.unlogged([]), 0)
+        self.assertEqual(real.unlogged([written("curate-3", EMPTY, attempts=1, logged=2)]), 0)
+
     def test_an_answer_fits_by_its_own_kind_s_schema(self):
         self.assertTrue(real.fits(written("state-2", KEPT)))
         self.assertFalse(real.fits(written("curate-3", KEPT)))
@@ -922,11 +992,16 @@ class ReadingTests(unittest.TestCase):
         run = {"exit": 0, "usage": [usage("curate")], "failures": [],
                "requests": [written("curate-3", "답 text"), written("state-2", "", "max-tokens")]}
         run["requests"][0]["document"] = "<request>문서</request>"
+        run["requests"][1].update(logged=0, began="2026-11-13T02:55:42.100Z", ended="2026-11-13T02:55:52.900Z")
         kept = real.trimmed(run)
         self.assertEqual(kept["requests"][0], {"instructions": "curate-3", "failure": None, "attempts": 1,
+                                               "logged": None, "began": None, "ended": None,
                                                "document_bytes": len("<request>문서</request>".encode("utf-8")),
                                                "answer_bytes": len("답 text".encode("utf-8"))})
         self.assertEqual(kept["requests"][1]["failure"], "max-tokens")
+        # How many usage lines the call wrote, and when it began and ended: what a line that is missing is read by.
+        self.assertEqual([kept["requests"][1][name] for name in ("logged", "began", "ended")],
+                         [0, "2026-11-13T02:55:42.100Z", "2026-11-13T02:55:52.900Z"])
         self.assertNotIn("문서", json.dumps(kept, ensure_ascii=False))
         self.assertIn("document", run["requests"][0])
 
@@ -1063,7 +1138,7 @@ class ReadingTests(unittest.TestCase):
 
     def test_the_cost_is_the_sum_of_the_provider_s_usage_lines_by_call(self):
         check = real.Check.__new__(real.Check)
-        check.usage, check.spent = [], 0.0
+        check.usage, check.spent, check.lost = [], 0.0, 0
         check.account({"usage": [usage("curate", input=100, output=10, cost=0.5),
                                  usage("curate", "limit", input=50, output=5, cost=0.25, error="max-tokens")]}, True)
         check.account({"usage": [usage("curate", input=7, output=7, cost=9.0)]}, False)  # A seed's lines.
@@ -1073,6 +1148,11 @@ class ReadingTests(unittest.TestCase):
                                                     "output": 15, "usd": 0.75})
         self.assertEqual(found["calls"]["embed-items"]["results"], {"failed: insufficient_quota": 1})
         self.assertEqual((found["usd"], found["requests"]), (0.75, 3))
+        self.assertNotIn(real.LOST, found)
+        # A provider's request whose usage line the package did not write is not in that sum: the cost says so.
+        check.account({"usage": [], real.LOST: 2}, True)
+        check.account({"usage": [], real.LOST: 5}, False)  # A seed's request, which no provider answered.
+        self.assertEqual((check.cost()[real.LOST], check.cost()["usd"], check.cost()["requests"]), (2, 0.75, 3))
 
     def test_a_leak_is_a_key_in_a_file_in_the_report_or_in_a_local_request(self):
         self.assertFalse(real.leaked({"files_with_key": [], "local_requests_with_key": 0}))
@@ -1090,12 +1170,12 @@ class WorkTests(unittest.TestCase):
         check.real, check.plugin, check.provider = is_real, Path("plugin"), "a provider"
         check.keys, check.markers = {ANTHROPIC: "REAL-KEY-VALUE-0123456789"}, {ANTHROPIC: "MARKER"}
         check.server = SimpleNamespace(url="http://127.0.0.1:9")
-        check.usage, check.spent = [], 0.0
+        check.usage, check.spent, check.lost = [], 0.0, 0
         home = real.Home.__new__(real.Home)
         home.check, home.home, home.demo, home.base = check, base, base, base
         home.store, home.tap = base / "store", base / "requests.jsonl"
         (home.store / "logs").mkdir(parents=True)
-        home.read, home.broken = {"usage": 0, "failures": 0, "requests": 0}, {}
+        home.read, home.broken, home.raw = {"usage": 0, "failures": 0, "requests": 0}, {}, {}
         return check, home
 
     def test_a_provider_s_run_may_take_the_package_s_own_hour_and_a_local_run_much_less(self):
@@ -1151,6 +1231,74 @@ class WorkTests(unittest.TestCase):
                 home.work()
         self.assertNotIn("REAL", str(error.exception))
         self.assertIn("the worker ended with 1", str(error.exception))
+
+    def test_a_run_says_how_many_usage_lines_the_package_did_not_write(self):
+        check, home = self.home(True)
+        done = {"exit": 0, "seconds": 0.1, "stdout": "", "stderr": ""}
+        lines = [usage("consolidate", instructions="merge-2", cost=0.25),
+                 usage("consolidate", instructions="state-2", cost=0.25)]
+
+        def run(*_, **__):
+            # Three requests were answered; the first call's one try at the usage log's lock did not get it.
+            with open(str(home.tap), "a", encoding="utf-8") as tap:
+                for row in (written("merge-2", EMPTY, logged=0), written("merge-2", EMPTY, logged=1),
+                            written("state-2", KEPT, logged=1)):
+                    tap.write(json.dumps(row) + "\n")
+            with open(str(home.store / "logs/usage-2026-11.jsonl"), "a", encoding="utf-8") as log:
+                log.write("".join(json.dumps(line) + "\n" for line in lines))
+            (home.store / "logs/failures-2026-11.jsonl").write_text(
+                json.dumps({"step": "curate", "error": "lock-busy"}) + "\n", encoding="utf-8")
+            return done
+
+        with mock.patch.object(real.hookcheck, "run", run):
+            found = home.work()
+        self.assertEqual((found[real.LOST], len(found["usage"]), found["failures"], check.lost, check.spent),
+                         (1, 2, [{"step": "curate", "error": "lock-busy"}], 1, 0.5))
+        self.assertEqual(real.trimmed(found)[real.LOST], 1)
+        # A seed's run says it too, and the provider's count leaves it out. A run without such a line says nothing.
+        with mock.patch.object(real.hookcheck, "run", run):
+            self.assertEqual(home.work(provider=False)[real.LOST], 1)
+        self.assertEqual(check.lost, 1)
+        with mock.patch.object(real.hookcheck, "run", return_value=done):
+            self.assertNotIn(real.LOST, home.work())
+        hook = {}
+        home.logged(hook, True, ("usage",))  # A hook's reading, which reads no request.
+        self.assertNotIn(real.LOST, hook)
+
+    def test_the_raw_log_is_read_again_only_when_a_file_of_it_changed(self):
+        _, home = self.home(False)
+        home.root = home.base
+        (home.root / "raw").mkdir()
+        first, second = home.root / "raw/claude-code-0000000000000001.jsonl", home.root / "raw/codex-1.jsonl"
+        first.write_text(json.dumps({"id": "e_000000000001", "text": "가"}, ensure_ascii=False) + "\n",
+                         encoding="utf-8")
+        second.write_text(json.dumps({"id": "e_000000000002", "text": "나"}, ensure_ascii=False) + "\n",
+                          encoding="utf-8")
+        read, reads = Path.read_text, []
+
+        def noting(path, *arguments, **options):
+            reads.append(path.name)
+            return read(path, *arguments, **options)
+
+        with mock.patch.object(Path, "read_text", noting):
+            self.assertEqual(sorted(home.entries()), ["e_000000000001", "e_000000000002"])
+            self.assertEqual(sorted(home.entries()), ["e_000000000001", "e_000000000002"])
+            self.assertEqual(reads, [first.name, second.name])  # The second look read neither file again.
+            with open(str(second), "a", encoding="utf-8") as log:  # A hook recorded a turn into its session's file.
+                log.write(json.dumps({"id": "e_000000000003", "text": "다"}) + "\n")
+            found = home.entries()
+            self.assertEqual(reads, [first.name, second.name, second.name])
+        self.assertEqual({key: value["text"] for key, value in found.items()},
+                         {"e_000000000001": "가", "e_000000000002": "나", "e_000000000003": "다"})
+        # What a look gives is the caller's own: taking entries out of it takes none out of a later look.
+        found.clear()
+        self.assertEqual(len(home.entries()), 3)
+        # A file written again with the same size is another once its time of change is another.
+        info = second.stat()
+        second.write_text(second.read_text(encoding="utf-8").replace("나", "라"), encoding="utf-8")
+        os.utime(str(second), ns=(info.st_atime_ns, info.st_mtime_ns + 1000000))
+        self.assertEqual(second.stat().st_size, info.st_size)
+        self.assertEqual(home.entries()["e_000000000002"]["text"], "라")
 
     def test_a_recorded_turn_keeps_each_hook_s_time_from_outside_its_process(self):
         _, home = self.home(False)
@@ -1289,9 +1437,29 @@ class TapTests(unittest.TestCase):
         rows, broken = real.whole_lines(tap)
         self.assertEqual(broken, 0)
         self.assertEqual(rows[0], {"instructions": "curate-3", "document": "<request>문서</request>",
-                                   "answer": "답 \ud83d 끝", "failure": "max-tokens", "attempts": 2})
+                                   "answer": "답 \ud83d 끝", "failure": "max-tokens", "attempts": 2, "logged": None})
         self.assertEqual((rows[1]["instructions"], rows[1]["failure"]), ("state-2", None))
         self.assertIn("문서".encode("utf-8"), tap.read_bytes())
+
+    def test_a_request_s_line_says_how_many_usage_lines_its_call_wrote_and_what_it_was_given_more(self):
+        tap = self.base / "requests.jsonl"
+        result = self.result("{}", attempts=2)
+        result.logged = 1
+        self.assertTrue(worker.record(tap, "merge-2", result, began="2026-11-13T02:55:42.100Z", ended=None))
+        rows, _ = real.whole_lines(tap)
+        self.assertEqual([rows[0][name] for name in ("attempts", "logged", "began", "ended")],
+                         [2, 1, "2026-11-13T02:55:42.100Z", None])
+        self.assertEqual(real.unlogged(rows), 1)
+
+    def test_the_time_of_a_line_is_the_staged_package_s_own_or_none(self):
+        library = SimpleNamespace(base=SimpleNamespace(utc_time=lambda: "2026-11-13T02:55:42.100Z"))
+        self.assertEqual(worker.moment(library), "2026-11-13T02:55:42.100Z")
+
+        def broken():
+            raise OSError("no clock")
+
+        self.assertIsNone(worker.moment(SimpleNamespace(base=SimpleNamespace(utc_time=broken))))
+        self.assertIsNone(worker.moment(SimpleNamespace()))  # A package without that module.
 
     def test_a_line_that_cannot_be_written_is_left_out_and_nothing_is_raised(self):
         self.assertFalse(worker.record(self.base, "curate-3", self.result("{}")))  # TAP is a folder.
@@ -1548,6 +1716,45 @@ class WatchTests(unittest.TestCase):
         self.assertTrue(ended(wrapper) and ended(second))
 
 
+class WrittenTests(unittest.TestCase):
+    """The wrapper around a made-up package whose worker sends one request."""
+
+    def test_the_line_of_a_request_has_the_call_s_times_and_how_many_usage_lines_it_wrote(self):
+        base = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, str(base), True)
+        library = base / "plugin/skills/corthex-memory/scripts/memory_lib"
+        library.mkdir(parents=True)
+        (base / "plugin/scripts").mkdir()
+        (library / "__init__.py").write_text("", encoding="utf-8")
+        # The package's time, which here counts the calls: one before the request and one after it.
+        (library / "base.py").write_text(
+            "TIMES = iter(['2026-11-13T02:55:42.100Z', '2026-11-13T02:55:52.900Z'])\n"
+            "def utc_time():\n    return next(TIMES)\n", encoding="utf-8")
+        (library / "model_request.py").write_text("def build(**options):\n    return {}, None\n", encoding="utf-8")
+        # An answer that came at the second attempt, of which the package wrote one usage line.
+        (library / "model_client.py").write_text(
+            "from types import SimpleNamespace\n"
+            "from . import base\n"
+            "def send(memory, **options):\n"
+            "    return SimpleNamespace(document='<request/>', attempts=2, logged=1,\n"
+            "                           response=SimpleNamespace(text='{}', failure=None))\n", encoding="utf-8")
+        (base / "plugin/scripts/worker.py").write_text(
+            "import sys\n"
+            "from memory_lib import model_client\n"
+            "result = model_client.send(None, instructions='merge-2')\n"
+            "sys.stdout.write(result.response.text)\n", encoding="utf-8")
+        done = subprocess.run([sys.executable, str(FOLDER / "c2_real_worker.py"), str(base / "requests.jsonl"), "0",
+                               "0", str(base / "plugin")], capture_output=True, timeout=120)
+        # The worker got its answer as the package gave it.
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, b"{}", b""))
+        rows, broken = real.whole_lines(base / "requests.jsonl")
+        self.assertEqual((broken, rows), (0, [{
+            "instructions": "merge-2", "document": "<request/>", "answer": "{}", "failure": None, "attempts": 2,
+            "logged": 1, "began": "2026-11-13T02:55:42.100Z", "ended": "2026-11-13T02:55:52.900Z"}]))
+        self.assertEqual(real.unlogged(rows), 1)
+        self.assertEqual([path.name for path in base.rglob("__pycache__")], [])
+
+
 class ScriptedTests(unittest.TestCase):
     def setUp(self):
         self.server = real.Scripted()
@@ -1699,6 +1906,17 @@ class SelfTestRun(unittest.TestCase):
         requests = [json.loads(line) for line in (out / "tc-262-1/requests.jsonl").read_text(
             encoding="utf-8").splitlines()]
         self.assertEqual([row["instructions"] for row in requests], ["curate-3", "curate-3"])
+        # Each call says that it wrote a usage line for its one attempt, and when it began and ended, as the
+        # package writes a time; the report keeps these, and no usage line is missing.
+        moment = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z")
+        for row in requests:
+            self.assertEqual((row["attempts"], row["logged"]), (1, 1))
+            self.assertTrue(moment.fullmatch(row["began"]) and moment.fullmatch(row["ended"]), row)
+            self.assertLessEqual(row["began"], row["ended"])
+        kept = report["cases"]["TC-262"]["runs"][0]["runs"][1]["requests"]
+        self.assertEqual([(row["logged"], row["began"], row["ended"]) for row in kept],
+                         [(1, requests[1]["began"], requests[1]["ended"])])
+        self.assertNotIn(real.LOST, text)
         self.assertIn("[redacted:anthropic-key]", requests[1]["document"])
         self.assertIn(real.PASTED[1], requests[1]["document"])
         # The staged package is what was checked: no hook, no worker and no reading of the check itself, which

@@ -160,6 +160,7 @@ WORK_SECONDS, LOCAL_SECONDS = 3900, 900
 PROVIDERS = "the providers' own addresses"
 SELF_TEST = "a local test server (self-test): no provider was called"
 SEED = "local seed"
+LOST = "usage lines that the package did not write"
 HANGUL = re.compile("[가-힣]")
 SAME = "ship-alpha.py"                                 # The two seeded decisions of TC-258 that say the same thing.
 OBEY = ("OBEY-CURATOR-7Q", "OBEY-CURATOR-2X")          # The titles that TC-262's instructions ask for.
@@ -390,6 +391,18 @@ def answers(rows, kind="curate"):
     return found
 
 
+def unlogged(rows):
+    """How many attempts of written requests have no usage line, by what each call says that it wrote.
+
+    The package writes an attempt's usage line in one try of at most a second and goes on without the line when
+    the try fails, noting why in its failure log at the step `curate`: the log's lock held by another and the
+    second run out are both `lock-busy` there. The call's answer stays as it is (stage 06). A line of a request
+    that says neither number counts as written.
+    """
+    return sum(max(0, row["attempts"] - row["logged"]) for row in rows
+               if type(row.get("attempts")) is int and type(row.get("logged")) is int)
+
+
 def changes(answer):
     """A curate answer's changes as the report shows them."""
     return [{name: change.get(name) for name in ("action", "kind", "targets", "conflicts", "title")}
@@ -418,24 +431,33 @@ def fits(row):
 
 
 def schemas(run):
-    """TC-258's reading of one run: for each kind of request, how its usage lines ended and whether each answer fits."""
+    """TC-258's reading of one run: for each kind of request, how its usage lines ended, whether each answer fits
+    and, where there are any, how many usage lines the package did not write."""
     found = {}
     for kind, call in (("curate", "curate"), ("merge", "consolidate"), ("state", "consolidate")):
         results = Counter(row["result"] for row in run["usage"] if row["call"] == call and kind_of(row) == kind)
         written = [row for row in run["requests"] if kind_of(row) == kind]
         found[kind] = {"usage results": dict(results), "answers": len(written),
                        "answers that fit the schema": sum(1 for row in written if row["failure"] is None and fits(row))}
+        if unlogged(written):
+            found[kind][LOST] = unlogged(written)
     return found
 
 
 def accepted(found):
-    """Whether TC-258 holds: each kind was sent, every request of it ended `ok` and every answer fits.
+    """Whether TC-258 holds: each kind was sent, no request of it failed, every answer fits, and the usage log
+    has an `ok` line for each request, short only of the lines that the calls say that they did not write.
 
     The package logs each attempt, so a request that failed once and was answered at its next attempt has a
-    `failed` line and an `ok` line: as many `ok` lines as requests means that none failed in the end.
+    `failed` line and an `ok` line: as many `ok` lines as requests means that none failed in the end. The package
+    writes a line in one try and goes on without it when that fails (`unlogged`), which changes no answer, so a
+    kind may be short of as many `ok` lines as its calls say that they did not write. A line that is missing
+    although its call says that it wrote it fails the case: then the log lost it or this check did not read it.
     """
-    return all(value["answers"] and value["usage results"].get("ok") == value["answers"] and
-               value["answers that fit the schema"] == value["answers"]
+    def agrees(value):
+        return value["answers"] - value.get(LOST, 0) <= value["usage results"].get("ok", 0) <= value["answers"]
+
+    return all(value["answers"] and value["answers that fit the schema"] == value["answers"] and agrees(value)
                for value in (found[kind] for kind in ("curate", "merge", "state")))
 
 
@@ -603,6 +625,7 @@ class Home:
         self.tap = self.base / "requests.jsonl"
         self.sessions, self.read, self.broken = {}, {"usage": 0, "failures": 0, "requests": 0}, {}
         self.took = {}  # Of the turn recorded last: each hook's time in ms, from outside its process.
+        self.raw = {}   # Each raw log file as it was read last: its size and time of change, and its entries.
 
     def configuration(self):
         return json.loads((self.store / "configuration.json").read_text(encoding="utf-8"))
@@ -618,12 +641,20 @@ class Home:
         self.configure(value)
 
     def entries(self):
-        """The raw log's entries, by ID."""
+        """The raw log's entries, by ID.
+
+        A file is read again only when its size or its time of change is another: a turn is recorded into its
+        session's file, and every turn asks for the entries twice, so a home that records many turns would
+        otherwise read all that it has recorded again for each of them.
+        """
         found = {}
         for path in sorted((self.root / "raw").glob("*.jsonl")):
-            for line in lines_of(path.read_text(encoding="utf-8")):
-                value = json.loads(line)
-                found[value["id"]] = value
+            info = path.stat()
+            mark = (info.st_size, info.st_mtime_ns)
+            if self.raw.get(path, (None, None))[0] != mark:
+                self.raw[path] = (mark, {value["id"]: value for value in
+                                         map(json.loads, lines_of(path.read_text(encoding="utf-8")))})
+            found.update(self.raw[path][1])
         return found
 
     def turn(self, turn):
@@ -695,6 +726,8 @@ class Home:
         run["usage"] = [{key: value for key, value in row.items() if key != "prices"} for row in run["usage"]]
         if any(self.broken.values()):
             run["lines left out because they are no JSON"] = dict(self.broken)
+        if unlogged(run.get("requests", ())):
+            run[LOST] = unlogged(run["requests"])
         self.check.account(run, provider)
 
     def layer(self):
@@ -792,9 +825,9 @@ def size(text):
 def trimmed(run):
     """A run of the worker as the report keeps it: the requests' documents stay in the home's requests.jsonl."""
     kept = dict(run)
-    kept["requests"] = [{"instructions": row.get("instructions"), "failure": row.get("failure"),
-                         "attempts": row.get("attempts"), "document_bytes": size(row["document"]),
-                         "answer_bytes": size(row.get("answer") or "")}
+    kept["requests"] = [dict({name: row.get(name) for name in ("instructions", "failure", "attempts", "logged",
+                                                               "began", "ended")},
+                             document_bytes=size(row["document"]), answer_bytes=size(row.get("answer") or ""))
                         for row in run["requests"]]
     return kept
 
@@ -959,7 +992,7 @@ class Check:
         self.server = self.Server()
         self.source, self.plugin = c2_hosts.stage(REPO, out)
         hookcheck.REPO, hookcheck.MEMORY = self.source, self.plugin
-        self.spent, self.usage = 0.0, []
+        self.spent, self.usage, self.lost = 0.0, [], 0
         self.report = {"release": c2_hosts.RELEASE, "provider": self.provider, "self_test": not self.real,
                        "system": {"platform": platform.platform(), "python": platform.python_version()},
                        "checkout": checkout(out), "limit_usd": options.limit, "repeat": options.repeat,
@@ -1005,9 +1038,12 @@ class Check:
                 self.spent, self.options.limit))
 
     def account(self, run, provider):
+        """Count a provider's run: its usage lines, their cost, and the lines that the package did not write, whose
+        cost the usage log does not have."""
         if provider:
             self.usage.extend(run["usage"])
             self.spent += sum(row.get("cost") or 0 for row in run["usage"])
+            self.lost += run.get(LOST, 0)
 
     def steps(self):
         """What `carry_out` runs one by one, with the report written before each: here the chosen cases."""
@@ -1023,7 +1059,11 @@ class Check:
             for number in range(1, self.options.repeat + 1):
                 try:
                     self.afford()
-                    entry["runs"].append(RUNNERS[name](self, "%s-%d" % (name.lower(), number)))
+                    made = RUNNERS[name](self, "%s-%d" % (name.lower(), number))
+                    lost = sum(run.get(LOST, 0) for run in made.get("runs", ()))
+                    if lost:  # Shown with the run's outcome, whichever case it is: the usage log is short by them.
+                        made.setdefault("observed", {})[LOST] = lost
+                    entry["runs"].append(made)
                 except Stopped as stopped:
                     entry["runs"].append({"outcome": "not run", "why": str(stopped)})
                     break
@@ -1049,7 +1089,10 @@ class Check:
             value["usd"] += row.get("cost") or 0
         for value in calls.values():
             value["results"], value["usd"] = dict(value["results"]), round(value["usd"], 6)
-        return {"calls": calls, "usd": round(self.spent, 6), "requests": len(self.usage)}
+        found = {"calls": calls, "usd": round(self.spent, 6), "requests": len(self.usage)}
+        if self.lost:
+            found[LOST] = self.lost
+        return found
 
 
 def result_of(row):
