@@ -36,6 +36,10 @@ HOUR, DAY, WEEK = 60 * 60, 24 * 60 * 60, 7 * 24 * 60 * 60
 SINCE = (("comments", "last_at"), ("discrepancies", "opened_at"), ("reflections", "made_at"), ("checkpoints", "passed_at"))
 # 0.4.0: a project's first push waits for the user's yes, which --first carries (SPEC-111, REQ-107).
 FIRST_PUSH = "first push needs --first"
+# 0.4.0: push --job is a repository's push job, which sends only a newer commit of a project that the server holds (SPEC-193).
+JOB_DEVICE = "--job runs in a repository's push job, on a device with neither a profile nor a list of projects"
+JOB_NEITHER = ("the server holds %s and the pushed commit is %s: neither follows the other, or the checkout does not have "
+               "the held one, so nothing was sent or replaced")
 # 0.4.0: remove sends no removal; only the user removes a project, in NEXUS (SPEC-115, SPEC-202).
 REMOVE_HERE = "no removal was sent: the user removes the project at the address above, under their own sign-in"
 REMOVE_OLDER = "no removal was sent: this server has no project's data yet, so the answer is its dry run of a removal"
@@ -150,6 +154,11 @@ def validate(args, env, h):
     part = getattr(args, "part", "")
     if part and (len(part) > 100 or not h.NAME.fullmatch(part)):
         raise CommandLine("--part needs a lowercase project part name")
+    if getattr(args, "job", False):
+        if args.project:
+            raise CommandLine("--job takes no project name: it pushes the checkout's own project")
+        if args.first or args.replace_held:
+            raise CommandLine("--job takes neither --first nor --replace-held: a push job sends only a newer commit of a project that the server holds")
     if getattr(args, "first", False) and len(args.project) != 1:
         raise CommandLine("--first takes exactly one project, the one that the user agreed to push for the first time")
     return session
@@ -278,6 +287,72 @@ def commit_replacement(snapshot, held, project, replace_held, h):
         snapshot["replaces"] = current
         return None
     return "default branch diverged: held " + current + ", incoming " + incoming + "; use --replace-held only after the user agrees"
+
+
+def push_job(args, home, env, h, client_factory=None):
+    """API-136 push --job: the push of a repository's push job, by the contract guide's table (SPEC-193).
+
+    It pushes the checkout's own project from the session's environment, sends no outbox, reads no agent to-do
+    and never makes a first push or replaces a held commit, so the job passes on 0 and fails on 1.
+    """
+    transport = h.companion("transport")
+    if not h.environment_mode(home):
+        return outcome("push", "", {"outcome": "refused", "failure": JOB_DEVICE})
+    own, project, _ = h.select_projects(home, [], None)[0]
+    if project is None:
+        return outcome("push", "", {"outcome": "refused", "failure": "no project in this checkout"})
+    named = getattr(args, "url", None)
+    url = named or env.get("CORTHEX_NEXUS_URL")
+    missing, local = [], False
+    if not isinstance(url, str) or not url.strip():
+        missing.append("CORTHEX_NEXUS_URL")
+    else:
+        try:
+            local = transport.Client(url, env, version=h.VERSION).local
+        except ValueError:
+            return outcome("push", own, {"outcome": "refused", "failure": "the address in " + ("--url" if named else "CORTHEX_NEXUS_URL") + " is invalid"})
+    if not local:
+        missing += [key for key in TOKEN if not env.get(key)]
+    if missing:
+        # A secret that is not set, as in a fork: the job passes and names what is missing, never a value.
+        return outcome("push", own, {"outcome": "done", "answer": {"sent": False, "why": "not-set", "missing": missing}})
+    if args.dry_run:
+        snapshot = h.make_snapshot(project, h.load_status(home, own), home=home)
+        h.save_snapshot(home, snapshot)
+        return outcome("push", own, {"outcome": "done", "answer": {
+            "bytes": len(h.dump(snapshot, compact=True).encode("utf8")), "summary": snapshot["summary"],
+            "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
+            "held_commit": "checked when sent", "first_push": "checked when sent"}})
+    client = (client_factory or transport.Client)(url, env, version=h.VERSION)
+    held = client.call("GET", "/api/snapshots/" + own + "/held")
+    problem = held.get("problem") or {}
+    if held["outcome"] != "done":
+        if problem.get("code") == "project_not_found":
+            # The first push waits for the user's yes in a session (SPEC-111).
+            return outcome("push", own, {"outcome": "done", "answer": {"sent": False, "why": "first-push-waits"}})
+        if not problem.get("code") and held.get("failure") == "HTTP 404":
+            return outcome("push", own, {"outcome": "refused", "failure": "the server needs the 0.2 release"})
+        return outcome("push", own, held)
+    snapshot = h.make_snapshot(project, h.load_status(home, own), home=home)
+    h.save_snapshot(home, snapshot)
+    answer = held.get("answer") or {}
+    current = answer.get("default_commit")
+    incoming = snapshot.get("repos", {}).get(".", {}).get("default", {}).get("commit")
+    if (isinstance(current, str) and COMMIT.fullmatch(current) and isinstance(incoming, str) and
+            (incoming == current or h.git(project.root, "cat-file", "-t", current) == "commit" and
+             h.run_git(project.root, ["merge-base", "--is-ancestor", incoming, current]) is not None)):
+        # The agent's push, or a later commit's job, stored this commit or a newer one.
+        return outcome("push", own, {"outcome": "done", "answer": {"sent": False, "why": "already-held"}})
+    failure = commit_replacement(snapshot, answer, project, False, h)
+    if failure:
+        named_both = isinstance(current, str) and COMMIT.fullmatch(current) and isinstance(incoming, str)
+        return outcome("push", own, {"outcome": "refused", "failure": JOB_NEITHER % (current, incoming) if named_both else failure})
+    value = client.call("POST", "/api/snapshots", snapshot)
+    if value["outcome"] == "done":
+        value = {"outcome": "done", "answer": {"sent": True, "pushed": value.get("answer")}}
+    elif value.get("failure") == "no service token":
+        value = dict(value, outcome="refused", failure="no service token: set CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET")
+    return outcome("push", own, value)
 
 
 def where(args, home, env, h):
@@ -496,6 +571,8 @@ def execute(args, home, api, env=None, client_factory=None):
     session = validate(args, env, h)
     transport, boxes = h.companion("transport"), h.companion("outbox")
     command = args.command
+    if command == "push" and getattr(args, "job", False):
+        return scrub([push_job(args, home, env, h, client_factory)], home, env, h)
     place = where(args, home, env, h)
     if command == "can-send":
         return scrub([can_send(args, home, env, h, place)], home, env, h)
@@ -736,6 +813,7 @@ def configure(top, commands, existing, h):
         parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     existing["push"].add_argument("--replace-held", action="store_true")
     existing["push"].add_argument("--first", action="store_true", help="allow the project's first push, after the user's yes for it")
+    existing["push"].add_argument("--job", action="store_true", help="a repository's push job: push the checkout's own project from the environment, only a newer commit")
     status = existing["status"]
     for name in ("part", "by", "where", "nexus"):
         status.add_argument("--" + name, default="" if name == "part" else None)

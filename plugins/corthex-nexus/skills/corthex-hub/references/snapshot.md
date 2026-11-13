@@ -152,6 +152,7 @@ Settings in `~/.corthex/profile.json`:
 
 - `url`: the server. `--url` and the environment variable `CORTHEX_NEXUS_URL` take precedence. It must use `https`; `http` works only for `localhost`, `127.0.0.1` and `::1`, for testing.
 - `push`: the projects that may be sent. `hub.py push` with no names sends these; a name that is not listed is refused.
+- `hub.py push --job` is a repository's push job. It needs neither a profile nor names: it pushes the checkout's own project to `CORTHEX_NEXUS_URL` with the token's two variables, sends only a commit newer than the held one, never a first push or a replacement, and sends no outbox. With the address or a variable of the token not set it sends nothing and exits 0, naming what is missing.
 - `hub.py remove` sends no removal: for each project it names, listed in `push` or not, it reads `GET /api/spaces/<project>/data` and gives the address of the project's data, `<url>/p/<project>#data`, where the user removes the project under their own sign-in.
 - The service token is read from `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET` and sent as the Cloudflare Access headers `CF-Access-Client-Id` and `CF-Access-Client-Secret`. A server on this machine may be used without a token.
 

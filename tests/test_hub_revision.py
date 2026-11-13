@@ -977,5 +977,133 @@ class RemoveTest(RevisionCase):
         self.assertEqual([call["method"] for call in self.peer.calls], ["GET"])
 
 
+class PushJobTest(RevisionCase):
+    """TASK-293: the push of a repository's push job, by the contract guide's --job table (API-136, SPEC-193, REQ-276)."""
+
+    HELD = "/api/snapshots/acme/held"
+
+    def setUp(self):
+        super().setUp()
+        # A push job's device: no profile and no list of projects, the address and the token from the job's secrets.
+        self.env = dict(TOKEN, CORTHEX_NEXUS_URL=self.peer.url)
+        self.peer.on("POST", "/api/snapshots", (201, {"project": "acme", "revision": 5, "pictures": {"drawn": 1}}))
+
+    def job(self, *words, env=None, json_lines=True):
+        return self.hub("push", "--job", *words, env=self.env if env is None else env, json_lines=json_lines)
+
+    def posts(self):
+        return [call["body"] for call in self.peer.calls if call["method"] == "POST"]
+
+    def held(self, commit):
+        self.peer.on("GET", self.HELD, (200, {"project": "acme", "default_commit": commit}))
+
+    def test_TC_1680_done_the_first_push_waits(self):
+        self.publish(self.checkout())
+        self.peer.on("GET", self.HELD, problem(404, "project_not_found"))
+        code, rows, err = self.job()
+        self.assertEqual((code, rows[0]["project"], rows[0]["outcome"], rows[0]["answer"]),
+                         (0, "acme", "done", {"sent": False, "why": "first-push-waits"}), err)
+        self.assertEqual(self.posts(), [])
+
+    def test_TC_1681_done_already_held(self):
+        first = self.checkout()
+        held = self.commit("second")
+        self.held(held)
+        for commit in (held, first):
+            with self.subTest(commit=commit):
+                self.publish(commit)
+                code, rows, err = self.job()
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["answer"]), (0, "done", {"sent": False, "why": "already-held"}), err)
+        self.assertEqual(self.posts(), [])
+
+    def test_TC_1682_done_a_newer_commit(self):
+        held = self.checkout()
+        self.held(held)
+        newer = self.commit("newer")
+        self.publish(newer)
+        code, rows, err = self.job()
+        self.assertEqual((code, rows[0]["outcome"]), (0, "done"), err)
+        self.assertEqual(rows[0]["answer"], {"sent": True, "pushed": {"project": "acme", "revision": 5, "pictures": {"drawn": 1}}})
+        (body,) = self.posts()
+        self.assertEqual((body["replaces"], body["repos"]["."]["default"]["commit"]), (held, newer))
+
+    def test_TC_1683_refused_neither_commit_follows_the_other(self):
+        start = self.checkout()
+        held = self.commit("held")
+        self.held(held)
+        self.git("checkout", "-q", "-b", "side", start)
+        side = self.commit("side")
+        self.publish(side)
+        code, rows, err = self.job()
+        self.assertEqual((code, rows[0]["outcome"]), (1, "refused"), err)
+        self.assertIn(held, rows[0]["failure"])
+        self.assertIn(side, rows[0]["failure"])
+        # A held commit that the checkout does not have.
+        missing = "f" * 40
+        self.held(missing)
+        code, rows, err = self.job()
+        self.assertEqual((code, rows[0]["outcome"]), (1, "refused"), err)
+        self.assertIn(missing, rows[0]["failure"])
+        self.assertIn(side, rows[0]["failure"])
+        self.assertEqual(self.posts(), [])
+
+    def test_TC_1684_done_not_set(self):
+        self.publish(self.checkout())
+        cases = [(dict(TOKEN), ["CORTHEX_NEXUS_URL"]),
+                 ({"CORTHEX_NEXUS_URL": REMOTE, "CORTHEX_NEXUS_CLIENT_ID": TOKEN["CORTHEX_NEXUS_CLIENT_ID"]}, ["CORTHEX_NEXUS_CLIENT_SECRET"])]
+        for env, missing in cases:
+            with self.subTest(missing=missing):
+                code, rows, err = self.job(env=env)
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["answer"]), (0, "done", {"sent": False, "why": "not-set", "missing": missing}), err)
+        self.assertEqual(self.peer.calls, [])
+
+    def test_TC_1685_wrong_command_line(self):
+        self.publish(self.checkout())
+        for words in (["--first"], ["--replace-held"], ["acme"]):
+            with self.subTest(words=words):
+                code, out, err = self.job(*words, json_lines=False)
+                self.assertEqual((code, out), (2, ""), err)
+                self.assertIn("--job takes", err)
+        self.assertEqual(self.peer.calls, [])
+
+    def test_TC_1686_sends_only_the_snapshot(self):
+        held = self.checkout()
+        self.held(held)
+        self.publish(self.commit("newer"))
+        waiting = self.seed_write()
+        env = dict(self.env, CORTHEX_NEXUS_PUSH="beta", CORTHEX_NEXUS_SESSION="s-1")
+        code, rows, err = self.job(env=env)
+        self.assertEqual((code, rows[0]["project"], rows[0]["answer"]["sent"]), (0, "acme", True), err)
+        self.assertTrue(waiting.is_file(), "the outbox entry still waits")
+        self.assertEqual([(call["method"], call["path"]) for call in self.peer.calls], [("GET", self.HELD), ("POST", "/api/snapshots")])
+        self.assertFalse((self.home / ".corthex/hub/reads/acme.json").exists())
+
+    def test_TC_1687_failed(self):
+        held = self.checkout()
+        self.held(held)
+        self.publish(self.commit("newer"))
+        refusals = [problem(409, "stale_snapshot"), problem(413, "snapshot_too_large")]
+        for refusal in refusals:
+            with self.subTest(code=refusal[1]["code"]):
+                self.peer.on("POST", "/api/snapshots", refusal)
+                code, rows, err = self.job()
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["problem"]["code"]), (1, "refused", refusal[1]["code"]), err)
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        code, out, err = self.job(env=dict(self.env, CORTHEX_NEXUS_URL="http://127.0.0.1:%d" % port), json_lines=False)
+        self.assertEqual(code, 1, err)
+        self.assertIn("acme: push failed\n  no network", out)
+
+    def test_a_device_with_a_profile_runs_no_job(self):
+        self.publish(self.checkout())
+        self.profile()
+        code, rows, err = self.job()
+        self.assertEqual((code, rows[0]["outcome"]), (1, "refused"), err)
+        self.assertIn("--job runs in a repository's push job", rows[0]["failure"])
+        self.assertEqual(self.peer.calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
