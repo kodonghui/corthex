@@ -2,19 +2,35 @@
 
 This is the agent workflow for an installed `corthex-hub` skill and the project's configured NEXUS server. The hub's own skill and command help define its CLI. Use its installed `scripts/hub.py`, not a program in the current directory. Local stage work does not require the hub, a service token or a server.
 
-Three sections need no hub and no token: Ask for a checkpoint, Tell the user where the work stands, and Walk a NEXUS server's pages in a browser. They hold in every session of a project that is expected on a NEXUS server, also in a session that cannot send. A project is expected there when the profile's `nexus.push` names it, or when the user or the project's own rules say so.
+Three sections need no hub and no token: Ask for a checkpoint, Tell the user where the work stands, and Walk a NEXUS server's pages in a browser. They hold in every session of a project that is expected on a NEXUS server, also in a session that cannot send. A project is expected there when the hub's `can-send` answers `expected`, which it does when the project's settings say `on_nexus` or the push list names the project, or when the user says so.
 
-## Read once in a session
+## At a session's start
 
-After identifying the project, read its agent to-do once per project in this session, from either the entry skill or the first stage skill reached. Carry that fact in the session; changing stages does not trigger another read. An explicit request to refresh work may read again.
+After identifying the project, take these steps once per project in this session, from either the entry skill or the first stage skill reached. Carry the result in the session; changing stages does not repeat them. An explicit request to refresh work may read again.
 
-1. Check that the hub is installed and the project is in the profile's `nexus.push`, with a configured `nexus.url`. Otherwise continue local work. Never enable sending, register a new address or add a project to this list on your own.
+1. Run `hub.py can-send PROJECT`. It contacts no server, sends nothing and needs no session label. Its answer gives `can_send`; `missing`, the names of the settings or variables that are not set, never a value; and `expected`, whether the project is expected on a NEXUS server.
+   - `can_send` is true: go on with step 2.
+   - `can_send` is false and `expected` is true: tell the user once in this session, in one line in their language, what is `missing` and that these are their own settings. Then continue the user's work. Say nothing again for this project, also when another skill starts.
+   - `expected` is false: say nothing, and continue local work.
+   - The hub is not installed: read `on_nexus` in `.corthex/project.json` yourself. When it is `true`, the same one line names the hub as missing; otherwise say nothing.
+   - The hub does not know `can-send`: it is older than these rules. Say so once, go on with the user's work, and follow that hub's own command help: it sends for a project in the profile's `nexus.push` with a configured `nexus.url`, takes no `--first`, `--if-due` or `--look-first`, and a checkpoint request's thing to look at first is then the last line of its text.
+
+   Never set the address, the push list or the token yourself, in a profile, in a session's environment or in a repository, and never ask for a token's value. Never enable sending, register a new address or add a project to this list on your own.
 2. Choose one stable session label without personal data. Use it in `--session` on `todo`, claims and writes. Keep the service credentials in the host's environment; never print them or pass them as command arguments.
-3. At the start of work and after a source/record PR merge or checkpoint, fetch the configured default branch under the repository rules and synchronize that fetched commit before reading the to-do, once for this start/event. For an already authorized first send, run `push PROJECT --dry-run` and `push PROJECT` under the hub and repository rules; the hub checks held-commit ancestry. If the first send is not approved, show the dry-run and ask once, continue local work while waiting, and honor any existing instruction to defer that question. Do not push a worktree commit or enable an automatic network hook. A missing token/server response does not stop local work.
+3. At the start of work and after a source/record PR merge or checkpoint, fetch the configured default branch under the repository rules and synchronize that fetched commit before reading the to-do, once for this start/event. For a first send that the user already agreed to for this project, run `push PROJECT --dry-run` and `push PROJECT --first` under the hub and repository rules; the hub checks held-commit ancestry. If the first send is not approved, show the dry-run and ask once, continue local work while waiting, and honor any existing instruction to defer that question. Do not push a worktree commit or enable an automatic network hook. A missing token/server response does not stop local work.
 4. Run `hub.py todo PROJECT --session SESSION --json`. It drains the project's outbox before reading. A kept write is pending delivery, not a received comment; report the hub's result accurately.
 5. A missing space is empty: say nothing. With no token or no server answer, say once that comments may be waiting, and continue the user's work. Do not keep retrying or ask for a token merely to finish local work.
 6. Give one short list if work is waiting: open comments oldest first; open discrepancies, warn before info; pending reflections without a PR before those in review; then checkpoints waiting for their record or withdrawal correction. Include waiting-for-user and taken counts. Each group's returned 50 entries are a page with a total, not proof that no more exist.
 7. Do the user's explicit task first. Work through the available to-do afterwards, in that order. Never infer that a proposal or a discrepancy authorizes a different change.
+
+## Read the to-do again
+
+A session that can send reads the project's to-do again at two moments. A session that cannot send reads nothing, and says nothing again.
+
+- Where a unit of stage work starts or ends, run `todo PROJECT --session SESSION --if-due --json`. The hub reads only when the session's last read is more than a day old; otherwise it contacts no server, and the result's `read` is false.
+- Before each checkpoint request, run `todo` without `--if-due`, whatever the time of the last read. Answer the entries on the stage that you are about to ask for, or name them in the request as open.
+- After a read that follows the session's first, tell the user only what the result's `new` holds, and take it up as step 7 says. When nothing is new, say nothing about it.
+- No answer from the server is said once, as in step 5, and the work and the checkpoint request go on.
 
 ## Take an entry safely
 
@@ -53,7 +69,12 @@ A checkpoint request is what the user reads before passing a stage, so it has on
 - Use an address that needs no new permission and shows project data to nobody else: the project's own preview behind the same sign-in, an address in the session, or a file that opens by itself. Showing a screen releases nothing: a deploy that the project asks about first is still asked.
 - Where nothing can be pressed yet, such as a sitemap with no screen drawn, say so in one of the lines and name the stage's picture first.
 
-Make the request in the session. Where the session can send and the server takes a comment that asks (the hub's skill says which servers do), also write it as a comment on the stage as a whole with `--asks checkpoint`: the same lines as its text, with the thing to look at first in `--look-first`. The hub refuses a request without it, and gives a server from before the design revision the thing to look at first as the text's last line. With a hub older than 0.4.0, which takes no `--look-first`, write that thing as the text's last line yourself. When the hub holds the request back with `read the to-do first`, answer the entries that it names as new, or name them in the request as open, and send it again. A part's stage has one open request, so write a newer one as a reply on it. When the server refuses the comment, the request in the session stands; do not reword it to get it through.
+Make the request in the session. Where the session can send, also send it through the hub, as a comment on the stage as a whole: `comment PROJECT --stage STAGE [--part PART] --asks checkpoint --look-first ID|URL|stage`, with the same lines as its text and without `--item`. `--look-first` takes the item's trace ID, the `https` address, or the word `stage` for the stage's own picture or list. The hub checks the form before it sends, and says what to shorten or add.
+
+- `refused` with `read the to-do first`: the hub's read before the request brought entries that are new. Answer those on the stage, or name them in the request as open, and send it again.
+- The remark `sent-as-reply`: the part's stage already had an open request, and the hub sent this one as a reply on it. A part's stage has one open request at a time.
+- The remark `server-older`: the server does not know the new form yet, and the hub sent what that server takes. Nothing more is needed.
+- The request waits in the outbox, the server refuses it, or the session cannot send: the request in the session stands. Do not reword it to get it through.
 
 ## Tell the user where the work stands
 
@@ -87,7 +108,9 @@ Write the stage's state, next action and checked findings in the same PR as the 
 
 Keep the stage's existing six-slot contract and source-of-truth direction. In stage 01 preserve an existing explicit event timeline and its lane/place order in the domain source; do not infer one from a context table. In stages 05 and 07 name the glossary terms of the aggregates/read models each table or screen represents, or `terms: none`, and explicitly list the part's terms without a table/screen. The individual stage references give the forms the hub reads.
 
-After a merged source/record PR, `push --dry-run` describes the snapshot from the latest fetched default commit. Before a project's first real send, show that description and obtain the user's confirmation, even if the project is already allowlisted. Existing approval applies only to its configured server and project. Then `push` sends it; it never commits or opens a PR. Follow the held-commit result; divergence needs agreement before `--replace-held`. Do not expose a token, send to a redirect, delete a project or mark a checkpoint passed to make a sync succeed.
+After a merged source/record PR, `push --dry-run` describes the snapshot from the latest fetched default commit. Before a project's first real send, show that description and obtain the user's confirmation, even if the project is already allowlisted. Existing approval applies only to its configured server and project. Then `push PROJECT --first` sends it: add `--first` only after the user's yes for that one project, never for several projects and never on your own. Without it the hub sends no first push and says that the push waits for the user's yes. A project that the user removed is a first push again. `push` never commits or opens a PR. Follow the held-commit result; divergence needs agreement before `--replace-held`. Do not expose a token, send to a redirect, delete a project or mark a checkpoint passed to make a sync succeed.
+
+Removing a project from the server is the user's own act. `remove PROJECT` sends no removal: it shows what a removal would delete, with the open comments, open proposals, pending reflections and unrecorded checkpoints by ID, and gives the address of the project's data, where the user removes the project under their own sign-in. Show the user both. Offer to answer, reflect or record those entries first. Say that a removed project comes back only by a first push that the user agrees to, and, while the project is still in the push list, how to take it off the list. Never open that address to press the removal yourself. A server from before the design revision has no project's data yet: there `remove` shows that server's dry run instead, with the remark `server-older`, and gives no address. Until the server of the revision runs, the project cannot be removed: say so, and never remove it another way, such as with an older hub.
 
 
 ## Project approval categories

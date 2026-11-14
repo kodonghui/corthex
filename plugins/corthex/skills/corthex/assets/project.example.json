@@ -4,6 +4,7 @@
   "team": true,
   "language": "en",
   "parts": ["catalog", "orders"],
+  "on_nexus": false,
   "ask_before": ["external messages", "payments", "deletions", "publishing"],
   "records": { "kind": "notion", "location": "<link to the project's records database>" },
   "repos": { "design": "https://github.com/example/acme-shop-design" },

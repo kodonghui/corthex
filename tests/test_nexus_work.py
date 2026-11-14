@@ -36,6 +36,7 @@ class NexusWorkTest(unittest.TestCase):
         first = blocks[OWNERS[0]]
         self.assertIn("(references/nexus-work.md)", first)
         self.assertIn("hold in every session, also in one without the hub", first)
+        self.assertIn("say once, in one line, what is missing for a project that is expected on a NEXUS server", first)
         for skill, block in blocks.items():
             with self.subTest(skill=skill):
                 self.assertEqual(block, first)
@@ -47,7 +48,8 @@ class NexusWorkTest(unittest.TestCase):
             "Local stage work does not require the hub, a service token or a server.",
             "Three sections need no hub and no token",
             "also in a session that cannot send",
-            "when the profile's `nexus.push` names it, or when the user or the project's own rules say so",
+            "when the hub's `can-send` answers `expected`",
+            "when the project's settings say `on_nexus` or the push list names the project, or when the user says so",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, intro)
@@ -72,14 +74,14 @@ class NexusWorkTest(unittest.TestCase):
             "needs no new permission and shows project data to nobody else",
             "Showing a screen releases nothing",
             "Make the request in the session.",
-            "`--asks checkpoint`",
-            "with the thing to look at first in `--look-first`",
-            "The hub refuses a request without it",
-            "With a hub older than 0.4.0, which takes no `--look-first`",
-            "`read the to-do first`",
-            "or name them in the request as open, and send it again",
-            "write a newer one as a reply on it",
-            "do not reword it to get it through",
+            "`comment PROJECT --stage STAGE [--part PART] --asks checkpoint --look-first ID|URL|stage`",
+            "`--look-first` takes the item's trace ID, the `https` address, or the word `stage`",
+            "without `--item`",
+            "`refused` with `read the to-do first`",
+            "The remark `sent-as-reply`",
+            "A part's stage has one open request at a time",
+            "The remark `server-older`",
+            "Do not reword it to get it through",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, ask)
@@ -123,9 +125,74 @@ class NexusWorkTest(unittest.TestCase):
             "Never enable sending, register a new address or add a project to this list on your own.",
             "never print them or pass them as command arguments",
             "obtain the user's confirmation, even if the project is already allowlisted",
+            "Never set the address, the push list or the token yourself, in a profile, in a session's environment or "
+            "in a repository, and never ask for a token's value.",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, text)
+
+    def test_a_session_says_once_when_it_cannot_send(self):
+        start = section(workflow(), "## At a session's start")
+        for rule in (
+            "1. Run `hub.py can-send PROJECT`. It contacts no server, sends nothing and needs no session label.",
+            "the names of the settings or variables that are not set, never a value",
+            "`can_send` is false and `expected` is true: tell the user once in this session, in one line",
+            "that these are their own settings",
+            "Say nothing again for this project, also when another skill starts",
+            "`expected` is false: say nothing, and continue local work",
+            "read `on_nexus` in `.corthex/project.json` yourself",
+            "the same one line names the hub as missing",
+            "The hub does not know `can-send`: it is older than these rules. Say so once",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, start)
+        # The steps stay in order, and the session asks before it reads.
+        steps = [start.index("\n%d. " % number) for number in range(1, 8)]
+        self.assertEqual(steps, sorted(steps))
+        self.assertLess(start.index("can-send PROJECT"), start.index("todo PROJECT --session SESSION --json"))
+
+    def test_the_to_do_is_read_again(self):
+        again = section(workflow(), "## Read the to-do again")
+        for rule in (
+            "A session that cannot send reads nothing, and says nothing again.",
+            "Where a unit of stage work starts or ends, run `todo PROJECT --session SESSION --if-due --json`",
+            "more than a day old",
+            "Before each checkpoint request, run `todo` without `--if-due`",
+            "or name them in the request as open",
+            "tell the user only what the result's `new` holds",
+            "When nothing is new, say nothing about it",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, again)
+
+    def test_the_first_push_and_a_removal_wait_for_the_user(self):
+        text = workflow()
+        for rule in (
+            "run `push PROJECT --dry-run` and `push PROJECT --first`",
+            "add `--first` only after the user's yes for that one project, never for several projects and never on "
+            "your own",
+            "A project that the user removed is a first push again",
+            "Removing a project from the server is the user's own act. `remove PROJECT` sends no removal",
+            "Never open that address to press the removal yourself",
+            "A server from before the design revision has no project's data yet",
+            "shows that server's dry run instead, with the remark `server-older`, and gives no address",
+            "Until the server of the revision runs, the project cannot be removed",
+            "never remove it another way, such as with an older hub",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, text)
+
+    def test_the_project_settings_say_that_a_project_is_expected(self):
+        row = next(line for line in read_text(SKILLS / "corthex" / "references" / "project.md").splitlines()
+                   if line.startswith("| `on_nexus` |"))
+        for rule in (
+            "| boolean | Optional.",
+            "no address",
+            "It is data: it enables nothing, sends nothing and is never a permission to push",
+            "Any other form counts as not set",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, row)
 
 
 if __name__ == "__main__":
