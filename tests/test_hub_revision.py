@@ -855,15 +855,16 @@ class CheckpointRequestTest(RevisionCase):
         self.assertEqual((self.waiting(), self.counts(rows[0])), ([], {"sent": 1, "dropped": 0, "waiting": 0}))
         code, out, _ = self.request(json_lines=False)
         self.assertIn("  sent-as-reply: the stage had an open checkpoint request, so the request went as a reply on it", out)
-        # From the outbox: a request kept earlier goes the same way at the next contact.
+        # From the outbox: a request kept earlier goes the same way at the next contact, after a read of the to-do.
         body = {"part": "", "stage": "04-functional-spec", "item": "", "text": "Kept request", "asks": "checkpoint", "look_first": "SPEC-194"}
         self.queue("nw_" + "k" * 12, body, utc(-300))
         calls = len(self.peer.calls)
         code, rows, err = self.hub("outbox", "acme", "--send")
         self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["sent-as-reply"]), err)
         sent = self.peer.calls[calls:]
-        self.assertEqual([(call["path"], self.key(call) == "nw_" + "k" * 12) for call in sent], [(self.COMMENTS, True), (self.replies, False)])
-        self.assertEqual(sent[1]["body"], {"text": "Kept request", "asks": "checkpoint", "look_first": "SPEC-194"})
+        self.assertEqual([(call["path"], self.key(call) == "nw_" + "k" * 12) for call in sent],
+                         [(self.TODO, False), (self.COMMENTS, True), (self.replies, False)])
+        self.assertEqual(sent[2]["body"], {"text": "Kept request", "asks": "checkpoint", "look_first": "SPEC-194"})
         self.assertEqual(self.waiting(), [])
         self.assertFalse((self.home / ".corthex/hub/outbox/acme.order").exists())
 
@@ -894,6 +895,86 @@ class CheckpointRequestTest(RevisionCase):
         self.assertEqual((code, rows[0]["outcome"], rows[0]["outbox"]["sent"]), (0, "done", 1), err)
         self.assertEqual([self.key(call) for call in self.posts()[1:]], [kept[0]["write"]] * 2)
         self.assertEqual(self.waiting(), [])
+
+    def test_TC_1702_a_request_that_waits_is_sent_after_a_read_that_keeps_nothing(self):
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        self.profile("http://127.0.0.1:%d" % port)
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"]), (3, "kept"), err)
+        kept, reads = self.waiting(), self.reads_path.read_text(encoding="utf8")
+        self.profile()
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"], self.counts(rows[0])),
+                         (0, "done", [], {"sent": 1, "dropped": 0, "waiting": 0}), err)
+        # The read of the to-do that comes before every checkpoint request, with the request's session, and then the
+        # request as it waited, with look_first and its write ID.
+        self.assertEqual([(call["method"], call["path"], call["session"]) for call in self.peer.calls],
+                         [("GET", self.TODO, "s-1"), ("POST", self.COMMENTS, "s-1")])
+        self.assertEqual((self.posts()[0]["body"], self.key(self.posts()[0])), (kept[0]["body"], kept[0]["write"]))
+        # That read keeps nothing for the session, whose next read still says all that came in since its read before.
+        self.assertEqual(self.reads_path.read_text(encoding="utf8"), reads)
+        self.assertEqual(self.waiting(), [])
+
+    def test_a_request_that_waits_waits_again_without_an_answer_to_its_read_and_goes_with_a_refusal(self):
+        self.queue("nw_" + "k" * 12, {"part": "", "stage": "04-functional-spec", "item": "", "text": "Kept request",
+                                       "asks": "checkpoint", "look_first": "SPEC-194"}, utc(-300))
+        self.peer.on("GET", self.TODO, problem(503, "unavailable"))
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"], self.counts(rows[0])),
+                         (3, "kept", "HTTP 503", {"sent": 0, "dropped": 0, "waiting": 1}), err)
+        self.assertEqual([(entry["write"], entry["tries"]) for entry in self.waiting()], [("nw_" + "k" * 12, 2)])
+        # A refused read is the request's answer: it is dropped with the read's reason, and nothing is sent.
+        self.peer.on("GET", self.TODO, problem(403, "not_allowed"))
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], self.counts(rows[0])), (0, "done", {"sent": 0, "dropped": 1, "waiting": 0}), err)
+        self.assertEqual([(notice["write"], notice["problem"]["code"]) for notice in rows[0]["outbox"]["notices"]],
+                         [("nw_" + "k" * 12, "not_allowed")])
+        self.assertEqual((self.posts(), self.waiting()), ([], []))
+
+    def taken_over(self, answer):
+        """A route's answer that another hub's takeover of the outbox lock precedes, while the request is on its way."""
+        lock = self.home / ".corthex/hub/outbox/acme.lock"
+
+        def answered(call):
+            lock.write_text(json.dumps({"pid": 1, "time": 0, "owner": "another hub"}), encoding="utf8")
+            return answer
+        return answered
+
+    def test_TC_1701_a_reply_whose_lock_is_taken_over_meanwhile_is_not_sent_again(self):
+        answer = (201, {"comment": {"id": self.OPEN, "asks": "checkpoint"}, "reply": {"seq": 2}})
+        self.peer.on("POST", self.COMMENTS, problem(409, "checkpoint_requested", comment=self.OPEN))
+        self.peer.on("POST", self.replies, (self.taken_over(answer), None))
+        code, rows, err = self.request()
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"], rows[0]["remarks"]),
+                         (0, "done", "the outbox lock was taken over", ["sent-as-reply"]), err)
+        self.assertEqual(rows[0]["answer"], answer[1])
+        first, second = self.posts()
+        self.assertEqual((first["path"], second["path"]), (self.COMMENTS, self.replies))
+        # The reply waits in its request's place, as the old owner could not take it out, and the request is not restored.
+        self.assertEqual([entry["write"] for entry in self.waiting()], [self.key(second)])
+        # The other hub lets the lock go; the next contact sends that reply once more, with its own write ID, and
+        # nothing else: neither the request again nor another reply with a new write ID.
+        (self.home / ".corthex/hub/outbox/acme.lock").unlink()
+        self.peer.on("POST", self.replies, answer)
+        code, rows, err = self.hub("outbox", "acme", "--send")
+        self.assertEqual((code, rows[0]["outcome"], self.counts(rows[0])), (0, "done", {"sent": 1, "dropped": 0, "waiting": 0}), err)
+        self.assertEqual([(call["path"], self.key(call)) for call in self.posts()[2:]], [(self.replies, self.key(second))])
+        self.assertEqual(self.waiting(), [])
+
+    def test_a_reply_that_names_its_stage_and_whose_lock_is_taken_over_meanwhile_is_reported_as_sent(self):
+        answer = (201, {"comment": {"id": self.OPEN, "asks": "checkpoint"}, "reply": {"seq": 3}})
+        self.space.add("comments", self.OPEN, utc(-120), part="", stage="04-functional-spec")
+        self.peer.on("POST", self.replies, (self.taken_over(answer), None))
+        code, rows, err = self.request(look="stage", command=("reply", "acme", self.OPEN))
+        self.assertEqual((code, rows[0]["outcome"], rows[0]["failure"], rows[0]["answer"]),
+                         (0, "done", "the outbox lock was taken over", answer[1]), err)
+        # The reply with its stage's address waits as the outbox holds it, under its own write ID.
+        sent = self.posts()[0]
+        self.assertEqual([(entry["write"], entry["body"]) for entry in self.waiting()], [(self.key(sent), sent["body"])])
+        self.assertEqual(sent["body"]["look_first"], self.peer.url + "/p/acme/_/04-functional-spec")
 
     def test_TC_1703_reply_asks_again(self):
         # The user replied on the stage's request before the session's last read.
@@ -1202,6 +1283,51 @@ class VersionsMeetTest(RevisionCase):
                          [("GET", "/api/spaces/acme/data"), ("GET", "/api/snapshots/acme/removal")], "remove sends nothing")
         code, out, _ = self.hub("remove", "acme", json_lines=False)
         self.assertIn("  no removal was sent: this server has no project's data yet", out)
+
+    def test_TC_1758_a_request_that_waits_goes_in_the_old_form(self):
+        # A request kept while the read of the to-do had no answer, and one kept behind an earlier write that waits,
+        # each go at the next contact after a read of the to-do, in the form that its answer shows this server takes.
+        space = Todo()
+        space.with_read_at = False
+        replies = self.COMMENTS + "/nc_" + "r" * 12 + "/replies"
+        self.peer.on("GET", self.TODO, (space, None))
+
+        def before(call):
+            # A server of before refuses a field that it does not know, as any 400 (point 31 of stage 06).
+            if "look_first" in call["body"]:
+                return problem(400, "invalid_request", field="look_first")
+            return 201, {"id": "nc_" + "q" * 12, "state": "open"}
+        self.peer.on("POST", self.COMMENTS, (before, None))
+        text = self.base / "request.txt"
+        self.write(text, "Stage 04 is ready for your checkpoint.")
+        request = ("comment", "acme", "--stage", "04-functional-spec", "--asks", "checkpoint", "--look-first", "SPEC-194",
+                   "--text-file", str(text), "--session", "s-1")
+        closed = socket.socket()
+        closed.bind(("127.0.0.1", 0))
+        port = closed.getsockname()[1]
+        closed.close()
+        for way in ("no answer to the read", "an earlier write waits"):
+            with self.subTest(way):
+                if way == "no answer to the read":
+                    self.profile("http://127.0.0.1:%d" % port)
+                    code, rows, err = self.hub(*request)
+                    self.profile()
+                else:
+                    self.peer.on("POST", replies, problem(503, "unavailable"))
+                    code, rows, err = self.hub("reply", "acme", "nc_" + "r" * 12, "--text", "An earlier reply", "--session", "s-1")
+                    self.assertEqual((code, rows[0]["outcome"]), (3, "kept"), err)
+                    code, rows, err = self.hub(*request)
+                    self.peer.on("POST", replies, (201, {"comment": {"id": "nc_" + "r" * 12}, "reply": {"seq": 2}}))
+                self.assertEqual((code, rows[0]["outcome"]), (3, "kept"), err)
+                calls = len(self.peer.calls)
+                code, rows, err = self.hub("outbox", "acme", "--send")
+                self.assertEqual((code, rows[0]["outcome"], rows[0]["remarks"]), (0, "done", ["server-older"]), err)
+                sent = [call for call in self.peer.calls[calls:] if call["path"] in (self.TODO, self.COMMENTS)]
+                self.assertEqual([call["path"] for call in sent], [self.TODO, self.COMMENTS], "the read comes first")
+                self.assertNotIn("look_first", sent[1]["body"])
+                self.assertEqual(sent[1]["body"]["text"].split("\n")[-1], "SPEC-194", "the ID is the text's last line")
+                self.assertEqual(list((self.home / ".corthex/hub/outbox").glob("acme/*.json")), [])
+        self.assertFalse(self.reads_path.exists(), "the hub keeps no session read")
 
     def test_TC_1762_the_skills_of_before_with_a_hub_of_the_revision(self):
         text = self.base / "request.txt"

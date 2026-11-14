@@ -512,47 +512,83 @@ def keepable(pending):
     return None if pending is not None and pending["body"].get("look_first") == "stage" else pending
 
 
-def ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, origin):
+def old_form(body):
+    """How versions meet: a checkpoint request for a server of before, whose text's last line is the thing to look at first."""
+    body = dict(body)
+    body["text"] = body["text"] + "\n" + body.pop("look_first")
+    return body
+
+
+class Forms:
+    """The form in which the outbox sends a checkpoint request: the one that the server takes (How versions meet).
+
+    A read of the agent to-do comes before every checkpoint request, and only a server of the revision names
+    read_at in its answer. A request sent at once takes its form from the read before it (ask_checkpoint). One
+    that waited in the outbox, in the new form, gets a read of its own at the next contact, once for the command,
+    with the request's session; that read keeps nothing for the session, whose next read still says all that came
+    in since its read before. A read without an answer leaves the request waiting, and a refusal is its answer.
+    """
+
+    def __init__(self, client, project):
+        self.client, self.project, self.older = client, project, None
+
+    def __call__(self, data, lease):
+        body = data["body"]
+        if body.get("asks") != "checkpoint" or "look_first" not in body:
+            return body, None
+        if self.older is None:
+            read = self.client.call("GET", "/api/spaces/" + self.project + "/todo", session=data["session"])
+            lease.renew()
+            if read["outcome"] != "done":
+                return None, read
+            self.older = "read_at" not in read["answer"]
+        return (old_form(body) if self.older else body), None
+
+
+def said(form, replied):
+    """The remarks of what the outbox did otherwise than the command line says: the old form, a reply in a request's place."""
+    return (["server-older"] if form is not None and form.older else []) + (["sent-as-reply"] if replied else [])
+
+
+def ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, origin, form):
     """Send a checkpoint request after the outbox and a read of the to-do, or hold it back once (SPEC-191, SPEC-197).
 
     Returns the outcome, the outbox's counts and the remarks. When the read gets no answer the request waits
-    in the outbox, as any write does; a reply that names its stage then cannot, and nothing is kept.
+    in the outbox in the new form, as any write does; a reply that names its stage then cannot, and nothing is
+    kept. The read tells form the form that this server takes, for the request and for any that waits.
     """
-    stats, _ = box.drain(client, lease)
+    stats, _ = box.drain(client, lease, form=form)
     replied = bool(box.replies)
     unresolved = keepable(pending) is None
     if stats["waiting"]:
         if unresolved:
-            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, []
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, said(form, replied)
         box.save(pending, None, lease, count_attempt=False)
         stats["waiting"] = len(box.files())
-        return {"outcome": "kept", "failure": "an earlier outbox write is waiting"}, stats, []
+        return {"outcome": "kept", "failure": "an earlier outbox write is waiting"}, stats, said(form, replied)
     lease.renew()
     read = read_todo(client, home, name, session, kept, boxes)
     if read["outcome"] != "done" and not read.get("retry"):
         # The server answered the read with a refusal: the request is not sent, and not kept.
-        return {"outcome": read["outcome"], "problem": read.get("problem"), "failure": read.get("failure")}, stats, []
+        return {"outcome": read["outcome"], "problem": read.get("problem"), "failure": read.get("failure")}, stats, said(form, replied)
     if read["outcome"] != "done":
         if unresolved:
-            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, []
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, said(form, replied)
         box.save(pending, read, lease, count_attempt=False)
         stats["waiting"] = len(box.files())
-        return {"outcome": "kept", "failure": boxes.failure_of(read)}, stats, []
-    remarks = list(read.get("remarks") or ())
+        return {"outcome": "kept", "failure": boxes.failure_of(read)}, stats, said(form, replied)
+    form.older = "server-older" in (read.get("remarks") or ())
     if read.get("new") and any(read["new"].values()):
-        return {"outcome": "refused", "failure": READ_FIRST, "new": read["new"]}, stats, remarks
+        return {"outcome": "refused", "failure": READ_FIRST, "new": read["new"]}, stats, said(form, replied)
     body = dict(pending["body"])
     if unresolved:
         where = comment_stage(client, lease, name, pending["path"].split("/")[-2], read)
         if where is None:
-            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, remarks
+            return {"outcome": "failed", "failure": UNKNOWN_STAGE}, stats, said(form, replied)
         body["look_first"] = origin + "/p/" + name + "/" + (where[0] or "_") + "/" + where[1]
-    if "server-older" in remarks:
-        # How versions meet: the old form, whose last line is the thing to look at first.
-        body["text"] = body["text"] + "\n" + body.pop("look_first")
     pending = dict(pending, body=body)
     box.save(pending, None, lease, count_attempt=False)
-    sent, _ = box.drain(client, lease)
+    sent, _ = box.drain(client, lease, form=form)
     stats = {"sent": stats["sent"] + sent["sent"], "dropped": stats["dropped"] + sent["dropped"], "waiting": sent["waiting"],
              "notices": stats["notices"] + sent["notices"]}
     value = box.attempts.get(box.replies.get(pending["write"], pending["write"]))
@@ -560,9 +596,7 @@ def ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes
         value = {"outcome": "kept", "failure": "an earlier outbox write is waiting"}
     elif value.get("retry"):
         value = dict(value, outcome="kept")
-    if replied or box.replies:
-        remarks.append("sent-as-reply")
-    return value, stats, remarks
+    return value, stats, said(form, replied or bool(box.replies))
 
 
 def execute(args, home, api, env=None, client_factory=None):
@@ -649,10 +683,11 @@ def execute(args, home, api, env=None, client_factory=None):
                 # Not due: no server and no outbox (SPEC-191).
                 rows.append(outcome(command, name, {"outcome": "done", "read": False, "since": kept}, remarks=remarks)); continue
         value = None
+        form = Forms(client, name) if client is not None else None
         try:
             with box.lease() as lease:
                 if asks_checkpoint and client is not None:
-                    value, stats, extra = ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, place.url.rstrip("/"))
+                    value, stats, extra = ask_checkpoint(box, client, lease, home, name, session, pending, kept, boxes, place.url.rstrip("/"), form)
                 elif asks_checkpoint and keepable(pending) is None:
                     # A reply that names its stage as the thing to look at first cannot wait unresolved.
                     value = {"outcome": "failed", "failure": setup_failure}
@@ -661,8 +696,8 @@ def execute(args, home, api, env=None, client_factory=None):
                     # then uses exactly the same ordered drain as a retry.
                     box.save(pending, {"failure": setup_failure} if setup_failure else None, lease, count_attempt=False)
                 if value is None and command != "remove":
-                    stats, waiting = box.drain(client, lease, send=client is not None and not (command == "outbox" and not args.send))
-                    extra = ["sent-as-reply"] if box.replies else []
+                    stats, waiting = box.drain(client, lease, send=client is not None and not (command == "outbox" and not args.send), form=form)
+                    extra = said(form, bool(box.replies))
                 else:
                     waiting = []
                 if value is not None:
@@ -725,12 +760,12 @@ def execute(args, home, api, env=None, client_factory=None):
                     value = client.call("POST" if command == "claim" else "DELETE", "/api/spaces/" + name + "/claims/" + args.entry, session=session)
         except boxes.Busy:
             failure = "another hub is sending this project's outbox"
-            value = interrupted(box, keepable(pending), value, failure, stats)
+            value = interrupted(box, pending, value, failure, stats)
         except boxes.Lost:
             failure = "the outbox lock was taken over"
-            value = interrupted(box, keepable(pending), value, failure, stats)
+            value = interrupted(box, pending, value, failure, stats)
         except (OSError, ValueError):
-            value = interrupted(box, keepable(pending), value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
+            value = interrupted(box, pending, value, "outbox cleanup failed" if value is not None else "outbox unavailable", stats)
         # Lease release can itself fail. Publish exactly one outcome only
         # after that cleanup has either completed or been handled above.
         if command == "todo" and "since" not in value:
@@ -743,10 +778,17 @@ def interrupted(box, pending, value, failure, stats):
     if value is not None:
         return dict(value, failure=failure)
     if pending is not None:
-        attempt = box.attempts.get(pending["write"])
-        if attempt is not None and not attempt.get("retry"):
-            return dict(attempt, failure=failure)
-        return recover(box, pending, failure, stats)
+        # The write as the outbox holds it: a request with its stage's address in place of stage, or the reply
+        # that took the request's place on the stage's open one (SPEC-197), whose answer stands for the request's.
+        # Recovery neither restores the request nor sends it again, which would make another reply.
+        write = box.replies.get(pending["write"], pending["write"])
+        remarks = ["sent-as-reply"] if write != pending["write"] else []
+        pending = keepable(box.held.get(write, pending))
+        if pending is not None:
+            attempt = box.attempts.get(write)
+            if attempt is not None and not attempt.get("retry"):
+                return dict(attempt, failure=failure, remarks=remarks)
+            return dict(recover(box, pending, failure, stats), remarks=remarks)
     return {"outcome": "failed", "failure": failure}
 
 

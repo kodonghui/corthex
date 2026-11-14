@@ -253,7 +253,8 @@ class Outbox:
         self.folder = self.root / project
         self.order_path = self.root / (project + ".order")
         self.project, self.clock = project, clock
-        self.attempts, self.replies = {}, {}
+        # The last drain's answers and replacements, and each write as this command left it in the outbox, by write ID.
+        self.attempts, self.replies, self.held = {}, {}, {}
         within = inside(self.folder.resolve(), self.root.resolve())
         if len(project) > 100 or self.root.is_symlink() or self.folder.is_symlink() or not within:
             raise ValueError("outbox paths must stay in this device's hub")
@@ -316,6 +317,7 @@ class Outbox:
                 # Reserve admission order before the atomic file publication.
                 atomic(self.order_path, order)
             atomic(path, data)
+        self.held[data["write"]] = data
         return data
 
     def load(self, path):
@@ -346,7 +348,14 @@ class Outbox:
             path.unlink()
         return target
 
-    def drain(self, client, lease, send=True):
+    @staticmethod
+    def deliver(client, data, lease, form):
+        """One attempt at a write. form gives the body to send in the form that the server takes, or else the
+        answer that stands for the attempt, as a checkpoint request's read of the to-do (How versions meet)."""
+        body, attempt = (data["body"], None) if form is None else form(data, lease)
+        return attempt if attempt is not None else client.call("POST", data["path"], body, data["session"], data["write"])
+
+    def drain(self, client, lease, send=True, form=None):
         self.attempts, self.replies = {}, {}
         stats = {"sent": 0, "dropped": 0, "waiting": 0, "notices": []}
         waiting, stopped = [], False
@@ -367,16 +376,16 @@ class Outbox:
                 waiting.append(info)
                 continue
             lease.renew()
-            attempt = client.call("POST", data["path"], data["body"], data["session"], data["write"])
+            attempt = self.deliver(client, data, lease, form)
             reply = as_reply(data, attempt, self.clock)
             if reply is not None:
                 # Once: the reply's own answer stands, whatever it is.
                 path = self.as_reply_in_place(path, data, reply, lease)
-                self.replies[data["write"]] = reply["write"]
+                self.replies[data["write"]], self.held[reply["write"]] = reply["write"], reply
                 data = reply
                 info = {key: data[key] for key in ("write", "request", "made", "tries")}
                 lease.renew()
-                attempt = client.call("POST", data["path"], data["body"], data["session"], data["write"])
+                attempt = self.deliver(client, data, lease, form)
             self.attempts[data["write"]] = attempt
             with lease.owned():
                 if attempt["outcome"] == "done":
