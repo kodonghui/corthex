@@ -73,7 +73,11 @@ class NexusWorkTest(unittest.TestCase):
             "Showing a screen releases nothing",
             "Make the request in the session.",
             "`--asks checkpoint`",
-            "the thing to look at first as the last line",
+            "with the thing to look at first in `--look-first`",
+            "The hub refuses a request without it",
+            "With a hub older than 0.4.0, which takes no `--look-first`",
+            "`read the to-do first`",
+            "or name them in the request as open, and send it again",
             "write a newer one as a reply on it",
             "do not reword it to get it through",
         ):
