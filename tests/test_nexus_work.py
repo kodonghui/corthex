@@ -174,6 +174,10 @@ class NexusWorkTest(unittest.TestCase):
             "A project that the user removed is a first push again",
             "Removing a project from the server is the user's own act. `remove PROJECT` sends no removal",
             "Never open that address to press the removal yourself",
+            "A server from before the design revision has no project's data yet",
+            "shows that server's dry run instead, with the remark `server-older`, and gives no address",
+            "Until the server of the revision runs, the project cannot be removed",
+            "never remove it another way, such as with an older hub",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, text)
