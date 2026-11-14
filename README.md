@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.10.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.3.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.10.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -102,7 +102,7 @@ When records go to Notion, the project's `records.location` or the profile's `re
 
 For a configured NEXUS project, the entry and stage skills use the installed hub to read work once per session/project. Do the user's current request first, then comments, discrepancies, reflections and checkpoints. Missing credentials or an unavailable server do not stop local work. Respect claims/open PRs and the repository's PR rules for decisions, reflections and stage records. The first real send has its own confirmation. [Optional workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
 
-The current NEXUS hub is 0.3.0. Server/browser setup, migration and rollback belong to [the separate product repository](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Upgrade the server to a0.2-compatible runtime before the hub. A comment on a stage without a picture and the hub's `--asks` need the redesign's server; a 0.2 server refuses them and takes the rest as before. The Node/SQLite runtime stays behind Access and a Tunnel, with the Worker/D1 compatibility path retained. Package numbers here do not assert a published tag or a production switch.
+The current NEXUS hub is 0.4.0. Server/browser setup, migration and rollback belong to [the separate product repository](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Upgrade the server to a0.2-compatible runtime before the hub. A comment on a stage without a picture and the hub's `--asks` need the redesign's server; a 0.2 server refuses them and takes the rest as before. The design revision's commands of 0.4.0 also work with a server of before: there `todo` keeps no session read, a checkpoint request goes without `look_first`, with the thing to look at first as the text's last line, and `remove` shows the server's dry run, each with the remark `server-older`. Until the server of the revision runs, a project cannot be removed with this hub; after it, the user removes a project in NEXUS under their own sign-in. The Node/SQLite runtime stays behind Access and a Tunnel, with the Worker/D1 compatibility path retained. Package numbers here do not assert a published tag or a production switch.
 
 ## Development
 

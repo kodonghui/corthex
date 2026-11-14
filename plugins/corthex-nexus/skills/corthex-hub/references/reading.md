@@ -88,6 +88,7 @@ Git text objects use the same UTF-8 BOM handling as working-tree sources. Pictur
 | `board-term-missing` | warn | An aggregate/read model has no glossary term, or more than one matching row |
 | `ask-before-invalid` | warn | The project/profile value is not a list of strings; use the next inherited list |
 | `ask-before-long` | info | Keep the first 30 distinct actions |
+| `on-nexus-invalid` | warn | The project settings' `on_nexus` is not `true` or `false`, so it counts as not set (0.4.0) |
 | `records-in-status-file` | info | No repository records exist at that commit; migrate the explicit device fallback |
 | `records-invalid` | warn | A repository record cannot be read as format 1 or has invalid state/checkpoint data |
 | `parts-invalid` | warn | Ignore invalid project parts |

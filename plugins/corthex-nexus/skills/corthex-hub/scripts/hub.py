@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CORTHEX hub: one page with the stages, checks and trace links of every project.
 
-The 18 commands have --help. Snapshot/build/status work locally. Explicit
+The 19 commands have --help. Snapshot/build/status work locally. Explicit
 server commands use only the configured NEXUS address and permitted projects.
 It reads profile/registration/project settings and stage sources; pictures and
 repository records come from the fetched default commit. Generated files and
@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 SCHEMA = "corthex-hub/0.2"
 PAGE_SCHEMA = "corthex-hub-page/0.2"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"
@@ -268,7 +268,20 @@ def same_folder(path, root):
         return False
 
 
+def plain_path(path):
+    """A resolved path without Windows' extended-length prefix, which Python 3.10 and later can keep on a path that
+    does not exist when a folder missing from it appears while it is resolved (outbox.plain_path)."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return type(path)("\\\\" + text[8:])
+    if text.startswith("\\\\?\\") and text[5:7] == ":\\":
+        return type(path)(text[4:])
+    return path
+
+
 def inside(path, root):
+    """Whether a resolved path is the resolved root or lies in it, whichever of the two kept the prefix."""
+    path, root = plain_path(path), plain_path(root)
     return path == root or root in path.parents
 
 
@@ -1233,8 +1246,21 @@ def open_project(root, entry=None, extra=None):
     return Project(name, root, settings, checkouts), None
 
 
+def environment_mode(home):
+    """True on a device with neither a profile nor a list of projects, such as a cloud session (SPEC-192)."""
+    folder = Path(home) / ".corthex"
+    return not any(os.path.lexists(str(folder / name)) for name in ("profile.json", "projects.json"))
+
+
 def select_projects(home, names, path=None, extra=None):
     """[(name, Project or None, reason)] for the named projects, or for the current folder."""
+    if names and path is None and environment_mode(home):
+        # A session's environment reads the checkout's own project only, under its settings' name.
+        own, project, _ = select_projects(home, [], None, extra)[0]
+        if project is None:
+            return [(name, None, "no project in this checkout") for name in names]
+        return [(name, project, None) if name == own else
+                (name, None, "not this checkout's project: the checkout holds %s, not %s" % (own, name)) for name in names]
     entries = registered(home)
     by_name = {entry["name"]: entry for entry in entries}
     if path is not None or not names:
@@ -1885,6 +1911,9 @@ def build_hub(home, names=(), out=None, scan=True, now=None):
     notes = []
     entries = registered(home)
     wanted = list(names) or [entry["name"] for entry in entries]
+    if not wanted and environment_mode(home):
+        own = select_projects(home, [], None)[0]
+        wanted = [own[0]] if own[1] is not None else []
     if scan and wanted:
         for name, project, reason in select_projects(home, wanted):
             if project is None:
@@ -2206,10 +2235,10 @@ def parser():
     send_cmd.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
     send_cmd.add_argument("--dry-run", action="store_true", help="show what would be sent without sending it")
 
-    drop = commands.add_parser("remove", help="remove projects from your own NEXUS server")
-    drop.add_argument("project", nargs="+", help="projects to remove from the server")
+    drop = commands.add_parser("remove", help="show what removing projects from NEXUS deletes and where the user removes them; sends no removal")
+    drop.add_argument("project", nargs="+", help="projects whose data to show")
     drop.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
-    drop.add_argument("--dry-run", action="store_true", help="show what would be removed without removing it")
+    drop.add_argument("--dry-run", action="store_true", help="the same: remove never sends a removal")
     companion("commands").configure(top, commands, {"snapshot":snap, "status":stat, "build":build, "push":send_cmd, "remove":drop}, None)
     return top
 
@@ -2220,7 +2249,7 @@ def main(argv=None):
     home = Path(args.home).expanduser().resolve() if args.home else Path.home()
     commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push, "remove": run_remove}
     try:
-        if args.command in companion("commands").NETWORK:
+        if args.command in companion("commands").ANSWERED:
             helper = SimpleNamespace(**globals())
             return companion("commands").emit(args, companion("commands").execute(args, home, globals()), helper)
         return commands[args.command](args, home)

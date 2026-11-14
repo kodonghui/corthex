@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = json.loads((ROOT / "tests/fixtures/hub_cli/wire.json").read_text(encoding="utf8"))
 PROJECT = BUNDLE["project"]
 PRIVATE_MARKER = fixture.PRIVATE_MARKER
-ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
+ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
 EMPTY_TODO = {key: {"total": 0, "entries": []}
               for key in ("comments", "discrepancies", "reflections", "checkpoints")}
 EMPTY_TODO.update(waiting_for_user=0, taken=0)
@@ -243,7 +243,8 @@ class HubOriginalCli16Test(unittest.TestCase):
             self.check(label + ": one envelope", len(rows), 1)
             self.check(label + ": decoded output privacy", private_output_absent([rows, stderr, plain_objects(stderr)], self.home))
             row = rows[0]
-            self.check(label + ": envelope keys", set(row), ENVELOPE | ({"recovery"} if "recovery" in row else set()))
+            self.check(label + ": envelope keys", set(row), ENVELOPE | ({"recovery"} if "recovery" in row else set()) |
+                       (fixture.TODO_READ if words[0] == "todo" else set()))
             self.check(label + ": command/project/outcome", (row.get("command"), row.get("project"), row.get("outcome")), (words[0], PROJECT, outcome))
             self.check(label + ": JSON stderr empty", stderr, "")
             phase["outcome"] = row.get("outcome")

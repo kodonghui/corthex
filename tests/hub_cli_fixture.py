@@ -16,6 +16,8 @@ import sys
 import threading
 from pathlib import Path
 
+from hub_cli_reviewed import REVIEWED_040
+
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "hub_cli"
 PIN = "3570fb0c755b50c314ca26f0361c72a71fe22d0d"
@@ -24,7 +26,9 @@ RUNTIME = ("hub.py", "commands.py", "domain.py", "erd.py", "outbox.py", "records
 WRITES = {"comment", "reply", "answered", "decide", "propose", "withdraw", "reflect", "record"}
 SESSIONS = WRITES | {"claim", "release"}
 EXITS = {"done": 0, "command-line-invalid": 2, "failed": 1, "refused": 1, "kept": 3}
-ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox"}
+ENVELOPE = {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"}
+# 0.4.0: a todo result also says whether it read, since when, and what is new (API-138).
+TODO_READ = {"read", "since", "new"}
 WRITE_RE = re.compile(r'"(nw_[0-9a-hjkmnp-tv-z]{12})"\Z')
 PRIVATE_MARKER = "qa-sensitive@example.com"
 # Reviewed release changes after the accepted pin, each mapped back to the audited bytes.
@@ -32,6 +36,8 @@ PRIVATE_MARKER = "qa-sensitive@example.com"
 # entry it repeats with a qualifier, as "deletions (data)" keeps "deletions". 0.3.0 changes
 # the version fields again, lets `comment` take any of the 13 stages, with an empty item for
 # the stage as a whole and no quote needed, and gives `comment` and `reply` `--asks`; nothing else.
+# 0.4.0's changes, the design revision's commands, are in hub_cli_reviewed.py and are applied first,
+# so that these pairs then meet the 0.3.0 bytes that they were made for.
 REVIEWED = {
     "hub.py": ((b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),),
     "transport.py": ((b'version="0.3.0", timeout=30', b'version="0.2.0", timeout=30'),),
@@ -121,7 +127,7 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        for new, old in REVIEWED.get(name, ()):
+        for new, old in REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
             if source.count(new) == 1:
                 source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:
@@ -145,10 +151,24 @@ def endpoint(bundle, command):
     ids = bundle["ids"]
     if command == "todo":
         return "GET", "/api/spaces/" + bundle["project"] + "/todo"
+    if command == "remove":
+        # 0.4.0: remove reads the project's data and sends no removal (API-137, API-177).
+        return "GET", "/api/spaces/" + bundle["project"] + "/data"
     row = bundle["success"][command]
     return row["method"], row["pathTemplate"].format(project=bundle["project"], comment=ids["c"], proposal=ids["p"],
                                                    edit=ids["e"], checkpoint=ids["k"], entry=ids["c"])
 
+
+def project_data(project):
+    """A synthetic answer of API-177 in the contract's ProjectData form, for 0.4.0's remove (API-137)."""
+    deletes = {"snapshot": True, "space": True, "pictures": 1, "discrepancies": 0, "comments": 1, "replies": 0,
+               "decisions": 0, "proposals": 0, "edits": 0, "checkpoints": 0}
+    return {"project": project, "title": None, "repository": None, "commit": None, "revision": 1,
+            "generated_at": "2026-11-13T09:00:00+09:00", "pushed_at": "2026-11-13T00:00:01.000Z", "space": True,
+            "read_at": None, "read_session": None, "unread_since": None,
+            "removal": {"project": project, "deletes": deletes,
+                        "open": {"comments": {"total": 1, "ids": ["nc_000000000001"]}, "proposals": {"total": 0, "ids": []},
+                                 "reflections": {"total": 0, "ids": []}, "checkpoints": {"total": 0, "ids": []}}}}
 
 class Fixture:
     """Scripted HTTP only. Its model/effect is explicitly synthetic, not SQLite."""
@@ -242,6 +262,8 @@ class Fixture:
         elif held:
             status, answer = 404, {"type": "about:blank", "title": "Not Found", "status": 404,
                                    "code": "project_not_found", "detail": "Synthetic project has no held snapshot."}
+        elif command == "remove":
+            status, answer = 200, project_data(self.bundle["project"])
         else:
             success = self.bundle["success"][command]
             status, answer = success["status"], success["body"]
@@ -252,9 +274,6 @@ class Fixture:
             elif command == "push":
                 self.snapshot_posts += 1
                 self.project_present = True
-                self.applied_effects += 1
-            elif command == "remove":
-                self.project_present = False
                 self.applied_effects += 1
             elif command in {"claim", "release"}:
                 self.claimed = command == "claim"
@@ -361,7 +380,7 @@ def cli_words(command, bundle, home, invalid=False):
     sensitive = "Fixture text " + PRIVATE_MARKER + " " + str(home)
     words = {
         "snapshot": ["snapshot", project], "status": ["status", project, "05-erd", "--state", "in_progress"],
-        "push": ["push", project], "remove": ["remove", project], "todo": ["todo", project],
+        "push": ["push", project, "--first"], "remove": ["remove", project], "todo": ["todo", project],
         "comment": ["comment", project, "--stage", "05-erd", "--part", "sample", "--item", "TBL-001", "--text", sensitive],
         "reply": ["reply", project, ids["c"], "--text", sensitive], "answered": ["answered", project, ids["c"]],
         "decide": ["decide", project, ids["c"], "--link", "https://example.invalid/pr/1", "--text", sensitive],
@@ -416,7 +435,8 @@ def invoke(case_dir, phase, hub, home, server, words, env, observations, expecte
         check(observations, phase + ":one JSON envelope", len(rows), 1)
         row = rows[0]
         check(observations, phase + ":outcome", row.get("outcome"), expected_outcome)
-        check(observations, phase + ":envelope keys", sorted(row), sorted(ENVELOPE))
+        check(observations, phase + ":envelope keys", sorted(row), sorted(ENVELOPE | (TODO_READ if words[0] == "todo" else set()) |
+                                                                          ({"address"} if words[0] == "remove" and expected_outcome == "done" else set())))
         check(observations, phase + ":project", row["project"], server.bundle["project"])
         check(observations, phase + ":command", row["command"], words[0])
     if expected_outcome == "kept":
@@ -479,16 +499,16 @@ def run_case(case, work, hub, git, bundle):
                         expected_failure = "no NEXUS address, or the configured address is invalid" if command == "outbox" else "HTTP 503"
                         check(observations, "exact documented failure kind", row["failure"], expected_failure)
             elif outcome == "done":
-                check(observations, "done removes transient or drained queue files", len(queue_files(home, bundle["project"])), 0)
+                # 0.4.0: remove sends no removal, so the project's outbox stays (API-137).
+                check(observations, "done removes transient or drained queue files" if command != "remove" else "remove keeps the outbox",
+                      len(queue_files(home, bundle["project"])), 2 if command == "remove" else 0)
                 check(observations, "success request count has no duplicate sends", len(server.calls), 2 if command in {"push", "outbox"} else 1)
                 if command == "outbox":
                     check(observations, "outbox reports both fixture sends", row["outbox"]["sent"], 2)
                     check(observations, "outbox sends original admission order", server.write_ids, ["nw_000000000001", "nw_000000000002"])
                     check(observations, "two distinct queued writes applied once", server.applied_effects, 2)
                 else:
-                    expected_answer = dict(bundle["success"][command]["body"])
-                    if command == "remove":
-                        expected_answer["next_push"] = "brings this project back with an empty space; remove it from nexus.push to stop pushes"
+                    expected_answer = project_data(bundle["project"]) if command == "remove" else dict(bundle["success"][command]["body"])
                     check(observations, "documented success answer is preserved", row["answer"], expected_answer)
                     if command in WRITES:
                         check(observations, "fresh success sent one write only", len(server.write_ids), 1)
@@ -498,7 +518,9 @@ def run_case(case, work, hub, git, bundle):
                         stored = json.loads((home / ".corthex/hub/snapshots" / (bundle["project"] + ".json")).read_text(encoding="utf8"))
                         check(observations, "fresh snapshot was also saved locally", stored["schema"], "corthex-hub/0.2")
                     if command == "remove":
-                        check(observations, "successful remove affects synthetic project", server.project_present, False)
+                        check(observations, "remove sends no removal", server.project_present, True)
+                        check(observations, "remove gives the project data's address", row["address"],
+                              "http://127.0.0.1:" + str(server.server.server_port) + "/p/" + bundle["project"] + "#data")
                     if command in {"claim", "release"}:
                         check(observations, "claim/release synthetic effect", server.claimed, command == "claim")
                     if command == "show":

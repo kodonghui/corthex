@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from unittest import mock
 
@@ -790,6 +790,41 @@ class OutboxTest(HubCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b"Busy", result.stderr)
 
+    def test_an_outbox_whose_resolved_folder_kept_the_extended_length_prefix_stays_available(self):
+        # TC-1695 on Windows with Python 3.10 or later: ntpath.realpath takes \\?\ off a path that does not exist only
+        # when its second lookup fails as its first did. Another hub's first lease makes the outbox folder between
+        # the two, the error changes from a missing folder to a missing file, and the project's folder keeps the
+        # prefix while the outbox folder, resolved after, has none (runs 744 and 746: "outbox unavailable").
+        class Raced(PureWindowsPath):
+            def resolve(self):
+                return type(self)("\\\\?\\" + str(self)) if self.name == "acme" else self
+
+            def is_symlink(self):
+                return False
+
+        with mock.patch.object(BOX, "Path", Raced):
+            box = BOX.Outbox("C:\\base", "acme")
+        self.assertEqual(str(box.folder), "C:\\base\\.corthex\\hub\\outbox\\acme")
+
+    def test_a_path_that_kept_the_extended_length_prefix_is_compared_without_it(self):
+        outbox = PureWindowsPath("C:\\base\\.corthex\\hub\\outbox")
+        for module in (BOX, hub):
+            with self.subTest(module=module.__name__):
+                # As in ntpath.realpath, a drive's path and a server's path lose the prefix and any other keeps it.
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\" + str(outbox))), outbox)
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\UNC\\server\\share\\hub")), PureWindowsPath("\\\\server\\share\\hub"))
+                self.assertEqual(module.plain_path(PureWindowsPath("\\\\?\\Volume{0}\\hub")), PureWindowsPath("\\\\?\\Volume{0}\\hub"))
+                self.assertEqual(module.plain_path(PurePosixPath("/srv/base")), PurePosixPath("/srv/base"))
+                self.assertTrue(module.inside(PureWindowsPath("\\\\?\\" + str(outbox / "acme")), outbox))
+                self.assertTrue(module.inside(outbox / "acme", PureWindowsPath("\\\\?\\" + str(outbox))))
+                self.assertTrue(module.inside(outbox, PureWindowsPath("\\\\?\\" + str(outbox))))
+                self.assertTrue(module.inside(PureWindowsPath("\\\\?\\UNC\\server\\share\\hub\\outbox\\acme"),
+                                              PureWindowsPath("\\\\server\\share\\hub\\outbox")))
+                self.assertFalse(module.inside(PureWindowsPath("\\\\?\\C:\\other\\acme"), outbox))
+                self.assertTrue(module.inside(PurePosixPath("/srv/base/.corthex/hub/outbox/acme"),
+                                              PurePosixPath("/srv/base/.corthex/hub/outbox")))
+                self.assertFalse(module.inside(PurePosixPath("/srv/other/acme"), PurePosixPath("/srv/base/.corthex/hub/outbox")))
+
     def test_corrupt_or_redirected_file_is_never_sent(self):
         self.keep()
         target = self.box.files()[0]
@@ -847,8 +882,9 @@ class CommandOutcomesTest(HubCase):
     def test_all_eighteen_commands_exist(self):
         parser = hub.parser()
         actions = next(action for action in parser._actions if hasattr(action, "choices") and isinstance(action.choices, dict))
-        self.assertEqual(set(actions.choices), {"snapshot", "status", "build"} | CMD.NETWORK)
-        self.assertEqual(len(actions.choices), 18)
+        self.assertEqual(set(actions.choices), {"snapshot", "status", "build"} | CMD.ANSWERED)
+        self.assertEqual(CMD.ANSWERED - CMD.NETWORK, {"can-send"})
+        self.assertEqual(len(actions.choices), 19)
 
     def test_agent_writes_match_paths_bodies_and_new_write_ids(self):
         cases = [
@@ -922,8 +958,8 @@ class CommandOutcomesTest(HubCase):
         # --item and without --quote, and --asks on the agent's comment or reply.
         self.assertEqual(CMD.STAGE_KEYS, hub.STAGE_KEYS)
         cases = [
-            (["comment", "acme-shop", "--stage", "04-functional-spec", "--text", "Whole stage", "--asks", "checkpoint"],
-             "/comments", {"stage": "04-functional-spec", "item": "", "text": "Whole stage", "asks": "checkpoint"}),
+            (["comment", "acme-shop", "--stage", "04-functional-spec", "--text", "Whole stage", "--asks", "checkpoint", "--look-first", "SPEC-001"],
+             "/comments", {"stage": "04-functional-spec", "item": "", "text": "Whole stage", "asks": "checkpoint", "look_first": "SPEC-001"}),
             (["comment", "acme-shop", "--stage", "02-prd", "--item", "REQ-001", "--text", "On an item"],
              "/comments", {"stage": "02-prd", "item": "REQ-001", "text": "On an item"}),
             (["comment", "acme-shop", "--stage", "05-erd", "--item", "TBL-001", "--text", "Asks", "--asks", "answer"],
@@ -932,10 +968,16 @@ class CommandOutcomesTest(HubCase):
              "/comments/" + COMMENT + "/replies", {"text": "Recommend B", "asks": "recommended"}),
             (["reply", "acme-shop", COMMENT, "--text", "Done"], "/comments/" + COMMENT + "/replies", {"text": "Done"}),
         ]
+        # 0.4.0: a checkpoint request reads the agent to-do first (SPEC-191), here a server's answer with read_at.
+        lists = {key: {"total": 0, "entries": []} for key in ("comments", "discrepancies", "reflections", "checkpoints")}
+        todo = dict(lists, project="acme-shop", default_commit=None, session=SESSION, read_at="2026-11-13T00:00:00.000Z", waiting_for_user=0, taken=0)
         for words, suffix, expected in cases:
             with self.subTest(words=words):
-                _, rows, client = self.execute(words + ["--session", SESSION])
+                first = [HTTP.result("done", answer=todo)] if "checkpoint" in words else []
+                _, rows, client = self.execute(words + ["--session", SESSION], FakeClient(first))
                 self.assertEqual(rows[0]["outcome"], "done")
+                if first:
+                    self.assertEqual(client.calls[0][:2], ("GET", "/api/spaces/acme-shop/todo"))
                 method, path, body, _, _ = client.calls[-1]
                 self.assertEqual((method, path), ("POST", "/api/spaces/acme-shop" + suffix))
                 for key, value in expected.items():
@@ -981,18 +1023,21 @@ class CommandOutcomesTest(HubCase):
         self.assertEqual(box.files()[0].read_bytes(), before)
         self.assertEqual(rows[0]["answer"]["held_commit"], "checked when sent")
 
-    def test_remove_preview_uses_get_and_only_real_removal_clears_queue(self):
+    def test_remove_reads_the_projects_data_and_keeps_the_outbox(self):
+        # 0.4.0: remove sends no removal; the user removes the project in NEXUS (API-137, SPEC-202).
         box = BOX.Outbox(self.home, "acme-shop")
         with box.lease() as lease:
             box.save(box.make("reply", "/api/spaces/acme-shop/comments/" + COMMENT + "/replies", SESSION, {"text": "Old"}), {"failure": "no network"}, lease)
-        _, rows, client = self.execute(["remove", "acme-shop", "--dry-run"])
-        self.assertEqual(client.calls[0][0:2], ("GET", "/api/snapshots/acme-shop/removal"))
-        self.assertTrue(box.files())
+        for words in (["remove", "acme-shop"], ["remove", "acme-shop", "--dry-run"]):
+            with self.subTest(words=words):
+                _, rows, client = self.execute(words)
+                self.assertEqual([call[0:2] for call in client.calls], [("GET", "/api/spaces/acme-shop/data")])
+                self.assertEqual((rows[0]["outcome"], rows[0]["answer"], rows[0]["address"]),
+                                 ("done", {"ok": True}, "https://nexus.example.com/p/acme-shop#data"))
+                self.assertEqual(len(box.files()), 1)
         _, rows, client = self.execute(["remove", "acme-shop"], FakeClient([HTTP.result("refused", problem={"status": 404, "code": "project_not_found"})]))
-        self.assertEqual(client.calls[0][0], "DELETE")
-        self.assertEqual(rows[0]["outcome"], "done")
-        self.assertIn("next_push", rows[0]["answer"])
-        self.assertEqual(box.files(), [])
+        self.assertEqual((rows[0]["outcome"], rows[0]["answer"], rows[0].get("address")), ("done", {"nothing_to_remove": True}, None))
+        self.assertEqual(len(box.files()), 1)
 
     def test_local_commands_have_one_json_envelope_per_project(self):
         for words in (["snapshot", "acme-shop", "--json"],
@@ -1005,7 +1050,7 @@ class CommandOutcomesTest(HubCase):
                 rows = [json.loads(line) for line in result.stdout.decode("utf8").splitlines()]
                 self.assertEqual(len(rows), 1)
                 self.assertEqual((rows[0]["command"], rows[0]["project"], rows[0]["outcome"]), (words[0], "acme-shop", "done"))
-                self.assertEqual(set(rows[0]), {"command", "project", "outcome", "answer", "problem", "failure", "outbox"})
+                self.assertEqual(set(rows[0]), {"command", "project", "outcome", "answer", "problem", "failure", "outbox", "remarks"})
 
     def test_local_json_errors_do_not_crash_the_error_handler(self):
         output = io.StringIO()

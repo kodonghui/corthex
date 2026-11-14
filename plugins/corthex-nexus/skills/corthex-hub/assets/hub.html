@@ -267,6 +267,7 @@ html:lang(ko) body{word-break:keep-all;overflow-wrap:break-word}
     "parts-invalid": function () { return "project.json의 parts는 서로 다른 소문자 이름 1–50개여야 해서 parts를 쓰지 않았습니다"; },
     "ask-before-invalid": function (c) { return /^the profile cannot be read/.test(c.message) ? "프로필 파일을 읽지 못해 기본 ask_before 목록을 씁니다" : (/^profile /.test(c.message) ? "프로필" : "프로젝트 설정") + "의 ask_before가 글자 목록이 아니어서 그다음 목록을 씁니다"; },
     "ask-before-long": function (c) { return (/^profile /.test(c.message) ? "프로필" : "프로젝트 설정") + "의 ask_before가 30개를 넘어 앞의 30개만 씁니다"; },
+    "on-nexus-invalid": function () { return "project.json의 on_nexus가 true나 false가 아니어서 정해지지 않은 것으로 봅니다"; },
     "pictures-not-sent": function () { return "origin의 기본 브랜치를 읽지 못해 그림을 보내지 않았습니다. fetch한 뒤 git remote set-head origin --auto를 실행해 주세요"; },
     "picture-left-out": function (c) { return koPlace(c) + (c.args && c.args.why === "size" ? "스냅샷을 1MB 안에 담으려고 이 그림을 통째로 뺐습니다" : "그림 원본이 다른 저장소에 있어 이 그림을 보내지 않았습니다"); },
     "picture-partial": function (c) { return koPlace(c) + "그림 원본의 일부를 읽지 못했거나 그림 한도를 넘었습니다 (원문: " + c.message + ")"; },

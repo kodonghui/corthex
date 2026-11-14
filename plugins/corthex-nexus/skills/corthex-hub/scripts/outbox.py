@@ -21,6 +21,7 @@ WRITE = re.compile(r"nw_[0-9a-hjkmnp-tv-z]{12}\Z")
 PROJECT = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 SESSION = re.compile(r"[A-Za-z0-9._:-]{1,100}\Z")
 SEVEN_DAYS = 7 * 24 * 60 * 60
+COMMENT = re.compile(r"nc_[0-9a-hjkmnp-tv-z]{12}\Z")
 
 
 class Busy(RuntimeError):
@@ -44,6 +45,25 @@ def atomic(path, data):
             os.unlink(name)
         except FileNotFoundError:
             pass
+
+
+def plain_path(path):
+    """A resolved path without Windows' extended-length prefix. From Python 3.10 Windows' realpath can keep the
+    prefix on a path that does not exist when a folder missing from it appears while it resolves the path, as
+    another hub's first outbox makes the hub's folders; Python 3.8 always took it off. A drive's or a server's
+    path loses it, and any other path keeps it."""
+    text = str(path)
+    if text.startswith("\\\\?\\UNC\\"):
+        return type(path)("\\\\" + text[8:])
+    if text.startswith("\\\\?\\") and text[5:7] == ":\\":
+        return type(path)(text[4:])
+    return path
+
+
+def inside(path, root):
+    """Whether a resolved path is the resolved root or lies in it, whichever of the two kept the prefix."""
+    path, root = plain_path(path), plain_path(root)
+    return path == root or root in path.parents
 
 
 @contextlib.contextmanager
@@ -206,6 +226,25 @@ def new_write(project, request, path, session, body, clock=time.time):
     return data
 
 
+def as_reply(data, attempt, clock=time.time):
+    """SPEC-197: a checkpoint request that the server refuses because its stage has an open one goes as a reply on it.
+
+    The reply has a new write ID and keeps the request's text, look_first, session and time, so that it takes the
+    request's place in the outbox and its seven days.
+    """
+    problem = attempt.get("problem") or {}
+    comment = problem.get("comment")
+    if (attempt.get("outcome") != "refused" or problem.get("code") != "checkpoint_requested" or
+            data["request"] not in ("comment", "reply") or data["body"].get("asks") != "checkpoint" or
+            not isinstance(comment, str) or not COMMENT.fullmatch(comment)):
+        return None
+    body = {key: data["body"][key] for key in ("text", "asks", "look_first") if key in data["body"]}
+    reply = new_write(data["project"], "reply", "/api/spaces/" + data["project"] + "/comments/" + comment + "/replies",
+                      data["session"], body, clock)
+    reply["made"] = data["made"]
+    return reply
+
+
 class Outbox:
     def __init__(self, home, project, clock=time.time):
         if not isinstance(project, str) or not PROJECT.fullmatch(project):
@@ -214,12 +253,9 @@ class Outbox:
         self.folder = self.root / project
         self.order_path = self.root / (project + ".order")
         self.project, self.clock = project, clock
-        self.attempts = {}
-        try:
-            self.folder.resolve().relative_to(self.root.resolve())
-            within = True
-        except ValueError:
-            within = False
+        # The last drain's answers and replacements, and each write as this command left it in the outbox, by write ID.
+        self.attempts, self.replies, self.held = {}, {}, {}
+        within = inside(self.folder.resolve(), self.root.resolve())
         if len(project) > 100 or self.root.is_symlink() or self.folder.is_symlink() or not within:
             raise ValueError("outbox paths must stay in this device's hub")
 
@@ -281,6 +317,7 @@ class Outbox:
                 # Reserve admission order before the atomic file publication.
                 atomic(self.order_path, order)
             atomic(path, data)
+        self.held[data["write"]] = data
         return data
 
     def load(self, path):
@@ -298,8 +335,28 @@ class Outbox:
         expected = made.strftime("%Y%m%dT%H%M%S") + ("%03d" % (made.microsecond // 1000)) + "Z." + data["write"] + ".json"
         return data if path.name == expected else None
 
-    def drain(self, client, lease, send=True):
-        self.attempts = {}
+    def as_reply_in_place(self, path, data, reply, lease):
+        """Put the reply where the request was, in the same admission order."""
+        made = datetime.fromtimestamp(timestamp(reply["made"]), timezone.utc)
+        target = self.folder / (made.strftime("%Y%m%dT%H%M%S") + ("%03d" % (made.microsecond // 1000)) + "Z." + reply["write"] + ".json")
+        with lease.owned():
+            order = self.order()
+            if data["write"] in order:
+                order[order.index(data["write"])] = reply["write"]
+                atomic(self.order_path, order)
+            atomic(target, reply)
+            path.unlink()
+        return target
+
+    @staticmethod
+    def deliver(client, data, lease, form):
+        """One attempt at a write. form gives the body to send in the form that the server takes, or else the
+        answer that stands for the attempt, as a checkpoint request's read of the to-do (How versions meet)."""
+        body, attempt = (data["body"], None) if form is None else form(data, lease)
+        return attempt if attempt is not None else client.call("POST", data["path"], body, data["session"], data["write"])
+
+    def drain(self, client, lease, send=True, form=None):
+        self.attempts, self.replies = {}, {}
         stats = {"sent": 0, "dropped": 0, "waiting": 0, "notices": []}
         waiting, stopped = [], False
         for path in self.files():
@@ -319,7 +376,16 @@ class Outbox:
                 waiting.append(info)
                 continue
             lease.renew()
-            attempt = client.call("POST", data["path"], data["body"], data["session"], data["write"])
+            attempt = self.deliver(client, data, lease, form)
+            reply = as_reply(data, attempt, self.clock)
+            if reply is not None:
+                # Once: the reply's own answer stands, whatever it is.
+                path = self.as_reply_in_place(path, data, reply, lease)
+                self.replies[data["write"]], self.held[reply["write"]] = reply["write"], reply
+                data = reply
+                info = {key: data[key] for key in ("write", "request", "made", "tries")}
+                lease.renew()
+                attempt = self.deliver(client, data, lease, form)
             self.attempts[data["write"]] = attempt
             with lease.owned():
                 if attempt["outcome"] == "done":
