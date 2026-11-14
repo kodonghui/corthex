@@ -47,8 +47,8 @@ NEXUS draws the default branch, so a draft that waits on a branch cannot be seen
 
 1. Write the stage's record in that pull request as `in_progress`, with a next action that says that the stage waits for its checkpoint. A merged file is not a finished stage.
 2. Once the project's checks pass, merge the pull request into the default branch. Where the project's rules ask the user before a merge, ask once, or follow the user's standing answer.
-3. Push the merged commit as the hub and repository rules say, so that NEXUS draws the draft. Where the session cannot send, say in the request's lines that NEXUS does not show the draft yet.
-4. Only then make the checkpoint request: the user is asked to pass what NEXUS shows.
+3. Push the merged commit as the hub and repository rules say, so that NEXUS draws the draft. When NEXUS does not draw it yet, because the session cannot send, the project's first push waits for the user's yes (`--first`), the server refused the push or no server answered, say in the request's lines that NEXUS does not show the draft yet.
+4. Only then make the checkpoint request: the user is asked to pass what NEXUS shows. A request that waits in the hub's outbox stands in the session meanwhile; say there that NEXUS does not show it yet.
 5. A change that the user asks for at the checkpoint, and any change after the pass, is another pull request. The stage stays `in_progress` until the user passes it, and nothing is taken back from the default branch for that alone.
 
 - The checks fail, or the user's answer about the merge is still open: nothing is merged, and no request is made.

@@ -110,7 +110,11 @@ class NexusWorkTest(unittest.TestCase):
             "A merged file is not a finished stage",
             "Once the project's checks pass, merge the pull request into the default branch",
             "Where the project's rules ask the user before a merge, ask once, or follow the user's standing answer",
+            "because the session cannot send, the project's first push waits for the user's yes (`--first`)",
+            "the server refused the push or no server answered, say in the request's lines that NEXUS does not show "
+            "the draft yet",
             "Only then make the checkpoint request",
+            "A request that waits in the hub's outbox stands in the session meanwhile",
             "is another pull request",
             "nothing is taken back from the default branch for that alone",
             "The checks fail, or the user's answer about the merge is still open: nothing is merged, and no request "
