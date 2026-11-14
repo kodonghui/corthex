@@ -41,6 +41,20 @@ An accepted proposal authorizes preparing its described change. It does not auth
 4. Report `merged --pr HTTPS_URL` only after verifying the merge. Report `closed --pr HTTPS_URL` for an unmerged closure; ask the user again unless a replacement PR was opened and reported. Never open a duplicate merely because another session's claim expired.
 5. After the merge, send a fresh snapshot only within the existing server/project authorization and after the first-send confirmation below. Verify the result; a queued write is not a redraw.
 
+## Merge a draft before its checkpoint request
+
+NEXUS draws the default branch, so a draft that waits on a branch cannot be seen there. For a project that is expected on a NEXUS server, a stage's draft is therefore merged before the user is asked to pass it, when its pull request holds documents only: the stage's sources and its record. This holds in every session of such a project, with or without the hub.
+
+1. Write the stage's record in that pull request as `in_progress`, with a next action that says that the stage waits for its checkpoint. A merged file is not a finished stage.
+2. Once the project's checks pass, merge the pull request into the default branch. Where the project's rules ask the user before a merge, ask once, or follow the user's standing answer.
+3. Push the merged commit as the hub and repository rules say, so that NEXUS draws the draft. When NEXUS does not draw it yet, because the session cannot send, the project's first push waits for the user's yes (`--first`), the server refused the push or no server answered, say in the request's lines that NEXUS does not show the draft yet.
+4. Only then make the checkpoint request: the user is asked to pass what NEXUS shows. A request that waits in the hub's outbox stands in the session meanwhile; say there that NEXUS does not show it yet.
+5. A change that the user asks for at the checkpoint, and any change after the pass, is another pull request. The stage stays `in_progress` until the user passes it, and nothing is taken back from the default branch for that alone.
+
+- The checks fail, or the user's answer about the merge is still open: nothing is merged, and no request is made.
+- The pull request also changes code, settings or anything that a merge would release: this section does not hold, and the project's own rules for merging do. Split the draft's documents into a pull request of their own first, or make the request in the session and name in its lines what NEXUS does not show yet.
+- The project is not expected on a NEXUS server: this section does not hold, and the project's own rules say when a draft is merged.
+
 ## Ask for a checkpoint
 
 A checkpoint request is what the user reads before passing a stage, so it has one form.
