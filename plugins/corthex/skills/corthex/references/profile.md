@@ -21,6 +21,8 @@ Claude Code and Codex read the same file. The file never holds secrets.
 
 Unknown fields are kept and ignored, so a newer version can add fields without breaking an older one.
 
+Aside's agent may sign in to the sites a task needs, and sign up for the accounts it needs, through Aside Vault without asking first, as [computer-and-web.md](computer-and-web.md) says. Add `sign-ins` or `sign-ups` to `ask_before` to be asked first instead.
+
 ## Example
 
 The same file is in this skill's folder at `assets/profile.example.json`:

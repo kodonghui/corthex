@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # CORTHEX
@@ -43,6 +43,8 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 8. Never put secrets in files, records or messages.
 
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
+
+When the work needs a desktop app, or a web page that the web search and fetch tools cannot open, follow [references/computer-and-web.md](references/computer-and-web.md): Aside for the web, with sign-ins and sign-ups through Aside Vault, and agent-desktop for desktop apps, before the host's computer use.
 
 ## 4. Route to a stage
 
