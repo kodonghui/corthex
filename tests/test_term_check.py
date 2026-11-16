@@ -32,6 +32,17 @@ def found(text):
     return [coined for _, coined, _, _, _ in term_check.find(term_check.markdown_lines(text))]
 
 
+def documented_command():
+    """The entry skill's command for the check, with its two placeholders."""
+    return re.search(r"`(python3 '<absolute skill directory>/scripts/term-check\.py' -- '<file>')`",
+                     read_text(SKILLS / "corthex" / "SKILL.md")).group(1)
+
+
+def single_quoted(text):
+    """The text as it goes between single quotes in a POSIX shell, by the entry skill's rule: ' becomes '\\''."""
+    return text.replace("'", "'\\''")
+
+
 def run(*args, stdin=None, environment=None):
     if environment is None:
         environment = dict(os.environ, PYTHONIOENCODING="utf-8")
@@ -201,8 +212,7 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(sorted(path.name for path in self.base.iterdir()), before)
 
     def test_the_documented_command_runs_the_skill_s_script_not_the_project_s(self):
-        entry = read_text(SKILLS / "corthex" / "SKILL.md")
-        template = re.search(r'`python3 "(<absolute skill directory>/scripts/term-check\.py)" <file>`', entry).group(1)
+        template = re.search(r"'(<absolute skill directory>/scripts/term-check\.py)'", documented_command()).group(1)
         script = Path(template.replace("<absolute skill directory>", (SKILLS / "corthex").as_posix()))
         marker = self.base / "decoy-ran"
         (self.base / "scripts").mkdir()
@@ -219,6 +229,39 @@ class CommandTest(unittest.TestCase):
         subprocess.run([sys.executable, "scripts/term-check.py", str(page)], cwd=str(self.base), capture_output=True,
                        timeout=60, env=environment)
         self.assertTrue(marker.exists())
+
+    @unittest.skipUnless(os.name == "posix" and os.path.exists("/bin/sh"), "quoting for a POSIX shell")
+    def test_the_documented_command_runs_nothing_that_a_file_name_holds(self):
+        # A project's file names can hold shell syntax. The entry skill puts every path in single quotes and writes
+        # a ' inside one as '\\''; without quotes, or in double quotes, the shell runs what the name holds.
+        self.assertIn("write a `'` inside one as `'\\''`", read_text(SKILLS / "corthex" / "SKILL.md"))
+        template = documented_command()
+        self.assertTrue(template.startswith("python3 '"))
+
+        def command(name):
+            filled = template.replace("<absolute skill directory>", single_quoted((SKILLS / "corthex").as_posix()))
+            filled = filled.replace("<file>", single_quoted(name))
+            return "'%s'%s" % (single_quoted(sys.executable), filled[len("python3"):])
+
+        environment = dict(os.environ, PYTHONIOENCODING="utf-8")
+        marker = self.base / "marker"
+        names = ("report$(touch marker).md", "it's $(touch marker).md", "`touch marker`.md", "a;touch marker;b.md", "--list")
+        for name in names:
+            with self.subTest(name=name):
+                (self.base / name).write_text("찾는 길을 그립니다.\n", encoding="utf-8")
+                result = subprocess.run(["/bin/sh", "-c", command(name)], cwd=str(self.base), capture_output=True,
+                                        timeout=60, env=environment)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn(name + ":1: 길을 → 경로", result.stdout.decode("utf-8"))
+                self.assertFalse(marker.exists())
+        name = names[0]
+        for unsafe in (name, '"%s"' % name):
+            with self.subTest(unsafe=unsafe):
+                filled = command(name).replace("'%s'" % single_quoted(name), unsafe)
+                subprocess.run(["/bin/sh", "-c", filled], cwd=str(self.base), capture_output=True, timeout=60,
+                               env=environment)
+                self.assertTrue(marker.exists())
+                marker.unlink()
 
     def test_reads_standard_input_as_utf_8_whatever_the_locale(self):
         environment = {key: value for key, value in os.environ.items() if key != "PYTHONIOENCODING"}
@@ -254,8 +297,9 @@ class RuleTextTest(unittest.TestCase):
         self.assertIn("[scripts/term-check.py](scripts/term-check.py)", entry)
         self.assertIn("`scripts/term-check.py`", context)
 
-    def test_every_instruction_runs_the_skill_s_own_script_by_its_absolute_path(self):
-        # A project may hold a scripts/term-check.py of its own, which a path relative to the working folder would run.
+    def test_every_instruction_runs_the_skill_s_own_script_with_quoted_absolute_paths(self):
+        # A project may hold a scripts/term-check.py of its own, which a path relative to the working folder would run,
+        # and file names that hold shell syntax, which a shell runs unless the path is in single quotes.
         for path in (SKILLS / "corthex" / "SKILL.md", SKILLS / "corthex" / "references" / "principles.md",
                      SKILLS / "corthex-study" / "SKILL.md", SKILLS / "corthex-study" / "references" / "publish.md",
                      SKILLS / "corthex-record" / "SKILL.md", SKILLS / "corthex-record" / "references" / "progress.md",
@@ -265,7 +309,9 @@ class RuleTextTest(unittest.TestCase):
                 self.assertTrue(lines)
                 for line in lines:
                     self.assertIn("absolute path", line)
+                    self.assertIn("single quotes", line)
                     self.assertNotRegex(line, r"(?:python3?|py(?: -3)?) +[\"']?scripts[/\\]term-check\.py")
+                    self.assertNotRegex(line, r"(?<!')<file>")
 
     def test_the_examples_in_the_rules_are_on_the_list(self):
         listed = {coined for coined, _, _ in term_check.TERMS}

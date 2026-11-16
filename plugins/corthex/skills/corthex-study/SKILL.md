@@ -67,7 +67,7 @@ Follow [references/structure.md](references/structure.md) for the sections and [
 
 ## 6. Check before publishing
 
-Check every number against its output or source, open every link, run every code block, run the `corthex` skill's term check (`scripts/term-check.py` in that skill's folder, by its absolute path) on a Korean page and its record, and look at the page in light and dark at desktop and phone widths ([references/publish.md](references/publish.md#checks)). Then read the page as the learner and rewrite each sentence where they would stop.
+Check every number against its output or source, open every link, run every code block, run the `corthex` skill's term check (`scripts/term-check.py` in that skill's folder, by its absolute path, with every path in single quotes) on a Korean page and its record, and look at the page in light and dark at desktop and phone widths ([references/publish.md](references/publish.md#checks)). Then read the page as the learner and rewrite each sentence where they would stop.
 
 ## 7. Publish and record
 

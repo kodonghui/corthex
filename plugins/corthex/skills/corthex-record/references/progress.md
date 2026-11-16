@@ -50,4 +50,4 @@ Write a handoff when work moves to another session, agent, account or person, an
 - Copy exact values from their source. A number, a path or an error retyped from memory is a guess and is labelled as one.
 - A handoff points to the records it comes from and does not replace them. When the same work moves again, update its handoff instead of writing a second one.
 - Never include secrets, credentials or private personal material.
-- Write it in the field's standard terms, as the `corthex` skill's principle 9 says. The next session copies the handoff's wording and rules, so a coined word or a rule such as "write in easy words" spreads from here. In Korean, run the `corthex` skill's `scripts/term-check.py`, by its absolute path in that skill's folder, on it before it goes out.
+- Write it in the field's standard terms, as the `corthex` skill's principle 9 says. The next session copies the handoff's wording and rules, so a coined word or a rule such as "write in easy words" spreads from here. In Korean, run the `corthex` skill's `scripts/term-check.py`, by its absolute path in that skill's folder and with every path in single quotes, on it before it goes out.
