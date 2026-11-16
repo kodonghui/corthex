@@ -1,15 +1,15 @@
 ---
 name: corthex-build
-description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs), or preparing a requested learning guide or task HOWTO from the user flows and acceptance criteria. Also use for every QA run, which adds to the project's own tests browser agents that drive ego lite or Aside through the user flows and report what works, what does not and their impressions.
+description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs), or preparing a requested learning guide or task HOWTO from the user flows and acceptance criteria. Also use for every QA run, which adds to the project's own tests browser agents that drive Aside or ego lite through the user flows and report what works, what does not and their impressions.
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Building and testing
 
-This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md), and how browser agents walk the flows in ego lite or Aside on every QA run is in [references/browser-agents.md](references/browser-agents.md).
+This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md), and how browser agents walk the flows in Aside or ego lite, and desktop apps with agent-desktop, on every QA run is in [references/browser-agents.md](references/browser-agents.md).
 
 | Key | Stage | Contract |
 | --- | --- | --- |

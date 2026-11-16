@@ -4,7 +4,7 @@ description: Study documents that teach one learning question in depth. Use when
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Study documents
@@ -43,7 +43,7 @@ A study document answers one question the learner asked, deeply enough that they
 ## 3. Check primary sources
 
 - For anything that changes, such as API parameters, model IDs, prices, library behaviour and rules, read the current official page and write down the date you read it.
-- Open a paper before citing it, and copy each number with the condition it was measured under. When a page does not open with the fetch tools, read it in an agent browser, as the working principles in the `corthex` skill say: only read, hand any sign-in to the learner, let no password or code pass through you, and keep personal data you see there out of the page and the record. When it still cannot be read, say how you confirmed the claim instead.
+- Open a paper before citing it, and copy each number with the condition it was measured under. When a page does not open with the fetch tools, read it in an agent browser, as the working principles in the `corthex` skill say: only read, sign in only through Aside Vault or by handing the sign-in to the learner, let no password or code pass through you, and keep personal data you see there out of the page and the record. When it still cannot be read, say how you confirmed the claim instead.
 - Keep the source list as you go: what each source supports and where the page uses it.
 - Tag each claim with the kind of statement it is, using the tags in [references/writing.md](references/writing.md#tags): a source says it, you read it that way, you ran it, or you assumed it.
 
