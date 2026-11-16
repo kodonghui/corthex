@@ -173,6 +173,8 @@ class NexusWorkTest(unittest.TestCase):
             "the names of the settings or variables that are not set, never a value",
             "`can_send` is false and `expected` is true: tell the user once in this session, in one line",
             "that these are their own settings",
+            "when `missing` is only `nexus.push`, make that line the offer to add the project on this device, as Put a "
+            "project on NEXUS says",
             "Say nothing again for this project, also when another skill starts",
             "`expected` is false: when the profile names a NEXUS server and the project's settings have no "
             "`on_nexus`, ask once as Put a project on NEXUS says. Otherwise say nothing, and continue local work.",
@@ -248,6 +250,10 @@ class NexusWorkTest(unittest.TestCase):
             "Its first push still has a yes of its own: once the default branch holds the project's work, show `push "
             "PROJECT --dry-run`, ask, and send it with `--first` on that yes",
             "One yes covers one project; never add another one with it.",
+            "The project's settings travel with its repository, but each device has its own push list.",
+            "offer once to add the project on this device, and add it on a yes in the user's own words, after showing "
+            "the change.",
+            "A project that the server already holds needs no `--first` from this device.",
             "never set the token or ask for its value",
             "cannot be drawn",
         ):
