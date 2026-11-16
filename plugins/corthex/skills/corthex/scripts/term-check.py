@@ -78,6 +78,15 @@ TERMS = (
     ("갈무리", "저장, 캡처, 정리", noun("갈무리")),
     ("누름단추", "버튼", noun("누름 ?단추")),
     ("끌어오기 요청", "풀 리퀘스트(PR)", noun("끌어오기 ?요청")),
+    ("꼴", "형식, 형태", noun("꼴")),
+    ("시험대", "테스트베드, 벤치마크", noun("시험대")),
+    ("시험 세트", "테스트 세트, 벤치마크", noun("시험 ?세트")),
+    ("지어낸 자료", "합성 데이터", noun("지어낸 ?(?:자료|데이터)")),
+    ("씨앗", "시드(seed)", noun("씨앗")),
+    ("앞머리", "프리픽스(prefix), 접두부, 프런트매터(frontmatter)", noun("앞머리")),
+    ("머리글", "헤더", noun("머리글")),
+    ("날 기록", "원본 로그, 원시 로그", noun("날 ?기록")),
+    ("훑기", "스캔", noun("훑기")),
 )
 
 # Set phrases where a listed word is the ordinary word, checked against the text around a match.
@@ -91,6 +100,9 @@ SET_PHRASES = (
     # A verb that ends a note with -ㅁ, such as "라고 물음" (asked) or "부모에 묶음" (grouped under the parent).
     re.compile("(?:라고|이라고|다고|냐고) 물음(?![가-힣])"),
     re.compile("(?:에|로|으로|끼리) 묶음(?![가-힣])"),
+    # A rate, as in "한 번 꼴로" (about once), and the idiom "시험대에 오르다" (to be put to the test).
+    re.compile("(?:번|하나|명|개|건|회|일|주|달|해|년|[0-9]) 꼴"),
+    re.compile("시험대에 (?:오르|올라|올랐|올린|서|섰|선)"),
 )
 
 COMPILED = tuple((coined, standard, re.compile(pattern)) for coined, standard, pattern in TERMS)
