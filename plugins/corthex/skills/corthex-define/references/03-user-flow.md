@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | Requirements (REQ) from stage 02, contexts and glossary (CTX, TERM) |
 | Outputs | One file per flow in the stage's `source` folder, by default `docs/03-user-flow/`. Each file holds one Mermaid flowchart with an FL ID; each step names the REQ IDs it serves, and the SCR IDs once the sitemap exists |
-| Human view | By default a Notion database with one row per flow and its diagram, as set in `human`; for a workshop, a board such as Miro. See Diagrams below and [notion-database.md](notion-database.md) |
+| Human view | On a project on NEXUS, by default NEXUS's list of the flows; otherwise by default a Notion database with one row per flow and its diagram, as set in `human`; for a workshop, a board such as Miro. See Diagrams below and [notion-database.md](notion-database.md) |
 | Sync | Diagrams are text, so changes show in the repository's history. Apply changes in the direction `truth` gives |
 | Human checkpoints | Each flow's main path and its main failure paths are reviewed |
 | Trace IDs | FL-001… |

@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | Stage 01 contexts and glossary (CTX, TERM), and the product goals and constraints from the user |
 | Outputs | `requirements.md`, by default `docs/02-prd/requirements.md`: one REQ ID per requirement in EARS wording, with its type (functional or non-functional), priority, source and context |
-| Human view | By default a Notion database with one row per requirement, as set in `human`. See [notion-database.md](notion-database.md) |
+| Human view | On a project on NEXUS, by default NEXUS's list of the requirements; otherwise by default a Notion database with one row per requirement, as set in `human`. See [notion-database.md](notion-database.md) |
 | Sync | In a team project the shared database is often the truth (`truth: human`), and the text is a refreshed copy. Otherwise edit the text and update the view |
 | Human checkpoints | Scope freeze (what is in this release), then version freeze |
 | Trace IDs | REQ-001… |
