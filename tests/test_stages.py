@@ -165,9 +165,12 @@ class StageContractTest(unittest.TestCase):
         summary = section(read_text(SKILLS / "corthex" / "SKILL.md"), "## 3. Work by the principles")
         self.assertIn("Name things with the field's standard terms", summary)
         principles = read_text(SKILLS / "corthex" / "references" / "principles.md")
-        for term in ("체크포인트", "버전", "테스트", "결정 사항"):
+        for term in ("경로", "질문", "체크포인트", "버전", "테스트", "결정 사항"):
             with self.subTest(term=term):
                 self.assertIn(term, principles)
+        # The summary is also the session-start context, so it keeps four of them.
+        for term in ("경로", "질문", "체크포인트", "버전"):
+            with self.subTest(term=term):
                 self.assertIn(term, summary)
 
     def test_domain_confidence_labels_are_documented_for_steps_and_board(self):

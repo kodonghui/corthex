@@ -6,13 +6,13 @@ CORTHEX is a plugin for Claude Code and Codex that helps one person run software
 
 It does not add a service of its own. Installation and updates use the hosts' plugin marketplaces, and the core plugin is skills only. On top of that, CORTHEX adds three things:
 
-- **Working principles** for the AI: lead with the result, keep facts and guesses apart, ask before anything that cannot be undone, and keep records.
+- **Working principles** for the AI: lead with the result, keep facts and guesses apart, ask before anything that cannot be undone, keep records, and keep the field's standard terms.
 - **A 13-stage workflow** in which every stage fills the same six slots (inputs, outputs, human view, sync, human checkpoints, trace IDs), so each artifact can be traced to the one before it.
 - **A profile and a project registry**, so the same plugin fits different people and several projects at once.
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.11.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.11.1; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -98,6 +98,7 @@ When records go to Notion, the project's `records.location` or the profile's `re
 - The skills follow the [Agent Skills](https://agentskills.io) format and are shared by both, so each skill can also be used on its own.
 - Work that needs a real browser or a desktop app uses programs you install yourself, in this order: Aside for web pages, with sign-ins and sign-ups through Aside Vault, then ego lite or Playwright; agent-desktop for desktop apps; and the host's computer use only where neither can do the job and you have said yes for that task. See [the computer-and-web reference](plugins/corthex/skills/corthex/references/computer-and-web.md).
 - `corthex-uxui` has two optional check scripts, which only read. `page-check.js` runs inside the page under test, pasted into the browser's console or passed to a browser automation tool such as Playwright; `media-check.py` needs Python 3.8 or later and FFmpeg.
+- The entry skill `corthex` has one check script, `term-check.py`, which only reads and needs Python 3.8 or later. Before a Korean document, record, prompt or handoff goes out, it finds coined native words used in place of a field's standard terms, such as `길` for `경로` (path), in Markdown, HTML or plain text.
 
 ## Working with NEXUS0.2
 
