@@ -37,10 +37,19 @@ A bounded context is a boundary drawn around its aggregates, commands and events
 - A solid arrow is a synchronous call and a dashed arrow an asynchronous event. The arrow points from the context that calls or sends to the context that receives, and its label names the data.
 - Every arrow to or from an external system names its relationship pattern, usually anticorruption layer or conformist. For links inside the product, add a pattern when it matters for the design: customer and supplier, conformist, anticorruption layer, open host service, published language, shared kernel, partnership or separate ways.
 
+## NEXUS
+
+On a project on NEXUS, NEXUS draws the DDD board from the domain document of the default branch: its contexts with their IDs, their command tables, the dependencies, the hotspots and the timeline. Its step control shows the board in stage 01's steps, `1-b`, `2`, `3`, `4`, `5`, `6`, `7`, `8-a` and `8-b–9`, each adding to the one before, and the user comments on any sticky there.
+
+- NEXUS draws a board only once the document has a context heading with its CTX ID, and it cannot be edited yet. So steps 0 to 9 run on the Miro board, and so does a team's live workshop. Once the contexts have their IDs, write the document with its timeline table, merge it and push it as the NEXUS work says, and ask for checkpoint 3 there.
+- After the stage passes, NEXUS's board is the picture people look at. A later change goes into the document first, and NEXUS draws it after the merge and push. The Miro board stays as the record of how the model grew, and for a workshop that adds to it.
+- Link a step as `<nexus.url>/p/<project>/<part>/01-domain#step=<step>`, with `_` as the part of a project without parts, and an item with `#item=<ID>`. Keep these addresses in the conversation and the project's records, as the NEXUS work says.
+
 ## Miro
 
 Miro's official MCP server lets the AI read and write boards.
 
+- Before step 0, check that this session has Miro's tools, from Miro's MCP server or the host's Miro connector. When it has none, say so once, with how to connect it below, and meanwhile draft the step in the conversation as lists the board can take later.
 - Connect it once per host. In Claude Code: `claude mcp add --transport http miro https://mcp.miro.com/`. In Codex: `codex mcp add miro --url https://mcp.miro.com/`, then `codex mcp login miro`. Miro also publishes a plugin for both in its [miro-ai](https://github.com/miroapp/miro-ai) repository.
 - Sign-in uses OAuth, and the server reaches only the boards of the team chosen at sign-in. On an Enterprise plan, an administrator may have to allow it first.
 - Ask before creating a board: the tool cannot undo it. Then put the board's link in the stage's `link`.

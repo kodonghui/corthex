@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The functional spec (SPEC), the schema (TBL), and the sitemap (SCR) when screens exist |
 | Outputs | `openapi.yaml`, by default `api/openapi.yaml`: an OpenAPI contract in which each operation carries an API ID and the SPEC IDs it implements and lists every response it can return, each with an example, and which lists the API's error codes |
-| Human view | A contract viewer, by default Swagger UI, as set in `human` |
+| Human view | On a project on NEXUS, by default NEXUS's list of the operations, with a contract viewer beside it; otherwise a contract viewer, by default Swagger UI, as set in `human` |
 | Sync | Contract first: change the contract, then the code. The contract file is the source; a document generated from the code is for reference. The front end builds against a mock server made from the contract, contract tests check the back end against it, and test cases come from its responses |
 | Human checkpoints | Contract review before implementation, response by response, and every breaking change |
 | Trace IDs | API-001…, with a response written as `API-001#401` |

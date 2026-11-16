@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | Screen definitions from stage 08, brand assets, and references the user likes |
 | Outputs | Design tokens in the Design Tokens Community Group format, by default `design/base.tokens.json`, and the chosen mockup for each screen, linked from its screen definition |
-| Human view | By default Figma or Claude Design, as set in `human`. See [design-tools.md](design-tools.md) |
+| Human view | On a project on NEXUS, the stage's record, talk and checkpoint in NEXUS beside the design tool; the design tool by default Figma or Claude Design, as set in `human`. See [design-tools.md](design-tools.md) |
 | Sync | Tokens are the shared language: the design tool and the code use the same token names. By default the token file is the source and the tool takes the tokens from it; when the design tool is the truth, export the tokens from it |
 | Human checkpoints | One direction is chosen before more screens are drawn, and the tokens are frozen before development uses them |
 | Trace IDs | SCR IDs for mockups; token names for tokens |

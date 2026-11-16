@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The sitemap (SCR), the functional spec (SPEC) and the API contract (API) |
 | Outputs | One screen definition per screen in the stage's `source` folder, by default `docs/08-screens/SCR-001.md`: its purpose, the data it shows and the API it comes from, its states, the state each API response leads to, its actions and its rules |
-| Human view | By default grayscale wireframes drawn from the screen definitions, as set in `human`. See Wireframes below |
+| Human view | On a project on NEXUS, by default NEXUS's list of the screens and their states, with the wireframes or built screens to press; otherwise by default grayscale wireframes drawn from the screen definitions, as set in `human`. See Wireframes below |
 | Sync | The definition is written or updated before the screen's code changes |
 | Human checkpoints | The screen definition is approved before implementation |
 | Trace IDs | SCR IDs, with states written as `SCR-001#empty` |

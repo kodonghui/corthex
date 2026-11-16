@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.11.1; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.12.1; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -62,14 +62,14 @@ codex plugin add corthex-nexus@corthex        # Codex, after corthex
 
 Then ask for the hub, or run `/corthex-nexus:corthex-hub`. It needs Python 3.8 or later. It can also send project snapshots to a NEXUS server on your own domain, but only for the projects you list. The server and browser application now live in the separate product repository, with an approved Node/SQLite runtime behind Access and a Tunnel and retained Worker compatibility: [nexus/](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Details: [Project hub](docs/architecture.md#project-hub).
 
-For an authorized server, the core entry and stage skills read agent work once per session/project, keep your explicit task first and coordinate claims, accepted changes and checkpoint records through the hub. Missing credentials leave local work available. The first real snapshot send still requires your confirmation. See the [NEXUS workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
+For an authorized server, the core entry and stage skills read agent work at a session's start, again once a day has passed and before each checkpoint request, keep your explicit task first and coordinate claims, accepted changes and checkpoint records through the hub. Missing credentials leave local work available. The first real snapshot send still requires your confirmation. See the [NEXUS workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
 
 ## Skills
 
 | Skill | Stages | Use it to |
 | --- | --- | --- |
 | `corthex` | entry | set up your profile, register a project, see where a project stands and what comes next |
-| `corthex-discover` | 01 | run event storming with you on a board such as Miro, step by step, and write the domain design: contexts, context map and glossary |
+| `corthex-discover` | 01 | run event storming with you on a board such as Miro, step by step, and write the domain design: contexts, context map and glossary, whose DDD board NEXUS then draws |
 | `corthex-define` | 02–04 | write requirements, user flows and the functional spec |
 | `corthex-contract` | 05–06 | keep the database schema and the API contract in line with the spec |
 | `corthex-screen` | 07–09 | sitemap, screen states, mockups and design tokens |
@@ -100,9 +100,11 @@ When records go to Notion, the project's `records.location` or the profile's `re
 - `corthex-uxui` has two optional check scripts, which only read. `page-check.js` runs inside the page under test, pasted into the browser's console or passed to a browser automation tool such as Playwright; `media-check.py` needs Python 3.8 or later and FFmpeg.
 - The entry skill `corthex` has one check script, `term-check.py`, which only reads and needs Python 3.8 or later. Before a Korean document, record, prompt or handoff goes out, it finds coined native words used in place of a field's standard terms, such as `길` for `경로` (path), in Markdown, HTML or plain text.
 
-## Working with NEXUS0.2
+## Working with NEXUS
 
-For a configured NEXUS project, the entry and stage skills use the installed hub to read work once per session/project. Do the user's current request first, then comments, discrepancies, reflections and checkpoints. Missing credentials or an unavailable server do not stop local work. Respect claims/open PRs and the repository's PR rules for decisions, reflections and stage records. The first real send has its own confirmation. [Optional workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
+When your profile names your NEXUS server, NEXUS is where you look at a project's work: the DDD board, the ERD and the sitemap as pictures, and every other stage as a list, where you talk about the items and pass the checkpoints. For each new project the entry skill asks you once whether to put it on NEXUS; on your yes it adds the project to your push list, and it sends the first snapshot once you have seen what it would send and said yes to that too. The stage skills then merge a stage's draft of documents, send it and ask for the checkpoint with the stage's NEXUS address. Event storming still runs its steps on a Miro board, because NEXUS draws a DDD board only once the contexts have IDs and cannot edit yet; from the third checkpoint on, you review the board in NEXUS. Without a NEXUS server, each stage proposes the tool in its contract, and nothing is said about NEXUS.
+
+For a configured NEXUS project, the entry and stage skills use the installed hub to read work at a session's start, again once a day has passed and before each checkpoint request. A session that cannot send for a project that is expected on a NEXUS server says so once, in one line that names what is missing, and goes on with your work. Do the user's current request first, then comments, discrepancies, reflections and checkpoints. Missing credentials or an unavailable server do not stop local work. Respect claims/open PRs and the repository's PR rules for decisions, reflections and stage records. The first real send has its own confirmation. A checkpoint is asked for one stage at a time, in at most ten lines with one thing to look at first, and a stage of screens comes with something to press; you are told once when building starts and each time a stage passes; and a browser walk of your NEXUS pages leaves your own presses to you. [NEXUS workflow](plugins/corthex/skills/corthex/references/nexus-work.md).
 
 The current NEXUS hub is 0.4.0. Server/browser setup, migration and rollback belong to [the separate product repository](https://github.com/kodonghui/corthex-nexus/blob/codex/nexus-0.2/nexus/README.md). Upgrade the server to a0.2-compatible runtime before the hub. A comment on a stage without a picture and the hub's `--asks` need the redesign's server; a 0.2 server refuses them and takes the rest as before. The design revision's commands of 0.4.0 also work with a server of before: there `todo` keeps no session read, a checkpoint request goes without `look_first`, with the thing to look at first as the text's last line, and `remove` shows the server's dry run, each with the remark `server-older`. Until the server of the revision runs, a project cannot be removed with this hub; after it, the user removes a project in NEXUS under their own sign-in. The Node/SQLite runtime stays behind Access and a Tunnel, with the Worker/D1 compatibility path retained. Package numbers here do not assert a published tag or a production switch.
 

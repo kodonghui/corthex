@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The records and decision log, test results, the working product or a demo recording, and the audience and time limit from the user |
 | Outputs | `script.md`, by default `docs/13-presentation/script.md`, and a scene table: one SCENE per row with what is shown, the narration and the time |
-| Human view | By default slides built from the scene table, or a video editor for a demo video, as set in `human`. See Slides below |
+| Human view | On a project on NEXUS, by default NEXUS's list of the scenes beside the slides; otherwise by default slides built from the scene table, or a video editor for a demo video, as set in `human`. See Slides below |
 | Sync | Slides and video follow the scene table. Change the table first, then the slides |
 | Human checkpoints | The script is approved, then one rehearsal at full length |
 | Trace IDs | SCENE-001… |
