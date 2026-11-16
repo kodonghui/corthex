@@ -200,6 +200,26 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(run().returncode, 2)
         self.assertEqual(sorted(path.name for path in self.base.iterdir()), before)
 
+    def test_the_documented_command_runs_the_skill_s_script_not_the_project_s(self):
+        entry = read_text(SKILLS / "corthex" / "SKILL.md")
+        template = re.search(r'`python3 "(<absolute skill directory>/scripts/term-check\.py)" <file>`', entry).group(1)
+        script = Path(template.replace("<absolute skill directory>", (SKILLS / "corthex").as_posix()))
+        marker = self.base / "decoy-ran"
+        (self.base / "scripts").mkdir()
+        (self.base / "scripts" / "term-check.py").write_text("open(%r, 'w').close()\n" % str(marker), encoding="utf-8")
+        page = self.base / "page.md"
+        page.write_text("찾는 길을 그립니다.\n", encoding="utf-8")
+        environment = dict(os.environ, PYTHONIOENCODING="utf-8")
+        result = subprocess.run([sys.executable, str(script), str(page)], cwd=str(self.base), capture_output=True,
+                                timeout=60, env=environment)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("길을 → 경로", result.stdout.decode("utf-8"))
+        self.assertFalse(marker.exists())
+        # The same name relative to the working folder runs the project's own script.
+        subprocess.run([sys.executable, "scripts/term-check.py", str(page)], cwd=str(self.base), capture_output=True,
+                       timeout=60, env=environment)
+        self.assertTrue(marker.exists())
+
     def test_reads_standard_input_as_utf_8_whatever_the_locale(self):
         environment = {key: value for key, value in os.environ.items() if key != "PYTHONIOENCODING"}
         environment.update(LC_ALL="C", LANG="C")
@@ -233,6 +253,19 @@ class RuleTextTest(unittest.TestCase):
                 self.assertIn(phrase, line)
         self.assertIn("[scripts/term-check.py](scripts/term-check.py)", entry)
         self.assertIn("`scripts/term-check.py`", context)
+
+    def test_every_instruction_runs_the_skill_s_own_script_by_its_absolute_path(self):
+        # A project may hold a scripts/term-check.py of its own, which a path relative to the working folder would run.
+        for path in (SKILLS / "corthex" / "SKILL.md", SKILLS / "corthex" / "references" / "principles.md",
+                     SKILLS / "corthex-study" / "SKILL.md", SKILLS / "corthex-study" / "references" / "publish.md",
+                     SKILLS / "corthex-record" / "SKILL.md", SKILLS / "corthex-record" / "references" / "progress.md",
+                     CONTEXT):
+            lines = [line for line in read_text(path).splitlines() if "term-check.py" in line]
+            with self.subTest(path=str(path.relative_to(PLUGINS))):
+                self.assertTrue(lines)
+                for line in lines:
+                    self.assertIn("absolute path", line)
+                    self.assertNotRegex(line, r"(?:python3?|py(?: -3)?) +[\"']?scripts[/\\]term-check\.py")
 
     def test_the_examples_in_the_rules_are_on_the_list(self):
         listed = {coined for coined, _, _ in term_check.TERMS}

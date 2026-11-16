@@ -27,7 +27,7 @@ Records let a later session, or another person, pick up the work without asking 
 4. When a decision replaces an earlier one, mark the earlier one as replaced and link both ways.
 5. Never copy secrets, credentials or private personal material into a record.
 6. Do not repeat a report that has nothing new.
-7. Write in the field's standard terms, as the `corthex` skill's principle 9 says, and run its `scripts/term-check.py` on a Korean record, handoff or prompt before it goes out. Later sessions copy a record's wording.
+7. Write in the field's standard terms, as the `corthex` skill's principle 9 says, and run its `scripts/term-check.py`, by the absolute path in that skill's folder, on a Korean record, handoff or prompt before it goes out. Later sessions copy a record's wording.
 
 ## Records in Notion
 
