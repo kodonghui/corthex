@@ -89,7 +89,8 @@ TERMS = (
     ("훑기", "스캔", noun("훑기")),
 )
 
-# Set phrases where a listed word is the ordinary word, checked against the text around a match.
+# Set phrases where a listed word is the ordinary word. A phrase exempts only the match that starts
+# inside it, so a coined word right next to a set phrase is still found.
 SET_PHRASES = (
     re.compile("막다른 ?길"),
     re.compile("막힌 ?길"),
@@ -189,14 +190,21 @@ def excerpt(line, start, end, width=36):
     return ("…" if left else "") + text + ("…" if right < len(line) else "")
 
 
+def set_phrase_spans(line):
+    """Where the line uses a listed word in a set phrase, as (start, end) pairs."""
+    return [hit.span() for phrase in SET_PHRASES for hit in phrase.finditer(line)]
+
+
 def find(lines):
     """Each candidate as (line number, coined word, standard terms, the matched text, an excerpt)."""
     found = []
     for number, line in enumerate(lines, 1):
+        spans = None
         for coined, standard, pattern in COMPILED:
             for match in pattern.finditer(line):
-                around = line[max(0, match.start() - 12):match.end() + 4]
-                if any(phrase.search(around) for phrase in SET_PHRASES):
+                if spans is None:
+                    spans = set_phrase_spans(line)
+                if any(start <= match.start() < end for start, end in spans):
                     continue
                 found.append((number, coined, standard, match.group(0), excerpt(line, match.start(), match.end())))
     return found

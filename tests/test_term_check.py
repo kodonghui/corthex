@@ -124,6 +124,19 @@ class FindTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(found(text), [])
 
+    def test_a_set_phrase_leaves_only_its_own_word_alone(self):
+        texts = {
+            "한 번 꼴로 물음을 기록합니다.": ["물음"],
+            "막다른 길에서 판을 바꿉니다.": ["판"],
+            "갈래의 열쇠입니다.": ["갈래"],
+            "집에 가는 길에 낱말을 외웁니다.": ["낱말"],
+            "시험대에 올랐고 묶음으로 냅니다.": ["묶음"],
+            "답변이 길 수 있고 길을 찾습니다.": ["길"],
+        }
+        for text, expected in texts.items():
+            with self.subTest(text=text):
+                self.assertEqual(found(text), expected)
+
     def test_skips_markdown_code_but_reads_nested_items(self):
         text = "\n".join([
             "```text",
