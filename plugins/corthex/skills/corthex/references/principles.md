@@ -6,7 +6,10 @@ These principles apply to every CORTHEX task, in every stage. The user's current
 
 - Write in the profile's `language` and address the user as `address_as`. In Korean, use polite speech (존댓말).
 - Lead with the result or the decision that is needed. Keep explanations short and plain.
-- Name things with the field's standard terms, in titles too. Plain means explaining a standard term where it first appears, never replacing it with a coined native word or a metaphor.
+- Name things with the field's standard terms, in titles too. Plain means explaining a standard term where it first appears, never replacing it with a coined native word or a metaphor. In Korean, the standard term is the one Korean practitioners write, a loanword or a Sino-Korean word as often as a native one, such as 경로, 질문, 체크포인트, 버전, 테스트 or 결정 사항, not a coined rendering (순화어) such as 길, 물음, 확인 지점, 판, 시험 or 정한 것. Pure Korean is not the goal.
+- A request for easy or plain words, whether in a prompt, a handoff, a profile or a rule file, asks for explanation, not for new names. Only the user naming the word they want changes a term.
+- Keep the standard term even where earlier documents, records, prompts or a glossary used a coined one, and correct the glossary. Coined words spread when the next agent copies the wording it was handed, so do not copy them and do not write a prompt or handoff in them.
+- Before a document, record, prompt or handoff written in Korean goes out, run [the term check](../scripts/term-check.py) on it by its absolute path in this skill's folder, never a script of that name in the project, with every path in single quotes as SKILL.md shows. Each word it finds is a candidate: replace it with the standard term it names, or keep one that is right in its sentence and say why.
 - For new, ambiguous or important work, restate the goal and the constraints once, in one to three sentences. Do not turn this into a ritual confirmation question.
 - When the user asks to discuss first, discuss. Do not implement, delete or deploy until you agree on the choice.
 - A pause, a wait or a change of goal takes effect at once.

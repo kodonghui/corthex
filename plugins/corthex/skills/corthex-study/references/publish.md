@@ -6,6 +6,7 @@ Before the page goes out:
 
 - Every number in the text, the tables and the figures comes from a named output or source. Rebuild the tables from the saved results and compare them. Check the numbers in sentences too; they drift the most.
 - Every link opens and says what the page claims it says. Every code block runs on the stated versions.
+- No coined word stands in for a standard term. On a Korean page, run the `corthex` skill's `scripts/term-check.py`, by its absolute path in that skill's folder and with every path in single quotes, on the HTML file and on the record's text; replace each word it finds with the standard term it names, or keep one that is right in its sentence and say why in the study log.
 - Look at the page itself, in light and dark, at 1440, 390 and 320 pixels wide: no sideways scrolling of the page, no cut-off controls, no overlapping labels, and wide tables and figures scrolling inside their own box.
 - Interactive parts respond, and the page shows no script errors.
 - A screenshot or a check script is evidence only of what it saw. Report the widths, themes and states you actually looked at.

@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.12.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.4.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.12.1; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.4.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 ## Goals
 
@@ -29,7 +29,8 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │   └── skills/
 │   │       ├── corthex/                 entry skill
 │   │       │   ├── references/          principles, profile, project, stage contract, long sessions
-│   │       │   └── assets/              example profile.json and project.json
+│   │       │   ├── assets/              example profile.json and project.json
+│   │       │   └── scripts/             term-check.py, a read-only check for coined words in Korean text
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
 │   │       ├── corthex-record/          minutes, decisions, progress and handoffs, retrospectives
 │   │       ├── corthex-study/           study documents: one question researched, run, published and recorded
@@ -88,7 +89,7 @@ The optional plugins install the same way, as `corthex-memory@corthex` and `cort
 
 A plugin that holds only skills goes unchanged to Claude Code, Codex, OpenAI's plugin directory and other Agent Plugins clients. OpenAI's directory does not accept plugins with hooks, and Codex does not run Claude Code's `userConfig`. Each skill can also be used on its own, for example uploaded to claude.ai.
 
-So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule. A skill may still carry scripts in its own `scripts/` folder, as the Agent Skills format allows: `corthex-uxui` has two read-only checks there, which the agent runs like any other command.
+So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule. A skill may still carry scripts in its own `scripts/` folder, as the Agent Skills format allows: the entry skill has a read-only term check there and `corthex-uxui` has two read-only checks, which the agent runs like any other command.
 
 ## Skills
 
@@ -119,6 +120,8 @@ Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.
 Claude Code does not load a `CLAUDE.md` at a plugin's root as context, and its documentation says to put such instructions in a skill. So the principles live in the entry skill, in [principles.md](../plugins/corthex/skills/corthex/references/principles.md), and apply while a CORTHEX skill is in use.
 
 The `corthex-memory` plugin adds a short version at the start of each session with a hook, for people who install it (see [Session start context](#session-start-context)). CORTHEX itself never edits the user's global instruction files.
+
+Principle 9 keeps the field's standard terms. In Korean these include the loanwords and Sino-Korean words that practitioners write, and a request for easy words asks for a term to be explained, not renamed. While this rule lived only in files read on demand, it kept slipping: an agent read "plain" in a prompt or a handoff as "native words", and the next agent copied the coined words it was handed. So the rule is in the short version as well, and the entry skill's `scripts/term-check.py` lists such coined words with the standard terms to use and finds them in a Korean page, record or prompt before it goes out. `corthex-study` and `corthex-record` run it before they publish or hand over; each word it finds is a candidate, which the agent replaces or keeps with a reason.
 
 ## Stage contract
 
@@ -258,7 +261,7 @@ The Windows/macOS unrun sentence above is historical0.1 evidence. The2026-11-04 
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the `corthex-uxui` scripts (on made-up clips when FFmpeg is installed), the `corthex-study` rules for secrets, material, publishing, budget, records, standard terms and claim tags, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the `corthex-uxui` scripts (on made-up clips when FFmpeg is installed), the entry skill's term check, the `corthex-study` rules for secrets, material, publishing, budget, records, standard terms and claim tags, links and translations of the docs, no secrets or private text |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
 CI runs the repository and hub checks on Linux, Windows and macOS, and Claude Code validation on Linux, for every pull request that is ready for review and every push to `main`. Each operating system and Python pair runs the repository checks as three jobs that take every third test, because the whole suite had reached the one-hour job limit on Windows with Python 3.8. It installs FFmpeg on Linux and Windows so the media check runs on made-up clips there; on macOS those tests are skipped. It also runs the memory hook in Claude Code and Codex on Linux and macOS, and on Windows with Git Bash, with PowerShell 7 only and with Windows PowerShell 5.1 only, against a local stand-in for the model API. A draft pull request runs only the Linux jobs, so that each push gets its results sooner. Its last job then reports as `linux-checks` instead of `all-checks`, the check that `main` requires, and marking the draft ready for review runs everything.
