@@ -1,8 +1,17 @@
-# Optional NEXUS work
+# NEXUS work
 
-This is the agent workflow for an installed `corthex-hub` skill and the project's configured NEXUS server. The hub's own skill and command help define its CLI. Use its installed `scripts/hub.py`, not a program in the current directory. Local stage work does not require the hub, a service token or a server.
+This is the agent workflow for a project on the user's NEXUS server, with the `corthex-hub` skill installed. A project is on NEXUS when it is expected there, as the next paragraph says. On such a project NEXUS is every stage's default human view: the user reads each stage there, as the DDD board of 01, the ERD of 05 and the sitemap of 07 or as a list of its items, talks about the items and passes the checkpoints, while the AI writes the stage's text source, which NEXUS draws from the default branch. The hub's own skill and command help define its CLI. Use its installed `scripts/hub.py`, not a program in the current directory. Local stage work does not require the hub, a service token or a server.
 
 Three sections need no hub and no token: Ask for a checkpoint, Tell the user where the work stands, and Walk a NEXUS server's pages in a browser. They hold in every session of a project that is expected on a NEXUS server, also in a session that cannot send. A project is expected there when the hub's `can-send` answers `expected`, which it does when the project's settings say `on_nexus` or the push list names the project, or when the user says so.
+
+## Put a project on NEXUS
+
+When the profile names a NEXUS server (`nexus.url`) and a project's settings have no `on_nexus` while the push list does not name the project, ask the user once, when the project is registered or first worked on, whether to put it on NEXUS. Recommend yes, and say in plain words what it means: from then on the project's stage sources and records on its default branch are sent to the user's own server, and every stage, its talk and its checkpoints are there. Ask nothing when the profile names no server, so that a user without NEXUS hears nothing of it.
+
+- Write the answer in the project settings as `on_nexus`, `true` or `false`, so that it is asked once, also in later sessions and on other devices. A `false` keeps the project off NEXUS until the user asks again, and the stage contract's tools are then its human views.
+- A yes in the user's own words for this project lets you add its name to the profile's `nexus.push`, after showing the change. One yes covers one project; never add another one with it. Its first push still has a yes of its own: once the default branch holds the project's work, show `push PROJECT --dry-run`, ask, and send it with `--first` on that yes, as Source annotations and sending says.
+- The token stays the user's own. When `can-send` names its variables as missing, say so in the one line of step 1 below; never set the token or ask for its value.
+- A project whose repository has no default branch on a Git host yet cannot be drawn. Say so, and keep the stage contract's tools as its human views until it has one.
 
 ## At a session's start
 
@@ -11,17 +20,28 @@ After identifying the project, take these steps once per project in this session
 1. Run `hub.py can-send PROJECT`. It contacts no server, sends nothing and needs no session label. Its answer gives `can_send`; `missing`, the names of the settings or variables that are not set, never a value; and `expected`, whether the project is expected on a NEXUS server.
    - `can_send` is true: go on with step 2.
    - `can_send` is false and `expected` is true: tell the user once in this session, in one line in their language, what is `missing` and that these are their own settings. Then continue the user's work. Say nothing again for this project, also when another skill starts.
-   - `expected` is false: say nothing, and continue local work.
-   - The hub is not installed: read `on_nexus` in `.corthex/project.json` yourself. When it is `true`, the same one line names the hub as missing; otherwise say nothing.
+   - `expected` is false: when the profile names a NEXUS server and the project's settings have no `on_nexus`, ask once as Put a project on NEXUS says. Otherwise say nothing, and continue local work.
+   - The hub is not installed: read `on_nexus` in `.corthex/project.json` yourself. When it is `true`, the same one line names the hub as missing; when it is not set and the profile names a NEXUS server, ask once as Put a project on NEXUS says; otherwise say nothing.
    - The hub does not know `can-send`: it is older than these rules. Say so once, go on with the user's work, and follow that hub's own command help: it sends for a project in the profile's `nexus.push` with a configured `nexus.url`, takes no `--first`, `--if-due` or `--look-first`, and a checkpoint request's thing to look at first is then the last line of its text.
 
-   Never set the address, the push list or the token yourself, in a profile, in a session's environment or in a repository, and never ask for a token's value. Never enable sending, register a new address or add a project to this list on your own.
+   Never set the token, in a profile, in a session's environment or in a repository, and never ask for its value. Change the address or the push list only on the user's word: an address that they give, and one project at a time as Put a project on NEXUS says, each shown before it is written. Never enable sending, register a new address or add a project to this list on your own.
 2. Choose one stable session label without personal data. Use it in `--session` on `todo`, claims and writes. Keep the service credentials in the host's environment; never print them or pass them as command arguments.
 3. At the start of work and after a source/record PR merge or checkpoint, fetch the configured default branch under the repository rules and synchronize that fetched commit before reading the to-do, once for this start/event. For a first send that the user already agreed to for this project, run `push PROJECT --dry-run` and `push PROJECT --first` under the hub and repository rules; the hub checks held-commit ancestry. If the first send is not approved, show the dry-run and ask once, continue local work while waiting, and honor any existing instruction to defer that question. Do not push a worktree commit or enable an automatic network hook. A missing token/server response does not stop local work.
 4. Run `hub.py todo PROJECT --session SESSION --json`. It drains the project's outbox before reading. A kept write is pending delivery, not a received comment; report the hub's result accurately.
 5. A missing space is empty: say nothing. With no token or no server answer, say once that comments may be waiting, and continue the user's work. Do not keep retrying or ask for a token merely to finish local work.
 6. Give one short list if work is waiting: open comments oldest first; open discrepancies, warn before info; pending reflections without a PR before those in review; then checkpoints waiting for their record or withdrawal correction. Include waiting-for-user and taken counts. Each group's returned 50 entries are a page with a total, not proof that no more exist.
 7. Do the user's explicit task first. Work through the available to-do afterwards, in that order. Never infer that a proposal or a discrepancy authorizes a different change.
+
+## Show the work in NEXUS
+
+On a project on NEXUS, NEXUS is where the user looks at the work, so point them there.
+
+- When a session starts work on the project, give the project's address once: `<nexus.url>/p/<project>`, which opens at its current stage.
+- Whenever you show the user a stage's work or ask about it, give the stage's address, `<nexus.url>/p/<project>/<part>/<stage>`, with `_` as the part of a project without parts, and `#item=<ID>` for one item. On the DDD board of stage 01, `#step=` with `1-b`, `2`, `3`, `4`, `5`, `6`, `7`, `8-a` or `8-b–9` opens one step.
+- NEXUS draws the default branch as it was last pushed. Work on a branch shows there only after its merge and push, as Merge a draft before its checkpoint request says; until then, say that NEXUS does not show it yet, and show the draft in the session.
+- The user's comments and passes in NEXUS come back through the to-do; take them up as the sections below say. A comment there is the user's word on the item, as in the conversation.
+- NEXUS cannot edit yet. When the user or a team wants to move stickies, drag tables or hold a live workshop, do that part in the stage's tool from the stage contract, such as the Miro board on which stage 01's steps run, and bring the result into the source, which NEXUS then draws.
+- These addresses name the user's own server: give them in the conversation, the project's records and NEXUS itself, and ask before writing one into a file of a public repository.
 
 ## Read the to-do again
 
@@ -83,7 +103,7 @@ A checkpoint request is what the user reads before passing a stage, so it has on
 - Use an address that needs no new permission and shows project data to nobody else: the project's own preview behind the same sign-in, an address in the session, or a file that opens by itself. Showing a screen releases nothing: a deploy that the project asks about first is still asked.
 - Where nothing can be pressed yet, such as a sitemap with no screen drawn, say so in one of the lines and name the stage's picture first.
 
-Make the request in the session. Where the session can send, also send it through the hub, as a comment on the stage as a whole: `comment PROJECT --stage STAGE [--part PART] --asks checkpoint --look-first ID|URL|stage`, with the same lines as its text and without `--item`. `--look-first` takes the item's trace ID, the `https` address, or the word `stage` for the stage's own picture or list. The hub checks the form before it sends, and says what to shorten or add.
+Make the request in the session, with the stage's NEXUS address as Show the work in NEXUS says. Where the session can send, also send it through the hub, as a comment on the stage as a whole: `comment PROJECT --stage STAGE [--part PART] --asks checkpoint --look-first ID|URL|stage`, with the same lines as its text and without `--item`. `--look-first` takes the item's trace ID, the `https` address, or the word `stage` for the stage's own picture or list. The hub checks the form before it sends, and says what to shorten or add.
 
 - `refused` with `read the to-do first`: the hub's read before the request brought entries that are new. Answer those on the stage, or name them in the request as open, and send it again.
 - The remark `sent-as-reply`: the part's stage already had an open request, and the hub sent this one as a reply on it. A part's stage has one open request at a time.

@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | The functional spec (SPEC) for the data each behaviour needs, the domain design's aggregate rules (CTX), and the glossary (TERM) for names |
 | Outputs | `schema.sql`, by default `db/schema.sql`, with a TBL ID comment on each table, plus the migrations; optionally a Mermaid `erDiagram` in `docs/05-erd/` |
-| Human view | An ERD tool, as set in `human`: by default ERD Editor for a new project; see "ERD Editor" below. A team that already uses another tool, such as ERD Cloud, keeps it unless the team decides to move |
+| Human view | On a project on NEXUS, by default the ERD that NEXUS draws from the schema, with an ERD tool for editing the diagram by hand. Otherwise an ERD tool, as set in `human`: by default ERD Editor for a new project; see "ERD Editor" below. A team that already uses another tool, such as ERD Cloud, keeps it unless the team decides to move |
 | Sync | Compare the DDL in the repository with the tool's latest SQL export and name the export's date. Report the differences table by table and column by column, then apply them in the direction `truth` gives. If the AI cannot reach the tool, a person exports and imports the SQL, as step 5 in [SKILL.md](../SKILL.md) says |
 | Human checkpoints | Schema freeze before the API contract is written, and every later breaking change |
 | Trace IDs | TBL-001… |

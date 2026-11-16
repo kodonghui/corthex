@@ -212,6 +212,14 @@ class PictureReadersTest(unittest.TestCase):
         self.assertEqual(screens["SCR-002"]["terms"], ["TERM-001"])
         self.assertEqual(screens["SCR-002"]["context"], "CTX-001")
 
+    def test_domain_template_draws_its_timeline(self):
+        domain, checks = self.parse("domain", output_blocks("corthex-discover", "01-domain")[0])
+        self.assertEqual([(lane["lane"], lane["places"]) for lane in domain["timeline"]], [
+            ("Ordering", [["Order placed"], ["Payment taken", "Payment failed"], ["Order cancelled"]]),
+            ("Refunds", [["Payment refunded"]]),
+        ])
+        self.assertEqual([c["rule"] for c in checks if c["rule"].startswith("picture")], [])
+
     def test_struck_timeline_boundaries_do_not_leave_phantom_events(self):
         for sequence, expected in (("~~Old~~ → Saved", [["Saved"]]),
                 ("Started → ~~Old~~", [["Started"]]), ("~~Old~~ → ~~Gone~~", []),

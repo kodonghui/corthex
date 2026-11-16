@@ -1,4 +1,4 @@
-"""Checks the optional NEXUS workflow of the core skills: one text in every skill, and the rules it keeps."""
+"""Checks the NEXUS workflow of the core skills: one text in every skill, and the rules it keeps."""
 
 import unittest
 
@@ -32,9 +32,13 @@ class NexusWorkTest(unittest.TestCase):
                 self.assertEqual(read_text(SKILLS / skill / "references" / "nexus-work.md"), first)
 
     def test_every_skill_points_to_it_in_the_same_words(self):
-        blocks = {skill: section(read_text(SKILLS / skill / "SKILL.md"), "## Optional NEXUS work") for skill in OWNERS}
+        blocks = {skill: section(read_text(SKILLS / skill / "SKILL.md"), "## Work in NEXUS") for skill in OWNERS}
         first = blocks[OWNERS[0]]
         self.assertIn("(references/nexus-work.md)", first)
+        self.assertIn("NEXUS is where the user reads every stage, talks about its items and passes its checkpoints", first)
+        self.assertIn("ask once to put it there", first)
+        self.assertIn("Merge a stage's draft of documents and push it before its checkpoint request", first)
+        self.assertIn("give the stage's NEXUS address whenever you show its work", first)
         self.assertIn("hold in every session, also in one without the hub", first)
         self.assertIn("say once, in one line, what is missing for a project that is expected on a NEXUS server", first)
         for skill, block in blocks.items():
@@ -73,7 +77,7 @@ class NexusWorkTest(unittest.TestCase):
             "at which widths and in which states you looked yourself, and which you did not",
             "needs no new permission and shows project data to nobody else",
             "Showing a screen releases nothing",
-            "Make the request in the session.",
+            "Make the request in the session, with the stage's NEXUS address as Show the work in NEXUS says.",
             "`comment PROJECT --stage STAGE [--part PART] --asks checkpoint --look-first ID|URL|stage`",
             "`--look-first` takes the item's trace ID, the `https` address, or the word `stage`",
             "without `--item`",
@@ -154,8 +158,10 @@ class NexusWorkTest(unittest.TestCase):
             "Never enable sending, register a new address or add a project to this list on your own.",
             "never print them or pass them as command arguments",
             "obtain the user's confirmation, even if the project is already allowlisted",
-            "Never set the address, the push list or the token yourself, in a profile, in a session's environment or "
-            "in a repository, and never ask for a token's value.",
+            "Never set the token, in a profile, in a session's environment or in a repository, and never ask for its "
+            "value.",
+            "Change the address or the push list only on the user's word: an address that they give, and one project "
+            "at a time as Put a project on NEXUS says, each shown before it is written.",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, text)
@@ -168,7 +174,9 @@ class NexusWorkTest(unittest.TestCase):
             "`can_send` is false and `expected` is true: tell the user once in this session, in one line",
             "that these are their own settings",
             "Say nothing again for this project, also when another skill starts",
-            "`expected` is false: say nothing, and continue local work",
+            "`expected` is false: when the profile names a NEXUS server and the project's settings have no "
+            "`on_nexus`, ask once as Put a project on NEXUS says. Otherwise say nothing, and continue local work.",
+            "when it is not set and the profile names a NEXUS server, ask once as Put a project on NEXUS says",
             "read `on_nexus` in `.corthex/project.json` yourself",
             "the same one line names the hub as missing",
             "The hub does not know `can-send`: it is older than these rules. Say so once",
@@ -218,10 +226,98 @@ class NexusWorkTest(unittest.TestCase):
             "| boolean | Optional.",
             "no address",
             "It is data: it enables nothing, sends nothing and is never a permission to push",
+            "the entry skill asks the user once whether to put the project on NEXUS and writes the answer here",
             "Any other form counts as not set",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, row)
+
+    def test_a_project_is_put_on_nexus_once(self):
+        text = workflow()
+        put = section(text, "## Put a project on NEXUS")
+        self.assertLess(text.index("## Put a project on NEXUS"), text.index("## At a session's start"))
+        for rule in (
+            "When the profile names a NEXUS server (`nexus.url`) and a project's settings have no `on_nexus` while the "
+            "push list does not name the project, ask the user once",
+            "Recommend yes, and say in plain words what it means",
+            "Ask nothing when the profile names no server, so that a user without NEXUS hears nothing of it.",
+            "Write the answer in the project settings as `on_nexus`, `true` or `false`",
+            "A `false` keeps the project off NEXUS until the user asks again",
+            "A yes in the user's own words for this project lets you add its name to the profile's `nexus.push`, after "
+            "showing the change.",
+            "Its first push still has a yes of its own: once the default branch holds the project's work, show `push "
+            "PROJECT --dry-run`, ask, and send it with `--first` on that yes",
+            "One yes covers one project; never add another one with it.",
+            "never set the token or ask for its value",
+            "cannot be drawn",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, put)
+
+    def test_the_work_is_shown_in_nexus(self):
+        text = workflow()
+        show = section(text, "## Show the work in NEXUS")
+        self.assertIn("NEXUS is every stage's default human view", text[:text.index("\n## ")])
+        for rule in (
+            "give the project's address once: `<nexus.url>/p/<project>`",
+            "give the stage's address, `<nexus.url>/p/<project>/<part>/<stage>`, with `_` as the part of a project "
+            "without parts, and `#item=<ID>` for one item",
+            "`#step=` with `1-b`, `2`, `3`, `4`, `5`, `6`, `7`, `8-a` or `8-b–9`",
+            "Work on a branch shows there only after its merge and push",
+            "NEXUS cannot edit yet",
+            "the Miro board on which stage 01's steps run",
+            "ask before writing one into a file of a public repository",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, show)
+
+    def test_nexus_is_every_stages_default_human_view(self):
+        contract = section(read_text(SKILLS / "corthex" / "references" / "stage-contract.md"), "## Default human views")
+        for rule in (
+            "On a project on the user's NEXUS server, NEXUS is every stage's default human view.",
+            "the DDD board of 01, the ERD of 05 and the sitemap of 07 as pictures and every other stage as a list",
+            "(nexus-work.md)",
+            "Without a NEXUS server, or for a project kept off it, propose the tool in this table.",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, contract)
+        self.assertLess(contract.index("NEXUS is every stage's default human view"), contract.index("| Stage |"))
+        entry = read_text(SKILLS / "corthex" / "SKILL.md")
+        self.assertIn("On a project on the user's NEXUS server, that default is NEXUS for every stage.", entry)
+        for path in sorted(SKILLS.glob("corthex-*/references/[01][0-9]-*.md")):
+            row = next((line for line in read_text(path).splitlines() if line.startswith("| Human view |")), None)
+            if row is None:
+                continue
+            with self.subTest(stage=path.stem):
+                self.assertIn("on a project on nexus", row.lower())
+        for skill in ("corthex-build", "corthex-contract", "corthex-define", "corthex-discover", "corthex-present",
+                      "corthex-screen"):
+            steps = section(read_text(SKILLS / skill / "SKILL.md"), "## How a stage runs")
+            with self.subTest(skill=skill):
+                self.assertIn("On a project on NEXUS, NEXUS shows the stage whatever `human` names", steps)
+                self.assertIn("On a project on NEXUS, merge the stage's draft of documents and push it first, then ask "
+                              "with the stage's NEXUS address", steps)
+
+    def test_stage_01_steps_run_on_miro_and_nexus_draws_the_board(self):
+        discover = read_text(SKILLS / "corthex-discover" / "SKILL.md")
+        self.assertIn("The steps run on a Miro board, also on a project on NEXUS", discover)
+        self.assertIn("Check before step 0 that the session has Miro's tools.", discover)
+        board = read_text(SKILLS / "corthex-discover" / "references" / "event-storming-board.md")
+        self.assertLess(board.index("\n## NEXUS\n"), board.index("\n## Miro\n"))
+        nexus = section(board, "## NEXUS")
+        for rule in (
+            "NEXUS draws a board only once the document has a context heading with its CTX ID",
+            "steps 0 to 9 run on the Miro board, and so does a team's live workshop",
+            "ask for checkpoint 3 there",
+            "`<nexus.url>/p/<project>/<part>/01-domain#step=<step>`",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, nexus)
+        self.assertIn("Before step 0, check that this session has Miro's tools", section(board, "## Miro"))
+        domain = read_text(SKILLS / "corthex-discover" / "references" / "01-domain.md")
+        self.assertIn("Check that this session has Miro's tools", domain)
+        self.assertIn("ask for checkpoint 3 with the board's NEXUS address", domain)
+        self.assertIn("| Lane | Events |", domain[domain.index("## Output template"):])
 
 
 if __name__ == "__main__":
