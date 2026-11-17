@@ -45,6 +45,15 @@ def trust_hooks(terminal, path, expected):
     terminal.wait(lambda: len(re.findall(r"(?m)^trusted_hash\s*=", path.read_text(encoding="utf-8"))) == expected)
 
 
+def quit_review(terminal):
+    # Trusting leaves the Hooks panel open. Ctrl-C is a panel/cancel key there,
+    # not a reliable application exit, especially while startup hooks settle.
+    # Use the same explicit quit command as the native lifecycle walk.
+    terminal.key(b"\x1b")
+    terminal.line("/quit")
+    terminal.wait(lambda: terminal.status is not None)
+
+
 def archive():
     packed = subprocess.check_output(["git", "-C", str(runner.REPO), "archive", "--format=zip", OLD,
                                       ".agents/plugins", ".claude-plugin", "plugins"])
@@ -88,6 +97,7 @@ def main():
         terminal = Terminal(command, env, project, output / (label + "-terminal.bin"))
         try:
             trust_hooks(terminal, path, expected)
+            quit_review(terminal)
         finally:
             status = terminal.close()
         assert status == 0

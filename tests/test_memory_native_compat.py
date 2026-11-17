@@ -399,6 +399,35 @@ class NativeCompatibilityGateTest(unittest.TestCase):
                     except OSError: pass
 
     @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
+    def test_trust_review_quits_the_panel_explicitly_before_terminal_cleanup(self):
+        # A real PTY peer treats Ctrl-C as a cancelled UI, while Escape and
+        # /quit perform a normal exit. The old cleanup-only path exits 130.
+        script = '''import os, sys, tty
+tty.setraw(0)
+os.write(1, b"review-ready")
+data = b""
+while True:
+    data += os.read(0, 4096)
+    if b"\\x03" in data:
+        sys.exit(130)
+    if b"/quit" in data and data.endswith(b"\\r"):
+        assert data.startswith(b"\\x1b")
+        os.write(1, b"review-quit")
+        sys.exit(0)
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary).resolve()
+            terminal = self.lifecycle.Terminal([sys.executable, "-c", script],
+                                               self.lifecycle.runner.base_env(home), home, home / "terminal.bin")
+            try:
+                terminal.wait(lambda: b"review-ready" in terminal.data)
+                self.trust.quit_review(terminal)
+            finally:
+                status = terminal.close()
+            self.assertEqual(status, 0)
+            self.assertIn(b"review-quit", terminal.data)
+
+    @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
     def test_terminal_close_reaps_its_child_when_macos_refuses_the_group_signal(self):
         # macOS answers EPERM to killpg once every member of the group has exited
         # but is not yet reaped. The refusal must not skip reaping the CLI.
