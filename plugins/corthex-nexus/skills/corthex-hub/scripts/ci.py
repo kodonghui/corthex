@@ -76,7 +76,7 @@ class GitHub:
         self.program, self.root, self.run = program, root, run
         # gh uses its own login. Do not also put the NEXUS credentials in its environment.
         self.env = {k: v for k, v in env.items() if k not in SECRET_NAMES}
-        self.env.update(GH_PROMPT_DISABLED="1", GH_PAGER="cat", GIT_TERMINAL_PROMPT="0")
+        self.env.update(GH_HOST="github.com", GH_PROMPT_DISABLED="1", GH_PAGER="cat", GIT_TERMINAL_PROMPT="0")
 
     def call(self, arguments, body=None):
         try:

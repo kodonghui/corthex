@@ -14,7 +14,8 @@ from test_hub import HubCase, hub
 ci = hub.companion("ci")
 REAL_EXECUTABLE = ci.executable
 ENV = {"CORTHEX_NEXUS_URL": "https://nexus.example.invalid", "CORTHEX_NEXUS_CLIENT_ID": "synthetic-client-unique",
-       "CORTHEX_NEXUS_CLIENT_SECRET": "synthetic-secret-unique", "PATH": "/usr/bin"}
+       "CORTHEX_NEXUS_CLIENT_SECRET": "synthetic-secret-unique", "PATH": "/usr/bin",
+       "GH_HOST": "enterprise.example.invalid"}
 SHA = "a" * 40
 
 
@@ -90,6 +91,7 @@ class CiSetupTest(HubCase):
             self.assertEqual(body, ENV[name].encode())
             self.assertEqual(argv[3:], [name, "--repo", "example/marong2", "--app", "actions"])
             self.assertTrue(all(key not in options["env"] for key in ci.SECRET_NAMES))
+            self.assertEqual(options["env"]["GH_HOST"], "github.com")
             self.assertTrue(all(value not in " ".join(argv) for value in ENV.values() if value != "/usr/bin"))
         rendered = json.dumps(result) + ci.line("acme-shop", result)
         for name in ci.SECRET_NAMES:
