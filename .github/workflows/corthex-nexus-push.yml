@@ -1,0 +1,42 @@
+name: NEXUS push
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corthex-nexus-push
+  cancel-in-progress: false
+
+jobs:
+  push:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the default branch with its history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: project
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the hub at its pinned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kodonghui/corthex
+          ref: c6095b40c71bc74d207b13b5b08aeeb078c7d0c5
+          path: hub
+          persist-credentials: false
+      - name: Push the snapshot
+        working-directory: project
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          CORTHEX_NEXUS_URL: ${{ secrets.CORTHEX_NEXUS_URL }}
+          CORTHEX_NEXUS_CLIENT_ID: ${{ secrets.CORTHEX_NEXUS_CLIENT_ID }}
+          CORTHEX_NEXUS_CLIENT_SECRET: ${{ secrets.CORTHEX_NEXUS_CLIENT_SECRET }}
+        run: |
+          git symbolic-ref refs/remotes/origin/HEAD "refs/remotes/origin/$DEFAULT_BRANCH"
+          python3 ../hub/plugins/corthex-nexus/skills/corthex-hub/scripts/hub.py push --job --json
