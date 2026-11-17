@@ -887,12 +887,12 @@ class CommandOutcomesTest(HubCase):
         rows = CMD.execute(args, self.home, vars(hub), env=env or {}, client_factory=lambda *a, **k: client)
         return args, rows, client
 
-    def test_all_eighteen_commands_exist(self):
+    def test_all_existing_commands_and_ci_setup_exist(self):
         parser = hub.parser()
         actions = next(action for action in parser._actions if hasattr(action, "choices") and isinstance(action.choices, dict))
-        self.assertEqual(set(actions.choices), {"snapshot", "status", "build"} | CMD.ANSWERED)
+        self.assertEqual(set(actions.choices), {"snapshot", "status", "build", "setup-ci"} | CMD.ANSWERED)
         self.assertEqual(CMD.ANSWERED - CMD.NETWORK, {"can-send"})
-        self.assertEqual(len(actions.choices), 19)
+        self.assertEqual(len(actions.choices), 20)
 
     def test_agent_writes_match_paths_bodies_and_new_write_ids(self):
         cases = [
