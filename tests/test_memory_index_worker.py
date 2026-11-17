@@ -327,7 +327,24 @@ class IndexWorkerTest(unittest.TestCase):
         answer = threading.Event()
         self.addCleanup(answer.set)
         self.server.before[0] = lambda: answer.wait(10)
-        outcome = self.keep(seconds=index_worker.RESERVE + 4)
+        # This checks the request's reserved deadline, not how fast a runner
+        # creates the index. Start elapsed time at the real embedding boundary
+        # so slow filesystem preparation cannot consume its four-second budget.
+        real_now, real_embed = clock.now, model_embed.embed
+        frozen, begun = real_now(), [None]
+
+        def now():
+            return frozen if begun[0] is None else frozen + real_now() - begun[0]
+
+        def embed(*args, **kwargs):
+            self.assertIsNone(begun[0])
+            begun[0] = real_now()
+            return real_embed(*args, **kwargs)
+
+        with mock.patch.object(clock, 'now', side_effect=now), mock.patch.object(model_embed, 'embed', side_effect=embed) as request:
+            outcome = self.keep(seconds=index_worker.RESERVE + 4)
+        request.assert_called_once()
+        self.assertAlmostEqual(request.call_args[1]['deadline'], frozen + 4)
         self.assertEqual((outcome.reason, outcome.requests, outcome.failed, outcome.embedded),
                          ('deadline', 1, ('timeout',), ()))
         self.assertEqual(self.failures(), [('embed', 'timeout')])

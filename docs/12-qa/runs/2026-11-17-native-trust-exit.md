@@ -15,3 +15,9 @@ During the hub CI-setup work, macOS Intel Python 3.8 shard 1 of [run 44063368622
 That shard includes real PTY tests. The full unit runner has threads from earlier network tests, and Python warns that `forkpty` in a threaded process can deadlock. Each of the three real-terminal cases now runs in a fresh Python interpreter. The worker asserts a single active thread; the parent verifies that exactly one requested case ran without a skip. The original terminal, exit-status, trust and reaping assertions remain intact, with a 30-second worker limit.
 
 This removes the shared unit runner's threaded-fork condition. The historical timeout's internal cause remains unverified. The repository suite and the full CI on the updated PR head validate the isolation change; the PR links their results.
+
+## Index request deadline fixture
+
+Windows Python 3.8 shard 2 of [run 44099604848](https://github.com/kodonghui/corthex/actions/runs/44099604848) failed in `test_a_request_ends_before_the_runs_last_minute`: the worker correctly returned `deadline` before making any request, while the test expected one timed-out request. Its four-second request budget included index creation and filesystem checks, so slow preparation exhausted it before the model boundary. The run's log archive contains the assertion; the individual job-log download was unavailable.
+
+The fixture now holds its test clock during preparation and starts real elapsed time at the embedding call. It retains the real HTTP timeout, all original outcome, diagnostic and vector assertions, and additionally verifies exactly one embedding call with the run's last minute reserved. Production deadlines and worker code are unchanged. The PR links validation on the updated head.
