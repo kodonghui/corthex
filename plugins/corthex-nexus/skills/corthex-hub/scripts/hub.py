@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CORTHEX hub: one page with the stages, checks and trace links of every project.
 
-The 19 commands have --help. Snapshot/build/status work locally. Explicit
+The 20 commands have --help. Snapshot/build/status work locally. Explicit
 server commands use only the configured NEXUS address and permitted projects.
 It reads profile/registration/project settings and stage sources; pictures and
 repository records come from the fetched default commit. Generated files and
@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 SCHEMA = "corthex-hub/0.2"
 PAGE_SCHEMA = "corthex-hub-page/0.2"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"
@@ -180,7 +180,7 @@ REMOVED = {"removed", "deleted", "dropped", "cancelled", "canceled", "deprecated
 _COMPANIONS = {}
 
 def companion(name):
-    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands"}:
+    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci"}:
         raise ValueError("unknown hub companion")
     if name not in _COMPANIONS:
         path = Path(__file__).resolve().with_name(name + ".py")
@@ -2240,6 +2240,7 @@ def parser():
     drop.add_argument("--url", help="the server address (default: CORTHEX_NEXUS_URL, then nexus.url in the profile)")
     drop.add_argument("--dry-run", action="store_true", help="the same: remove never sends a removal")
     companion("commands").configure(top, commands, {"snapshot":snap, "status":stat, "build":build, "push":send_cmd, "remove":drop}, None)
+    companion("ci").configure(commands)
     return top
 
 
@@ -2249,9 +2250,14 @@ def main(argv=None):
     home = Path(args.home).expanduser().resolve() if args.home else Path.home()
     commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push, "remove": run_remove}
     try:
+        if args.command == "setup-ci":
+            return companion("ci").main(args, home, SimpleNamespace(**globals()))
         if args.command in companion("commands").ANSWERED:
             helper = SimpleNamespace(**globals())
-            return companion("commands").emit(args, companion("commands").execute(args, home, globals()), helper)
+            rows = companion("commands").execute(args, home, globals())
+            result = companion("commands").emit(args, rows, helper)
+            companion("ci").after_first(args, home, rows, helper)
+            return result
         return commands[args.command](args, home)
     except companion("commands").CommandLine as error:
         command_parser.error(str(error))

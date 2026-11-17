@@ -29,6 +29,29 @@ class NativeCompatibilityGateTest(unittest.TestCase):
         finally:
             sys.path[:] = previous
 
+    def run_pty_in_clean_process(self):
+        # forkpty in the threaded full-suite process can deadlock on macOS.
+        # A fresh interpreter retains the real terminal assertions without
+        # inheriting threads or locks from earlier network tests.
+        if os.environ.get("CORTHEX_TEST_PTY_CASE") == self._testMethodName:
+            self.assertEqual(threading.active_count(), 1, "PTY worker must start without inherited test threads")
+            return False
+        env = {name: value for name, value in os.environ.items()
+               if name != "CORTHEX_NEXUS_URL" and
+               not any(word in name.upper() for word in ("SECRET", "TOKEN", "API_KEY", "CLIENT_ID"))}
+        env["CORTHEX_TEST_PTY_CASE"] = self._testMethodName
+        try:
+            child = subprocess.run([sys.executable, "-B", "-X", "utf8", str(Path(__file__).resolve()),
+                                    type(self).__name__ + "." + self._testMethodName, "-v"],
+                                   cwd=str(ROOT), env=env, capture_output=True, timeout=30)
+        except subprocess.TimeoutExpired:
+            self.fail("isolated PTY case exceeded its 30-second test limit")
+        report = child.stderr.decode("utf-8", errors="replace")
+        self.assertEqual(child.returncode, 0, child.stdout.decode("utf-8", errors="replace") + report)
+        self.assertIn("Ran 1 test", report, "PTY worker must execute its requested case")
+        self.assertNotIn("(skipped=", report, "PTY worker must exercise the real terminal")
+        return True
+
     def diagnostic_change(self, name):
         with tempfile.TemporaryDirectory() as temporary:
             home = Path(temporary).resolve()
@@ -370,6 +393,8 @@ class NativeCompatibilityGateTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
     def test_terminal_initialization_failure_reaps_its_actual_child_and_closes_fd(self):
+        if self.run_pty_in_clean_process():
+            return
         import fcntl
         import pty
         owned, fork = [], pty.fork
@@ -400,6 +425,8 @@ class NativeCompatibilityGateTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
     def test_trust_review_quits_the_panel_explicitly_before_terminal_cleanup(self):
+        if self.run_pty_in_clean_process():
+            return
         # A real PTY peer treats Ctrl-C as a cancelled UI, while Escape and
         # /quit perform a normal exit. The old cleanup-only path exits 130.
         script = '''import os, sys, tty
@@ -429,6 +456,8 @@ while True:
 
     @unittest.skipIf(os.name == "nt", "Unix PTY cleanup; Windows native terminal cases are operator-run")
     def test_terminal_close_reaps_its_child_when_macos_refuses_the_group_signal(self):
+        if self.run_pty_in_clean_process():
+            return
         # macOS answers EPERM to killpg once every member of the group has exited
         # but is not yet reaped. The refusal must not skip reaping the CLI.
         # Ctrl-C is held back: until exec, the forked child still runs this test's
@@ -457,3 +486,7 @@ while True:
                         if os.waitpid(terminal.pid, os.WNOHANG)[0] == 0:
                             os.kill(terminal.pid, signal.SIGKILL); os.waitpid(terminal.pid, 0)
                     except ChildProcessError: pass
+
+
+if __name__ == "__main__":
+    unittest.main()
