@@ -268,7 +268,17 @@ def after_first(args, home, rows, h):
         name, project, _ = h.select_projects(home, [row["project"]])[0]
         if project is None:
             continue
-        result = setup(project, home, h)
+        # An explicit --url may send this upload somewhere other than the CI
+        # environment. Never silently redirect future jobs to a different server.
+        configured = os.environ.get(SECRET_NAMES[0])
+        uploaded = h.companion("commands").where(args, home, os.environ, h).url
+        different = configured and (not isinstance(uploaded, str) or
+                                    uploaded.rstrip("/") != configured.rstrip("/"))
+        if different:
+            result = {"state": "skipped", "why": "the upload destination differs from CORTHEX_NEXUS_URL",
+                      "secrets": [], "workflow": None}
+        else:
+            result = setup(project, home, h)
         # Keep the established push JSON receipt intact. Optional CI setup is
         # a separate one-line diagnostic, never a reason to repeat an upload.
         h.say(line(name, result), sys.stderr)

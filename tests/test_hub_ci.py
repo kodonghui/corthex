@@ -179,7 +179,25 @@ class CiSetupTest(HubCase):
                 ci.after_first(args, self.home, [{"project":"acme-shop","outcome":outcome}], self.h)
                 setup.assert_not_called()
         args = SimpleNamespace(command="push", first=True, dry_run=False)
-        with mock.patch.object(ci, "setup", return_value={"state":"skipped","why":"fixture","secrets":[]}) as setup, mock.patch.object(self.h,"say"):
+        with mock.patch.dict(os.environ, ENV, clear=True), mock.patch.object(ci, "setup", return_value={"state":"skipped","why":"fixture","secrets":[]}) as setup, mock.patch.object(self.h,"say"):
+            ci.after_first(args, self.home, [{"project":"acme-shop","outcome":"done"}], self.h)
+            setup.assert_called_once()
+
+    def test_first_upload_to_another_server_never_configures_ci_for_the_environment_server(self):
+        for address in ("https://other.example.invalid", "http://127.0.0.1:8080"):
+            args = SimpleNamespace(command="push", first=True, dry_run=False, url=address)
+            with mock.patch.dict(os.environ, ENV, clear=True), mock.patch.object(ci, "setup") as setup, mock.patch.object(self.h, "say") as say:
+                ci.after_first(args, self.home, [{"project":"acme-shop","outcome":"done"}], self.h)
+                setup.assert_not_called()
+                say.assert_called_once()
+                message, stream = say.call_args[0]
+                self.assertIs(stream, ci.sys.stderr)
+                self.assertIn("upload destination differs from CORTHEX_NEXUS_URL", message)
+                self.assertEqual(len(message.splitlines()), 1)
+                for value in [address] + [ENV[name] for name in ci.SECRET_NAMES]:
+                    self.assertNotIn(value, message)
+        args = SimpleNamespace(command="push", first=True, dry_run=False, url=ENV["CORTHEX_NEXUS_URL"] + "/")
+        with mock.patch.dict(os.environ, ENV, clear=True), mock.patch.object(ci, "setup", return_value={"state":"skipped","why":"fixture","secrets":[]}) as setup, mock.patch.object(self.h, "say"):
             ci.after_first(args, self.home, [{"project":"acme-shop","outcome":"done"}], self.h)
             setup.assert_called_once()
 
