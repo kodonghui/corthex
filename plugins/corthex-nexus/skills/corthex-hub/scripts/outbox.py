@@ -93,10 +93,6 @@ def guard_file(path):
 @contextlib.contextmanager
 def guard(path):
     with guard_file(path) as handle:
-        handle.seek(0, 2)
-        if not handle.tell():
-            handle.write(b"\0")
-            handle.flush()
         handle.seek(0)
         start = time.monotonic()
         while True:
@@ -113,6 +109,11 @@ def guard(path):
                     raise Busy("another hub is updating the outbox lock")
                 time.sleep(0.01)
         try:
+            # Windows can lock a byte past EOF. Initialize the guard only
+            # while holding that lock so two new hubs cannot race the write.
+            if os.fstat(handle.fileno()).st_size == 0:
+                handle.write(b"\0")
+                handle.flush()
             yield
         finally:
             handle.seek(0)
