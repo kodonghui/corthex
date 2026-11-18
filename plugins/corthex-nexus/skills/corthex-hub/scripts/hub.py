@@ -180,7 +180,7 @@ REMOVED = {"removed", "deleted", "dropped", "cancelled", "canceled", "deprecated
 _COMPANIONS = {}
 
 def companion(name):
-    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci"}:
+    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci", "publication_v2"}:
         raise ValueError("unknown hub companion")
     if name not in _COMPANIONS:
         path = Path(__file__).resolve().with_name(name + ".py")
@@ -2241,6 +2241,7 @@ def parser():
     drop.add_argument("--dry-run", action="store_true", help="the same: remove never sends a removal")
     companion("commands").configure(top, commands, {"snapshot":snap, "status":stat, "build":build, "push":send_cmd, "remove":drop}, None)
     companion("ci").configure(commands)
+    companion("publication_v2").configure(commands)
     return top
 
 
@@ -2250,6 +2251,8 @@ def main(argv=None):
     home = Path(args.home).expanduser().resolve() if args.home else Path.home()
     commands = {"snapshot": run_snapshot, "status": run_status, "build": run_build, "push": run_push, "remove": run_remove}
     try:
+        if args.command in ("preview-v2", "publish-v2"):
+            return companion("publication_v2").main(args, home, SimpleNamespace(**globals()))
         if args.command == "setup-ci":
             return companion("ci").main(args, home, SimpleNamespace(**globals()))
         if args.command in companion("commands").ANSWERED:

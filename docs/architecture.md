@@ -6,6 +6,8 @@ How CORTHEX is put together, and why. The file formats are defined once, in the 
 
 Status: core `corthex` 0.12.1; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.5.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
+The rebuild v2 publication preview uses the repository’s committed source index and exact Git blobs. Its explicit publisher command uses a project-scoped credential and requires an owner-recorded digest for the first publication. The existing hub push and automatic Actions path retain their Access-based contract.
+
 ## Goals
 
 - Anyone can install CORTHEX from a public Git repository, in Claude Code and in Codex, with each host's own plugin commands.

@@ -91,7 +91,7 @@ def result(outcome, answer=None, problem=None, failure=None, retry=False):
 
 
 class Client:
-    def __init__(self, base, env, version="0.5.0", timeout=30):
+    def __init__(self, base, env, version="0.5.0", timeout=30, publisher=None):
         parsed = urllib.parse.urlsplit(base)
         local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
         if (parsed.scheme not in ("https", "http") or not parsed.hostname or
@@ -104,6 +104,9 @@ class Client:
             raise ValueError("the request timeout must be positive and at most 30 seconds")
         self.base, self.local, self.version, self.timeout = base.rstrip("/"), local, version, timeout
         self._token = (env.get("CORTHEX_NEXUS_CLIENT_ID"), env.get("CORTHEX_NEXUS_CLIENT_SECRET"))
+        if publisher is not None and (parsed.scheme != "https" or parsed.path not in ("", "/")):
+            raise ValueError("v2 publication requires the configured HTTPS origin")
+        self._publisher = publisher
 
     def __repr__(self):
         return "NexusClient(configured origin, environment-only credentials)"
@@ -113,7 +116,9 @@ class Client:
                 any(x in path for x in ("?", "#", "\\", "\r", "\n")) or
                 any(part in (".", "..") for part in urllib.parse.unquote(path).split("/"))):
             raise ValueError("a NEXUS request needs its generated API path")
-        if not self.local and not all(self._token):
+        if self._publisher and not path.startswith("/api/v2/projects/"):
+            raise ValueError("publisher credentials require a project-scoped v2 route")
+        if not self._publisher and not self.local and not all(self._token):
             return result("failed", failure="no service token", retry=True)
         deadline, answers = Deadline(), []
 
@@ -145,7 +150,9 @@ class Client:
             request.add_header("Nexus-Session", session)
         if write:
             request.add_header("Idempotency-Key", '"' + write + '"')
-        if all(self._token):
+        if self._publisher:
+            request.add_header("Authorization", "Bearer " + self._publisher)
+        elif all(self._token):
             request.add_header("CF-Access-Client-Id", self._token[0])
             request.add_header("CF-Access-Client-Secret", self._token[1])
         try:
