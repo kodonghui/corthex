@@ -86,7 +86,7 @@ def scrub(value, home, env, h):
         return [scrub(item, home, env, h) for item in value]
     if not isinstance(value, str):
         return value
-    for key in ("CORTHEX_NEXUS_CLIENT_ID", "CORTHEX_NEXUS_CLIENT_SECRET"):
+    for key in (*TOKEN, "CORTHEX_NEXUS_PUBLISHER_TOKEN"):
         secret = env.get(key)
         if secret:
             value = value.replace(secret, "[redacted]")

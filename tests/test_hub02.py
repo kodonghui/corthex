@@ -890,9 +890,9 @@ class CommandOutcomesTest(HubCase):
     def test_all_existing_commands_and_ci_setup_exist(self):
         parser = hub.parser()
         actions = next(action for action in parser._actions if hasattr(action, "choices") and isinstance(action.choices, dict))
-        self.assertEqual(set(actions.choices), {"snapshot", "status", "build", "setup-ci"} | CMD.ANSWERED)
+        self.assertEqual(set(actions.choices), {"snapshot", "status", "build", "setup-ci", "preview-v2", "publish-v2"} | CMD.ANSWERED)
         self.assertEqual(CMD.ANSWERED - CMD.NETWORK, {"can-send"})
-        self.assertEqual(len(actions.choices), 20)
+        self.assertEqual(len(actions.choices), 22)
 
     def test_agent_writes_match_paths_bodies_and_new_write_ids(self):
         cases = [
