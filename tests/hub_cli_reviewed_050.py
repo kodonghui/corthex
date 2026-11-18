@@ -1,9 +1,9 @@
 """Reviewed 0.5.0 additions, normalized before the retained 0.4.0 CLI audit.
 
-Only hub dispatch/parser/version and the transport version differ in the nine
-audited files. The CI helper and its stdin/redaction/PR tests are additive;
-existing network payloads, snapshot fields and push JSON receipts are unchanged.
-The original runtime-pin hashes remain intact.
+The differences cover hub dispatch/parser/version, the transport version and
+initializing a native guard under its lock. The CI helper and
+its stdin/redaction/PR tests are additive. The original runtime-pin hashes
+still cover the network payloads, snapshot fields and push JSON receipts.
 """
 
 REVIEWED_050 = {'hub.py': ((b'#!/usr/bin/env python3\n"""CORTHEX hub: one page with the stages, checks and trace links of e'
@@ -64,4 +64,29 @@ REVIEWED_050 = {'hub.py': ((b'#!/usr/bin/env python3\n"""CORTHEX hub: one page w
                    b'\n\nclass Client:\n    def __init__(self, base, env, version="0.4.0", timeout=30):\n    '
                    b'    parsed = urllib.parse.urlsplit(base)\n        local = parsed.hostname in ("localh'
                    b'ost", "127.0.0.1", "::1")\n        if (parsed.scheme not in ("https", "http") or not '
-                   b'parsed.hostname or\n'),)}
+                   b'parsed.hostname or\n'),),
+ 'outbox.py': ((
+     b'def guard(path):\n'
+     b'    with guard_file(path) as handle:\n'
+     b'        handle.seek(0)\n',
+     b'def guard(path):\n'
+     b'    with guard_file(path) as handle:\n'
+     b'        handle.seek(0, 2)\n'
+     b'        if not handle.tell():\n'
+     b'            handle.write(b"\\0")\n'
+     b'            handle.flush()\n'
+     b'        handle.seek(0)\n'), (
+     b'        try:\n'
+     b'            # Windows can lock a byte past EOF. Initialize the guard only\n'
+     b'            # while holding that lock so two new hubs cannot race the write.\n'
+     b'            if os.fstat(handle.fileno()).st_size == 0:\n'
+     b'                handle.write(b"\\0")\n'
+     b'                handle.flush()\n'
+     b'            yield\n'
+     b'        finally:\n'
+     b'            handle.seek(0)\n',
+     b'        try:\n'
+     b'            yield\n'
+     b'        finally:\n'
+     b'            handle.seek(0)\n'),),
+}
