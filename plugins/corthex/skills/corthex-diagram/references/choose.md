@@ -16,6 +16,8 @@ Write the one sentence the reader should see first, then pick the type that show
 | How much, and how does it change? | A chart drawn from the data | `xychart-beta`, or a plot from the data |
 | What changed? | Before and after, side by side | Two lanes in one `flowchart`, the changed boxes marked key |
 | Where does the project stand? | Stage map | `flowchart LR` of the stages, the current one marked key |
+| How does it work inside, layer by layer or step by step? | Concept figure, every node in a fixed place | Not Mermaid: SVG from `scripts/concept-figure.py`, as [concept.md](concept.md) says |
+| What is near what? | Points in one plane, with the question as a point | Not Mermaid: the same script with `view: flat` |
 
 - The grammar's shapes and lines apply in full to flowcharts of a flow: a pipeline, a request, a user flow. A flowchart of a structure, such as a context map or a screen tree, says `%% grammar: structure` and keeps the rest, as [grammar.md](grammar.md) section 1 says. Other types keep its colours, its legend, its captions and the rule of real names; the lint checks flowcharts only.
 - A table shows many criteria side by side better than a diagram, and a list shows unordered items better.
@@ -32,7 +34,7 @@ Write the one sentence the reader should see first, then pick the type that show
 - When one picture would hold more than about 15 boxes, make a series: the whole map first, then one lane enlarged, then what changed.
 - Number the steps of a walk-through in a column beside the picture, with one line of reason for each, such as why a candidate was dropped.
 - Show the comparison that makes a point next to it: for example a search that keeps one candidate beside one that keeps several, to show how one candidate can take a wrong turn.
-- Draw layers as layers. For a concept with levels, such as the layers of a search index, stack one lane per level from top to bottom, keep each node in the same place on every level, and join the same node across levels with dotted lines. A number such as "layer 2" on a box does not show the structure.
+- Draw layers as layers. For a concept with levels, such as the layers of a search index, stack one plane per level from top to bottom, keep each node in the same place on every level, and join the same node across levels with dotted lines. A number such as "layer 2" on a box does not show the structure. Mermaid cannot keep a node in place, so draw these as a concept figure ([concept.md](concept.md)).
 
 ## 4. Examples and numbers
 

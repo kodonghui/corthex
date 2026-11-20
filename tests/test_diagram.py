@@ -185,7 +185,7 @@ class CheckTest(unittest.TestCase):
         self.assertNotIn(("G6", "warn"), rules(box("문서 참조 단서")))
         self.assertNotIn(("G6", "warn"), rules(box("Key facts in the answer text")))
         self.assertNotIn(("G6", "warn"), rules(box("출처 페이지 적중"), wrap=240))
-        # The frontmatter cannot widen the limit: no target is known to honour it yet.
+        # The frontmatter cannot widen the limit: Notion honours it, but GitHub is not known to, and one source often goes to both.
         self.assertIn(("G6", "warn"), rules("---\nconfig:\n  flowchart:\n    wrappingWidth: 240\n---\n" + box("출처 페이지 적중")))
 
     def test_colours_need_a_readable_text_colour(self):

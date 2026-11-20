@@ -34,8 +34,9 @@ CORTHEX가 어떻게 짜여 있고 왜 그렇게 했는지 설명합니다. 파�
 │   │       │   ├── assets/              profile.json과 project.json 예시
 │   │       │   └── scripts/             term-check.py: 한국어 글에서 표준 용어 대신 쓴 순화어를 찾는 읽기 전용 점검
 │   │       ├── corthex-diagram/         다이어그램을 시각 문법 하나로 그리고 내보내기 전에 점검
-│   │       │   ├── references/          문법, 그림 고르기, 대상별 Mermaid 버전
-│   │       │   └── scripts/             diagram-check.py: Mermaid 순서도를 읽기만 하는 린트
+│   │       │   ├── references/          문법, 그림 고르기, 대상별 Mermaid 버전, 개념 그림
+│   │       │   ├── assets/              hnsw-search.json: 개념 그림 예시
+│   │       │   └── scripts/             diagram-check.py: Mermaid 순서도를 읽기만 하는 린트, concept-figure.py: 개념 그림을 SVG로 그리고 점검
 │   │       ├── corthex-discover/ …      단계 스킬, 단계마다 참고 문서 하나
 │   │       ├── corthex-record/          회의록, 결정, 진행 기록과 인수인계, 회고
 │   │       ├── corthex-study/           스터디 문서: 질문 하나를 조사하고 실행해 페이지와 기록으로 남김
@@ -94,7 +95,7 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 
 스킬만 담은 플러그인은 고치지 않고 그대로 Claude Code, Codex, OpenAI 플러그인 디렉터리, 다른 Agent Plugins 클라이언트에 갑니다. OpenAI 디렉터리는 훅이 든 플러그인을 받지 않고, Codex는 Claude Code의 `userConfig`를 실행하지 않습니다. 스킬 하나를 따로 쓸 수도 있습니다. 예를 들어 claude.ai에 올려 쓸 수 있습니다.
 
-그래서 핵심 플러그인에는 훅, 명령, 에이전트, MCP 서버, 사용자 설정을 넣지 않습니다. 이런 것이 필요한 기능은 별도 플러그인으로 만들고, `tests/test_manifests.py`가 이 규칙을 검사합니다. 스킬이 자기 `scripts/` 폴더에 스크립트를 두는 것은 Agent Skills 형식이 허용하는 일입니다. 진입점 스킬에는 읽기만 하는 용어 점검이 하나, `corthex-diagram`에는 읽기만 하는 다이어그램 린트가 하나, `corthex-uxui`에는 읽기만 하는 점검이 둘 있고, 에이전트가 다른 명령처럼 실행합니다.
+그래서 핵심 플러그인에는 훅, 명령, 에이전트, MCP 서버, 사용자 설정을 넣지 않습니다. 이런 것이 필요한 기능은 별도 플러그인으로 만들고, `tests/test_manifests.py`가 이 규칙을 검사합니다. 스킬이 자기 `scripts/` 폴더에 스크립트를 두는 것은 Agent Skills 형식이 허용하는 일입니다. 진입점 스킬에는 읽기만 하는 용어 점검이 하나, `corthex-diagram`에는 읽기만 하는 다이어그램 린트와 지정한 경로에 개념 그림을 SVG로 그리는 스크립트가, `corthex-uxui`에는 읽기만 하는 점검이 둘 있고, 에이전트가 다른 명령처럼 실행합니다.
 
 ## 스킬
 
@@ -119,7 +120,7 @@ Claude Code는 플러그인 매니페스트를 `.claude-plugin/plugin.json`에�
 - **프런트매터(frontmatter)는 어디서나 쓸 수 있게 씁니다.** Agent Skills 형식의 항목(`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`)만 씁니다. claude.ai 업로드와 Skills API가 특정 도구 전용 항목을 거부하기 때문입니다. 본문은 500줄 아래로 두고, 링크는 스킬 자기 폴더 안에서 한 단계까지만 겁니다.
 - **스킬 본문은 영어입니다.** 답변 언어는 사용자 프로필을 따릅니다.
 
-0.1.0을 로컬에 설치해 측정한 값: `claude plugin details`(Claude Code 2.1.309)는 스킬 설명 8개가 늘 차지하는 양을 약 1,000토큰으로 보고했고, Codex CLI 0.164.0에서는 스킬 목록 가운데 약 3,200자를 썼습니다. `corthex-uxui`를 더한 9개는 Claude Code 2.1.310에서 약 1,240토큰이고, 같은 버전에서 8개는 약 1,050토큰입니다. 이 스킬의 설명은 Codex 목록에 약 580자를 더하며, Codex에서는 다시 측정하지 않았습니다. `corthex-study`를 더한 10개는 Claude Code 2.1.322에서 `--plugin-dir`로 불러와 측정했을 때 약 1,480토큰이고, 같은 버전에서 9개는 약 1,320토큰입니다. `corthex-study`의 설명은 약 550자이며, Codex에서는 측정하지 않았습니다. `corthex-diagram`을 더한 11개는 Claude Code 2.1.329에서 같은 방법으로 측정했을 때 약 1,700토큰이고, 같은 버전에서 10개는 약 1,510토큰입니다. `corthex-diagram`의 설명은 약 530자이며, Codex에서는 측정하지 않았습니다.
+0.1.0을 로컬에 설치해 측정한 값: `claude plugin details`(Claude Code 2.1.309)는 스킬 설명 8개가 늘 차지하는 양을 약 1,000토큰으로 보고했고, Codex CLI 0.164.0에서는 스킬 목록 가운데 약 3,200자를 썼습니다. `corthex-uxui`를 더한 9개는 Claude Code 2.1.310에서 약 1,240토큰이고, 같은 버전에서 8개는 약 1,050토큰입니다. 이 스킬의 설명은 Codex 목록에 약 580자를 더하며, Codex에서는 다시 측정하지 않았습니다. `corthex-study`를 더한 10개는 Claude Code 2.1.322에서 `--plugin-dir`로 불러와 측정했을 때 약 1,480토큰이고, 같은 버전에서 9개는 약 1,320토큰입니다. `corthex-study`의 설명은 약 550자이며, Codex에서는 측정하지 않았습니다. `corthex-diagram`을 더한 11개는 Claude Code 2.1.329에서 같은 방법으로 측정했을 때 약 1,730토큰이고, 같은 버전에서 10개는 약 1,510토큰입니다. 개념 그림까지 적은 `corthex-diagram`의 설명은 약 640자이며, Codex에서는 측정하지 않았습니다.
 
 ## 일하는 원칙
 
@@ -267,7 +268,7 @@ Windows 폴더는 기본 생성 모드로 부모의 권한을 상속합니다. P
 
 | 검사 | 명령 | 범위 |
 | --- | --- | --- |
-| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, `corthex-uxui`의 스크립트(FFmpeg가 있으면 만든 영상으로), 진입점 스킬의 용어 점검, `corthex-diagram`의 문법과 린트, `corthex-study`의 비밀값·자료·게시·예산·기록·표준 용어·주장 태그 규칙, `hub.py`, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
+| 저장소 검사 | `python -m unittest discover -s tests -v` | 매니페스트와 마켓플레이스, 스킬 형식, 단계 계약, 기억 훅과 그 스크립트, 허브 스크립트와 페이지와 보내기, `corthex-uxui`의 스크립트(FFmpeg가 있으면 만든 영상으로), 진입점 스킬의 용어 점검, `corthex-diagram`의 문법과 린트, 개념 그림 스크립트와 HNSW 검색을 실제로 돌려 맞춘 예시, `corthex-study`의 비밀값·자료·게시·예산·기록·표준 용어·주장 태그 규칙, `hub.py`, 설명서 링크와 번역 짝, 비밀값과 개인 정보 |
 | Claude Code 검증 | `claude plugin validate --strict .` 다음 플러그인마다 `claude plugin validate --strict plugins/<플러그인>` | 마켓플레이스와 플러그인에 대한 Claude Code 자체 스키마 |
 
 CI는 리뷰 준비가 된 모든 풀 리퀘스트와 `main`에 올라오는 모든 push에서 저장소 검사와 허브 검사를 Linux, Windows, macOS에서, Claude Code 검증을 Linux에서 돌립니다. Windows Python 3.8에서 전체 시험이 작업당 한 시간 제한에 닿아서, 운영체제와 Python 조합마다 저장소 검사를 세 작업으로 나누고 시험을 세 개마다 하나씩 맡깁니다. Linux와 Windows에는 FFmpeg를 설치해 미디어 점검을 만든 영상으로 돌리고, macOS에서는 그 검사를 건너뜁니다. 기억 훅도 Claude Code와 Codex로 돌립니다. Linux와 macOS에서, 그리고 Windows에서 Git Bash가 있을 때, PowerShell 7만 있을 때, Windows PowerShell 5.1만 있을 때를 로컬 가짜 모델 API로 돌립니다. 초안 풀 리퀘스트는 push마다 결과를 더 빨리 받도록 Linux 작업만 돌립니다. 이때 마지막 작업은 `main`이 요구하는 `all-checks`가 아니라 `linux-checks`로 보고되며, 초안을 리뷰 준비로 바꾸면 전부 돌립니다.

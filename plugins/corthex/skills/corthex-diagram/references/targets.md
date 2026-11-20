@@ -6,7 +6,7 @@ Where a diagram will be shown decides which Mermaid it meets. The facts below we
 
 | Target | Mermaid | How it was measured | Not verified |
 | --- | --- | --- | --- |
-| Notion, a code block whose language is Mermaid | 12.1.0 | The version string in the Mermaid script that Notion's web app loads | Whether Notion honours frontmatter `config` or `%%{init}%%`, and which theme it uses in dark mode |
+| Notion, a code block whose language is Mermaid | 12.1.0 | The version string in the Mermaid script that Notion's web app loads | Whether a frontmatter `look` applies, and which theme Notion uses in dark mode; see section 5 for what was checked |
 | GitHub, a `mermaid` fence in Markdown, issues and pull requests | 12.3.0 | The version string in the script of GitHub's diagram viewer | Whether it honours frontmatter `config` |
 | A page you publish, such as an artifact | The version the page loads | Pin an exact version in the script's address | |
 
@@ -39,7 +39,7 @@ Where a diagram will be shown decides which Mermaid it meets. The facts below we
   ---
   ```
 
-  Mermaid 12.1 then kept "문서 참조 단서가 있는 질문인가?" on one line. Whether Notion and GitHub honour it is not verified, so the lint measures against 120 px whatever the frontmatter says; pass `--wrap 240` for a target where it is verified.
+  Mermaid 12.1 then kept "문서 참조 단서가 있는 질문인가?" on one line, and so did Notion in the maintainer's check on 2026-11-20. Whether GitHub honours it is not verified. The same source often goes to both, so the lint measures against 120 px whatever the frontmatter says; pass `--wrap 240` for a diagram shown only in Notion.
 - The lint's G6 estimates a line's width at 16 px for each Korean, Japanese or Chinese character, 8.5 px for other characters and 4 px for a space, and warns above the limit minus 5 px.
 
 ## 4. Dark mode
@@ -51,6 +51,8 @@ Where a diagram will be shown decides which Mermaid it meets. The facts below we
 
 - Put the Mermaid code in a code block with the language set to Mermaid. The block can show the code, the diagram or both. Copy the code from the repository file unchanged.
 - Notion shows the diagram from the source each time, so a fix in the source needs only the block replaced.
+- In the maintainer's check on 2026-11-20, Notion drew a frontmatter `flowchart.wrappingWidth` and the theme of a `%%{init}%%` directive as the library does, but ignored a theme set in the frontmatter. Set colours in classes, as the grammar does, and never rely on a theme.
+- A concept figure ([concept.md](concept.md)) goes into Notion as a PNG rendered at scale 2, with its spec and SVG kept next to the document.
 - For a figure that must look the same in every theme and in exports, such as a study page's main figure, also attach an image rendered locally at twice the size (scale 2), and keep the source block beside it.
 
 ## 6. Images

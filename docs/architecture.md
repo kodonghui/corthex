@@ -34,8 +34,9 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   ├── assets/              example profile.json and project.json
 │   │       │   └── scripts/             term-check.py, a read-only check for coined words in Korean text
 │   │       ├── corthex-diagram/         diagrams in one visual grammar, checked before they go out
-│   │       │   ├── references/          the grammar, choosing a diagram, Mermaid versions by target
-│   │       │   └── scripts/             diagram-check.py, a read-only lint for Mermaid flowcharts
+│   │       │   ├── references/          the grammar, choosing a diagram, Mermaid versions by target, concept figures
+│   │       │   ├── assets/              hnsw-search.json, a worked concept figure
+│   │       │   └── scripts/             diagram-check.py, a read-only lint for Mermaid flowcharts; concept-figure.py, which draws and checks concept figures as SVG
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
 │   │       ├── corthex-record/          minutes, decisions, progress and handoffs, retrospectives
 │   │       ├── corthex-study/           study documents: one question researched, run, published and recorded
@@ -94,7 +95,7 @@ The optional plugins install the same way, as `corthex-memory@corthex` and `cort
 
 A plugin that holds only skills goes unchanged to Claude Code, Codex, OpenAI's plugin directory and other Agent Plugins clients. OpenAI's directory does not accept plugins with hooks, and Codex does not run Claude Code's `userConfig`. Each skill can also be used on its own, for example uploaded to claude.ai.
 
-So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule. A skill may still carry scripts in its own `scripts/` folder, as the Agent Skills format allows: the entry skill has a read-only term check there, `corthex-diagram` a read-only lint for diagrams and `corthex-uxui` two read-only checks, which the agent runs like any other command.
+So the core plugin has no hooks, commands, agents, MCP servers or user settings. Anything that needs them goes into a separate plugin, and `tests/test_manifests.py` enforces the rule. A skill may still carry scripts in its own `scripts/` folder, as the Agent Skills format allows: the entry skill has a read-only term check there, `corthex-diagram` a read-only lint for diagrams and a script that draws concept figures as SVG at the path it is given, and `corthex-uxui` two read-only checks, which the agent runs like any other command.
 
 ## Skills
 
@@ -119,7 +120,7 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 - **Frontmatter is portable.** Skills use only the fields of the Agent Skills format (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`), because claude.ai uploads and the Skills API reject host-specific fields. Bodies stay under 500 lines, and links stay inside the skill's own folder, one level deep.
 - **Skill text is English.** Replies follow the language in the user's profile.
 
-Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again. With `corthex-study`, Claude Code 2.1.322, with the plugin loaded through `--plugin-dir`, reports about 1,480 tokens for the ten, against about 1,320 for the nine on the same version; its description is about 550 characters, and Codex was not measured. With `corthex-diagram`, Claude Code 2.1.329, loaded the same way, reports about 1,700 tokens for the eleven, against about 1,510 for the ten on the same version; its description is about 530 characters, and Codex was not measured.
+Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again. With `corthex-study`, Claude Code 2.1.322, with the plugin loaded through `--plugin-dir`, reports about 1,480 tokens for the ten, against about 1,320 for the nine on the same version; its description is about 550 characters, and Codex was not measured. With `corthex-diagram`, Claude Code 2.1.329, loaded the same way, reports about 1,730 tokens for the eleven, against about 1,510 for the ten on the same version; its description, which also names concept figures, is about 640 characters, and Codex was not measured.
 
 ## Working principles
 
@@ -267,7 +268,7 @@ The Windows/macOS unrun sentence above is historical0.1 evidence. The2026-11-04 
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the `corthex-uxui` scripts (on made-up clips when FFmpeg is installed), the entry skill's term check, the `corthex-diagram` grammar and its lint, the `corthex-study` rules for secrets, material, publishing, budget, records, standard terms and claim tags, links and translations of the docs, no secrets or private text |
+| Repository checks | `python -m unittest discover -s tests -v` | manifests and marketplaces, skill format, stage contract, the memory hook and its script, the hub script, its page and its push client, the `corthex-uxui` scripts (on made-up clips when FFmpeg is installed), the entry skill's term check, the `corthex-diagram` grammar and its lint, its concept-figure script and the worked HNSW example checked against a run of the HNSW search, the `corthex-study` rules for secrets, material, publishing, budget, records, standard terms and claim tags, links and translations of the docs, no secrets or private text |
 | Claude Code validation | `claude plugin validate --strict .`, then `claude plugin validate --strict plugins/<plugin>` for each plugin | Claude Code's own schema for the marketplace and the plugins |
 
 CI runs the repository and hub checks on Linux, Windows and macOS, and Claude Code validation on Linux, for every pull request that is ready for review and every push to `main`. Each operating system and Python pair runs the repository checks as three jobs that take every third test, because the whole suite had reached the one-hour job limit on Windows with Python 3.8. It installs FFmpeg on Linux and Windows so the media check runs on made-up clips there; on macOS those tests are skipped. It also runs the memory hook in Claude Code and Codex on Linux and macOS, and on Windows with Git Bash, with PowerShell 7 only and with Windows PowerShell 5.1 only, against a local stand-in for the model API. A draft pull request runs only the Linux jobs, so that each push gets its results sooner. Its last job then reports as `linux-checks` instead of `all-checks`, the check that `main` requires, and marking the draft ready for review runs everything.
