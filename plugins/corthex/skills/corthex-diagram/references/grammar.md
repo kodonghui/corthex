@@ -29,6 +29,7 @@ Two marks go on top of a kind:
 - Version 1 makes the key step a mark rather than an eighth kind, so a key store stays a cylinder and a key decision stays a diamond.
 - `ghost` is a third class used only inside the legend, for the empty ends of a line sample and for tag samples.
 - Write the shape with `@{ shape: ... }` (Mermaid 11.3 and later) or with the brackets above. A document box has no bracket form.
+- A flowchart that draws a structure rather than a flow, such as a context map or a screen tree, has no box kinds: its boxes are contexts or screens. Write `%% grammar: structure` in its source. It keeps the colours, a legend for any colour it uses, the caption and the rule of real names, and the lint checks only its syntax, its Korean line breaks and its colours.
 
 ## 2. Lines: the style says what happens to data
 

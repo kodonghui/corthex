@@ -193,6 +193,12 @@ class CheckTest(unittest.TestCase):
                       "  style X fill:#000,color:#111\n")
         self.assertEqual(found.count(("G7", "warn")), 1)
         self.assertEqual(found.count(("G7", "error")), 2)
+        # Basic named colours are read; other values are named as not checked rather than as missing.
+        self.assertEqual(rules("flowchart TB\n  classDef a fill:#ffffff,color:black\n"), [])
+        self.assertEqual(rules("flowchart TB\n  classDef a fill:#fff,color:lightgrey\n"), [("G7", "error")])
+        found = messages("flowchart TB\n  classDef a fill:#fff,color:var(--ink)\n  classDef ghost fill:none,stroke:none\n")
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("contrast not checked, because 'var(--ink)'", found[0])
 
     def test_a_class_after_the_shape_syntax_does_not_parse(self):
         src = HEADER + '  A@{ shape: rect, label: "Embed" }:::proc\n'
@@ -257,6 +263,75 @@ class CheckTest(unittest.TestCase):
                                  ("D", "E", "yes", "normal"), ("E", "F", "done", "thick"), ("E", "A", "", "invisible")])
         self.assertEqual(diagram["nodes"]["F"]["shape"], "stadium")
         self.assertEqual(diagram["nodes"]["A"]["label"], "One")
+
+    def test_reads_a_dotted_line_with_its_label_inline(self):
+        src = HEADER + """
+  D{ok?} e1@-. no .-> B[b]
+  D e2@-->|yes| C[c]
+  B e3@--> G[g]
+  class D decide
+  class B,C proc
+  class G grade
+  class e1,e2 pass
+  class e3 gradeLine
+"""
+        diagram = diagram_check.parse(src)
+        pairs = [(e["src"], e["dst"], e["label"], e["family"]) for e in diagram["edges"]]
+        self.assertEqual(pairs, [("D", "B", "no", "dotted"), ("D", "C", "yes", "normal"), ("B", "G", "", "normal")])
+        self.assertEqual(diagram["nodes"]["D"]["shape"], "diam")
+        found = rules(src)
+        self.assertNotIn(("G2", "error"), found)
+        self.assertNotIn(("G4", "error"), found)
+
+    def test_reads_korean_ids_and_names_statements_it_cannot_read(self):
+        findings, boxes, lines = diagram_check.check("flowchart TB\n  수집[수집] --> 저장[(색인)]\n")
+        self.assertEqual((boxes, lines), (2, 1))
+        self.assertEqual([(rule, severity) for _, rule, severity, _ in findings], [("G1", "error"), ("G1", "error")])
+        found = messages(HEADER + '  "A quoted statement" --> B\n')
+        self.assertTrue(any("could not read this statement" in m for m in found), found)
+
+    def test_skips_a_description_written_over_several_lines(self):
+        src = HEADER + """  accTitle: Order flow
+  accDescr {
+    Shows how the order flows
+    from the cart to the confirmation
+  }
+  A([Start]) e1@--> B([End])
+  class A,B term
+  class e1 pass
+"""
+        self.assertEqual(rules(src), [])
+
+    def test_a_mark_alone_needs_a_legend(self):
+        src = HEADER + """
+  A([Start]) e1@--> B[Merge] e2@--> C([End])
+  class A,C term
+  class B proc
+  class B key
+  class e1,e2 pass
+"""
+        self.assertEqual(rules(src), [("G5", "warn")])
+        self.assertEqual(rules(src.replace("  class B key\n", "")), [])
+
+    def test_a_structure_is_checked_for_syntax_line_breaks_and_colours_only(self):
+        src = """flowchart LR
+  %% grammar: structure
+  ordering["CTX-001 Ordering"] -->|"order number"| payment["CTX-002 결제와 환불을 맡는 컨텍스트"]
+  payment -.->|"Payment failed"| ordering
+  classDef ctx fill:#ffffff,color:#cccccc
+"""
+        findings, boxes, lines = diagram_check.check(src)
+        self.assertEqual((boxes, lines), (2, 2))
+        self.assertEqual(sorted(rule for _, rule, _, _ in findings), ["G6", "G7"])
+        self.assertIn(("G1", "error"), rules(src.replace("  %% grammar: structure\n", "")))
+
+    def test_every_flowchart_in_the_skills_passes(self):
+        for path in sorted(SKILLS.glob("*/**/*.md")):
+            for start, src in diagram_check.read_blocks(str(path), read_text(path)):
+                if diagram_check.kind_name(src) not in ("flowchart", "graph"):
+                    continue
+                with self.subTest(path=path.relative_to(SKILLS).as_posix(), line=start):
+                    self.assertEqual(diagram_check.check(src)[0], [])
 
 
 class CommandTest(unittest.TestCase):

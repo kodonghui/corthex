@@ -100,7 +100,7 @@ Notion에 기록할 때는 프로젝트의 `records.location`이나 프로필의
 - 실제 브라우저나 데스크톱 앱이 필요한 일에는 직접 설치한 프로그램을 이 순서로 씁니다. 웹 페이지는 Aside로 하고 로그인·회원가입은 Aside Vault를 거치며, 그다음은 ego lite나 Playwright입니다. 데스크톱 앱은 agent-desktop으로 하고, 둘 다 할 수 없는 일에만 그 작업에 대해 사용자가 허락한 뒤 호스트의 컴퓨터 사용(computer use)을 씁니다. [컴퓨터·웹 참고 문서](plugins/corthex/skills/corthex/references/computer-and-web.md)를 보세요.
 - `corthex-uxui`에는 필요할 때 쓰는 점검 스크립트 둘이 있고, 둘 다 읽기만 합니다. `page-check.js`는 점검할 페이지 안에서 돌며, 브라우저 콘솔에 붙여 넣거나 Playwright 같은 브라우저 자동화 도구에 넘겨 씁니다. `media-check.py`는 Python 3.8 이상과 FFmpeg가 필요합니다.
 - 진입점 스킬 `corthex`에는 읽기만 하는 점검 스크립트 `term-check.py`가 하나 있고, Python 3.8 이상이 필요합니다. 한국어 문서·기록·프롬프트·인계문을 내보내기 전에, Markdown·HTML·일반 텍스트에서 분야의 표준 용어 대신 지어낸 우리말을 쓴 곳(예: `경로` 대신 `길`)을 찾아 줍니다.
-- `corthex-diagram`에는 읽기만 하는 점검 스크립트 `diagram-check.py`가 하나 있고, Python 3.8 이상이 필요합니다. `.mmd` 파일이나 Markdown 안의 Mermaid 순서도를 스킬의 시각 문법에 맞춰 점검합니다. 상자 종류와 도형, 저장소로 들어가고 나오는 선, 이름 붙은 분기, 범례, 한국어 줄바꿈, 글자 대비를 봅니다.
+- `corthex-diagram`에는 읽기만 하는 점검 스크립트 `diagram-check.py`가 하나 있고, Python 3.8 이상이 필요합니다. `.mmd` 파일이나 Markdown 안의 Mermaid 순서도를 스킬의 시각 문법에 맞춰 점검합니다. 상자 종류와 도형, 저장소로 들어가고 나오는 선, 이름 붙은 분기, 범례, 한국어 줄바꿈, 글자 대비를 봅니다. 컨텍스트 맵처럼 흐름이 아니라 구조를 그린 순서도에는 `%% grammar: structure`를 적고, 문법 오류·줄바꿈·대비만 점검합니다.
 
 ## NEXUS와 함께 일하기
 

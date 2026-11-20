@@ -17,7 +17,7 @@ Write the one sentence the reader should see first, then pick the type that show
 | What changed? | Before and after, side by side | Two lanes in one `flowchart`, the changed boxes marked key |
 | Where does the project stand? | Stage map | `flowchart LR` of the stages, the current one marked key |
 
-- The grammar's shapes and lines apply in full to flowcharts. Other types keep its colours, its legend, its captions and the rule of real names; the lint checks flowcharts only.
+- The grammar's shapes and lines apply in full to flowcharts of a flow: a pipeline, a request, a user flow. A flowchart of a structure, such as a context map or a screen tree, says `%% grammar: structure` and keeps the rest, as [grammar.md](grammar.md) section 1 says. Other types keep its colours, its legend, its captions and the rule of real names; the lint checks flowcharts only.
 - A table shows many criteria side by side better than a diagram, and a list shows unordered items better.
 - A diagram for a slide or a screen belongs to `corthex-uxui`, which picks a diagram from each slide's message.
 

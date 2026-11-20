@@ -40,6 +40,7 @@ Follow [references/grammar.md](references/grammar.md):
 - The **shape** says what a box is: start or end, document, store, process, decision, LLM or grading. A thick red border marks the key step, a grey dotted box marks what the source does not say.
 - The **line** says what happens to data: write into a store, read from a store, pass on without a store, or grade against the source.
 - **Lanes** separate when or by whom things happen, and a **legend** names every shape, line and tag the diagram uses.
+- A flowchart of a structure rather than a flow, such as a context map or a screen tree, uses no box kinds and says `%% grammar: structure` in its source.
 - Use the real names and numbers from the source, with where they came from. Mark what the source does not say instead of filling it in.
 - One box, one action. Two things that run apart are two branches side by side, never one chain.
 - Put trace IDs such as REQ-, FL-, TBL- and API- in a box's label when it shows a stage item. Draw a diagram of code or data from the code or data, such as an ERD from the DDL, never from memory.

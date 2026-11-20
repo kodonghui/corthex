@@ -8,7 +8,9 @@ flowchart and one line per finding:
     <file>:<line>: <rule> <error|warn>: <message>
 
 Exit status: 0 when no error was found, 1 when an error was found, 2 when a
-file could not be read. Other diagram types are named and skipped.
+file could not be read. Other diagram types are named and skipped. A flowchart
+with `%% grammar: structure` draws a structure, not a flow: only its syntax,
+Korean line breaks and colours are checked.
 
 It only reads: it changes no file and sends nothing.
 """
@@ -45,6 +47,15 @@ LEGEND_TITLES = {"legend", "범례"}
 GAP_NOTES = ("not in the source", "원문에 없음", "원문에 따로 없음")
 WRAP_DEFAULT = 120
 MAX_TAGS = 3
+NAMED_COLOURS = {
+    "black": "000000", "white": "ffffff", "gray": "808080", "grey": "808080", "silver": "c0c0c0",
+    "lightgray": "d3d3d3", "lightgrey": "d3d3d3", "darkgray": "a9a9a9", "darkgrey": "a9a9a9",
+    "dimgray": "696969", "dimgrey": "696969", "red": "ff0000", "maroon": "800000", "orange": "ffa500",
+    "yellow": "ffff00", "olive": "808000", "lime": "00ff00", "green": "008000", "aqua": "00ffff",
+    "cyan": "00ffff", "teal": "008080", "blue": "0000ff", "navy": "000080", "fuchsia": "ff00ff",
+    "magenta": "ff00ff", "purple": "800080",
+}
+NO_FILL = {"none", "transparent"}
 CJK_RE = re.compile("[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u9fff\uac00-\ud7a3]")
 
 # Classic node syntax, longest openers first.
@@ -55,8 +66,8 @@ BRACKETS = [
     ("[\\", "/]", "trap-t"), ("{", "}", "diam"), ("(", ")", "rounded"),
     ("[", "]", "rect"), (">", "]", "odd"),
 ]
-ID = r"[A-Za-z0-9_][\w-]*"
-ARROW = r"<?(?:-{2,}|={2,}|-\.+-|~{3,})[>ox]?"
+ID = r"\w[\w-]*"
+ARROW = r"<?(?:-{2,}|={2,}|-\.+-|-\.|~{3,})[>ox]?"
 EDGE_RE = re.compile(r"(?:(" + ID + r")@)?(" + ARROW + r")(?:\s*\|([^|]*)\|)?")
 OPEN_LABEL = {"--": r"-{2,}[>ox]?", "==": r"={2,}[>ox]?", "-.": r"\.-+[>ox]?"}
 FLOWCHART_RE = re.compile(r"^\s*(?:flowchart|graph)\b", re.M)
@@ -153,7 +164,7 @@ def split_chain(text):
                 eid, arrow, label = m.group(1), m.group(2), m.group(3)
                 end = m.end()
                 if arrow in OPEN_LABEL and m.group(3) is None:
-                    close = re.compile(r"\s+(" + OPEN_LABEL[arrow] + r")(?=\s|$|[A-Za-z0-9_])")
+                    close = re.compile(r"\s+(" + OPEN_LABEL[arrow] + r")(?=\s|$|\w)")
                     c = close.search(text, end)
                     if c:
                         label, arrow, end = text[end:c.start()].strip(), arrow + c.group(1), c.end()
@@ -210,7 +221,7 @@ def statements(src):
 def parse(src):
     diagram = {"nodes": {}, "edges": [], "classes": {}, "classdefs": {}, "styles": {},
                "subgraphs": [], "legend": set(), "wrap": WRAP_DEFAULT, "legend_below": False,
-               "errors": [], "first": 1}
+               "errors": [], "unread": [], "structure": False, "first": 1}
     front = re.match(r"\s*---\s*\n(.*?)\n---\s*\n", src, re.S)
     offset = 0
     if front:
@@ -220,9 +231,11 @@ def parse(src):
     if width:
         diagram["wrap"] = min(WRAP_DEFAULT, int(width.group(1)))
     diagram["legend_below"] = bool(re.search(r"%%\s*legend\s*:\s*below", src, re.I))
+    diagram["structure"] = bool(re.search(r"%%\s*grammar\s*:\s*structure", src, re.I))
     nodes, classes = diagram["nodes"], diagram["classes"]
     stack = []
     seen_header = False
+    in_description = False
     for no, line in statements(src):
         no += offset
         if not seen_header:
@@ -230,6 +243,12 @@ def parse(src):
             diagram["first"] = no
             if FLOWCHART_RE.match(line):
                 continue
+        if in_description:  # the lines of a multi-line `accDescr { ... }`
+            in_description = "}" not in line
+            continue
+        if re.match(r"accDescr\s*\{", line):
+            in_description = "}" not in line.split("{", 1)[1]
+            continue
         word = line.split()[0]
         if word in ("direction", "linkStyle", "click", "accTitle", "accDescr") or line.startswith(("accTitle:", "accDescr")):
             continue
@@ -275,6 +294,7 @@ def parse(src):
         in_legend = any(stack)
         parts = split_chain(line)
         previous = None
+        unread = False
         for index, part in enumerate(parts):
             if isinstance(part, dict):
                 continue
@@ -303,6 +323,11 @@ def parse(src):
                                                  "legend": in_legend})
             if current:
                 previous = current
+            elif part.strip():
+                unread = True
+        if unread:
+            diagram["unread"].append((no, "the lint could not read this statement, so its boxes and lines are not "
+                                          "checked; check that it renders"))
     subgraph_ids = {s["id"] for s in diagram["subgraphs"]}
     for sid in subgraph_ids:
         if sid in nodes and nodes[sid]["shape"] is None:
@@ -314,7 +339,9 @@ def parse(src):
 
 
 def hex_rgb(value):
-    value = (value or "").strip().lstrip("#")
+    """An RGB triple for a hex or basic named CSS colour, or None for anything else."""
+    value = (value or "").replace("!important", "").strip().lower()
+    value = NAMED_COLOURS.get(value, value).lstrip("#")
     if len(value) == 3:
         value = "".join(c * 2 for c in value)
     if not re.fullmatch(r"[0-9a-fA-F]{6}", value):
@@ -340,6 +367,7 @@ def check(src, wrap=None):
     if wrap is not None:
         d["wrap"] = wrap
     out = [(no, "G0", "error", msg) for no, msg in d["errors"]]
+    out += [(no, "G0", "warn", msg) for no, msg in d["unread"]]
     nodes, classes, edges = d["nodes"], d["classes"], d["edges"]
     ghosts = {nid for nid in nodes if "ghost" in classes.get(nid, set()) or nid in d["legend"]}
     kind_of = {}
@@ -347,17 +375,6 @@ def check(src, wrap=None):
         if nid in ghosts:
             continue
         cls = classes.get(nid, set())
-        kinds = sorted(c for c in cls if c in KINDS)
-        if len(kinds) != 1:
-            have = ", ".join(sorted(cls)) or "none"
-            out.append((node["line"], "G1", "error", "box {} needs exactly one kind class of {}; it has {}".format(
-                nid, ", ".join(sorted(KINDS)), have)))
-            continue
-        kind = kinds[0]
-        kind_of[nid] = kind
-        if node["shape"] not in KINDS[kind]:
-            out.append((node["line"], "G2", "error", "box {} is {} but drawn as '{}'; draw it with {}".format(
-                nid, kind, node["shape"], HINTS[kind])))
         label = node["label"] or ""
         for part in re.split(r"<br\s*/?>", label):
             width = label_width(part)
@@ -365,9 +382,27 @@ def check(src, wrap=None):
                 out.append((node["line"], "G6", "warn", "label line '{}' of {} is about {:.0f}px; Mermaid breaks Korean "
                             "lines near {}px, even inside a word; break it with <br/> between words or shorten it".format(
                                 part.strip(), nid, width, d["wrap"])))
+        if d["structure"]:
+            continue
         if "gap" in cls and not any(note in label.lower() for note in GAP_NOTES):
             out.append((node["line"], "G11", "warn", "box {} is marked not in the source; say so in its label, "
                         "such as '(not in the source)'".format(nid)))
+        kinds = sorted(c for c in cls if c in KINDS)
+        if len(kinds) != 1:
+            have = ", ".join(sorted(cls)) or "none"
+            out.append((node["line"], "G1", "error", "box {} needs exactly one kind class of {}; it has {}. A diagram of "
+                        "a structure rather than a flow says `%% grammar: structure`".format(
+                            nid, ", ".join(sorted(KINDS)), have)))
+            continue
+        kind = kinds[0]
+        kind_of[nid] = kind
+        if node["shape"] not in KINDS[kind]:
+            out.append((node["line"], "G2", "error", "box {} is {} but drawn as '{}'; draw it with {}".format(
+                nid, kind, node["shape"], HINTS[kind])))
+    if d["structure"]:
+        out += colour_findings(d)
+        out.sort(key=lambda f: (f[0], f[1]))
+        return out, len([n for n in nodes if n not in ghosts]), len([e for e in edges if e["family"] != "invisible"])
     flow = [e for e in edges if not e["legend"] and e["src"] not in ghosts and e["dst"] not in ghosts
             and e["family"] != "invisible"]
     for e in flow:
@@ -410,8 +445,9 @@ def check(src, wrap=None):
     used_kinds = set(kind_of.values())
     used_lines = {e["kind"] for e in flow if e["kind"]}
     used_tags = sorted({t for nid in kind_of for t in tags_of(nodes[nid]["label"])})
+    used_marks = {c for nid in kind_of for c in classes.get(nid, set()) if c in ("key", "gap")}
     legend_nodes = [nid for nid in nodes if nid in d["legend"]]
-    needs_legend = len(used_kinds) >= 3 or bool(used_lines - {"pass"}) or bool(used_tags)
+    needs_legend = len(used_kinds) >= 3 or bool(used_lines - {"pass"}) or bool(used_tags) or bool(used_marks)
     if needs_legend and not d["legend_below"]:
         if not legend_nodes:
             out.append((d["first"], "G5", "warn", "no legend: add a subgraph titled Legend (or 범례) showing the kinds, lines "
@@ -422,29 +458,39 @@ def check(src, wrap=None):
             legend_text = " ".join(nodes[nid]["label"] or "" for nid in legend_nodes)
             missing = sorted(used_kinds - legend_kinds) + sorted(used_lines - legend_lines)
             missing += ["[{}]".format(t) for t in used_tags if "[{}]".format(t) not in legend_text]
-            if "key" in {c for nid in kind_of for c in classes.get(nid, set())} and not any(
-                    "key" in classes.get(nid, set()) for nid in legend_nodes):
-                missing.append("key")
-            if "gap" in {c for nid in kind_of for c in classes.get(nid, set())} and not any(
-                    "gap" in classes.get(nid, set()) for nid in legend_nodes):
-                missing.append("gap")
+            missing += [mark for mark in sorted(used_marks)
+                        if not any(mark in classes.get(nid, set()) for nid in legend_nodes)]
             if missing:
                 out.append((d["first"], "G5", "warn", "the legend does not show: {}".format(", ".join(missing))))
     if len(used_tags) > MAX_TAGS:
         out.append((d["first"], "G12", "warn", "{} tag kinds ({}); keep to {} or fewer".format(
             len(used_tags), ", ".join(used_tags), MAX_TAGS)))
+    out += colour_findings(d)
+    out.sort(key=lambda f: (f[0], f[1]))
+    return out, len([n for n in nodes if n not in ghosts]), len(flow)
+
+
+def colour_findings(d):
+    """G7: every fill has a text colour, and the two have a contrast of at least 4.5:1."""
+    out = []
     for where, table in (("classDef", d["classdefs"]), ("style", d["styles"])):
         for name, entry in sorted(table.items()):
             props = entry["props"]
-            fill, color = hex_rgb(props.get("fill")), hex_rgb(props.get("color"))
-            if fill and not color:
+            fill_value, color_value = props.get("fill"), props.get("color")
+            if not fill_value or fill_value.strip().lower() in NO_FILL:
+                continue
+            if not color_value:
                 out.append((entry["line"], "G7", "warn", "{} {} sets a fill but no text colour; a dark theme can make "
                             "the text light on this fill".format(where, name)))
-            elif fill and color and contrast(fill, color) < 4.5:
+                continue
+            fill, color = hex_rgb(fill_value), hex_rgb(color_value)
+            if fill is None or color is None:
+                out.append((entry["line"], "G7", "warn", "{} {}: contrast not checked, because '{}' is not a hex or "
+                            "basic named colour".format(where, name, fill_value if fill is None else color_value)))
+            elif contrast(fill, color) < 4.5:
                 out.append((entry["line"], "G7", "error", "{} {}: text contrast {:.1f}:1 is under 4.5:1".format(
                     where, name, contrast(fill, color))))
-    out.sort(key=lambda f: (f[0], f[1]))
-    return out, len([n for n in nodes if n not in ghosts]), len(flow)
+    return out
 
 
 def kind_name(src):
