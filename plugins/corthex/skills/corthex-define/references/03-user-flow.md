@@ -24,7 +24,7 @@
 
 ## Diagrams
 
-The Mermaid file is the flow, and every view shows the same code.
+The Mermaid file is the flow, and every view shows the same code. Draw it with the shapes of the `corthex-diagram` skill's grammar, as the template below does: an end as a stadium, a decision as a diamond with every branch labelled, a step as a rectangle. When a flow also shows stores or model calls, add that grammar's classes and legend and run its lint.
 
 - GitHub and most editors draw a Mermaid block in a Markdown file as a diagram.
 - In Notion, put the flow's Mermaid code in a code block on the flow's row, with the block's language set to Mermaid. Notion draws it, and the block can show the code, the diagram or both side by side. Copy the code from the file unchanged, so the two can be compared line by line.
