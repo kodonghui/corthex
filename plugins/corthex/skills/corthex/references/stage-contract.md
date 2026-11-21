@@ -58,9 +58,13 @@ Stages 04, 06, 08 and 12 go through one list of kinds of cases, so that every ca
 
 ## Default human views
 
-When a project is registered, or a stage is set up for the first time, propose the human view in this table. Each one keeps the stage's text source in the repository, and the AI can reach it through an MCP server, a command-line tool or the files themselves. When the user or the team picks another tool, record the choice as a decision, with the user's words and the date, and say it in the stage's `note`. A team that already works in a tool keeps it unless the team decides to move.
+When a project is registered, or a stage is set up for the first time, propose each stage's default human view.
 
-| Stage | Default human view | How the AI reaches it | Default `truth` |
+On a project on the user's NEXUS server, NEXUS is every stage's default human view. It draws the DDD board of 01, the ERD of 05 and the sitemap of 07 as pictures and every other stage as a list of its items, from the text source on the default branch, and the user talks about the items and passes the checkpoints there. With NEXUS as the human view the source is the truth (`truth: source`), since NEXUS cannot edit yet. The tool in the table stays where people edit by hand or hold a workshop, such as the Miro board on which stage 01's steps run, since NEXUS draws the board only once the contexts have IDs; name it in `human` and say in `note` that NEXUS shows the stage too. [nexus-work.md](nexus-work.md) says how a project goes on NEXUS and how its work reaches it.
+
+Without a NEXUS server, or for a project kept off it, propose the tool in this table. Each one keeps the stage's text source in the repository, and the AI can reach it through an MCP server, a command-line tool or the files themselves. When the user or the team picks another tool, record the choice as a decision, with the user's words and the date, and say it in the stage's `note`. A team that already works in a tool keeps it unless the team decides to move.
+
+| Stage | Default human view without NEXUS, or for editing by hand | How the AI reaches it | Default `truth` |
 | --- | --- | --- | --- |
 | 01 Domain discovery | An event storming board in Miro | Miro's MCP server | `source` once the last checkpoint is passed |
 | 02 PRD | A Notion database, one row per requirement | Notion's MCP server | `human` in a team project, otherwise `source` |

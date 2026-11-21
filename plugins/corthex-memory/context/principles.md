@@ -8,3 +8,6 @@ The user's current instruction comes first, then the product repository's own ru
 6. Done means checked. Say what you verified and what you did not. Copy numbers in records and reports from their named command output or source.
 7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
+9. Name things with the field's standard terms, loanwords and Sino-Korean words included, in titles too. Plain means explaining a term where it first appears, never swapping in a coined native word (in Korean 경로, 질문, 체크포인트, 버전, not 길, 물음, 확인 지점, 판). A request for easy words asks for explanation, not renaming, and coined words in a prompt or an earlier record are not a style to copy.
+
+Before a document, record, prompt or handoff written in Korean goes out, run `scripts/term-check.py` from the `corthex` skill's own folder on it, by its absolute path, never a script of that name in the project, with every path in single quotes as that skill shows.

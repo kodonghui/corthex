@@ -40,7 +40,7 @@ class PrinciplesTest(unittest.TestCase):
         start = skill.index("## 3. Work by the principles")
         end = skill.index("\n## ", start + 1)
         expected = numbered(skill[start:end])
-        self.assertEqual(len(expected), 8)
+        self.assertEqual(len(expected), 9)
         self.assertEqual(numbered(read_text(session_start.PRINCIPLES)), expected)
 
     def test_default_ask_before_matches_the_example_profile(self):

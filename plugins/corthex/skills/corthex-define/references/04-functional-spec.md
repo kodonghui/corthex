@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | Requirements (REQ) and user flows (FL); the glossary (TERM) for names |
 | Outputs | `spec.md`, by default `docs/04-functional-spec/spec.md`: one SPEC row per behaviour, with its REQ and FL links, preconditions, main behaviour, exceptions and acceptance criteria |
-| Human view | By default a Notion database with one row per SPEC, as set in `human`. See [notion-database.md](notion-database.md) |
+| Human view | On a project on NEXUS, by default NEXUS's list of the SPEC rows; otherwise by default a Notion database with one row per SPEC, as set in `human`. See [notion-database.md](notion-database.md) |
 | Sync | When the shared database is the truth, the repository copy is read-only. Refresh it at each checkpoint and before a later stage reads it, and note the refresh time |
 | Human checkpoints | Spec freeze for the release. A later change to a frozen row needs the user's decision |
 | Trace IDs | SPEC-001… |

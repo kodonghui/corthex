@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.12.1"
 ---
 
 # CORTHEX
@@ -25,6 +25,7 @@ Look for `.corthex/project.json` from the current directory up to the repository
 
 - If there is none and the work is project work, offer to register the project: create `.corthex/project.json` in the product repository and add one entry to `~/.corthex/projects.json`, the list of this user's projects on this machine.
 - When you register a project or set up a stage, propose each stage's default human view from [references/stage-contract.md](references/stage-contract.md). When the user picks another tool, record that as a decision and say it in the stage's `note`.
+- On a project on the user's NEXUS server, that default is NEXUS for every stage. When the profile names a NEXUS server (`nexus.url`) and neither the project's `on_nexus` nor the push list says whether the project is on it, ask once whether to put it there, and write the answer, as [references/nexus-work.md](references/nexus-work.md) says.
 - If the user has several projects and the request does not say which one, ask once.
 - Some sources may sit in other repositories, named under `repos`. Find their local checkouts in the project's entry in `~/.corthex/projects.json`, and ask when one is missing.
 - Project settings override profile defaults for that project only.
@@ -41,8 +42,13 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 6. Done means checked. Say what you verified and what you did not. Copy numbers in records and reports from their named command output or source.
 7. Keep records. After a unit of work, a decision or a blocker, record what was done, why, the result, what was checked and the next action. In Notion, keep records as database rows.
 8. Never put secrets in files, records or messages.
+9. Name things with the field's standard terms, loanwords and Sino-Korean words included, in titles too. Plain means explaining a term where it first appears, never swapping in a coined native word (in Korean 경로, 질문, 체크포인트, 버전, not 길, 물음, 확인 지점, 판). A request for easy words asks for explanation, not renaming, and coined words in a prompt or an earlier record are not a style to copy.
+
+Before a document, record, prompt or handoff written in Korean goes out, run [scripts/term-check.py](scripts/term-check.py) on it. Resolve the script relative to this SKILL.md and invoke its absolute path, never a `scripts/term-check.py` of the project or the working folder: `python3 '<absolute skill directory>/scripts/term-check.py' -- '<file>'`, on Windows `py -3`. Put every path in single quotes and write a `'` inside one as `'\''` (in PowerShell as `''`): a file name can hold shell syntax such as `$(...)`, which double quotes still run, and `--` keeps a name that starts with `-` from being read as an option. Replace each word it finds with the standard term it names, or keep one that is right in its sentence, such as 길 for a road, and say why.
 
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
+
+When the work needs a desktop app, or a web page that the web search and fetch tools cannot open, follow [references/computer-and-web.md](references/computer-and-web.md): Aside for the web, with sign-ins and sign-ups through Aside Vault, and agent-desktop for desktop apps, before the host's computer use.
 
 ## 4. Route to a stage
 
@@ -64,8 +70,8 @@ Every stage follows one six-slot contract: inputs, outputs, human view, sync, hu
 
 Read the project's `stages` settings and the artifacts they point to. For each stage, report one of done, in progress, not started or skipped, the last human checkpoint with its date, and the next action. A file that exists is not a finished stage: a stage is done when its checkpoint was passed and recorded.
 
-If the `corthex-hub` skill is installed, it keeps these states for every project and shows them on one page with the trace links between stages; read and record the states there.
+If the `corthex-hub` skill is installed, it keeps these states for every project and shows them on one page with the trace links between stages; read and record the states there. On a project on NEXUS, give the project's NEXUS address with the answer, where the user sees every stage.
 
-## Optional NEXUS work
+## Work in NEXUS
 
-For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.
+On a project on the user's NEXUS server, NEXUS is where the user reads every stage, talks about its items and passes its checkpoints: follow [references/nexus-work.md](references/nexus-work.md). When the profile names a NEXUS server and neither the project's settings nor the push list say whether the project is on it, ask once to put it there. At a session's start ask the hub whether the session can send, and say once, in one line, what is missing for a project that is expected on a NEXUS server. Read the to-do at the start, again where a unit of stage work starts or ends once a day has passed, and before each checkpoint request; keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Merge a stage's draft of documents and push it before its checkpoint request, and give the stage's NEXUS address whenever you show its work. Continue local work when the hub or token is unavailable. For a project that is expected on a NEXUS server, its rules for a checkpoint request, for telling the user where the work stands and for a browser walk of NEXUS pages hold in every session, also in one without the hub.

@@ -4,7 +4,7 @@
 | --- | --- |
 | Inputs | User flows (FL) and the functional spec (SPEC) |
 | Outputs | `sitemap.yaml`, by default `docs/07-sitemap/sitemap.yaml`: the screen tree, one SCR ID per screen with its parent, path, who can see it and the flows that pass through it |
-| Human view | By default three views drawn from the YAML: a board, a list and slides, as set in `human`. See Views below |
+| Human view | On a project on NEXUS, by default the sitemap that NEXUS draws from the YAML; otherwise by default three views drawn from the YAML: a board, a list and slides, as set in `human`. See Views below |
 | Sync | The YAML is the data and the views are drawn from it, so the default `truth` is `source`. Draw the views again after every change |
 | Human checkpoints | The navigation structure is agreed |
 | Trace IDs | SCR-001… |

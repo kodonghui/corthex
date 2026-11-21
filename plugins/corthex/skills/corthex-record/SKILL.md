@@ -4,7 +4,7 @@ description: CORTHEX records at any stage. Use when turning meeting notes, a rec
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.10.0"
+  version: "0.12.1"
 ---
 
 # Records
@@ -27,6 +27,7 @@ Records let a later session, or another person, pick up the work without asking 
 4. When a decision replaces an earlier one, mark the earlier one as replaced and link both ways.
 5. Never copy secrets, credentials or private personal material into a record.
 6. Do not repeat a report that has nothing new.
+7. Write in the field's standard terms, as the `corthex` skill's principle 9 says, and run its `scripts/term-check.py`, by the absolute path in that skill's folder and with every path in single quotes, on a Korean record, handoff or prompt before it goes out. Later sessions copy a record's wording.
 
 ## Records in Notion
 
@@ -42,6 +43,6 @@ Read the schema before writing. Reuse existing databases and the row for the sam
 
 Search the decision log by DEC ID, by the IDs a decision touches (such as `REQ-012`), and by date. Report the latest decision that is still in force, and say which earlier ones it replaced.
 
-## Optional NEXUS work
+## Work in NEXUS
 
-For a project with an installed hub and an authorized NEXUS server, follow [references/nexus-work.md](references/nexus-work.md). Read the to-do once per session/project, keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Continue local work when the hub or token is unavailable.
+On a project on the user's NEXUS server, NEXUS is where the user reads every stage, talks about its items and passes its checkpoints: follow [references/nexus-work.md](references/nexus-work.md). When the profile names a NEXUS server and neither the project's settings nor the push list say whether the project is on it, ask once to put it there. At a session's start ask the hub whether the session can send, and say once, in one line, what is missing for a project that is expected on a NEXUS server. Read the to-do at the start, again where a unit of stage work starts or ends once a day has passed, and before each checkpoint request; keep explicit user work first, and use claims and verified PR/checkpoint outcomes. Merge a stage's draft of documents and push it before its checkpoint request, and give the stage's NEXUS address whenever you show its work. Continue local work when the hub or token is unavailable. For a project that is expected on a NEXUS server, its rules for a checkpoint request, for telling the user where the work stands and for a browser walk of NEXUS pages hold in every session, also in one without the hub.

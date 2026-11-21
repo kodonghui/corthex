@@ -1292,6 +1292,12 @@ class CommandLineTest(HubCase):
         code, out, err = self.run_hub("status", "acme-shop", "02-prd", "--date", "12/01/2026")
         self.assertEqual(code, 1)
         self.assertIn("the date must start with YYYY-MM-DD", err)
+        # 0.4.0: a device with neither a profile nor a list of projects reads only the checkout's own project.
+        for command in (["push"], ["remove", "acme-shop"]):
+            code, out, err = self.run_hub(*command)
+            self.assertEqual(code, 1)
+            self.assertIn("no project in this checkout", out + err)
+        self.write(self.home / ".corthex" / "profile.json", {})
         for command in (["push"], ["remove", "acme-shop"]):
             code, out, err = self.run_hub(*command)
             self.assertEqual(code, 1)
@@ -1302,6 +1308,7 @@ class CommandLineTest(HubCase):
 
     def test_cli_fixture_cannot_inherit_a_real_server_or_credentials(self):
         from unittest import mock
+        self.write(self.home / ".corthex" / "profile.json", {})
         with mock.patch.dict(os.environ, {"CORTHEX_NEXUS_URL": "http://127.0.0.1:1", "CORTHEX_NEXUS_CLIENT_ID": "synthetic-id", "CORTHEX_NEXUS_CLIENT_SECRET": "synthetic-secret"}):
             code, out, err = self.run_hub("remove", "acme-shop", "--json")
         self.assertEqual(code, 1)
