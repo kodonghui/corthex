@@ -186,6 +186,7 @@ Purpose: take and refund payments through the payment provider.
 
 ```mermaid
 flowchart LR
+  %% grammar: structure
   ordering["CTX-001 Ordering"]
   payment["CTX-002 Payment"]
   provider["Payment provider (external)"]

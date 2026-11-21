@@ -39,6 +39,7 @@ A Mermaid flowchart draws the board in GitHub, Notion and most editors:
 
 ```mermaid
 flowchart TD
+  %% grammar: structure
   SCR001["SCR-001 Home<br/>/ · everyone"] --> SCR002["SCR-002 Order detail<br/>/orders/:id · signed-in customer"]
 ```
 

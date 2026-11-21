@@ -4,7 +4,7 @@ description: Craft for screens, motion and video. Use when making or reworking a
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.12.1"
+  version: "0.13.0"
 ---
 
 # Screens, motion and video
@@ -20,7 +20,7 @@ Turn feeling words, such as "clean" or "make it pop", into the **names and numbe
 | Use it | Do not use it |
 | --- | --- |
 | Making or reworking web or app screens, dashboards, landing pages and mockups | Code unrelated to screens: servers, data, builds |
-| Setting the time and curve of UI motion: buttons, menus, modals | Diagrams inside a document only, such as Mermaid |
+| Setting the time and curve of UI motion: buttons, menus, modals | Diagrams inside a document, such as Mermaid; use `corthex-diagram` |
 | Making a motion graphic, an explainer or a product video in code | Cutting filmed footage |
 | Deciding what each slide of a talk should draw | |
 | Requests that come as "something like this", a reference link or capture, or vague design words | |

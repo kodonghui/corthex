@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.12.1"
+  version: "0.13.0"
 ---
 
 # CORTHEX
@@ -48,6 +48,8 @@ Before a document, record, prompt or handoff written in Korean goes out, run [sc
 
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
 
+When a reply, a document or a record explains a flow, a structure, a comparison or a change, draw it with the `corthex-diagram` skill, in its grammar, and check it with its lint before it goes out.
+
 When the work needs a desktop app, or a web page that the web search and fetch tools cannot open, follow [references/computer-and-web.md](references/computer-and-web.md): Aside for the web, with sign-ins and sign-ups through Aside Vault, and agent-desktop for desktop apps, before the host's computer use.
 
 ## 4. Route to a stage
@@ -63,6 +65,7 @@ When the work needs a desktop app, or a web page that the web search and fetch t
 | Meetings, decisions and progress records, at any stage | `corthex-record` |
 | The craft of screens, motion and video, with its checks: in stages 08, 09 and 13, or on its own | `corthex-uxui` |
 | Study documents that teach one learning question in depth, at any stage or on its own | `corthex-study` |
+| Diagrams that explain a flow, a structure, a comparison or a change, at any stage or on its own | `corthex-diagram` |
 
 Every stage follows one six-slot contract: inputs, outputs, human view, sync, human checkpoints and trace IDs. See [references/stage-contract.md](references/stage-contract.md). A project may skip stages or start in the middle; say which inputs are then missing.
 
