@@ -8,7 +8,7 @@ Every CORTHEX stage fills the same six slots. The slots make each stage's work t
 | Outputs | Text sources this stage writes in the product repository |
 | Human view | Where people look at and edit the stage's work |
 | Sync | How the human view and the text source are kept in line, and which side is the truth |
-| Human checkpoints | Moments when the user fixes or approves the work before the next stage uses it |
+| Human checkpoints | Moments when the user fixes or approves the work before the next stage uses it. Each one first lists the approved items the work drops or changes, and asks about each on its own |
 | Trace IDs | IDs this stage creates and passes on |
 
 The principle behind the split: the human view can change from team to team, but the text source the AI reads and writes stays in one place in the repository. Tools are joined to it through MCP servers or exports.
@@ -36,9 +36,13 @@ The principle behind the split: the human view can change from team to team, but
 
 - Default format: a prefix, a hyphen and three digits, such as `REQ-001`.
 - A project can set other prefixes, several prefixes for one kind (such as one per bounded context) and another number of digits in `.corthex/project.json` under `ids`, with these keys: `context`, `term`, `requirement`, `flow`, `spec`, `table`, `api`, `screen`, `task`, `test`, `bug`, `decision`, `scene`. See [project.md](project.md).
-- Never reuse or renumber an ID. Mark a removed item as removed, with the date, and keep its ID.
+- Never reuse or renumber an ID. Mark a removed item as removed, with the date, and keep its ID. Mark a deferred item as deferred, with the decision, the date to look at it again and its owner, and keep its ID.
 - Each item names the IDs it comes from, such as `SPEC-014 ← REQ-003, FL-002`.
 - A screen state or an API response is written after its ID with `#`: `SCR-002#empty`, `API-001#401`. Test cases name the responses and states they check.
+
+## Changing approved work
+
+After a stage's checkpoint, a feature change goes through every stage again from 01, and a bug fix is recorded and reproduced, then fixed in the document of the stage with its cause before the code; neither skips a step. Each approved item a change drops or changes is asked about on its own. See [changes.md](changes.md).
 
 ## Kinds of cases
 

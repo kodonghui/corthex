@@ -553,6 +553,118 @@ class LongSessionTest(unittest.TestCase):
         self.assertEqual(set(tomllib.loads(example)), {"compact_prompt"})
 
 
+class ChangeProcedureTest(unittest.TestCase):
+    """Approved work changes by a feature change from stage 01 or by a bug fix, never from the middle."""
+
+    def changes(self):
+        return read_text(SKILLS / "corthex" / "references" / "changes.md")
+
+    def bug_fix(self):
+        return read_text(SKILLS / "corthex-build" / "references" / "bug-fix.md")
+
+    def test_the_entry_skill_does_not_start_a_change_in_the_middle(self):
+        entry = read_text(SKILLS / "corthex" / "SKILL.md")
+        line = next(line for line in entry.splitlines() if "start in the middle" in line)
+        self.assertIn("This does not hold for a feature change or a bug fix", line)
+        change = section(entry, "## 5. Change approved work")
+        for rule in (
+            "(references/changes.md)", "Go through every stage again from 01", "never skip a stage",
+            "as its own question", "stays as approved until the user answers for it", "Use `corthex-build`",
+            "regression test that fails before fixing the code", "is a feature change",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, change)
+
+    def test_a_feature_change_goes_through_every_stage(self):
+        text = self.changes()
+        feature = section(text, "## Feature change")
+        for rule in (
+            "from 01 domain discovery to 12 QA", "\"no change\" and one line of reason", "never assumed",
+            "Do not skip a stage because it looks unaffected", "do not start the new design at a later stage",
+            "`skip: true` stays skipped", "never reused or renumbered",
+            "its approved text quoted", "Each item needs an answer that names it", "answers none of them",
+            "An item without its own answer stays as it was approved", "as a decision (DEC)",
+            "close it then and there", "the date to look at it again and the owner", "Deleting a branch is a deletion: ask first",
+            "Mark a deferred item `deferred`", "without asking again",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, feature)
+        which = section(text, "## Which procedure")
+        self.assertIn("references/bug-fix.md", which)
+        self.assertIn("Size is no reason to skip it", which)
+
+    def test_every_checkpoint_lists_what_was_dropped_or_changed(self):
+        checkpoint = section(self.changes(), "## At every checkpoint: what was dropped or changed")
+        for rule in ("approved items of earlier stages that this stage should carry and does not",
+                     "Say \"none\" when there are none", "Passing the checkpoint answers none of them",
+                     "Record the commit or export that the checkpoint approves"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, checkpoint)
+        for skill in STAGE_SKILLS:
+            steps = section(read_text(SKILLS / skill / "SKILL.md"), "## How a stage runs")
+            step = next(line for line in steps.splitlines() if line.startswith("6. **Checkpoint.**"))
+            with self.subTest(skill=skill):
+                for rule in ("list what the work drops or changes from earlier approvals", "or say there are none",
+                             "as a question of its own", "passing the stage answers none of them",
+                             "stays as approved", "Record the commit or export the checkpoint approves"):
+                    self.assertIn(rule, step)
+                self.assertLess(step.index("drops or changes"), step.index("Silence, a read receipt"))
+        contract = read_text(SKILLS / "corthex" / "references" / "stage-contract.md")
+        self.assertIn("(changes.md)", section(contract, "## Changing approved work"))
+        self.assertIn("Mark a deferred item as deferred", section(contract, "## Trace IDs"))
+        decisions = read_text(SKILLS / "corthex-record" / "references" / "decisions.md")
+        self.assertIn("record one decision per item", decisions)
+
+    def test_the_define_and_build_skills_send_changes_and_bugs_on(self):
+        define = section(read_text(SKILLS / "corthex-define" / "SKILL.md"), "## Changing approved requirements")
+        for rule in ("`corthex` skill's change procedure", "starts again at stage 01", "no stage is skipped",
+                     "asked about on its own", "stays as approved", "the status `deferred`"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, define)
+        build = read_text(SKILLS / "corthex-build" / "SKILL.md")
+        self.assertIn("(references/bug-fix.md)", section(build, "## Fixing a bug"))
+        self.assertIn("is a feature change: follow the `corthex` skill's change procedure", build)
+        development = self.reference_steps("11-development")
+        self.assertIn("[bug-fix.md](bug-fix.md)", development)
+        self.assertIn("is a feature change: follow the `corthex` skill's change procedure", development)
+
+    def reference_steps(self, key):
+        return section(read_text(SKILLS / "corthex-build" / "references" / (key + ".md")), "## Steps")
+
+    def test_a_bug_fix_starts_at_its_cause(self):
+        text = self.bug_fix()
+        both = section(text, "## Status and severity")
+        statuses = [row[0] for row in table(both[:both.index("| Severity |")])]
+        self.assertEqual(statuses, ["`open`", "`fixed`", "`verified`", "`closed`"])
+        severities = text[text.index("| Severity |"):]
+        self.assertEqual([row[0] for row in table(severities)], ["S1 critical", "S2 major", "S3 minor", "S4 trivial"])
+        steps = section(text, "## Steps")
+        for rule in (
+            "04 functional spec", "05 ERD or 06 API", "07 to 09 screens", "11 development",
+            "(02, 03) makes it a feature change", "as a hypothesis", "Fix that document first",
+            "Write the regression test first", "it must fail", "the commit it failed on",
+            "`manual` or `agent` steps with evidence", "stays in the suite for good",
+        ):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, steps)
+        self.assertLess(steps.index("Fix that document first"), steps.index("Write the regression test first"))
+        self.assertLess(steps.index("Write the regression test first"), steps.index("Fix the code"))
+        incidents = section(text, "## Production incidents")
+        for rule in ("restoring the service comes first", "Say which checks were skipped",
+                     "Before any other change ships", "stays `fixed`, not `verified`"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, incidents)
+
+    def test_the_bug_report_carries_its_status_and_regression_test(self):
+        qa = read_text(SKILLS / "corthex-build" / "references" / "12-qa.md")
+        template = qa[qa.index("## BUG-001"):]
+        fields = [line.split(":", 1)[0] for line in template.splitlines()[2:] if ":" in line and not line.startswith("```")]
+        self.assertEqual(fields, ["Status", "Severity", "From", "Cause", "Steps", "Expected", "Actual", "Environment",
+                                  "Trace ID", "Evidence", "Regression test"])
+        self.assertIn("fix each one by [bug-fix.md](bug-fix.md)", qa)
+        self.assertIn("a status, a severity", section(qa, "## Checks"))
+
+
 class DefaultHumanViewTest(unittest.TestCase):
     """Each stage proposes a default human view, and another choice is recorded as a decision."""
 

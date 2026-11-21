@@ -13,11 +13,11 @@
 
 1. Read the repository's own rules first, such as `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md`.
 2. Check the real repository root, the branch, existing changes and work in progress by others.
-3. Implement against the contracts. If the code needs a contract change, change the contract first (stage 05 or 06) and say so.
+3. Implement against the contracts. If the code needs a contract change, change the contract first (stage 05 or 06) and say so. Work that adds, removes, defers or changes an approved requirement, flow or spec row is a feature change: follow the `corthex` skill's change procedure, from stage 01.
 4. Back end: return exactly the responses the API contract lists, with their schemas, and every error in the contract's error shape with one of its error codes; log the `traceId` of each error response. If the framework also generates an OpenAPI document from the code, the contract file stays the source. Run the contract tests against a development or staging server, never production, with a test account: for example `schemathesis run api/openapi.yaml --url <server> -H "Authorization: Bearer <test token>"`.
 5. When the product calls an AI model's API itself, such as OpenAI's or Anthropic's, keep the key and build the client as Keys for AI model APIs below says. Read each response by the type of its blocks, not by taking the first block, and handle each stop reason the provider documents: an answer that hit the output limit is a failure, and that limit leaves room for reasoning tokens; a refusal gets the fallback of the AI call entry; an empty end of turn right after a tool result is checked on its own. Take the names and values from the provider's current documentation.
 6. Front end: build each screen against the mock server first (stage 06), show each response the way the screen definition says, then switch to the real server.
-7. Write tests for each acceptance criterion the change touches.
+7. Write tests for each acceptance criterion the change touches. For a bug fix, write its regression test first and see it fail, as [bug-fix.md](bug-fix.md) says.
 8. Open a pull request that names the TASK and SPEC IDs and says what was tested and what was not.
 
 ## Keys for AI model APIs
@@ -65,6 +65,7 @@ When an AI feature is already serving people:
 - When the product calls an AI model's API, Git ignores `.env` (`git check-ignore -q .env`), neither `.env` nor `.env.example` sets a key and no front-end variable holds one (look at the names only and never print the values), and the tests pass with no key in the environment.
 - Screen changes match their screen definitions, including the state each response leads to.
 - A change to a live AI service checked the live version first, and has its regression run and its record.
+- A bug fix has a regression test that failed before the fix and passes after it, each with its commit.
 
 ## Output template
 
