@@ -95,12 +95,7 @@ def measure_hooks(path):
 
 
 def refusal_stream():
-    message = dict(type="message", role="assistant", content=[],
-                   usage={"input_tokens": 900, "output_tokens": 1, "cache_creation_input_tokens": 0,
-                          "cache_read_input_tokens": 0})
-    return (c2_hosts.event("message_start", message=message) +
-            c2_hosts.event("message_delta", delta={"stop_reason": "refusal"}, usage={"output_tokens": 1}) +
-            c2_hosts.event("message_stop"))
+    return c2_hosts.stopped_stream("refusal")
 
 
 class Curator(c2_hosts.MemoryServer):
