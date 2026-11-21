@@ -19,6 +19,7 @@ from pathlib import Path
 from hub_cli_reviewed import REVIEWED_040
 from hub_cli_reviewed_050 import REVIEWED_050
 from hub_cli_reviewed_v2 import REVIEWED_V2
+from hub_cli_reviewed_deferred import REVIEWED_DEFERRED
 
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "hub_cli"
@@ -129,7 +130,7 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        for new, old in REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
+        for new, old in REVIEWED_DEFERRED.get(name, ()) + REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
             if source.count(new) == 1:
                 source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:
