@@ -28,6 +28,7 @@ One page per study question. Keep the sections below in this order, so the learn
 
 - Draw a figure when a picture shows the mechanism faster than text: a flow, a graph of nodes, a distribution, a comparison of designs. Make it from the data or the code, never from numbers typed by hand.
 - Pick the figure by what it shows: a table for relations, arrows for an order, a sequence diagram for calls and returns, a state diagram for waiting, and a plot for numbers.
+- Draw diagrams of flows, structures and changes with the `corthex-diagram` skill: its shapes and lines, its legend, its series of diagrams on one example, and its lint.
 - Give each figure a legend for its colours, line styles and positions, a caption that says what to notice, and one or two sentences under it that read the figure in words.
 - When an analogy explains something, say where it stops matching the real concept.
 - Add an interactive part only when moving a value teaches something, such as a threshold slider or a switch between two prompt versions. Otherwise use a table.

@@ -24,7 +24,7 @@
 
 ## Diagrams
 
-The Mermaid file is the flow, and every view shows the same code.
+The Mermaid file is the flow, and every view shows the same code. Draw it in the `corthex-diagram` skill's grammar and check it with that skill's lint, as the template below does: a step as a rectangle, a decision as a diamond with every branch labelled, an end as a stadium, each with its class, every line with an ID and its class, and a legend under the diagram. A flow that also shows stores or model calls uses those kinds and lines too.
 
 - GitHub and most editors draw a Mermaid block in a Markdown file as a diagram.
 - In Notion, put the flow's Mermaid code in a code block on the flow's row, with the block's language set to Mermaid. Notion draws it, and the block can show the code, the diagram or both side by side. Copy the code from the file unchanged, so the two can be compared line by line.
@@ -39,11 +39,26 @@ Serves: REQ-001, REQ-002
 
 ```mermaid
 flowchart TD
-  A[Open cart] --> B[Confirm address<br/>REQ-004]
-  B --> C{Payment succeeds?}
-  C -- yes --> D[Show confirmation<br/>REQ-001]
-  C -- no --> E[Cancel order and explain<br/>REQ-002]
-  D --> F([End])
-  E --> F
+  A[Open cart] e1@--> B[Confirm address<br/>REQ-004]
+  B e2@--> C{Payment succeeds?}
+  C e3@-->|yes| D[Show confirmation<br/>REQ-001]
+  C e4@-->|no| E[Cancel order and explain<br/>REQ-002]
+  D e5@--> F([End])
+  E e6@--> F
+  %% legend: below
+  classDef term fill:#e7f5ff,stroke:#1c7ed6,color:#212529
+  classDef proc fill:#f8f9fa,stroke:#495057,color:#212529
+  classDef decide fill:#f3f0ff,stroke:#7048e8,color:#212529
+  classDef pass stroke:#868e96,stroke-width:1.5px
+  class F term
+  class A,B,D,E proc
+  class C decide
+  class e1,e2,e3,e4,e5,e6 pass
 ```
+
+| Shape | Means |
+| --- | --- |
+| Rectangle | A step |
+| Diamond | A decision; each branch is labelled |
+| Stadium | Where the flow ends |
 ````

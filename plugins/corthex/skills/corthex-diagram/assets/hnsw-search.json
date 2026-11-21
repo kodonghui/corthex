@@ -1,0 +1,385 @@
+{
+ "title": "HNSW search: long jumps on the upper layers, a wide search on layer 0",
+ "caption": "Fourteen nodes and one question. Every node keeps its place on every layer, and every distance is measured from the question.",
+ "lang": "en",
+ "labels": {
+  "link": "Link kept for search (no meaning)"
+ },
+ "layers": [
+  {
+   "id": "L2",
+   "label": "Layer 2"
+  },
+  {
+   "id": "L1",
+   "label": "Layer 1"
+  },
+  {
+   "id": "L0",
+   "label": "Layer 0"
+  }
+ ],
+ "nodes": [
+  {
+   "id": "E",
+   "x": 10,
+   "y": 25,
+   "layer": "L2"
+  },
+  {
+   "id": "K",
+   "x": 45,
+   "y": 30,
+   "layer": "L2"
+  },
+  {
+   "id": "B",
+   "x": 22,
+   "y": 70,
+   "layer": "L1"
+  },
+  {
+   "id": "M",
+   "x": 70,
+   "y": 40,
+   "layer": "L1"
+  },
+  {
+   "id": "G",
+   "x": 40,
+   "y": 85,
+   "layer": "L1"
+  },
+  {
+   "id": "A",
+   "x": 5,
+   "y": 55
+  },
+  {
+   "id": "C",
+   "x": 30,
+   "y": 45
+  },
+  {
+   "id": "D",
+   "x": 55,
+   "y": 60
+  },
+  {
+   "id": "F",
+   "x": 15,
+   "y": 90
+  },
+  {
+   "id": "H",
+   "x": 68,
+   "y": 62
+  },
+  {
+   "id": "I",
+   "x": 98,
+   "y": 98
+  },
+  {
+   "id": "J",
+   "x": 92,
+   "y": 50
+  },
+  {
+   "id": "N",
+   "x": 90,
+   "y": 86
+  },
+  {
+   "id": "L",
+   "x": 58,
+   "y": 15
+  }
+ ],
+ "query": {
+  "x": 86,
+  "y": 72,
+  "label": "Question"
+ },
+ "marks": {
+  "E": "Entry point"
+ },
+ "links": {
+  "L2": [
+   [
+    "E",
+    "K"
+   ]
+  ],
+  "L1": [
+   [
+    "E",
+    "B"
+   ],
+   [
+    "E",
+    "K"
+   ],
+   [
+    "K",
+    "M"
+   ],
+   [
+    "K",
+    "G"
+   ],
+   [
+    "B",
+    "G"
+   ],
+   [
+    "M",
+    "G"
+   ]
+  ],
+  "L0": [
+   [
+    "E",
+    "A"
+   ],
+   [
+    "E",
+    "C"
+   ],
+   [
+    "A",
+    "C"
+   ],
+   [
+    "A",
+    "F"
+   ],
+   [
+    "F",
+    "B"
+   ],
+   [
+    "B",
+    "C"
+   ],
+   [
+    "B",
+    "G"
+   ],
+   [
+    "C",
+    "K"
+   ],
+   [
+    "K",
+    "L"
+   ],
+   [
+    "K",
+    "D"
+   ],
+   [
+    "K",
+    "M"
+   ],
+   [
+    "L",
+    "M"
+   ],
+   [
+    "M",
+    "D"
+   ],
+   [
+    "M",
+    "H"
+   ],
+   [
+    "M",
+    "J"
+   ],
+   [
+    "D",
+    "G"
+   ],
+   [
+    "D",
+    "H"
+   ],
+   [
+    "J",
+    "N"
+   ],
+   [
+    "N",
+    "I"
+   ],
+   [
+    "G",
+    "F"
+   ]
+  ]
+ },
+ "frames": [
+  {
+   "title": "Layer 2: from entry point E to K",
+   "layer": "L2",
+   "greedy": true,
+   "note": "Upper layers hold few nodes, so each move goes far. K, a neighbour of E, is closer to the question, so the walk moves there. No neighbour of K is closer, so it goes down to K on the layer below.",
+   "visited": [
+    "E"
+   ],
+   "current": "K",
+   "path": [
+    [
+     "E",
+     "K"
+    ]
+   ],
+   "descend": "K",
+   "distances": [
+    "E",
+    "K"
+   ]
+  },
+  {
+   "title": "Layer 1: move from K to M",
+   "layer": "L1",
+   "greedy": true,
+   "note": "Of K's neighbours E, G and M, M is the closest. No neighbour of M is closer than M, so the walk goes down at M.",
+   "visited": [
+    "K",
+    "E",
+    "G"
+   ],
+   "current": "M",
+   "path": [
+    [
+     "K",
+     "M"
+    ]
+   ],
+   "descend": "M",
+   "distances": [
+    "G",
+    "M"
+   ]
+  },
+  {
+   "title": "Layer 0: keep the 3 closest neighbours of M (ef=3)",
+   "layer": "L0",
+   "note": "Layer 0 holds every node. Here the search keeps ef candidates instead of one. Of M's five neighbours, H, J and D stay in the list, and L and K are dropped.",
+   "current": "M",
+   "candidates": [
+    "H",
+    "J",
+    "D"
+   ],
+   "dropped": [
+    "L",
+    "K"
+   ],
+   "list": [
+    "H",
+    "J",
+    "D"
+   ],
+   "distances": [
+    "H",
+    "J"
+   ]
+  },
+  {
+   "title": "Layer 0: N joins the list, D drops out",
+   "layer": "L0",
+   "note": "H has no new neighbour. J's neighbour N is closer than D, the farthest in the list, so N comes in and D drops out.",
+   "visited": [
+    "M",
+    "H"
+   ],
+   "current": "J",
+   "candidates": [
+    "N",
+    "H"
+   ],
+   "dropped": [
+    "D",
+    "L",
+    "K"
+   ],
+   "path": [
+    [
+     "M",
+     "J"
+    ],
+    [
+     "J",
+     "N"
+    ]
+   ],
+   "list": [
+    "N",
+    "H",
+    "J"
+   ],
+   "distances": [
+    "N"
+   ]
+  },
+  {
+   "title": "End of layer 0: no candidate can get closer, the answer is N",
+   "layer": "L0",
+   "note": "N's neighbour I is farther than J, the farthest in the list, so it stays out. The last candidate, D, is farther than J too, so the search stops. N, the closest in the list, is the answer.",
+   "visited": [
+    "M"
+   ],
+   "candidates": [
+    "H",
+    "J"
+   ],
+   "result": "N",
+   "dropped": [
+    "D",
+    "I",
+    "L",
+    "K"
+   ],
+   "list": [
+    "N",
+    "H",
+    "J"
+   ],
+   "distances": [
+    "I",
+    "J"
+   ]
+  },
+  {
+   "title": "Compare: with one candidate (ef=1) the walk stops at H and misses N",
+   "layer": "L0",
+   "greedy": true,
+   "note": "From M the walk moves to H, the closest neighbour. H's neighbours M and D are both farther than H, so it stops. N can be reached only through J, which is farther than H. A larger ef finds more but takes longer.",
+   "visited": [
+    "M",
+    "D",
+    "J",
+    "L",
+    "K"
+   ],
+   "result": "H",
+   "path": [
+    [
+     "M",
+     "H"
+    ]
+   ],
+   "distances": [
+    "H",
+    "N"
+   ],
+   "marks": {
+    "N": "True nearest"
+   }
+  }
+ ]
+}

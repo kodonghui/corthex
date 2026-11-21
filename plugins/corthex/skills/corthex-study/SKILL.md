@@ -4,7 +4,7 @@ description: Study documents that teach one learning question in depth. Use when
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.12.1"
+  version: "0.13.0"
 ---
 
 # Study documents
