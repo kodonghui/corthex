@@ -525,6 +525,22 @@ class FormsTest(HubCase):
         self.assertEqual(self.refs(snapshot, "req-without-spec"), ["REQ-001", "REQ-003"], "a removed or undefined spec covers nothing")
         self.assertEqual(self.refs(snapshot, "missing-upstream"), ["SPEC-002"], "a removed requirement is not an upstream")
 
+    def test_deferred_items_are_passed_over_like_removed_ones(self):
+        self.project(stages={
+            "02-prd": {"human": "notion", "source": "prd.md", "truth": "source"},
+            "04-functional-spec": {"human": "notion", "source": "spec.md", "truth": "source"},
+        })
+        self.write(self.repo / "prd.md", "| ID | Requirement | Type | Priority | Status |\n| --- | --- | --- | --- | --- |\n"
+                   "| REQ-001 | Check out | functional | Must | deferred, look again 2027-03-02 |\n"
+                   "| REQ-002 | Pay | functional | Must | active |\n| REQ-003 | Diary | functional | Must | 보류 |\n")
+        self.write(self.repo / "spec.md", "| ID | Behaviour | From | Status |\n| --- | --- | --- | --- |\n"
+                   "| SPEC-001 | Pay by card | REQ-002 | deferred |\n| SPEC-002 | Diary page | REQ-003 | active |\n"
+                   "| SPEC-003 | Wallet | | postponed |\n")
+        snapshot = self.snapshot()
+        self.assertEqual(self.refs(snapshot, "req-without-spec"), ["REQ-002"], "a deferred spec covers nothing, a deferred requirement wants none")
+        self.assertEqual(self.refs(snapshot, "missing-upstream"), ["SPEC-002"], "a deferred requirement is not an upstream, a deferred spec wants none")
+        self.assertTrue(hub.DEFERRED.isdisjoint(hub.REMOVED), "a deferred item is not drawn as removed")
+
     def test_a_heading_without_an_id_closes_the_item(self):
         self.project(stages={"02-prd": {"human": "notion", "source": "prd.md", "truth": "source"}})
         self.write(self.repo / "prd.md", "# Requirements\n\n## REQ-001 One\n\nLeads to SPEC-001.\n\n## References for SPEC-002\n\nAnd SPEC-003.\n\n"

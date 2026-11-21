@@ -16,4 +16,4 @@ One row per decision. The log lives in the project's records location, or in `do
 - An AI recommendation, a read receipt, an emoji or an edit timestamp is not a decision. Record a recommendation as a recommendation until someone decides.
 - When a decision replaces an earlier one, set the earlier one's status to `replaced by DEC-…` and fill `Replaces` on the new one.
 - `Affects` names the stages or trace IDs that change, so later stages can find the decisions that bind them.
-- When a change removes, defers or changes approved items, record one decision per item, with the user's answer for that item. Approval of the change as a whole is not a decision about any of them. A deferral also records the date to look at the item again and its owner.
+- When a change removes, defers or changes approved items, record one decision per item, with the user's answer for that item. Approval of the change as a whole is not a decision about any of them. A deferral also records the date to look at the item again and its owner, in `Status`, such as `deferred, look again 2027-03-02, owner: product owner`.

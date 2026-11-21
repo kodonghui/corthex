@@ -44,7 +44,7 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 - **Backslashes in SQL strings**: MySQL, MariaDB, Snowflake and Databricks read a backslash in a string as an escape, so `\'` is a quote there, while PostgreSQL (except in `E'…'`), Oracle, SQL Server and SQLite read it as a character. A file with `\'` in it is read the way that keeps its strings from running on over the code after them.
 - **Schemas**: tables of the same name in different schemas, such as `sales.orders` and `archive.orders`, are told apart, and so are `orders` and `archive.orders`. A name whose schema matches no table the file creates, such as `ALTER TABLE orders` or a SQL Server property for `'schema', 'dbo'`, means the table of that name when the file creates only one, and no table when it creates more.
 - **Listings**: a file named `index`, `README`, `list` or `목록`, or one whose name starts with `_`, only fills in what the items' own files leave out. It never counts as a second definition.
-- **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks: it is not checked, and a link to it does not count.
+- **Removed items**: an item whose status says removed, deleted, dropped, cancelled, deprecated or obsolete (or `삭제`, `폐기`, `제외`, `취소`) is left out of the link checks: it is not checked, and a link to it does not count. A deferred item, whose status says deferred or postponed (or `보류`, `연기`), is left out of these checks the same way, and is still drawn as it is, not as removed.
 
 ## Checks
 
@@ -52,8 +52,8 @@ Any other text only mentions IDs. A file named by an ID links its mentions from 
 | --- | --- | --- |
 | `duplicate-id` | error | The ID is defined in more than one place. |
 | `unknown-ref` | warn | The ID is mentioned but not defined, although the stage that creates its kind was read. |
-| `missing-upstream` | warn | The item names none of the items it comes from, other than removed ones: `FL` and `SPEC` name a `REQ`; `TBL`, `API` and `TASK` a `SPEC`; `TC` a `REQ`, `FL` or `SPEC`; `BUG` a `TC`, `SCR` or `SPEC`. Checked only when the project has items of those kinds. |
-| `req-without-spec` | warn | A Must requirement (`Must`, `required`, `P0` or `필수`) that is not non-functional has no `SPEC` linked to it that `04-functional-spec` defines and that is not removed. Checked when that stage was read. |
+| `missing-upstream` | warn | The item names none of the items it comes from, other than removed or deferred ones: `FL` and `SPEC` name a `REQ`; `TBL`, `API` and `TASK` a `SPEC`; `TC` a `REQ`, `FL` or `SPEC`; `BUG` a `TC`, `SCR` or `SPEC`. Checked only when the project has items of those kinds. |
+| `req-without-spec` | warn | A Must requirement (`Must`, `required`, `P0` or `필수`) that is not non-functional has no `SPEC` linked to it that `04-functional-spec` defines and that is not removed or deferred. A deferred requirement is not checked. Checked when that stage was read. |
 | `req-without-priority` | info | Requirements have no priority, while others have one. |
 | `screen-not-in-sitemap` | warn | A screen has a file in `08-screen-states` but is not in the sitemap. |
 | `screen-without-states` | info | Screens in the sitemap have no file in `08-screen-states` yet. |
