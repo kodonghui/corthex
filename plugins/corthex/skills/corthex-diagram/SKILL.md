@@ -4,7 +4,7 @@ description: Diagrams that explain a flow, a structure, a comparison or a change
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.13.0"
+  version: "0.14.0"
 ---
 
 # Diagrams

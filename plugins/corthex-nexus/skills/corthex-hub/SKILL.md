@@ -49,7 +49,7 @@ The checks and the forms of source the hub reads are in [references/reading.md](
 
 - A check is a lead, not a verdict. Read the source at the given place before you report it as a problem.
 - Fix sources through the stage skill, in the direction the stage's `truth` gives. When `truth` is `human`, the fix belongs in the human view, and the text copy follows.
-- Never renumber an ID to clear a check. Mark a removed item as removed instead.
+- Never renumber an ID to clear a check. Mark a removed item as removed, or a deferred one as deferred, instead.
 
 ## Send snapshots to a NEXUS server (optional)
 

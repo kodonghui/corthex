@@ -1,10 +1,10 @@
 ---
 name: corthex
-description: Entry point for CORTHEX project work. Use at the start of multi-step software project work, when the user wants to set up their CORTHEX profile, register or switch between projects, asks where a project stands or what to do next, or names a project stage (domain discovery, PRD, user flow, functional spec, ERD, API, sitemap, screen states, mockup, WBS, development, QA, presentation). Applies the working principles for the whole task and routes to the right stage skill.
+description: Entry point for CORTHEX project work. Use at the start of multi-step software project work, when the user wants to set up their CORTHEX profile, register or switch between projects, asks where a project stands or what to do next, wants to add, remove or change a feature or fix a bug in a project whose stages were approved, or names a project stage (domain discovery, PRD, user flow, functional spec, ERD, API, sitemap, screen states, mockup, WBS, development, QA, presentation). Applies the working principles for the whole task and routes to the right stage skill.
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.13.0"
+  version: "0.14.0"
 ---
 
 # CORTHEX
@@ -67,9 +67,18 @@ When the work needs a desktop app, or a web page that the web search and fetch t
 | Study documents that teach one learning question in depth, at any stage or on its own | `corthex-study` |
 | Diagrams that explain a flow, a structure, a comparison or a change, at any stage or on its own | `corthex-diagram` |
 
-Every stage follows one six-slot contract: inputs, outputs, human view, sync, human checkpoints and trace IDs. See [references/stage-contract.md](references/stage-contract.md). A project may skip stages or start in the middle; say which inputs are then missing.
+Every stage follows one six-slot contract: inputs, outputs, human view, sync, human checkpoints and trace IDs. See [references/stage-contract.md](references/stage-contract.md). A project may skip stages or start in the middle; say which inputs are then missing. This does not hold for a feature change or a bug fix once a stage's checkpoint has been passed: follow section 5.
 
-## 5. Answer "where are we?"
+## 5. Change approved work
+
+Once a stage's checkpoint has been passed, later work that changes its items goes by one of two procedures, in whatever stage it starts. The steps are in [references/changes.md](references/changes.md).
+
+- **Feature change.** A new feature, a feature removed or put off, a change of scope or a redesign: anything that adds, removes, defers or changes the meaning of a requirement, a user flow or a spec row. Go through every stage again from 01, in order, writing each stage's difference from its approved version, or "no change" with its reason; never skip a stage, however small the change. Each approved item the change removes, defers or changes, decisions and open pull requests included, goes to the user as its own question with its approved text and the reason, and stays as approved until the user answers for it. Close a dropped pull request, or write on it the date to look at it again and the owner.
+- **Bug fix.** The product does something other than an approved document says. Use `corthex-build`: record a BUG ID with its status and severity, reproduce it, fix the document of the stage with the cause first, write a regression test that fails before fixing the code, and after a production incident finish what the fast path skipped before anything else ships. A fix that needs a new or different requirement is a feature change.
+
+Every stage's checkpoint first lists the approved items that its work removes, defers, changes or leaves out, or says there are none, and asks about each on its own.
+
+## 6. Answer "where are we?"
 
 Read the project's `stages` settings and the artifacts they point to. For each stage, report one of done, in progress, not started or skipped, the last human checkpoint with its date, and the next action. A file that exists is not a finished stage: a stage is done when its checkpoint was passed and recorded.
 

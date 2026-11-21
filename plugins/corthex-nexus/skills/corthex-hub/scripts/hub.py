@@ -173,6 +173,8 @@ MUST = {"must", "must have", "mandatory", "required", "p0", "필수"}
 NON_FUNCTIONAL = {"non-functional", "nonfunctional", "non functional", "nfr", "quality", "비기능"}
 OUT_OF_SCOPE = {"backlog", "overview", "later", "백로그", "개요"}
 REMOVED = {"removed", "deleted", "dropped", "cancelled", "canceled", "deprecated", "obsolete", "삭제", "삭제됨", "폐기", "제외", "취소"}
+# A deferred item keeps its ID and is drawn as it is, but the checks pass over it as they pass over a removed one.
+DEFERRED = {"deferred", "postponed", "보류", "연기"}
 
 
 # ---------------------------------------------------------------- small helpers
@@ -1572,6 +1574,11 @@ def is_removed(item):
     return any(word in REMOVED for word in norm(item.get("status", "")).split())
 
 
+def is_inactive(item):
+    """Removed or deferred: the checks want no links from it and count none to it."""
+    return any(word in REMOVED or word in DEFERRED for word in norm(item.get("status", "")).split())
+
+
 def item_checks(scan, items, stages):
     """Checks that need the whole project: duplicates, unknown IDs and missing links."""
     found = []
@@ -1595,19 +1602,19 @@ def item_checks(scan, items, stages):
     for ident in sorted(items, key=id_key):
         item = items[ident]
         kind = item["kind"]
-        if is_removed(item):
+        if is_inactive(item):
             continue
         if kind == "screen" and item["stage"] == SCREEN_STAGE and "07-sitemap" in scanned:
             found.append(check("screen-not-in-sitemap", "warn", "%s has a screen definition but is not in the sitemap" % ident, [ident], SCREEN_STAGE, {"id": ident}))
         wanted = [k for k in UPSTREAM.get(kind, ()) if k in kinds_with_items]
-        linked = {scan.ids.kind(other) for other in near.get(ident, ()) if not (other in items and is_removed(items[other]))}
+        linked = {scan.ids.kind(other) for other in near.get(ident, ()) if not (other in items and is_inactive(items[other]))}
         if wanted and not linked.intersection(UPSTREAM[kind]):
             names = "/".join(UPSTREAM[kind])
             found.append(check("missing-upstream", "warn", "%s links no %s" % (ident, names), [ident], item["stage"], {"id": ident, "kinds": list(UPSTREAM[kind])}))
     found.extend(requirement_checks(scan, items, near, scanned))
     found.extend(format_checks(scan, items))
     if SCREEN_STAGE in scanned:
-        bare = [i for i, item in items.items() if item["kind"] == "screen" and "screen_doc" not in item and not is_removed(item)]
+        bare = [i for i, item in items.items() if item["kind"] == "screen" and "screen_doc" not in item and not is_inactive(item)]
         if bare:
             bare.sort(key=id_key)
             found.append(check("screen-without-states", "info", "Screens without a screen definition yet (%d): %s" % (len(bare), ", ".join(bare[:20])), bare, SCREEN_STAGE, {"count": len(bare), "ids": bare[:20]}))
@@ -1617,13 +1624,13 @@ def item_checks(scan, items, stages):
 def requirement_checks(scan, items, near, scanned):
     found = []
     requirements = [items[i] for i in sorted(items, key=id_key) if items[i]["kind"] == "requirement"]
-    in_scope = [r for r in requirements if not is_removed(r) and norm(r.get("type", "")) not in OUT_OF_SCOPE]
+    in_scope = [r for r in requirements if not is_inactive(r) and norm(r.get("type", "")) not in OUT_OF_SCOPE]
     if "04-functional-spec" in scanned:
         for req in in_scope:
             if norm(req.get("priority", "")) not in MUST or norm(req.get("type", "")) in NON_FUNCTIONAL:
                 continue
-            # The stage was read, so a spec that is not defined there, or is removed, covers nothing.
-            if any(scan.ids.kind(other) == "spec" and other in items and not is_removed(items[other]) for other in near.get(req["id"], ())):
+            # The stage was read, so a spec that is not defined there, or is removed or deferred, covers nothing.
+            if any(scan.ids.kind(other) == "spec" and other in items and not is_inactive(items[other]) for other in near.get(req["id"], ())):
                 continue
             unknown = not req.get("type")
             message = "%s is a %sMust requirement with no spec row" % (req["id"], "" if unknown else "functional ")
