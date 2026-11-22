@@ -51,7 +51,7 @@ class TokenError(Exception):
 
 def read_json(path):
     try:
-        with open(path, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8-sig") as handle:
             return json.load(handle)
     except (OSError, ValueError) as error:
         raise TokenError("cannot read %s: %s" % (path, error))
@@ -145,8 +145,11 @@ def mode_inputs(path, limit=256):
     """Every combination of the contexts of the modifiers the resolver uses, each modifier named."""
     doc = read_json(Path(path))
     names, choices, total = ordered_modifiers(doc), [], 1
+    modifiers = doc.get("modifiers", {})
     for name in names:
-        contexts = list(doc["modifiers"][name].get("contexts", {}))
+        if not isinstance(modifiers.get(name), dict):
+            raise TokenError("resolutionOrder names the modifier %r, which the resolver does not define" % name)
+        contexts = list(modifiers[name].get("contexts", {}))
         if not contexts:
             raise TokenError("modifier %r has no contexts" % name)
         choices.append(contexts)
@@ -385,11 +388,22 @@ LINK_ATTR = re.compile(r"""\b(?:href|xlink:href|src|action|id|for|name)\s*=\s*("
 # Colour functions the check cannot compare with the tokens' sRGB values: each one is reported.
 OTHER_FUNC = re.compile(r"(?<![\w.$-])(?:oklch|oklab|lab|lch|hwb|color(?=\(\s*(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb"
                         r"|rec2020|xyz|xyz-d50|xyz-d65)\b))\([^()]*\)", re.I)
-# A declaration or attribute that takes a colour, in CSS, markup or a script's style object.
+# A declaration or attribute that takes a colour, in CSS, markup or a script's style object, with its value:
+# a quoted string, or the text up to the end of the declaration, attribute or tag. It is a lookahead, so that
+# declarations on one line overlap; a comparison such as `color === x` is not a declaration.
 SIDE = r"(?:-?(?:top|right|bottom|left|block|inline)(?:-?(?:start|end))?)?"
-PROPERTY = re.compile(r"(?<![\w-])(?:(?:background|border" + SIDE + r"|outline|text-?decoration|caret|accent|column-?rule|stop"
-                      r"|flood|lighting)-?color|color|background|border" + SIDE + r"|outline|fill|stroke|box-?shadow"
-                      r"|text-?shadow|column-?rule|text-?decoration)\s*[:=]\s*([^;{}\n]*)", re.I)
+PROPERTY = re.compile(r"(?=(?<![\w-])(?:(?:background|border" + SIDE + r"|outline|text-?decoration|caret|accent|column-?rule"
+                      r"|stop|flood|lighting)-?color|color|background(?:-?image)?|border" + SIDE + r"|outline|fill|stroke"
+                      r"|box-?shadow|text-?shadow|column-?rule|text-?decoration|--[\w-]+)\s*(?::|=(?!=))\s*"
+                      r"(\"[^\"\n]*\"|'[^'\n]*'|[^;{}\n<>\"'`]*))", re.I)
+COMMENT = re.compile(r"/\*.*?\*/", re.S)
+LINE_COMMENT = re.compile(r"(?:^|(?<=[\s;{}(),]))//[^\n]*", re.M)
+MARKUP_COMMENT = re.compile(r"<!--.*?-->", re.S)
+RAW_BLOCK = re.compile(r"<(script|style)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+TEXT_NODE = re.compile(r">([^<>]*)(?=<)")
+MARKUP_SUFFIXES = (".html", ".htm", ".svg", ".vue", ".svelte", ".jsx", ".tsx")
+TEXT_SUFFIXES = (".html", ".htm", ".svg", ".vue", ".svelte")
+LINE_COMMENT_SUFFIXES = (".scss", ".sass", ".less", ".js", ".jsx", ".mjs", ".ts", ".tsx", ".vue", ".svelte")
 WORD = re.compile(r"(?<![\w$@.#-])([A-Za-z]+)(?![\w-])")
 SELECTOR = re.compile(r"(^|[{};])([^{};]*)(?=\{)")
 STYLE = re.compile(r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.I | re.S)
@@ -541,12 +555,30 @@ def sass_selectors(sass):
                    for line in sass.splitlines(True))
 
 
+def text_nodes(markup):
+    """Markup with the text between its tags blanked, outside script and style blocks: page text such as
+    "fixed in #789" is not a colour."""
+    parts, last = [], 0
+    for block in list(RAW_BLOCK.finditer(markup)) + [None]:
+        start = block.start() if block else len(markup)
+        parts.append(TEXT_NODE.sub(lambda m: ">" + blank(m, 1), markup[last:start]))
+        if block:
+            parts.append(block.group(0))
+            last = block.end()
+    return "".join(parts)
+
+
 def literals(text, suffix):
     """(line, column, literal, kind, kept) for each colour written in the text: kind is "value" when the
     literal can be compared with the tokens, "named" for a CSS colour name and "other" for a function the
-    check cannot compare."""
+    check cannot compare. Comments are skipped, but an off-token reason in one still keeps its line."""
     kept = [bool(KEEP.search(line)) for line in text.splitlines()]
-    if suffix in (".html", ".htm", ".svg", ".vue", ".svelte", ".jsx", ".tsx"):
+    text = COMMENT.sub(blank, text)
+    if suffix in LINE_COMMENT_SUFFIXES:
+        text = LINE_COMMENT.sub(blank, text)
+    if suffix in TEXT_SUFFIXES:
+        text = text_nodes(MARKUP_COMMENT.sub(blank, text))
+    if suffix in MARKUP_SUFFIXES:
         text = LINK_ATTR.sub(blank, text)
         text = STYLE.sub(lambda m: m.group(1) + selectors(m.group(2)) + m.group(3), text)
     if suffix in CSS_SUFFIXES:
@@ -682,14 +714,14 @@ def as_json(data):
 
 
 def resolver_plan(target, light, dark):
-    requested = bool(light or dark)
     """What init does with the resolver document: (data to write or None, state, note). A theme left as
     None keeps the one an earlier init chose, else takes the default. The state is "kept" for a resolver
     init did not write, and "not applied" when the themes asked for could not be set in it."""
+    requested = bool(light or dark)
     current, before, unreadable = None, None, None
     if target.exists():
         try:
-            current = json.loads(target.read_text(encoding="utf-8"))
+            current = json.loads(target.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError) as error:
             unreadable = error
         before = next(((one, two) for one in THEMES for two in THEMES if current == resolver_document(one, two)), None)
@@ -744,6 +776,10 @@ def init(dest, light, dark, update, out):
         return 1
     resolver = dest / "tokens.resolver.json"
     data, resolver_state, note = resolver_plan(resolver, light, dark)
+    if resolver_state == "not applied":
+        out.write("not applied %s: %s\n" % (resolver, note))
+        out.write("Nothing written.\n")
+        return 1
     plan.append((resolver, data, resolver_state, note))
     base = dest / "base.tokens.json"
     plan.append((base, None, "kept", "") if base.exists() else (base, as_json({"$schema": FORMAT_SCHEMA, "$description":
@@ -765,7 +801,7 @@ def init(dest, light, dark, update, out):
     for path in stale:
         out.write("not in this version: %s; the resolver init writes does not use it\n" % path)
     out.write(", ".join("%s %d" % (state, counts[state]) for state in sorted(counts)) + "\n")
-    return 1 if resolver_state == "not applied" else 0
+    return 0
 
 
 # --- command line -----------------------------------------------------------------------------------

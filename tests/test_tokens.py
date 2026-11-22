@@ -219,6 +219,7 @@ class InitTest(unittest.TestCase):
             self.assertEqual(tokens.init(design, "g90", None, False, asked), 1)
             self.assertIn("not applied %s" % (design / "tokens.resolver.json"), asked.getvalue())
             self.assertIn("the themes asked for were not set", asked.getvalue())
+            self.assertIn("Nothing written.", asked.getvalue())
             self.assertEqual(load_json(design / "tokens.resolver.json"), own)
             (design / "tokens.resolver.json").write_text('{"sets": {}}', encoding="utf-8")
             plain = io.StringIO()
@@ -254,6 +255,17 @@ class InitTest(unittest.TestCase):
             self.assertEqual(read_text(changed), "{}\n")
             self.assertEqual(tokens.init(design, None, None, True, io.StringIO()), 0)
             self.assertEqual(changed.read_bytes(), (LAYER / "light.tokens.json").read_bytes())
+
+    def test_themes_that_cannot_be_applied_stop_init_before_it_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            design = Path(temp) / "design"
+            design.mkdir()
+            (design / "tokens.resolver.json").write_text('{"sets": {}}', encoding="utf-8")
+            out = io.StringIO()
+            self.assertEqual(tokens.init(design, None, "g90", False, out), 1)
+            self.assertIn("Nothing written.", out.getvalue())
+            self.assertEqual(sorted(path.name for path in design.iterdir()), ["tokens.resolver.json"])
+            self.assertIn('"not applied"', tokens.resolver_plan.__doc__)
 
     def test_a_file_where_a_folder_goes_stops_init_before_it_writes(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -342,6 +354,16 @@ class ResolveTest(unittest.TestCase):
             with self.assertRaisesRegex(tokens.TokenError, "two tokens of one file give the CSS name --a-b"):
                 tokens.css_text(resolver, {})
 
+    def test_a_byte_order_mark_is_read(self):
+        with Project() as project:
+            (project.design / "base.tokens.json").write_bytes(b"\xef\xbb\xbf" + json.dumps({"brand": {
+                "$type": "color", "$value": {"colorSpace": "srgb", "components": [1.0, 0.0, 0.0]}}}).encode("utf-8"))
+            self.assertIn("  --brand: #ff0000;\n", tokens.css_text(project.resolver, {}, only=["brand"]))
+            project.resolver.write_bytes(b"\xef\xbb\xbf" + project.resolver.read_bytes())
+            out = io.StringIO()
+            self.assertEqual(tokens.init(project.design, None, None, False, out), 0)
+            self.assertIn("same 32", out.getvalue())
+
     def test_the_documented_dark_mode_command_runs(self):
         text = read_text(MOCKUP)
         self.assertIn("tokens.py' css --input theme=dark -- '<project>/design/tokens.resolver.json'`", text)
@@ -424,6 +446,19 @@ class ModifierTest(unittest.TestCase):
             out = io.StringIO()
             self.assertEqual(tokens.check(resolver, [page], out), 0, out.getvalue())
 
+    def test_an_undefined_modifier_fails_clearly(self):
+        with tempfile.TemporaryDirectory() as temp:
+            resolver = Path(temp) / "r.json"
+            resolver.write_text(json.dumps({"sets": {"a": {"sources": []}},
+                                            "resolutionOrder": [{"$ref": "#/sets/a"}, {"$ref": "#/modifiers/theme"}]}),
+                                encoding="utf-8")
+            page = Path(temp) / "page.css"
+            page.write_text(".a { color: #ffffff; }\n", encoding="utf-8")
+            result = run("check", "--", resolver, page)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(b"names the modifier 'theme', which the resolver does not define", result.stderr)
+            self.assertNotIn(b"Traceback", result.stderr)
+
     def test_a_modifier_without_a_default(self):
         with tempfile.TemporaryDirectory() as temp:
             resolver = modes_resolver(Path(temp), defaults=False)
@@ -473,6 +508,29 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("a.scss:7:20: #ab1236 is not a token colour", out)
         self.assertIn("4 colour literals, 1 off the tokens, 2 kept with an off-token reason", out)
+
+    def test_comments_page_text_and_comparisons_are_not_colours(self):
+        code, out = self.check({
+            "a.css": "/* Workaround for issue #123, see PR #4567 */\n.a { color: #f4f4f4; }\n",
+            "b.html": '<p style="color: var(--text-primary)">Red alert</p>\n<p>Fixed in #789 and #2024</p>'
+                      "<!-- #abc -->\n<script>const c = a > b ? '#ab1234' : x;</script>\n",
+            "c.js": 'const s = { color: "var(--x)", label: "Green team" }; // see #123\n'
+                    'if (status.color === "orange") warn();\n',
+        })
+        self.assertEqual(code, 1)
+        self.assertIn("b.html:3:28: #ab1234 is not a token colour", out)
+        self.assertIn("2 colour literals, 1 off the tokens", out)
+
+    def test_custom_properties_gradients_and_later_declarations(self):
+        code, out = self.check({
+            "a.css": ":root { --brand: tomato; }\n.a { background-image: linear-gradient(gold, white); }\n",
+            "b.js": 'const q = { color: x, background: "red" };\n',
+        })
+        self.assertEqual(code, 1)
+        self.assertIn("a.css:1:18: tomato is not a token colour", out)
+        self.assertIn("a.css:2:40: gold is not a token colour", out)
+        self.assertIn("b.js:1:36: red is not a token colour", out)
+        self.assertIn("4 colour literals, 3 off the tokens", out)
 
     def test_indented_sass_selectors_and_interpolation(self):
         code, out = self.check({"a.sass": "#fade\n  color: #f4f4f4\n  &:hover, #bad\n    color: #ab1234\n"
