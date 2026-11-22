@@ -4,14 +4,14 @@ description: Craft for screens, motion and video. Use when making or reworking a
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.14.0"
+  version: "0.15.0"
 ---
 
 # Screens, motion and video
 
 Turn feeling words, such as "clean" or "make it pop", into the **names and numbers** of parts and motions, build from them, and **measure** before you show anything. The skill works on its own. Inside a CORTHEX project it serves the screen stages (08 screen states, 09 mockup) and the presentation (13).
 
-- The project's own design contract comes first: its design tokens (stage 09, by default `design/base.tokens.json`), its screen definitions (stage 08) or a `DESIGN.md`. Their values win over the numbers in this skill.
+- The project's own design contract comes first: its design tokens (stage 09, by default `design/base.tokens.json` over IBM Carbon's tokens with the CORTHEX layer, from the `corthex-screen` skill), its screen definitions (stage 08) or a `DESIGN.md`. Their values win over the numbers in this skill.
 - `[default]` marks a value this skill chose where sources disagree ([sources.md](references/sources.md)). `[proposal]` marks a rule of thumb with no source behind it; treat it as a starting point. When the person asking sets a value, use theirs.
 - A small edit, such as one colour or one gap, does not go through every step below. Use the terms and checks it needs.
 

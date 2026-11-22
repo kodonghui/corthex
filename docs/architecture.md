@@ -4,7 +4,7 @@
 
 How CORTHEX is put together, and why. The file formats are defined once, in the entry skill's references, and this page links to them instead of repeating them.
 
-Status: core `corthex` 0.14.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.5.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
+Status: core `corthex` 0.15.0; MEMORY 0.2.1 includes project approval context; its release decisions and known limits are tracked in the MEMORY WBS and QA report; NEXUS is 0.5.0. Memory includes session context, local recording and management controls; model curation and recall remain C2. NEXUS includes its local project hub and a server to deploy yourself. Remaining work is in the [Roadmap](#roadmap).
 
 The rebuild v2 publication preview uses the repository’s committed source index and exact Git blobs. Its explicit publisher command uses a project-scoped credential and requires an owner-recorded digest for the first publication. The existing hub push and automatic Actions path retain their Access-based contract.
 
@@ -37,6 +37,9 @@ Out of scope: a custom updater or machine sync, editing the user's global instru
 │   │       │   ├── references/          the grammar, choosing a diagram, Mermaid versions by target, concept figures
 │   │       │   ├── assets/              hnsw-search.json, a worked concept figure
 │   │       │   └── scripts/             diagram-check.py, a read-only lint for Mermaid flowcharts; concept-figure.py, which draws and checks concept figures as SVG
+│   │       ├── corthex-screen/          stages 07–09
+│   │       │   ├── assets/              IBM Carbon's design tokens, unchanged, with their license and source.json; the CORTHEX layer over them
+│   │       │   └── scripts/             tokens.py, which copies that base into a project, writes CSS from it and finds colours outside it
 │   │       ├── corthex-discover/ …      stage skills, one reference file per stage
 │   │       ├── corthex-record/          minutes, decisions, progress and handoffs, retrospectives
 │   │       ├── corthex-study/           study documents: one question researched, run, published and recorded
@@ -119,6 +122,7 @@ So the core plugin has no hooks, commands, agents, MCP servers or user settings.
 - **Names start with `corthex-`** so they stay distinct when a skill is used outside the plugin. Inside the plugin, both hosts show them as `corthex:<skill>`.
 - **Frontmatter is portable.** Skills use only the fields of the Agent Skills format (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`), because claude.ai uploads and the Skills API reject host-specific fields. Bodies stay under 500 lines, and links stay inside the skill's own folder, one level deep.
 - **Skill text is English.** Replies follow the language in the user's profile.
+- **Stage 09 starts from a published design system.** Its default base is IBM Carbon's design tokens (Apache-2.0), copied unchanged with their license, versions and file hashes, under a thin CORTHEX layer of rounded corners, fonts and the colours of AI proposals, stage states and event-storming stickies. A project's own tokens win over both. `tokens.py` uses the Python standard library only and adds no runtime dependency; Carbon's components are not included.
 
 Measured on 0.1.0 with local installs: `claude plugin details` (Claude Code 2.1.309) reported about 1,000 always-on tokens for the eight descriptions, and in Codex CLI 0.164.0 the eight entries took about 3,200 characters of the skill list. With `corthex-uxui`, Claude Code 2.1.310 reports about 1,240 tokens for the nine, against about 1,050 for the eight on the same version. Its description adds about 580 characters to Codex's list; Codex was not measured again. With `corthex-study`, Claude Code 2.1.322, with the plugin loaded through `--plugin-dir`, reports about 1,480 tokens for the ten, against about 1,320 for the nine on the same version; its description is about 550 characters, and Codex was not measured. With `corthex-diagram`, Claude Code 2.1.329, loaded the same way, reports about 1,730 tokens for the eleven, against about 1,510 for the ten on the same version; its description, which also names concept figures, is about 640 characters, and Codex was not measured. In 0.14.0 the descriptions of `corthex`, `corthex-define` and `corthex-build` also name feature changes and bug fixes: Claude Code 2.1.330, loaded the same way, reports about 1,835 tokens for the eleven, against about 1,732 for 0.13.0 on the same version; Codex was not measured.
 

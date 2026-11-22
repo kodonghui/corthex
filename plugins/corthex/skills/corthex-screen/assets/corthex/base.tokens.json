@@ -1,0 +1,310 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "The CORTHEX layer over IBM Carbon, shared by every mode. Its tokens are named under corthex and point to Carbon tokens wherever Carbon has one.",
+  "corthex": {
+    "radius": {
+      "$type": "dimension",
+      "$description": "Rounded corners from Carbon's own radius scale (@carbon/layout), in place of Carbon's square components.",
+      "box": {
+        "$value": "{border-radius.border-radius-08}",
+        "$description": "Boxes, cards, buttons, inputs, tables and stickies."
+      },
+      "panel": {
+        "$value": "{border-radius.border-radius-16}",
+        "$description": "Panels, dialogs and the frame of a board."
+      },
+      "pill": {
+        "$value": "{border-radius.border-radius-max}",
+        "$description": "Tags, chips and badges."
+      }
+    },
+    "font-family": {
+      "$type": "fontFamily",
+      "$description": "Carbon's font stacks from @carbon/type 11.71.0: its sans-kr stack as sans, for Korean and Latin text, and mono for code and IDs.",
+      "sans": {
+        "$value": [
+          "IBM Plex Sans KR",
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          ".SFNSText-Regular",
+          "sans-serif"
+        ]
+      },
+      "mono": {
+        "$value": [
+          "IBM Plex Mono",
+          "Menlo",
+          "DejaVu Sans Mono",
+          "Bitstream Vera Sans Mono",
+          "Courier",
+          "monospace"
+        ]
+      }
+    },
+    "type": {
+      "$type": "typography",
+      "$description": "Carbon's productive type styles, with the values of @carbon/type 11.71.0, which ships no token file. Sizes assume a 16 px root.",
+      "label-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.75,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.32,
+            "unit": "px"
+          },
+          "lineHeight": 1.33333
+        }
+      },
+      "helper-text-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.75,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.32,
+            "unit": "px"
+          },
+          "lineHeight": 1.33333
+        }
+      },
+      "body-compact-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.875,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.16,
+            "unit": "px"
+          },
+          "lineHeight": 1.28572
+        }
+      },
+      "body-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.875,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.16,
+            "unit": "px"
+          },
+          "lineHeight": 1.42857
+        }
+      },
+      "body-compact-02": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.0,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.375
+        }
+      },
+      "body-02": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.0,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.5
+        }
+      },
+      "code-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.mono}",
+          "fontSize": {
+            "value": 0.75,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.32,
+            "unit": "px"
+          },
+          "lineHeight": 1.33333
+        }
+      },
+      "code-02": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.mono}",
+          "fontSize": {
+            "value": 0.875,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0.32,
+            "unit": "px"
+          },
+          "lineHeight": 1.42857
+        }
+      },
+      "heading-compact-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.875,
+            "unit": "rem"
+          },
+          "fontWeight": 600,
+          "letterSpacing": {
+            "value": 0.16,
+            "unit": "px"
+          },
+          "lineHeight": 1.28572
+        }
+      },
+      "heading-01": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 0.875,
+            "unit": "rem"
+          },
+          "fontWeight": 600,
+          "letterSpacing": {
+            "value": 0.16,
+            "unit": "px"
+          },
+          "lineHeight": 1.42857
+        }
+      },
+      "heading-compact-02": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.0,
+            "unit": "rem"
+          },
+          "fontWeight": 600,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.375
+        }
+      },
+      "heading-02": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.0,
+            "unit": "rem"
+          },
+          "fontWeight": 600,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.5
+        }
+      },
+      "heading-03": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.25,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.4
+        }
+      },
+      "heading-04": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 1.75,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.28572
+        }
+      },
+      "heading-05": {
+        "$value": {
+          "fontFamily": "{corthex.font-family.sans}",
+          "fontSize": {
+            "value": 2.0,
+            "unit": "rem"
+          },
+          "fontWeight": 400,
+          "letterSpacing": {
+            "value": 0,
+            "unit": "px"
+          },
+          "lineHeight": 1.25
+        }
+      }
+    },
+    "ai": {
+      "$type": "color",
+      "$description": "What the AI proposed and a person has not yet applied, after Carbon's AI tokens.",
+      "border": {
+        "$value": "{ai-border-strong}",
+        "$description": "Dashed outline of a proposal."
+      },
+      "aura": {
+        "$value": "{ai-aura-start-sm}",
+        "$description": "Soft fill behind a proposal."
+      }
+    },
+    "stage": {
+      "$type": "color",
+      "$description": "Marks of a stage's state, the states the hub reports. Colour is never the only sign: show the state's word or icon too.",
+      "done": {
+        "$value": "{support-success}"
+      },
+      "in-progress": {
+        "$value": "{support-info}"
+      },
+      "not-started": {
+        "$value": "{border-strong-01}"
+      },
+      "skipped": {
+        "$value": "{text-helper}"
+      }
+    },
+    "sticky": {
+      "$type": "color",
+      "text": {
+        "$value": "{text-primary}",
+        "$description": "Text on every sticky."
+      }
+    }
+  }
+}

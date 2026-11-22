@@ -12,7 +12,7 @@ CORTHEX는 한 사람이 AI와 함께 소프트웨어 프로젝트를 단계별�
 
 선택해서 더하는 플러그인이 둘 있습니다. `corthex-memory`는 세션마다 처음에 원칙, 프로필, 현재 프로젝트 설정을 넣어 줍니다. `corthex-nexus`는 모든 프로젝트의 단계, 점검, 추적 링크를 한 페이지에 보여 줍니다.
 
-> 상태: 핵심 `corthex`는 0.14.0, `corthex-memory` 0.2.1은 프로젝트별 확인 목록을 반영한 C1 패키지이며 출시 결정과 알려진 한계는 MEMORY 작업·시험 계획에서 추적하고, `corthex-nexus`는 0.4.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
+> 상태: 핵심 `corthex`는 0.15.0, `corthex-memory` 0.2.1은 프로젝트별 확인 목록을 반영한 C1 패키지이며 출시 결정과 알려진 한계는 MEMORY 작업·시험 계획에서 추적하고, `corthex-nexus`는 0.4.0입니다. 단계 스킬은 실제 사용으로 채워 갑니다. 기억의 모델 정리·회상은 C2 작업이고, NEXUS에는 로컬 허브와 직접 배포하는 첫 서버가 있습니다.
 
 설치부터 요구사항 하나를 검토하고 진행 기록을 남기기까지는 [첫 프로젝트](docs/first-project.ko.md)를 따라 해 보세요.
 
@@ -72,7 +72,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 | `corthex-discover` | 01 | Miro 같은 보드에서 이벤트 스토밍을 단계별로 함께 하고, 컨텍스트·컨텍스트 지도·용어집을 담은 도메인 설계서로 정리할 때. 정리한 설계서의 DDD 보드는 NEXUS가 그립니다 |
 | `corthex-define` | 02–04 | 요구사항, 유저 플로우, 기능 명세를 쓸 때 |
 | `corthex-contract` | 05–06 | DB 스키마와 API 계약을 명세에 맞출 때 |
-| `corthex-screen` | 07–09 | 사이트맵, 화면 상태, 목업과 디자인 토큰 |
+| `corthex-screen` | 07–09 | 사이트맵, 화면 상태, 목업과 디자인 토큰(IBM Carbon 토큰에서 시작) |
 | `corthex-build` | 10–12 | 작업 분해, 개발, QA, 버그 수정: 원인이 있는 단계의 문서를 먼저 고치고, 코드를 고치기 전에 실패하는 회귀 테스트를 만듭니다 |
 | `corthex-present` | 13 | 발표 대본, 장면표, 슬라이드 |
 | `corthex-record` | 상시 | 회의록, 결정 로그, 진행 기록, 회고 |
@@ -124,4 +124,4 @@ claude plugin validate --strict plugins/corthex-nexus
 
 ## 라이선스
 
-[Apache-2.0](LICENSE). [NOTICE](NOTICE)도 함께 보세요.
+[Apache-2.0](LICENSE). 09단계가 복사하는 IBM Carbon 디자인 토큰의 출처도 밝힌 [NOTICE](NOTICE)를 함께 보세요.
