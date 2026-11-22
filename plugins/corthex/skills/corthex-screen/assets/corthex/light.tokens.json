@@ -1,0 +1,53 @@
+{
+  "$schema": "https://www.designtokens.org/schemas/2025.10/format.json",
+  "$description": "The CORTHEX layer's light-theme values over Carbon.",
+  "corthex": {
+    "ai": {
+      "$type": "color",
+      "text": {
+        "$value": "{blue.70}",
+        "$description": "Text of the AI label and of an AI proposal's note."
+      }
+    },
+    "sticky": {
+      "$type": "color",
+      "$description": "Event storming stickies with corthex-discover's legend: step 20 for a legend colour and step 10 for its light variant in the light theme, steps 80 and 70 in the dark theme.",
+      "event": {
+        "$value": "{orange.20}",
+        "$description": "Domain event."
+      },
+      "command": {
+        "$value": "{blue.20}",
+        "$description": "Command."
+      },
+      "actor": {
+        "$value": "{yellow.10}",
+        "$description": "Actor."
+      },
+      "aggregate": {
+        "$value": "{yellow.20}",
+        "$description": "Aggregate."
+      },
+      "policy": {
+        "$value": "{purple.20}",
+        "$description": "Policy."
+      },
+      "read-model": {
+        "$value": "{green.10}",
+        "$description": "Read model."
+      },
+      "external-system": {
+        "$value": "{magenta.20}",
+        "$description": "External system."
+      },
+      "hotspot": {
+        "$value": "{red.20}",
+        "$description": "Hotspot."
+      },
+      "hotspot-answered": {
+        "$value": "{green.20}",
+        "$description": "Answered hotspot."
+      }
+    }
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "description": "IBM Carbon Design System tokens, copied unchanged from the npm packages below. Apache-2.0, Copyright 2015 IBM Corp.: see LICENSE. The packages ship no NOTICE file. Each sha256 is taken over the file with LF line endings; integrity is the npm registry's value for the package tarball.",
+  "repository": "https://github.com/carbon-design-system/carbon",
+  "packages": [
+    {
+      "name": "@carbon/colors",
+      "version": "11.62.0",
+      "license": "Apache-2.0",
+      "tarball": "https://registry.npmjs.org/@carbon/colors/-/colors-11.62.0.tgz",
+      "integrity": "sha512-xdOpneCuNgMDcH/38BLHmPpB4hDrMNf5+flYXGCI2KuMx+d4r6ByaKqpteaWnXzwu8CA4PBflUovoD0wTYBsHQ==",
+      "gitHead": "d9c9a18b8ffcc3c03881c88999a3675e4e1b6b1a",
+      "files": {
+        "colors.tokens.json": {
+          "from": "package/tokens/colors.tokens.json",
+          "sha256": "873d4c993d6a0db07aa8d1b56b1ad01838848d6ec40a942df9a56809f569095f"
+        }
+      }
+    },
+    {
+      "name": "@carbon/layout",
+      "version": "11.63.0",
+      "license": "Apache-2.0",
+      "tarball": "https://registry.npmjs.org/@carbon/layout/-/layout-11.63.0.tgz",
+      "integrity": "sha512-crAS//pE8xmRZmz4ecx96UUScTfaipVYJNR5qOaku5PoJRjiYvqn8CY5Dmd087bjurO4pt/H33V6dv9qBnqzQg==",
+      "gitHead": "d9c9a18b8ffcc3c03881c88999a3675e4e1b6b1a",
+      "files": {
+        "layout.tokens.json": {
+          "from": "package/tokens/layout.tokens.json",
+          "sha256": "4eeec84edc0e4db926df4223b66c0900feb0f611853168c54869389cde34278c"
+        }
+      }
+    },
+    {
+      "name": "@carbon/themes",
+      "version": "11.86.0",
+      "license": "Apache-2.0",
+      "tarball": "https://registry.npmjs.org/@carbon/themes/-/themes-11.86.0.tgz",
+      "integrity": "sha512-hqoDEfhAhrtoVgjmsRCaIvTJ8CDdvAm4iwnA1g8LftcB1ik4IazH5NucY1f6Ttoran4obpjUTRNtOxQVAZhK1Q==",
+      "gitHead": "4c2a5622e18ba209282ca0d70c23b1b34be8dc8e",
+      "files": {
+        "LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "037b3e9eaff51477b270e9082f54b99175e4dd893548654f00995045b68294b8"
+        },
+        "themes/g10/button.tokens.json": {
+          "from": "package/tokens/themes/g10/button.tokens.json",
+          "sha256": "ce90032e40bd55d3d74e54217a4e2543f70beef2c739fb3b2471e9fad5012f53"
+        },
+        "themes/g10/content-switcher.tokens.json": {
+          "from": "package/tokens/themes/g10/content-switcher.tokens.json",
+          "sha256": "5215bf4028e8b00e87ebe8c8c9ae07038e807584865bcb93c9db7d6f08822182"
+        },
+        "themes/g10/notification.tokens.json": {
+          "from": "package/tokens/themes/g10/notification.tokens.json",
+          "sha256": "1db13cfa2a7c2fc076c026e0297ded827a28b2f39c3243e0e93f5e1ea1e65b79"
+        },
+        "themes/g10/status.tokens.json": {
+          "from": "package/tokens/themes/g10/status.tokens.json",
+          "sha256": "ea79c96f99615d46a19827e61cad4312492dc2cff85545a752b71f9b0ddd4952"
+        },
+        "themes/g10/tag.tokens.json": {
+          "from": "package/tokens/themes/g10/tag.tokens.json",
+          "sha256": "a048f2ee613313902934ccbbf66fb9c31156792802156a198c0895d1d8a6ac6e"
+        },
+        "themes/g10/theme.tokens.json": {
+          "from": "package/tokens/themes/g10/theme.tokens.json",
+          "sha256": "ba93eec60a1c98090f4c1bc061927220d37c92c3ae1dfef7b4a83e464c785c52"
+        },
+        "themes/g100/button.tokens.json": {
+          "from": "package/tokens/themes/g100/button.tokens.json",
+          "sha256": "c75f068e4e0473c35df53583ed41c7d91bf8b3618903d7e4f1b9b463c966c9b8"
+        },
+        "themes/g100/content-switcher.tokens.json": {
+          "from": "package/tokens/themes/g100/content-switcher.tokens.json",
+          "sha256": "640350a8e675c4add256f485ecd15f61227f8a829f5ffc1ed1a7b4ee5743ed69"
+        },
+        "themes/g100/notification.tokens.json": {
+          "from": "package/tokens/themes/g100/notification.tokens.json",
+          "sha256": "c4d13c41479d26c20bf0c1bc051380db57b1d6031bd280a46ececf0733a59982"
+        },
+        "themes/g100/status.tokens.json": {
+          "from": "package/tokens/themes/g100/status.tokens.json",
+          "sha256": "6a697f7cdf82217625212c9aabea1b70a156ebe19b4b2ca04da245110f2c3641"
+        },
+        "themes/g100/tag.tokens.json": {
+          "from": "package/tokens/themes/g100/tag.tokens.json",
+          "sha256": "87cd7c93ff4029f21f0d987f05c18bb9c6cd77c69ac4e65b044fa7e6987edd37"
+        },
+        "themes/g100/theme.tokens.json": {
+          "from": "package/tokens/themes/g100/theme.tokens.json",
+          "sha256": "17bd6a03f52749f4e371df1236039c09acf2773879101403a9b79953ca500e88"
+        },
+        "themes/g90/button.tokens.json": {
+          "from": "package/tokens/themes/g90/button.tokens.json",
+          "sha256": "bdb52ef295873cff39090ea4cfb52c9da5c75c74869b15c8d4891cc449d89d19"
+        },
+        "themes/g90/content-switcher.tokens.json": {
+          "from": "package/tokens/themes/g90/content-switcher.tokens.json",
+          "sha256": "640350a8e675c4add256f485ecd15f61227f8a829f5ffc1ed1a7b4ee5743ed69"
+        },
+        "themes/g90/notification.tokens.json": {
+          "from": "package/tokens/themes/g90/notification.tokens.json",
+          "sha256": "42ee85fd8699fc653157b000e4ac32a3ea47725e1f1518a2e808a615ad61427e"
+        },
+        "themes/g90/status.tokens.json": {
+          "from": "package/tokens/themes/g90/status.tokens.json",
+          "sha256": "6a697f7cdf82217625212c9aabea1b70a156ebe19b4b2ca04da245110f2c3641"
+        },
+        "themes/g90/tag.tokens.json": {
+          "from": "package/tokens/themes/g90/tag.tokens.json",
+          "sha256": "87cd7c93ff4029f21f0d987f05c18bb9c6cd77c69ac4e65b044fa7e6987edd37"
+        },
+        "themes/g90/theme.tokens.json": {
+          "from": "package/tokens/themes/g90/theme.tokens.json",
+          "sha256": "22eb96d32c2f2da9445fad08f993511db83feda2bb8c4acf64029f8b6d7a9fce"
+        },
+        "themes/white/button.tokens.json": {
+          "from": "package/tokens/themes/white/button.tokens.json",
+          "sha256": "ce90032e40bd55d3d74e54217a4e2543f70beef2c739fb3b2471e9fad5012f53"
+        },
+        "themes/white/content-switcher.tokens.json": {
+          "from": "package/tokens/themes/white/content-switcher.tokens.json",
+          "sha256": "5215bf4028e8b00e87ebe8c8c9ae07038e807584865bcb93c9db7d6f08822182"
+        },
+        "themes/white/notification.tokens.json": {
+          "from": "package/tokens/themes/white/notification.tokens.json",
+          "sha256": "1db13cfa2a7c2fc076c026e0297ded827a28b2f39c3243e0e93f5e1ea1e65b79"
+        },
+        "themes/white/status.tokens.json": {
+          "from": "package/tokens/themes/white/status.tokens.json",
+          "sha256": "ea79c96f99615d46a19827e61cad4312492dc2cff85545a752b71f9b0ddd4952"
+        },
+        "themes/white/tag.tokens.json": {
+          "from": "package/tokens/themes/white/tag.tokens.json",
+          "sha256": "a048f2ee613313902934ccbbf66fb9c31156792802156a198c0895d1d8a6ac6e"
+        },
+        "themes/white/theme.tokens.json": {
+          "from": "package/tokens/themes/white/theme.tokens.json",
+          "sha256": "833121700037abc7562dc6de8ff5f46b248a8e40e35a2dd83f239e6f6f2fea70"
+        }
+      }
+    }
+  ]
+}

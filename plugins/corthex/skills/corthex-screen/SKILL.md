@@ -4,7 +4,7 @@ description: CORTHEX stages 07 to 09, screens. Use when building or changing a s
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.14.0"
+  version: "0.15.0"
 ---
 
 # Screens
@@ -31,6 +31,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 
 - Write or update the screen definition before changing a screen's code.
 - More candidates are not better by default. Many generated designs make choosing slow and expensive, so the mockup stage starts with two candidates per screen and fixes one direction early.
+- Stage 09 starts from a default base, IBM Carbon's design tokens with a CORTHEX layer of rounded corners, fonts and the colours of AI proposals, stages and stickies. [scripts/tokens.py](scripts/tokens.py) copies it into the project, writes CSS from it and finds colours outside it; see Default base in [references/09-mockup.md](references/09-mockup.md).
 - A passing design check is not a screen review. Say which widths and states you actually looked at.
 - For the craft inside a screen, use the `corthex-uxui` skill: names and numbers for parts, spacing, type and motion, and the checks on a real render (line breaks, including Korean, contrast and target size). The project's tokens and screen definitions win over its numbers.
 
