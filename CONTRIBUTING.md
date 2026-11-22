@@ -27,10 +27,18 @@ Follow Conventional Commits 1.0.0: `type(scope): summary`. Use `feat`, `fix`, `d
 
 All changes go through a pull request. Use the PR template to explain what changes and why, the checks and results, risk and rollback, and any AI involvement. Include affected stage IDs when applicable.
 
+To keep the Codex quota for implementation, pull requests are reviewed this way:
+
+- Every pull request gets a Claude review: Claude Code's `/code-review`, and `/security-review` as well when the change touches security. Leave its findings, and what was done about each, in a PR comment.
+- Codex reviews a pull request once, just before merging: request it with the PR comment `@codex review`. If that review fails on a usage limit, do not wait for it. Decide on the Claude review's results, and note in the PR that the Codex review failed.
+- Write `@codex` only in the comment that requests that review. Elsewhere, such as PR descriptions and other comments, write "Codex review" without the at sign, because the Codex connector reads any mention as a task request.
+- Codex's automatic review of every pull request stays off in the ChatGPT Codex settings. Until it has been turned off, leave an automatic review that appears as it is.
+
 Merge only with a merge commit, after:
 
 - The checks pass, with `all-checks` on the head. A draft pull request's CI runs only the Linux jobs and reports `linux-checks`, so mark the pull request ready for review, which runs every system, before merging. If Actions fails before starting a runner, record the agreed replacement checks and their results in the PR, including each OS, tool versions, pass/fail counts and skips.
-- Automated code and security reviews have completed at the latest head with no unresolved findings, and review conversations are resolved.
+- The Claude review has completed at the latest head with no unresolved findings, and its PR comment is posted.
+- The Codex review requested just before merging has completed with no unresolved findings, or the PR notes that it failed on a usage limit. Review conversations are resolved.
 - If `main` has moved, the combined tree has been checked again on the required systems, and the merge commit's tree ID matches the checked tree.
 
 Protection rules may be bypassed only for an Actions outage that fails before a runner starts, after the replacement results and the reason are recorded in a PR comment.
