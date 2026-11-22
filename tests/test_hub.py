@@ -273,13 +273,37 @@ class TemplateTest(HubCase):
         snapshot = self.snapshot()
         items = self.items(snapshot)
         self.assertEqual(snapshot["checks"], before["checks"])
-        self.assertEqual((snapshot["stages"]["12-qa"]["files"], snapshot["stages"]["12-qa"]["items"]), (3, 6))
+        self.assertEqual((snapshot["stages"]["12-qa"]["files"], snapshot["stages"]["12-qa"]["items"]), (2, 6))
         self.assertEqual([items[ident]["status"] for ident in ("TC-001", "TC-005", "TC-006", "TC-002", "TC-007")],
                          ["pass", "fail", "blocked", "not run", "waived"])
         bug = items["BUG-001"]
         self.assertEqual((bug["status"], bug["priority"], bug["where"]), ("fixed", "P1", "docs/12-qa/bugs/BUG-001.md:1"))
         self.assertTrue({"severity", "found_in", "defect_type", "cause_stage"}.isdisjoint(bug))
         self.assertTrue({"gate", "runs_as", "run_evidence"}.isdisjoint(items["TC-001"]))
+
+    def test_default_qa_ignores_other_table_bearing_reports(self):
+        before = self.snapshot()
+        self.write(self.repo / "docs/12-qa/test-report.md",
+                   "| ID | Case | Status |\n| --- | --- | --- |\n"
+                   "| TC-001 | Report copy | fail |\n\n## BUG-001 Report copy\n")
+        after = self.snapshot()
+        self.assertFalse(self.found(after, "duplicate-id"))
+        self.assertEqual(after["checks"], before["checks"])
+        self.assertEqual(after["items"], before["items"])
+        self.assertEqual(after["stages"]["12-qa"]["files"], 2)
+
+    def test_default_qa_keeps_run_evidence_out_of_the_file_budget(self):
+        before = self.snapshot()
+        runs = self.repo / "docs/12-qa/runs"
+        runs.mkdir()
+        for number in range(hub.MAX_FILES + 1):
+            (runs / ("evidence-%03d.txt" % number)).write_text("Log mentions TC-001.\n", encoding="utf-8")
+        after = self.snapshot()
+        self.assertEqual(after["checks"], before["checks"])
+        self.assertEqual(after["items"], before["items"])
+        stage = after["stages"]["12-qa"]
+        self.assertEqual(stage["files"], 2)
+        self.assertNotIn("skipped", stage)
 
     def test_qa_still_reads_an_explicit_legacy_plan_with_inline_bugs(self):
         self.project(stages={"12-qa": {"source": "docs/12-qa/test-plan.md"}})
@@ -294,6 +318,14 @@ class TemplateTest(HubCase):
         self.assertEqual(items["BUG-001"]["title"], "Inline bug")
         self.assertEqual(items["BUG-001"]["links"], ["TC-001"])
         self.assertEqual(snapshot["stages"]["12-qa"]["files"], 1)
+
+    def test_explicit_qa_folder_can_read_a_plan_with_a_project_specific_name(self):
+        self.project(stages={"12-qa": {"source": "docs/12-qa/"}})
+        self.write(self.repo / "docs/12-qa/feature-plan.md",
+                   "| ID | Case | From | Last result |\n| --- | --- | --- | --- |\n"
+                   "| TC-005 | Check order details | FL-001 | pass on staging |\n")
+        item = self.items(self.snapshot())["TC-005"]
+        self.assertEqual(item["where"], "docs/12-qa/feature-plan.md:3")
 
     def test_requirement_rules(self):
         path = self.repo / "docs/02-prd/requirements.md"

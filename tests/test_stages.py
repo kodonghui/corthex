@@ -232,6 +232,7 @@ class StageContractTest(unittest.TestCase):
                     self.assertRegex(prefix, PREFIX)
                 self.assertIn(value["digits"], range(1, 7))
         keys = {key for key, _ in STAGES}
+        self.assertNotIn("12-qa", project["stages"], "the example inherits the default QA plan and bug file scan")
         for key, stage in project["stages"].items():
             with self.subTest(stage=key):
                 self.assertIn(key, keys)
@@ -384,8 +385,12 @@ class CaseKindsTest(unittest.TestCase):
 
     def test_browser_agent_runs_keep_their_rules(self):
         text = read_text(SKILLS / "corthex-build" / "references" / "browser-agents.md")
-        self.assertIn("Run the QA plan on localhost or a deployed development or staging site", text)
-        self.assertIn("After each production release", text)
+        where = section(text, "## Where it runs")
+        self.assertRegex(where, r"Run the QA plan[^\n]*development or staging site, never on production")
+        for rule in ("After each production release", "walk only flows that change nothing on production",
+                     "production test account provided by the user", "Never seed data or create accounts on production"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, where)
         self.assertIn("A persona pass never passes a case", section(text, "## Two passes"))
         tools = section(text, "## Tools")
         order = ["1. Aside, where it is installed", "2. ego lite, where it is installed.", "3. Playwright,"]
@@ -405,6 +410,8 @@ class CaseKindsTest(unittest.TestCase):
             "Impressions are not bugs",
             "Keep only the screenshots that the report cites",
             "in the stage's `note`",
+            "Spaces on the same browser profile share cookies",
+            "different accounts on the same site one after another within a profile",
         ]
         for rule in rules:
             with self.subTest(rule=rule):
@@ -417,11 +424,23 @@ class CaseKindsTest(unittest.TestCase):
             with self.subTest(rule=rule):
                 self.assertIn(rule, desktop)
 
+    def test_run_report_tables_use_run_rows_and_descriptive_trace_references(self):
+        reference = read_text(SKILLS / "corthex-build" / "references" / "browser-agents.md")
+        report = reference.split("## The report", 1)[1].split("```markdown", 1)[1].split("```", 1)[0]
+        rows = [line.strip("| ").split("|") for line in report.splitlines() if line.startswith("| R0")]
+        self.assertEqual([row[0].strip() for row in rows], ["R01", "R02", "R03"])
+        self.assertNotRegex(report, r"\|\s*(?:TC|BUG|FL|SCR)-\d+\s*\|")
+
     def test_qa_keeps_five_statuses_and_unforced_platform_evidence(self):
         qa = self.reference("12-qa")
         results = section(qa, "## Results")
         self.assertEqual([row[0] for row in table(results)], ["`pass`", "`fail`", "`blocked`", "`not run`", "`waived`"])
         self.assertIn("any other wording", results)
+        migration = section(qa, "### Migrating a legacy plan").split("### Forced runs", 1)[0]
+        for rule in ("`Last result`", "`Run evidence`", "`pass on staging (commit abc1234)`",
+                     "ambiguous or unsupported verdicts to `not run`", "needs format migration"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, migration)
         forced = section(qa, "### Forced runs")
         for rule in ("only under unforced conditions", "adb shell cmd jobscheduler run", "shifted the clock",
                      "test broadcast", "`forced`", "count as `not run` for the gate", "`device`"):
@@ -433,8 +452,8 @@ class CaseKindsTest(unittest.TestCase):
         gate = section(qa, "## Release gate")
         self.assertEqual([line for line in gate.splitlines() if line.startswith("- ")], [
             "- Any `fail`.",
-            "- Any `gate` case without a `pass`.",
-            "- Any open S1 or S2 bug.",
+            "- Any `gate` case without a `pass`, except a `waived` case with the user's DEC for that named item.",
+            "- Any open S1 or S2 bug. A `fixed` S1 or S2 production-incident bug with steps still owed also blocks, except for further fixes for that incident ([bug-fix.md](bug-fix.md#production-incidents)).",
             "- Any pinned end-to-end test of a `gate` case that is skipped or marked `fixme`.",
         ])
         for rule in ("A bulk go does not clear a blocking item", "the answer goes in a DEC",
@@ -680,16 +699,17 @@ class ChangeProcedureTest(unittest.TestCase):
         for rule in (
             "04 functional spec", "05 ERD or 06 API", "07 to 09 screens", "11 development",
             "(02, 03) makes it a feature change", "as a hypothesis", "Fix that document first",
-            "Write the regression test first", "it must fail", "the commit it failed on",
+            "Prepare the regression check first", "It must fail", "the commit it failed on",
             "`manual` or `agent` steps with evidence", "stays in the suite for good",
         ):
             with self.subTest(rule=rule):
                 self.assertIn(rule, steps)
-        self.assertLess(steps.index("Fix that document first"), steps.index("Write the regression test first"))
-        self.assertLess(steps.index("Write the regression test first"), steps.index("Fix the code"))
+        self.assertLess(steps.index("Fix that document first"), steps.index("Prepare the regression check first"))
+        self.assertLess(steps.index("Prepare the regression check first"), steps.index("Fix the code"))
         incidents = section(text, "## Production incidents")
         for rule in ("restoring the service comes first", "Say which checks were skipped",
-                     "Before any other change ships", "stays `fixed`, not `verified`"):
+                     "Before any other change ships", "stays `fixed`, not `verified`",
+                     "A fixed S1 or S2 incident with steps still owed blocks the release gate"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, incidents)
 
@@ -713,6 +733,8 @@ class ChangeProcedureTest(unittest.TestCase):
                      "what changes in the test plan", "S1 and S2", "one line", "steps and rules"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, escape)
+        self.assertIn("For a Test or gate defect, record the corrected case or gate checked against the evidence",
+                      section(text, "## Checks"))
 
 
 class DefaultHumanViewTest(unittest.TestCase):

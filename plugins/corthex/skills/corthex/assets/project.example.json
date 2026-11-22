@@ -24,7 +24,6 @@
     "09-mockup": { "human": "figma", "link": "<link to the file>", "source": "design/base.tokens.json", "truth": "human" },
     "10-wbs": { "human": "github", "truth": "human", "note": "Tasks live only in the project board for now." },
     "11-development": { "human": "github", "source": ".", "truth": "source" },
-    "12-qa": { "human": "github", "source": "docs/12-qa/test-plan.md", "truth": "source" },
     "13-presentation": { "human": "slides", "source": "docs/13-presentation/script.md", "truth": "source" }
   }
 }
