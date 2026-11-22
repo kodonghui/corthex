@@ -9,13 +9,14 @@
 `init` copies IBM Carbon's token files and the CORTHEX layer into DEST, by default a project's `design`
 folder, and writes a resolver document and an empty `base.tokens.json` beside them when they are missing.
 `css` resolves the tokens of one mode and prints them as CSS custom properties. `check` lists the colour
-literals in source files that no token of any mode has. `verify` compares a copy of the Carbon files with
+literals in source files that no token of any mode, or of any combination of modes, has. `verify` compares a copy of the Carbon files with
 `source.json`. The script uses the Python standard library only, reads no network and writes only under DEST.
 """
 
 import argparse
 import colorsys
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -92,9 +93,20 @@ def token_paths(node, path=()):
                 yield found
 
 
+def ordered_modifiers(doc):
+    """The names of the modifiers that resolutionOrder uses, in its order."""
+    names = []
+    for entry in doc.get("resolutionOrder", []):
+        ref = entry.get("$ref", "") if isinstance(entry, dict) else ""
+        if ref.startswith("#/modifiers/") and ref[len("#/modifiers/"):] not in names:
+            names.append(ref[len("#/modifiers/"):])
+    return names
+
+
 def load_resolver(path, inputs=None, origin=None):
     """Merge the token trees a resolver document lists, for the given modifier inputs. When origin is a
-    dict, it gets the place in resolutionOrder of the layer that last set each token."""
+    dict, it gets, for each token, the place of the source that last set it: (entry of resolutionOrder,
+    source within that entry)."""
     path = Path(path)
     doc = read_json(path)
     base = path.parent
@@ -107,31 +119,41 @@ def load_resolver(path, inputs=None, origin=None):
     for index, entry in enumerate(doc.get("resolutionOrder", [])):
         ref = entry.get("$ref", "") if isinstance(entry, dict) else ""
         if ref.startswith("#/sets/") and ref[len("#/sets/"):] in doc.get("sets", {}):
-            layer = load_sources(doc["sets"][ref[len("#/sets/"):]].get("sources", []), base)
+            sources = doc["sets"][ref[len("#/sets/"):]].get("sources", [])
         elif ref.startswith("#/modifiers/") and ref[len("#/modifiers/"):] in modifiers:
             name = ref[len("#/modifiers/"):]
             modifier = modifiers[name]
             context = inputs.get(name, modifier.get("default"))
+            if context is None:
+                raise TokenError("modifier %r has no default; choose a context with --input %s=CONTEXT" % (name, name))
             if context not in modifier.get("contexts", {}):
                 raise TokenError("modifier %r has no context %r" % (name, context))
-            layer = load_sources(modifier["contexts"][context], base)
+            sources = modifier["contexts"][context]
         else:
             raise TokenError("resolutionOrder entry not understood: %s" % json.dumps(entry))
-        merge(tree, layer)
-        if origin is not None:
-            origin.update((found, index) for found in token_paths(layer))
+        if not isinstance(sources, list):
+            raise TokenError("the sources of %s must be a list" % ref)
+        for number, source in enumerate(sources):
+            layer = load_sources([source], base)
+            merge(tree, layer)
+            if origin is not None:
+                origin.update((found, (index, number)) for found in token_paths(layer))
     return tree
 
 
-def mode_inputs(path):
-    """Every input worth checking: each context of each modifier, the others at their default."""
+def mode_inputs(path, limit=256):
+    """Every combination of the contexts of the modifiers the resolver uses, each modifier named."""
     doc = read_json(Path(path))
-    found = [{}]
-    for name, modifier in doc.get("modifiers", {}).items():
-        for context in modifier.get("contexts", {}):
-            if context != modifier.get("default"):
-                found.append({name: context})
-    return found
+    names, choices, total = ordered_modifiers(doc), [], 1
+    for name in names:
+        contexts = list(doc["modifiers"][name].get("contexts", {}))
+        if not contexts:
+            raise TokenError("modifier %r has no contexts" % name)
+        choices.append(contexts)
+        total *= len(contexts)
+    if total > limit:
+        raise TokenError("the modifiers make %d combinations of contexts; check reads at most %d" % (total, limit))
+    return [dict(zip(names, combination)) for combination in itertools.product(*choices)]
 
 
 class Tokens(object):
@@ -318,7 +340,8 @@ def css_name(path, prefix):
 
 def css_text(resolver, inputs, prefix="", selector=":root", only=None):
     """CSS custom properties for one mode. When two tokens give one CSS name, such as a project's
-    text.primary and Carbon's text-primary, the token of the later layer wins, as the resolver's order says."""
+    text.primary and Carbon's text-primary, the token of the later source wins, as the resolver's order and
+    each entry's list of sources say."""
     origin = {}
     tokens = Tokens(load_resolver(resolver, inputs, origin))
     start = len(css_name(("x",), prefix)) - 1
@@ -329,14 +352,14 @@ def css_text(resolver, inputs, prefix="", selector=":root", only=None):
         if only and not any(name[start:].startswith(item) for item in only):
             continue
         pairs = css_values(name, kind, value)
-        dotted, layer = ".".join(path), origin.get(path, 0)
+        dotted, layer = ".".join(path), origin.get(path, (0, 0))
         if not pairs:
             skipped.append(dotted)
         for key, text in pairs:
             if key in chosen:
                 other_layer, other = chosen[key][:2]
                 if other_layer == layer:
-                    raise TokenError("two tokens of one layer give the CSS name %s: %s and %s" % (key, other, dotted))
+                    raise TokenError("two tokens of one file give the CSS name %s: %s and %s" % (key, other, dotted))
                 if layer < other_layer:
                     replaced.append("%s by %s" % (dotted, other))
                     continue
@@ -347,7 +370,7 @@ def css_text(resolver, inputs, prefix="", selector=":root", only=None):
     head = "/* Written by tokens.py css from %s (%s). Change the token files, not this text. */" % (Path(resolver).name, mode)
     out = [head, selector + " {"] + lines + ["}"]
     if replaced:
-        out.append("/* Same CSS name, the later layer's token written: %s */" % ", ".join(replaced))
+        out.append("/* Same CSS name, the later file's token written: %s */" % ", ".join(replaced))
     if skipped:
         out.append("/* Not written, no CSS form: %s */" % ", ".join(skipped))
     return "\n".join(out) + "\n"
@@ -370,6 +393,8 @@ PROPERTY = re.compile(r"(?<![\w-])(?:(?:background|border" + SIDE + r"|outline|t
 WORD = re.compile(r"(?<![\w$@.#-])([A-Za-z]+)(?![\w-])")
 SELECTOR = re.compile(r"(^|[{};])([^{};]*)(?=\{)")
 STYLE = re.compile(r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.I | re.S)
+INTERPOLATION = re.compile(r"#\{[^{}]*\}")
+SASS_DECLARATION = re.compile(r"^\s*(?:[\w-]+\s*:|[$@+=:]|//|/\*|\*|$)")
 CSS_SUFFIXES = (".css", ".scss", ".sass", ".less")
 # The CSS named colours (CSS Color Module Level 4), as name and sRGB hex.
 NAMED = dict(zip(*[iter((
@@ -470,7 +495,7 @@ def token_colours(resolver):
     colours = {}
     for inputs in mode_inputs(resolver):
         tokens = Tokens(load_resolver(resolver, inputs))
-        mode = ", ".join("%s=%s" % item for item in sorted(inputs.items())) or "default"
+        mode = ", ".join("%s=%s" % item for item in sorted(inputs.items())) or "no modifiers"
         for path in tokens.names():
             kind, value = tokens.resolve(path)
             if kind == "color":
@@ -509,6 +534,13 @@ def selectors(css):
     return SELECTOR.sub(one, css)
 
 
+def sass_selectors(sass):
+    """Indented Sass with its selector lines blanked: a line that is not a declaration, a variable, an
+    at-rule, a mixin or a comment is a selector."""
+    return "".join(line if SASS_DECLARATION.match(line) else re.sub(r"[^\n]", " ", line)
+                   for line in sass.splitlines(True))
+
+
 def literals(text, suffix):
     """(line, column, literal, kind, kept) for each colour written in the text: kind is "value" when the
     literal can be compared with the tokens, "named" for a CSS colour name and "other" for a function the
@@ -518,7 +550,8 @@ def literals(text, suffix):
         text = LINK_ATTR.sub(blank, text)
         text = STYLE.sub(lambda m: m.group(1) + selectors(m.group(2)) + m.group(3), text)
     if suffix in CSS_SUFFIXES:
-        text = selectors(text)
+        text = INTERPOLATION.sub(blank, text)
+        text = sass_selectors(text) if suffix == ".sass" else selectors(text)
     text = URL.sub(blank, text)
     for number_, line in enumerate(text.splitlines(), 1):
         found = [(m.start(), m.group(0), "value") for m in HEX.finditer(line)]
@@ -649,14 +682,16 @@ def as_json(data):
 
 
 def resolver_plan(target, light, dark):
+    requested = bool(light or dark)
     """What init does with the resolver document: (data to write or None, state, note). A theme left as
-    None keeps the one an earlier init chose, else takes the default."""
-    current, before = None, None
+    None keeps the one an earlier init chose, else takes the default. The state is "kept" for a resolver
+    init did not write, and "not applied" when the themes asked for could not be set in it."""
+    current, before, unreadable = None, None, None
     if target.exists():
         try:
             current = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            current = None
+        except (OSError, ValueError) as error:
+            unreadable = error
         before = next(((one, two) for one in THEMES for two in THEMES if current == resolver_document(one, two)), None)
     light = light or (before[0] if before else DEFAULT_LIGHT)
     dark = dark or (before[1] if before else DEFAULT_DARK)
@@ -667,10 +702,16 @@ def resolver_plan(target, light, dark):
         return None, "same", ""
     if before:
         return data, "updated", "the light theme is now %s and the dark theme %s" % (light, dark)
-    note = "it is not the one init writes, so it was kept"
-    if "carbon/" not in json.dumps(current):
-        note += "; it lists no Carbon file, so the default base is not used until its sets are added"
-    return None, "kept", note + " (see Default base in references/09-mockup.md)"
+    if unreadable is not None:
+        note = "it cannot be read as JSON (%s), so it was kept" % unreadable
+    else:
+        note = "it is not the one init writes, so it was kept"
+        if "carbon/" not in json.dumps(current):
+            note += "; it lists no Carbon file, so the default base is not used until its sets are added"
+    state = "kept"
+    if requested:
+        state, note = "not applied", note + "; the themes asked for were not set, so change its theme lists by hand"
+    return None, state, note + " (see Default base in references/09-mockup.md)"
 
 
 def init(dest, light, dark, update, out):
@@ -702,11 +743,17 @@ def init(dest, light, dark, update, out):
         out.write("Nothing written. These files differ from this version's; run again with --update to replace them.\n")
         return 1
     resolver = dest / "tokens.resolver.json"
-    data, state, note = resolver_plan(resolver, light, dark)
-    plan.append((resolver, data, state, note))
+    data, resolver_state, note = resolver_plan(resolver, light, dark)
+    plan.append((resolver, data, resolver_state, note))
     base = dest / "base.tokens.json"
     plan.append((base, None, "kept", "") if base.exists() else (base, as_json({"$schema": FORMAT_SCHEMA, "$description":
                 "This project's own tokens. A token here replaces a Carbon or CORTHEX token of the same name."}), "written", ""))
+    for target, data, _, _ in plan:
+        for parent in target.parents:
+            if parent == dest:
+                break
+            if parent.exists() and not parent.is_dir():
+                raise TokenError("%s is not a folder, so nothing was written" % parent)
     counts = {}
     for target, data, state, note in plan:
         if data is not None:
@@ -718,7 +765,7 @@ def init(dest, light, dark, update, out):
     for path in stale:
         out.write("not in this version: %s; the resolver init writes does not use it\n" % path)
     out.write(", ".join("%s %d" % (state, counts[state]) for state in sorted(counts)) + "\n")
-    return 0
+    return 1 if resolver_state == "not applied" else 0
 
 
 # --- command line -----------------------------------------------------------------------------------
@@ -761,7 +808,7 @@ def main(argv=None):
         if args.command == "check":
             return check(args.resolver, args.paths, out)
         return verify(args.folder, out)
-    except TokenError as error:
+    except (TokenError, OSError) as error:
         sys.stderr.write("tokens.py: %s\n" % error)
         return 2
 

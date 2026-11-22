@@ -89,7 +89,7 @@ class ScriptShapeTest(unittest.TestCase):
         ast.parse(read_text(SCRIPT), feature_version=(3, 8))
 
     def test_imports_only_the_standard_library(self):
-        allowed = {"argparse", "colorsys", "hashlib", "json", "math", "os", "re", "sys", "pathlib"}
+        allowed = {"argparse", "colorsys", "hashlib", "itertools", "json", "math", "os", "re", "sys", "pathlib"}
         for node in ast.walk(ast.parse(read_text(SCRIPT))):
             if isinstance(node, ast.Import):
                 names = [alias.name.split(".")[0] for alias in node.names]
@@ -212,13 +212,24 @@ class InitTest(unittest.TestCase):
             own["modifiers"]["theme"]["contexts"]["light"].append({"$ref": "theme/light.tokens.json"})
             (design / "tokens.resolver.json").write_text(json.dumps(own), encoding="utf-8")
             kept = io.StringIO()
-            self.assertEqual(tokens.init(design, "g90", None, False, kept), 0)
-            self.assertIn("it is not the one init writes, so it was kept", kept.getvalue())
+            self.assertEqual(tokens.init(design, None, None, False, kept), 0)
+            self.assertIn("kept %s: it is not the one init writes, so it was kept" % (design / "tokens.resolver.json"),
+                          kept.getvalue())
+            asked = io.StringIO()
+            self.assertEqual(tokens.init(design, "g90", None, False, asked), 1)
+            self.assertIn("not applied %s" % (design / "tokens.resolver.json"), asked.getvalue())
+            self.assertIn("the themes asked for were not set", asked.getvalue())
             self.assertEqual(load_json(design / "tokens.resolver.json"), own)
             (design / "tokens.resolver.json").write_text('{"sets": {}}', encoding="utf-8")
             plain = io.StringIO()
             tokens.init(design, None, None, False, plain)
             self.assertIn("it lists no Carbon file", plain.getvalue())
+            (design / "tokens.resolver.json").write_text("bad", encoding="utf-8")
+            broken = io.StringIO()
+            tokens.init(design, None, None, False, broken)
+            self.assertIn("it cannot be read as JSON (", broken.getvalue())
+            self.assertNotIn("lists no Carbon file", broken.getvalue())
+            self.assertEqual(read_text(design / "tokens.resolver.json"), "bad")
 
     def test_init_names_copies_this_version_no_longer_has(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -243,6 +254,19 @@ class InitTest(unittest.TestCase):
             self.assertEqual(read_text(changed), "{}\n")
             self.assertEqual(tokens.init(design, None, None, True, io.StringIO()), 0)
             self.assertEqual(changed.read_bytes(), (LAYER / "light.tokens.json").read_bytes())
+
+    def test_a_file_where_a_folder_goes_stops_init_before_it_writes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            design = Path(temp) / "design"
+            design.mkdir()
+            (design / "carbon").write_text("not a folder\n", encoding="utf-8")
+            with self.assertRaisesRegex(tokens.TokenError, "carbon is not a folder, so nothing was written"):
+                tokens.init(design, None, None, False, io.StringIO())
+            self.assertEqual(sorted(path.name for path in design.iterdir()), ["carbon"])
+            result = run("init", "--", design)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn(b"is not a folder", result.stderr)
+            self.assertNotIn(b"Traceback", result.stderr)
 
     def test_the_command_line_rejects_an_unknown_theme(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -297,14 +321,25 @@ class ResolveTest(unittest.TestCase):
             text = tokens.css_text(project.resolver, {}, only=["text-primary"])
             self.assertIn("  --text-primary: #000000;\n", text)
             self.assertEqual(text.count("--text-primary:"), 1)
-            self.assertIn("the later layer's token written: text-primary by text.primary", text)
+            self.assertIn("the later file's token written: text-primary by text.primary", text)
+        with Project() as project:
+            own = load_json(project.resolver)
+            own["modifiers"]["theme"]["contexts"]["light"].append({"$ref": "light.tokens.json"})
+            project.resolver.write_text(json.dumps(own), encoding="utf-8")
+            (project.design / "light.tokens.json").write_text(json.dumps({"text": {"$type": "color", "primary": {
+                "$value": {"colorSpace": "srgb", "components": [1.0, 0.0, 0.0]}}}}), encoding="utf-8")
+            light = tokens.css_text(project.resolver, {}, only=["text-primary"])
+            self.assertIn("  --text-primary: #ff0000;\n", light)
+            self.assertIn("text-primary by text.primary", light)
+            self.assertIn("  --text-primary: #f4f4f4;\n", tokens.css_text(project.resolver, {"theme": "dark"},
+                                                                          only=["text-primary"]))
         same = tokens.Tokens({"a": {"b": {"$type": "number", "$value": 1}}, "a-b": {"$type": "number", "$value": 2}})
         with tempfile.TemporaryDirectory() as temp:
             resolver = Path(temp) / "r.json"
             (Path(temp) / "t.json").write_text(json.dumps(same.tree), encoding="utf-8")
             resolver.write_text(json.dumps({"sets": {"t": {"sources": [{"$ref": "t.json"}]}},
                                             "resolutionOrder": [{"$ref": "#/sets/t"}]}), encoding="utf-8")
-            with self.assertRaisesRegex(tokens.TokenError, "two tokens of one layer give the CSS name --a-b"):
+            with self.assertRaisesRegex(tokens.TokenError, "two tokens of one file give the CSS name --a-b"):
                 tokens.css_text(resolver, {})
 
     def test_the_documented_dark_mode_command_runs(self):
@@ -358,6 +393,49 @@ class ReadabilityTest(unittest.TestCase):
                     self.assertGreaterEqual(contrast(found.css("corthex.ai.text"), found.css(layer)), 4.5)
 
 
+def modes_resolver(folder, defaults=True):
+    """Two modifiers whose colour #222222 shows only in the dark and high-contrast combination."""
+    def colour(value):
+        return {"$type": "color", "$value": {"colorSpace": "srgb", "components": [c / 255.0 for c in value]}}
+    files = {"base.json": {"y": colour((0, 0, 0))}, "light.json": {"x": colour((255, 255, 255))},
+             "dark.json": {"x": colour((34, 34, 34))}, "normal.json": {"x": {"$type": "color", "$value": "{y}"}},
+             "high.json": {}}
+    for name, tree in files.items():
+        (folder / name).write_text(json.dumps(tree), encoding="utf-8")
+    theme = {"contexts": {"light": [{"$ref": "light.json"}], "dark": [{"$ref": "dark.json"}]}}
+    contrast = {"contexts": {"normal": [{"$ref": "normal.json"}], "high": [{"$ref": "high.json"}]}}
+    if defaults:
+        theme["default"], contrast["default"] = "light", "normal"
+    resolver = folder / "r.json"
+    resolver.write_text(json.dumps({"sets": {"base": {"sources": [{"$ref": "base.json"}]}},
+                                    "modifiers": {"theme": theme, "contrast": contrast},
+                                    "resolutionOrder": [{"$ref": "#/sets/base"}, {"$ref": "#/modifiers/theme"},
+                                                        {"$ref": "#/modifiers/contrast"}]}), encoding="utf-8")
+    return resolver
+
+
+class ModifierTest(unittest.TestCase):
+    def test_check_reads_every_combination_of_modifiers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            resolver = modes_resolver(Path(temp))
+            self.assertEqual(len(tokens.mode_inputs(resolver)), 4)
+            page = Path(temp) / "page.css"
+            page.write_text(".a { color: #222222; }\n", encoding="utf-8")
+            out = io.StringIO()
+            self.assertEqual(tokens.check(resolver, [page], out), 0, out.getvalue())
+
+    def test_a_modifier_without_a_default(self):
+        with tempfile.TemporaryDirectory() as temp:
+            resolver = modes_resolver(Path(temp), defaults=False)
+            with self.assertRaisesRegex(tokens.TokenError, "modifier 'theme' has no default; choose a context with "
+                                                           "--input theme=CONTEXT"):
+                tokens.css_text(resolver, {})
+            self.assertIn("--x: #222222;", tokens.css_text(resolver, {"theme": "dark", "contrast": "high"}))
+            page = Path(temp) / "page.css"
+            page.write_text(".a { color: #ffffff; }\n", encoding="utf-8")
+            self.assertEqual(tokens.check(resolver, [page], io.StringIO()), 0)
+
+
 class CheckTest(unittest.TestCase):
     def check(self, files):
         with Project() as project:
@@ -395,6 +473,17 @@ class CheckTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("a.scss:7:20: #ab1236 is not a token colour", out)
         self.assertIn("4 colour literals, 1 off the tokens, 2 kept with an off-token reason", out)
+
+    def test_indented_sass_selectors_and_interpolation(self):
+        code, out = self.check({"a.sass": "#fade\n  color: #f4f4f4\n  &:hover, #bad\n    color: #ab1234\n"
+                                          "  width: calc(1px + #{$x})\n",
+                                "b.scss": ".a { color: mix(#ab1235, #{$c}); }\n"})
+        self.assertEqual(code, 1)
+        self.assertNotIn("#fade", out)
+        self.assertNotIn("#bad", out)
+        self.assertIn("a.sass:4:12: #ab1234 is not a token colour", out)
+        self.assertIn("b.scss:1:17: #ab1235 is not a token colour", out)
+        self.assertIn("3 colour literals, 2 off the tokens", out)
 
     def test_markup_style_blocks_and_other_hue_units(self):
         code, out = self.check({"b.html": "<style>#bad { color: #0f62fe; } #ace{}</style>\n"
