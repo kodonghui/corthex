@@ -29,7 +29,7 @@ claude plugin validate --strict plugins/corthex-memory
 claude plugin validate --strict plugins/corthex-nexus
 ```
 
-In CI, a draft pull request runs only the Linux jobs, and its gate reports as `linux-checks`: Linux evidence only. A pull request that is ready for review, a push to `main` and a run of `check` started by hand cover Linux, Windows and macOS, and only these report `all-checks`, the check that `main` requires. Merge a pull request only after `all-checks` has passed on its head. Mark a draft ready once its last run has passed, since a full run does not cancel a draft's run.
+In CI, a draft pull request runs only the Linux jobs, and its gate reports as `linux-checks`: Linux evidence only. A pull request that is ready for review, a push to `main` and a run of `check` started by hand cover Linux, Windows and macOS, and only these report `all-checks`, the check that `main` requires. Merge a pull request only after `all-checks` has passed on its head. Mark a draft ready once its last run has passed, since a full run does not cancel a draft's run. Review each pull request as [CONTRIBUTING.md's "Pull requests and merges"](CONTRIBUTING.md#pull-requests-and-merges) says, and write `@codex` only in the comment that requests the Codex review.
 
 ## Releases
 
