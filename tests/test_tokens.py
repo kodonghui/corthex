@@ -55,10 +55,13 @@ def contrast(one, two):
 class Project(object):
     """A scratch project whose design folder tokens.py init filled."""
 
+    def __init__(self, light=None, dark=None):
+        self.light, self.dark = light, dark
+
     def __enter__(self):
         self.temp = tempfile.TemporaryDirectory()
         self.design = Path(self.temp.name) / "design"
-        self.assertEqual(tokens.init(self.design, None, None, False, io.StringIO()), 0)
+        self.assertEqual(tokens.init(self.design, self.light, self.dark, False, io.StringIO()), 0)
         self.resolver = self.design / "tokens.resolver.json"
         return self
 
@@ -280,10 +283,29 @@ class ResolveTest(unittest.TestCase):
             self.assertNotIn("Not written", text)
             (project.design / "base.tokens.json").write_text(json.dumps({"corthex": {"radius": {"box": {
                 "$type": "dimension", "$value": {"value": 4, "unit": "px"}}}}}), encoding="utf-8")
-            prefixed = tokens.css_text(project.resolver, {}, prefix="cds-", only=["corthex-radius"])
-            self.assertIn("  --cds-corthex-radius-box: 4px;\n", prefixed)
-            self.assertIn("  --cds-corthex-radius-panel: 1rem;\n", prefixed)
-            self.assertNotIn("--cds-background", prefixed)
+            for prefix in ("cds-", "cds"):
+                prefixed = tokens.css_text(project.resolver, {}, prefix=prefix, only=["corthex-radius"])
+                with self.subTest(prefix=prefix):
+                    self.assertIn("  --cds-corthex-radius-box: 4px;\n", prefixed)
+                    self.assertIn("  --cds-corthex-radius-panel: 1rem;\n", prefixed)
+                    self.assertNotIn("--cds-background", prefixed)
+
+    def test_a_later_layer_wins_a_shared_css_name(self):
+        with Project() as project:
+            (project.design / "base.tokens.json").write_text(json.dumps({"text": {"$type": "color", "primary": {
+                "$value": {"colorSpace": "srgb", "components": [0.0, 0.0, 0.0]}}}}), encoding="utf-8")
+            text = tokens.css_text(project.resolver, {}, only=["text-primary"])
+            self.assertIn("  --text-primary: #000000;\n", text)
+            self.assertEqual(text.count("--text-primary:"), 1)
+            self.assertIn("the later layer's token written: text-primary by text.primary", text)
+        same = tokens.Tokens({"a": {"b": {"$type": "number", "$value": 1}}, "a-b": {"$type": "number", "$value": 2}})
+        with tempfile.TemporaryDirectory() as temp:
+            resolver = Path(temp) / "r.json"
+            (Path(temp) / "t.json").write_text(json.dumps(same.tree), encoding="utf-8")
+            resolver.write_text(json.dumps({"sets": {"t": {"sources": [{"$ref": "t.json"}]}},
+                                            "resolutionOrder": [{"$ref": "#/sets/t"}]}), encoding="utf-8")
+            with self.assertRaisesRegex(tokens.TokenError, "two tokens of one layer give the CSS name --a-b"):
+                tokens.css_text(resolver, {})
 
     def test_the_documented_dark_mode_command_runs(self):
         text = read_text(MOCKUP)
@@ -308,30 +330,32 @@ class ResolveTest(unittest.TestCase):
 
 
 class ReadabilityTest(unittest.TestCase):
+    """Every theme init can choose, in either mode, keeps the CORTHEX layer readable."""
+
+    def each_theme(self):
+        for theme in tokens.THEMES:
+            with Project(theme, theme) as project:
+                for mode in ("light", "dark"):
+                    yield theme, mode, project.values(mode)
+
     def test_sticky_text_is_readable_on_every_sticky(self):
-        with Project() as project:
-            for mode in ("light", "dark"):
-                found = project.values(mode)
-                text = found.css("corthex.sticky.text")
-                for name in STICKIES:
-                    with self.subTest(mode=mode, sticky=name):
-                        self.assertGreaterEqual(contrast(text, found.css("corthex.sticky." + name)), 4.5)
+        for theme, mode, found in self.each_theme():
+            text = found.css("corthex.sticky.text")
+            for name in STICKIES:
+                with self.subTest(theme=theme, mode=mode, sticky=name):
+                    self.assertGreaterEqual(contrast(text, found.css("corthex.sticky." + name)), 4.5)
 
     def test_stage_marks_stand_out_from_the_background(self):
-        with Project() as project:
-            for mode in ("light", "dark"):
-                found = project.values(mode)
-                for name in STAGES:
-                    with self.subTest(mode=mode, stage=name):
-                        self.assertGreaterEqual(contrast(found.css("corthex.stage." + name), found.css("background")), 3)
+        for theme, mode, found in self.each_theme():
+            for name in STAGES:
+                with self.subTest(theme=theme, mode=mode, stage=name):
+                    self.assertGreaterEqual(contrast(found.css("corthex.stage." + name), found.css("background")), 3)
 
     def test_ai_text_is_readable_on_the_layers(self):
-        with Project() as project:
-            for mode in ("light", "dark"):
-                found = project.values(mode)
-                for layer in ("background", "layer-01"):
-                    with self.subTest(mode=mode, layer=layer):
-                        self.assertGreaterEqual(contrast(found.css("corthex.ai.text"), found.css(layer)), 4.5)
+        for theme, mode, found in self.each_theme():
+            for layer in ("background", "layer-01"):
+                with self.subTest(theme=theme, mode=mode, layer=layer):
+                    self.assertGreaterEqual(contrast(found.css("corthex.ai.text"), found.css(layer)), 4.5)
 
 
 class CheckTest(unittest.TestCase):
@@ -362,6 +386,41 @@ class CheckTest(unittest.TestCase):
         self.assertIn("b.svg:1:13: red is not a token colour", out)
         self.assertIn("c.js:1:31: gold is not a token colour", out)
         self.assertIn("4 colour literals, 4 off the tokens", out)
+
+    def test_comments_nesting_and_at_rules_in_scss(self):
+        code, out = self.check({"a.scss": ".logo {\n  color: #ab1234; /* off-token: a partner's logo */\n"
+                                          "  &:hover { color: #0f62fe; }\n}\n"
+                                          ".b { color: #ab1235; } /* off-token: a partner's logo */\n.c { x: 1; }\n"
+                                          "@include frame($c: #ab1236) { a: b; }\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("a.scss:7:20: #ab1236 is not a token colour", out)
+        self.assertIn("4 colour literals, 1 off the tokens, 2 kept with an off-token reason", out)
+
+    def test_markup_style_blocks_and_other_hue_units(self):
+        code, out = self.check({"b.html": "<style>#bad { color: #0f62fe; } #ace{}</style>\n"
+                                          '<p style="color: hsl(0.5turn 50% 50%); fill: hsl(none 0% 100%)">x</p>\n'})
+        self.assertEqual(code, 1)
+        self.assertNotIn("#bad", out)
+        self.assertNotIn("#ace", out)
+        self.assertIn("hsl(0.5turn 50% 50%) is not a token colour", out)
+        self.assertIn("3 colour literals, 1 off the tokens", out)
+        self.assertEqual(tokens.parse_colour("hsl(3.14159265rad 50% 50%)"), tokens.parse_colour("hsl(180deg 50% 50%)"))
+        self.assertEqual(tokens.parse_colour("hsl(200grad 50% 50%)"), tokens.parse_colour("hsl(180 50% 50%)"))
+
+    def test_a_numeric_colour_it_cannot_read_is_reported(self):
+        code, out = self.check({"a.css": ".a { color: rgb(1 2 3 4 5); }\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("rgb(1 2 3 4 5) is a colour this check cannot read", out)
+
+    def test_a_file_it_cannot_read_fails_the_check(self):
+        with Project() as project:
+            source = project.design.parent / "k.css"
+            source.write_bytes(".a { color: #ab1234; } /* \xc7\xd1\xb1\xdb */\n".encode("latin-1"))
+            out = io.StringIO()
+            self.assertEqual(tokens.check(project.resolver, [source], out), 1)
+            self.assertIn("not read, so not checked", out.getvalue())
+            self.assertIn("0 colour literals, 0 off the tokens, 0 kept with an off-token reason, 1 files not read",
+                          out.getvalue())
 
     def test_selectors_variables_and_unparsed_values_are_not_colours(self):
         code, out = self.check({

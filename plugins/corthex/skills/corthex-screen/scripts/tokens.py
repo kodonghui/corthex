@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 ASSETS = HERE.parent / "assets"
 THEMES = ("white", "g10", "g90", "g100")
 DEFAULT_LIGHT, DEFAULT_DARK = "g10", "g100"
+LIGHT_THEMES = ("white", "g10")
 THEME_FILES = ("theme", "button", "tag", "notification", "status", "content-switcher")
 FORMAT_SCHEMA = "https://www.designtokens.org/schemas/2025.10/format.json"
 RESOLVER_SCHEMA = "https://www.designtokens.org/schemas/2025.10/resolver.json"
@@ -81,8 +82,19 @@ def load_sources(sources, base):
     return tree
 
 
-def load_resolver(path, inputs=None):
-    """Merge the token trees a resolver document lists, for the given modifier inputs."""
+def token_paths(node, path=()):
+    if "$value" in node:
+        yield path
+        return
+    for key, child in node.items():
+        if not key.startswith("$") and isinstance(child, dict):
+            for found in token_paths(child, path + (key,)):
+                yield found
+
+
+def load_resolver(path, inputs=None, origin=None):
+    """Merge the token trees a resolver document lists, for the given modifier inputs. When origin is a
+    dict, it gets the place in resolutionOrder of the layer that last set each token."""
     path = Path(path)
     doc = read_json(path)
     base = path.parent
@@ -92,19 +104,22 @@ def load_resolver(path, inputs=None):
         if name not in modifiers:
             raise TokenError("the resolver has no modifier %r" % name)
     tree = {}
-    for entry in doc.get("resolutionOrder", []):
+    for index, entry in enumerate(doc.get("resolutionOrder", [])):
         ref = entry.get("$ref", "") if isinstance(entry, dict) else ""
         if ref.startswith("#/sets/") and ref[len("#/sets/"):] in doc.get("sets", {}):
-            merge(tree, load_sources(doc["sets"][ref[len("#/sets/"):]].get("sources", []), base))
+            layer = load_sources(doc["sets"][ref[len("#/sets/"):]].get("sources", []), base)
         elif ref.startswith("#/modifiers/") and ref[len("#/modifiers/"):] in modifiers:
             name = ref[len("#/modifiers/"):]
             modifier = modifiers[name]
             context = inputs.get(name, modifier.get("default"))
             if context not in modifier.get("contexts", {}):
                 raise TokenError("modifier %r has no context %r" % (name, context))
-            merge(tree, load_sources(modifier["contexts"][context], base))
+            layer = load_sources(modifier["contexts"][context], base)
         else:
             raise TokenError("resolutionOrder entry not understood: %s" % json.dumps(entry))
+        merge(tree, layer)
+        if origin is not None:
+            origin.update((found, index) for found in token_paths(layer))
     return tree
 
 
@@ -296,28 +311,43 @@ def css_name(path, prefix):
             parts[-1] = part
         else:
             parts.append(part)
+    if prefix and not prefix.endswith("-"):
+        prefix += "-"
     return "--" + prefix + "-".join(parts)
 
 
 def css_text(resolver, inputs, prefix="", selector=":root", only=None):
-    tokens = Tokens(load_resolver(resolver, inputs))
-    lines, seen, skipped = [], {}, []
+    """CSS custom properties for one mode. When two tokens give one CSS name, such as a project's
+    text.primary and Carbon's text-primary, the token of the later layer wins, as the resolver's order says."""
+    origin = {}
+    tokens = Tokens(load_resolver(resolver, inputs, origin))
+    start = len(css_name(("x",), prefix)) - 1
+    chosen, skipped, replaced = {}, [], []
     for path in tokens.names():
         kind, value = tokens.resolve(path)
         name = css_name(path, prefix)
-        if only and not any(name[2 + len(prefix):].startswith(item) for item in only):
+        if only and not any(name[start:].startswith(item) for item in only):
             continue
         pairs = css_values(name, kind, value)
+        dotted, layer = ".".join(path), origin.get(path, 0)
         if not pairs:
-            skipped.append(".".join(path))
+            skipped.append(dotted)
         for key, text in pairs:
-            if key in seen:
-                raise TokenError("two tokens give the CSS name %s: %s and %s" % (key, seen[key], ".".join(path)))
-            seen[key] = ".".join(path)
-            lines.append("  %s: %s;" % (key, text))
+            if key in chosen:
+                other_layer, other = chosen[key][:2]
+                if other_layer == layer:
+                    raise TokenError("two tokens of one layer give the CSS name %s: %s and %s" % (key, other, dotted))
+                if layer < other_layer:
+                    replaced.append("%s by %s" % (dotted, other))
+                    continue
+                replaced.append("%s by %s" % (other, dotted))
+            chosen[key] = (layer, dotted, text)
+    lines = ["  %s: %s;" % (key, text) for key, (_, _, text) in chosen.items()]
     mode = ", ".join("%s=%s" % item for item in sorted(inputs.items())) or "defaults"
     head = "/* Written by tokens.py css from %s (%s). Change the token files, not this text. */" % (Path(resolver).name, mode)
     out = [head, selector + " {"] + lines + ["}"]
+    if replaced:
+        out.append("/* Same CSS name, the later layer's token written: %s */" % ", ".join(replaced))
     if skipped:
         out.append("/* Not written, no CSS form: %s */" % ", ".join(skipped))
     return "\n".join(out) + "\n"
@@ -339,6 +369,7 @@ PROPERTY = re.compile(r"(?<![\w-])(?:(?:background|border" + SIDE + r"|outline|t
                       r"|text-?shadow|column-?rule|text-?decoration)\s*[:=]\s*([^;{}\n]*)", re.I)
 WORD = re.compile(r"(?<![\w$@.#-])([A-Za-z]+)(?![\w-])")
 SELECTOR = re.compile(r"(^|[{};])([^{};]*)(?=\{)")
+STYLE = re.compile(r"(<style\b[^>]*>)(.*?)(</style\s*>)", re.I | re.S)
 CSS_SUFFIXES = (".css", ".scss", ".sass", ".less")
 # The CSS named colours (CSS Color Module Level 4), as name and sRGB hex.
 NAMED = dict(zip(*[iter((
@@ -369,11 +400,27 @@ NAMED = dict(zip(*[iter((
 ).split())] * 2))
 
 
+NUMBER = re.compile(r"^(?:[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?(?:%|deg|rad|grad|turn)?|none|/)$", re.I)
+TURNS = (("grad", 400.0), ("turn", 1.0), ("deg", 360.0), ("rad", 2 * math.pi))
+
+
 def channel(text, scale):
     text = text.strip()
+    if text.lower() == "none":
+        return 0.0
     if text.endswith("%"):
         return float(text[:-1]) * scale / 100.0
     return float(text)
+
+
+def hue_turns(text):
+    text = text.strip().lower()
+    if text == "none":
+        return 0.0
+    for unit, per_turn in TURNS:
+        if text.endswith(unit):
+            return float(text[:-len(unit)]) / per_turn
+    return float(text) / 360.0
 
 
 def parse_colour(text):
@@ -410,8 +457,8 @@ def parse_colour(text):
         if kind.startswith("rgb"):
             rgb = [channel(p, 255) for p in parts]
         else:
-            hue = float(parts[0][:-3] if parts[0].endswith("deg") else parts[0]) / 360.0
-            light, saturation = (float(part.rstrip("%")) / 100.0 for part in (parts[2], parts[1]))
+            hue = hue_turns(parts[0])
+            light, saturation = (channel(part.rstrip("%"), 1) / 100.0 for part in (parts[2], parts[1]))
             rgb = [c * 255 for c in colorsys.hls_to_rgb(hue % 1.0, light, saturation)]
     except ValueError:
         return None
@@ -448,14 +495,30 @@ def blank(match, group=0):
     return re.sub(r"[^\n]", " ", match.string[start:end])
 
 
+def selectors(css):
+    """CSS with its selectors blanked, so that an ID such as #bad is not read as a colour. Only the text
+    after the last comment before a brace is a selector; an at-rule's prelude, such as @include or @if,
+    holds values and stays."""
+    def one(match):
+        span = match.group(2)
+        cut = span.rfind("*/") + 2 if "*/" in span else 0
+        head, selector = span[:cut], span[cut:]
+        if selector.strip().startswith("@"):
+            return match.group(1) + span
+        return match.group(1) + head + re.sub(r"[^\n]", " ", selector)
+    return SELECTOR.sub(one, css)
+
+
 def literals(text, suffix):
     """(line, column, literal, kind, kept) for each colour written in the text: kind is "value" when the
     literal can be compared with the tokens, "named" for a CSS colour name and "other" for a function the
     check cannot compare."""
+    kept = [bool(KEEP.search(line)) for line in text.splitlines()]
     if suffix in (".html", ".htm", ".svg", ".vue", ".svelte", ".jsx", ".tsx"):
         text = LINK_ATTR.sub(blank, text)
+        text = STYLE.sub(lambda m: m.group(1) + selectors(m.group(2)) + m.group(3), text)
     if suffix in CSS_SUFFIXES:
-        text = SELECTOR.sub(lambda m: m.group(1) + blank(m, 2), text)
+        text = selectors(text)
     text = URL.sub(blank, text)
     for number_, line in enumerate(text.splitlines(), 1):
         found = [(m.start(), m.group(0), "value") for m in HEX.finditer(line)]
@@ -470,7 +533,7 @@ def literals(text, suffix):
                     seen.add(column)
                     found.append((column, word.group(1), "named"))
         for column, literal, kind in sorted(found):
-            yield number_, column + 1, literal, kind, bool(KEEP.search(line))
+            yield number_, column + 1, literal, kind, kept[number_ - 1]
 
 
 def source_files(paths):
@@ -492,21 +555,25 @@ def check(resolver, paths, out):
     colours = token_colours(resolver)
     if not colours:
         raise TokenError("the tokens give no sRGB colours to compare with")
-    counted = off = kept = 0
+    counted = off = kept = unread = 0
     for path in source_files(paths):
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as error:
-            out.write("%s: not read: %s\n" % (path, error))
+            out.write("%s: not read, so not checked: %s\n" % (path, error))
+            unread += 1
             continue
         for line, column, literal, kind, keep in literals(text, path.suffix.lower()):
             if kind == "other":
                 rgba, problem = None, "is a colour function this check cannot compare with the tokens"
             else:
                 rgba = parse_colour("#" + NAMED[literal.lower()] if kind == "named" else literal)
-                if rgba is None:
-                    continue
                 problem = "is not a token colour"
+                if rgba is None:
+                    inner = literal[literal.index("(") + 1:-1].replace("/", " / ")
+                    if not all(NUMBER.match(part) for part in re.split(r"[\s,]+", inner.strip()) if part):
+                        continue
+                    problem = "is a colour this check cannot read"
             counted += 1
             if rgba is not None and any(same(rgba, colour) for colour in colours):
                 continue
@@ -521,8 +588,9 @@ def check(resolver, paths, out):
                                                                   "components": [c / 255.0 for c in close[:3]],
                                                                   "alpha": close[3]}))
             out.write(place + "\n")
-    out.write("%d colour literals, %d off the tokens, %d kept with an off-token reason\n" % (counted, off, kept))
-    return 1 if off else 0
+    out.write("%d colour literals, %d off the tokens, %d kept with an off-token reason%s\n"
+              % (counted, off, kept, ", %d files not read" % unread if unread else ""))
+    return 1 if off or unread else 0
 
 
 # --- init and verify --------------------------------------------------------------------------------
@@ -557,8 +625,9 @@ def verify(folder, out):
 
 def resolver_document(light, dark):
     def theme(name, mode):
+        layer = "light" if name in LIGHT_THEMES else "dark"
         return [{"$ref": "carbon/themes/%s/%s.tokens.json" % (name, part)} for part in THEME_FILES] + \
-               [{"$ref": "corthex/%s.tokens.json" % mode}]
+               [{"$ref": "corthex/%s.tokens.json" % layer}]
     return {
         "$schema": RESOLVER_SCHEMA,
         "version": "2025.10",
