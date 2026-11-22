@@ -1,15 +1,15 @@
 ---
 name: corthex-build
-description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into work items (WBS, TASK IDs), planning or reviewing development work and pull requests that should trace to tasks and specs, writing a QA test plan, API tests, end-to-end tests and bug reports (TC and BUG IDs), fixing a bug (its status, severity and the stage of its cause, a regression test that fails first, and a fast path for production incidents), or preparing a requested learning guide or task HOWTO from the user flows and acceptance criteria. Also use for every QA run, which adds to the project's own tests browser agents that drive Aside or ego lite through the user flows and report what works, what does not and their impressions.
+description: CORTHEX stages 10 to 12, building and testing. Use when breaking the spec into tasks (WBS, TASK IDs), planning or reviewing development work and pull requests, writing QA plans, API tests, end-to-end tests and bug files (TC and BUG IDs), fixing a bug with a failing regression test or handling a production incident, or preparing a requested learning guide or task HOWTO. Use for every QA run with browser, desktop and device walks, and for the release gate and after-release checks.
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.15.0"
+  version: "0.16.0"
 ---
 
 # Building and testing
 
-This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md), and how browser agents walk the flows in Aside or ego lite, and desktop apps with agent-desktop, on every QA run is in [references/browser-agents.md](references/browser-agents.md).
+This skill covers three stages. Each stage's contract, steps, checks and output template are in its reference file. Read only the file for the stage at hand. How to keep the tasks on GitHub Projects or in a Notion database is in [references/task-board.md](references/task-board.md).
 
 | Key | Stage | Contract |
 | --- | --- | --- |
@@ -32,11 +32,12 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 - For a requested guide, read [references/howto.md](references/howto.md). For async AI server implementation, the worked product example is in [references/fastapi-example.md](references/fastapi-example.md).
 - The product repository's own rules for branches, reviews and merges come first. CORTHEX only adds the trace IDs and the checks.
 - A test plan comes from the user flows and the acceptance criteria, not from the code, so it can find what the code forgot.
+- On every QA run, walk the screens using [browser and desktop agents](references/browser-agents.md) or [device agents](references/device-agents.md). Apply the [release gate](references/12-qa.md#release-gate) before go/no-go and record the [after-release check](references/12-qa.md#after-release).
 - Work found while building that adds, removes, defers or changes an approved requirement, flow or spec row is a feature change: follow the `corthex` skill's change procedure from stage 01, never fold it into the current tasks.
 
 ## Fixing a bug
 
-Fix every bug by [references/bug-fix.md](references/bug-fix.md), whichever stage finds it. Record it with a BUG ID, a status (`open`, `fixed`, `verified` or `closed`) and a severity; reproduce it; find the stage of its cause and fix that stage's document first; write a regression test case that fails before the code is fixed and passes after; and verify the fix where the bug was seen. A production incident restores the service first, then finishes the skipped steps before any other change ships. A fix that needs a new or different requirement or flow is a feature change instead.
+Fix every bug by [references/bug-fix.md](references/bug-fix.md), whichever stage finds it. Write one bug file per BUG ID with its status, severity, priority and defect type. Reproduce it, find the stage of its cause and fix that stage's document first. Write a regression test that fails before the code is fixed and passes after, and verify the fix where the bug was seen. Record how each bug found after release escaped QA. A production incident restores the service first, then finishes skipped steps before another change ships. A fix that needs a new or different requirement or flow is a feature change instead.
 
 ## Work in NEXUS
 

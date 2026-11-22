@@ -41,8 +41,13 @@ PRIVATE_MARKER = "qa-sensitive@example.com"
 # the stage as a whole and no quote needed, and gives `comment` and `reply` `--asks`; nothing else.
 # 0.4.0's changes, the design revision's commands, are in hub_cli_reviewed.py and are applied first,
 # so that these pairs then meet the 0.3.0 bytes that they were made for.
+# Core 0.16.0 reads the QA folder by default for the plan and separate bug files.
 REVIEWED = {
-    "hub.py": ((b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),),
+    "hub.py": (
+        (b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),
+        (b'    ("12-qa", "QA", "docs/12-qa/", ("test", "bug"), True),\n',
+         b'    ("12-qa", "QA", "docs/12-qa/test-plan.md", ("test", "bug"), True),\n'),
+    ),
     "transport.py": ((b'version="0.3.0", timeout=30', b'version="0.2.0", timeout=30'),),
     "commands.py": (
         (b'PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")\n'

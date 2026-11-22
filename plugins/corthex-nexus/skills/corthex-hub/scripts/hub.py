@@ -49,7 +49,7 @@ STAGES = (
     ("09-mockup", "Mockup", "design/base.tokens.json", (), False),
     ("10-wbs", "WBS", "docs/10-wbs/wbs.md", ("task",), True),
     ("11-development", "Development", None, (), False),
-    ("12-qa", "QA", "docs/12-qa/test-plan.md", ("test", "bug"), True),
+    ("12-qa", "QA", "docs/12-qa/", ("test", "bug"), True),
     ("13-presentation", "Presentation", "docs/13-presentation/script.md", ("scene",), True),
 )
 STAGE_KEYS = tuple(stage[0] for stage in STAGES)

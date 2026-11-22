@@ -28,7 +28,7 @@ The principle behind the split: the human view can change from team to team, but
 | `09-mockup` | Mockup | `corthex-screen` | design tokens | `design/base.tokens.json` |
 | `10-wbs` | WBS | `corthex-build` | TASK | `docs/10-wbs/wbs.md` |
 | `11-development` | Development | `corthex-build` | none; links TASK and SPEC | the code and its tests |
-| `12-qa` | QA | `corthex-build` | TC, BUG | `docs/12-qa/test-plan.md` |
+| `12-qa` | QA | `corthex-build` | TC, BUG | `docs/12-qa/` |
 | `13-presentation` | Presentation | `corthex-present` | SCENE | `docs/13-presentation/script.md` |
 | `record` | Meetings, decisions, progress | `corthex-record` | DEC | the project's records location |
 
@@ -81,7 +81,7 @@ Without a NEXUS server, or for a project kept off it, propose the tool in this t
 | 09 Mockup | Figma or Claude Design | Figma's MCP server; Claude Design in Claude Code | `source` for the tokens |
 | 10 WBS | GitHub Projects, or a Notion database | `gh project`, or Notion's MCP server | `human` |
 | 11 Development | Pull requests | `gh` or the GitHub MCP server | `source` |
-| 12 QA | The test plan, the test and run reports, and the bug tracker | The files; `gh` for issues | `source` |
+| 12 QA | The test plan, test and run reports, and one Markdown file per bug | The files in the repository | `source` |
 | 13 Presentation | Slides built from the scene table | The AI builds them | `source` |
 
 Each stage's reference file says how to work with its default tool.

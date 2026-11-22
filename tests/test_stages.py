@@ -46,7 +46,7 @@ KINDS = [
     "Access", "Input", "Target", "State changes", "Repeats", "Concurrency", "Limits",
     "Outside services", "Data exposure", "Empty and streamed answers", "Screen states", "AI answers",
 ]
-RUNS_AS = {"contract", "api", "e2e", "agent", "manual"}
+RUNS_AS = {"contract", "api", "e2e", "agent", "manual", "device"}
 
 
 def section(text, heading):
@@ -373,18 +373,20 @@ class CaseKindsTest(unittest.TestCase):
         checks = section(text, "## Checks")
         self.assertIn("Every response the contract lists is fired by an API test in the repository", checks)
         self.assertIn("which is checked against the mock server", checks)
-        self.assertIn("browser agents have walked every flow", checks)
+        self.assertIn("agents walk every flow on the release commit", checks)
         self.assertIn("impressions are reported apart from bugs", checks)
         steps = section(text, "## Steps")
         self.assertIn("(browser-agents.md)", steps)
         # The user asked (2026-11-06) for a real-browser walk on every QA run, on top of any test harness.
         self.assertIn("on every QA run, without waiting for the user to ask", steps)
         self.assertIn("on top of the project's own tests", steps)
-        self.assertIn("Every QA run, on top of the project's own tests, had browser agents walk", checks)
+        self.assertIn("Every QA run, on top of the project's own tests, walks the changed flows", checks)
 
     def test_browser_agent_runs_keep_their_rules(self):
         text = read_text(SKILLS / "corthex-build" / "references" / "browser-agents.md")
-        self.assertRegex(text, r"development or staging site, never on production")
+        self.assertIn("Run the QA plan on localhost or a deployed development or staging site", text)
+        self.assertIn("After each production release", text)
+        self.assertIn("A persona pass never passes a case", section(text, "## Two passes"))
         tools = section(text, "## Tools")
         order = ["1. Aside, where it is installed", "2. ego lite, where it is installed.", "3. Playwright,"]
         self.assertEqual([tools.find(item) for item in order], sorted(tools.find(item) for item in order))
@@ -414,6 +416,42 @@ class CaseKindsTest(unittest.TestCase):
         for rule in ("with agent-desktop", "headless, touching only the product's own windows", "one tester per desktop"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, desktop)
+
+    def test_qa_keeps_five_statuses_and_unforced_platform_evidence(self):
+        qa = self.reference("12-qa")
+        results = section(qa, "## Results")
+        self.assertEqual([row[0] for row in table(results)], ["`pass`", "`fail`", "`blocked`", "`not run`", "`waived`"])
+        self.assertIn("any other wording", results)
+        forced = section(qa, "### Forced runs")
+        for rule in ("only under unforced conditions", "adb shell cmd jobscheduler run", "shifted the clock",
+                     "test broadcast", "`forced`", "count as `not run` for the gate", "`device`"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, forced)
+
+    def test_qa_release_gate_and_after_release_check(self):
+        qa = self.reference("12-qa")
+        gate = section(qa, "## Release gate")
+        self.assertEqual([line for line in gate.splitlines() if line.startswith("- ")], [
+            "- Any `fail`.",
+            "- Any `gate` case without a `pass`.",
+            "- Any open S1 or S2 bug.",
+            "- Any pinned end-to-end test of a `gate` case that is skipped or marked `fixme`.",
+        ])
+        for rule in ("A bulk go does not clear a blocking item", "the answer goes in a DEC",
+                     "The user's go accepts that list as a whole", "counts for blocking items, known risks and waivers"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, gate)
+        after = section(qa, "## After release")
+        for rule in ("flows that change nothing on production", "released commit", "first group (canary)",
+                     "store's staged rollout", "signal and deadline", "open a bug", "when the release widened"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, after)
+
+    def test_qa_links_the_device_walk(self):
+        build = SKILLS / "corthex-build"
+        self.assertTrue((build / "references" / "device-agents.md").is_file())
+        self.assertIn("(references/device-agents.md)", read_text(build / "SKILL.md"))
+        self.assertIn("(device-agents.md)", section(self.reference("12-qa"), "## Steps"))
 
     def test_research_opens_signed_in_pages_in_an_agent_browser(self):
         judgement = section(read_text(SKILLS / "corthex" / "references" / "principles.md"), "## Judgement")
@@ -633,10 +671,10 @@ class ChangeProcedureTest(unittest.TestCase):
 
     def test_a_bug_fix_starts_at_its_cause(self):
         text = self.bug_fix()
-        both = section(text, "## Status and severity")
+        both = section(text, "## Status, severity and priority")
         statuses = [row[0] for row in table(both[:both.index("| Severity |")])]
         self.assertEqual(statuses, ["`open`", "`fixed`", "`verified`", "`closed`"])
-        severities = text[text.index("| Severity |"):]
+        severities = both[both.index("| Severity |"):both.index("| Priority |")]
         self.assertEqual([row[0] for row in table(severities)], ["S1 critical", "S2 major", "S3 minor", "S4 trivial"])
         steps = section(text, "## Steps")
         for rule in (
@@ -657,12 +695,24 @@ class ChangeProcedureTest(unittest.TestCase):
 
     def test_the_bug_report_carries_its_status_and_regression_test(self):
         qa = read_text(SKILLS / "corthex-build" / "references" / "12-qa.md")
-        template = qa[qa.index("## BUG-001"):]
-        fields = [line.split(":", 1)[0] for line in template.splitlines()[2:] if ":" in line and not line.startswith("```")]
-        self.assertEqual(fields, ["Status", "Severity", "From", "Cause", "Steps", "Expected", "Actual", "Environment",
-                                  "Trace ID", "Evidence", "Regression test"])
+        template = qa[qa.index("\n---\nid: BUG-001"):].split("\n```", 1)[0]
+        _, meta, body = template.split("\n---\n")
+        fields = [line.split(":", 1)[0] for line in meta.splitlines()]
+        self.assertEqual(fields, ["id", "title", "status", "severity", "priority", "found_in", "defect_type", "cause_stage"])
+        self.assertIn("Escape:", body)
+        self.assertRegex(body, r"Regression test: TC-004 failed on commit \w+ and passes on commit \w+")
         self.assertIn("fix each one by [bug-fix.md](bug-fix.md)", qa)
-        self.assertIn("a status, a severity", section(qa, "## Checks"))
+        self.assertIn("Every bug found after release has an escape analysis", section(qa, "## Checks"))
+
+    def test_bug_defect_types_and_escape_analysis(self):
+        text = self.bug_fix()
+        self.assertEqual([row[0] for row in table(section(text, "## Defect types"))],
+                         ["Implementation", "Spec", "Missing requirement", "Platform assumption", "Test or gate"])
+        escape = section(text, "## Escape analysis")
+        for rule in ("which case should have caught it", "why the gate let it through",
+                     "what changes in the test plan", "S1 and S2", "one line", "steps and rules"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, escape)
 
 
 class DefaultHumanViewTest(unittest.TestCase):
