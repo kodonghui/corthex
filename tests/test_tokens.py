@@ -58,7 +58,7 @@ class Project(object):
     def __enter__(self):
         self.temp = tempfile.TemporaryDirectory()
         self.design = Path(self.temp.name) / "design"
-        self.assertEqual(tokens.init(self.design, "g10", "g100", False, io.StringIO()), 0)
+        self.assertEqual(tokens.init(self.design, None, None, False, io.StringIO()), 0)
         self.resolver = self.design / "tokens.resolver.json"
         return self
 
@@ -150,10 +150,11 @@ class CopiedFilesTest(unittest.TestCase):
             self.assertIn("changed: layout.tokens.json", out.getvalue())
             self.assertIn("not in source.json: extra.tokens.json", out.getvalue())
 
-    def test_the_plugin_notice_names_carbon(self):
-        notice = read_text(PLUGINS / "corthex" / "NOTICE")
-        self.assertIn("IBM Carbon", notice)
+    def test_the_plugin_notice_names_carbon_and_where_it_is(self):
+        notice = " ".join(read_text(PLUGINS / "corthex" / "NOTICE").split())
+        self.assertIn("The corthex plugin of this product includes design tokens from the IBM Carbon", notice)
         self.assertIn("Copyright 2015 IBM Corp.", notice)
+        self.assertIn("The other plugins do not include them.", notice)
 
     def test_the_corthex_layer_aliases_tokens_that_exist(self):
         with Project() as project:
@@ -174,8 +175,8 @@ class InitTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             design = Path(temp) / "design"
             out = io.StringIO()
-            self.assertEqual(tokens.init(design, "g10", "g100", False, out), 0)
-            self.assertIn("written", out.getvalue())
+            self.assertEqual(tokens.init(design, None, None, False, out), 0)
+            self.assertIn("light theme g10, dark theme g100", out.getvalue())
             resolver = load_json(design / "tokens.resolver.json")
             self.assertEqual(resolver, tokens.resolver_document("g10", "g100"))
             self.assertEqual([item["$ref"] for item in resolver["resolutionOrder"]],
@@ -188,23 +189,56 @@ class InitTest(unittest.TestCase):
                             self.assertEqual((design / path.relative_to(ASSETS)).read_bytes(), path.read_bytes())
             (design / "base.tokens.json").write_text('{"mine": {}}\n', encoding="utf-8")
             again = io.StringIO()
-            self.assertEqual(tokens.init(design, "white", "g90", False, again), 0)
+            self.assertEqual(tokens.init(design, None, None, False, again), 0)
             self.assertNotIn("copied", again.getvalue())
-            self.assertIn("kept", again.getvalue())
+            self.assertIn("same 32", again.getvalue())
             self.assertEqual(read_text(design / "base.tokens.json"), '{"mine": {}}\n')
             self.assertEqual(load_json(design / "tokens.resolver.json"), resolver)
+
+    def test_a_theme_choice_is_kept_and_a_project_resolver_is_not_replaced(self):
+        with tempfile.TemporaryDirectory() as temp:
+            design = Path(temp) / "design"
+            tokens.init(design, None, None, False, io.StringIO())
+            out = io.StringIO()
+            tokens.init(design, "white", None, False, out)
+            self.assertIn("the light theme is now white and the dark theme g100", out.getvalue())
+            self.assertEqual(load_json(design / "tokens.resolver.json"), tokens.resolver_document("white", "g100"))
+            tokens.init(design, None, None, True, io.StringIO())
+            self.assertEqual(load_json(design / "tokens.resolver.json"), tokens.resolver_document("white", "g100"))
+            own = tokens.resolver_document("white", "g100")
+            own["modifiers"]["theme"]["contexts"]["light"].append({"$ref": "theme/light.tokens.json"})
+            (design / "tokens.resolver.json").write_text(json.dumps(own), encoding="utf-8")
+            kept = io.StringIO()
+            self.assertEqual(tokens.init(design, "g90", None, False, kept), 0)
+            self.assertIn("it is not the one init writes, so it was kept", kept.getvalue())
+            self.assertEqual(load_json(design / "tokens.resolver.json"), own)
+            (design / "tokens.resolver.json").write_text('{"sets": {}}', encoding="utf-8")
+            plain = io.StringIO()
+            tokens.init(design, None, None, False, plain)
+            self.assertIn("it lists no Carbon file", plain.getvalue())
+
+    def test_init_names_copies_this_version_no_longer_has(self):
+        with tempfile.TemporaryDirectory() as temp:
+            design = Path(temp) / "design"
+            tokens.init(design, None, None, False, io.StringIO())
+            old = design / "carbon" / "themes" / "g10" / "old.tokens.json"
+            old.write_text("{}\n", encoding="utf-8")
+            out = io.StringIO()
+            self.assertEqual(tokens.init(design, None, None, True, out), 0)
+            self.assertIn("not in this version: %s" % old, out.getvalue())
+            self.assertTrue(old.exists())
 
     def test_init_refuses_a_changed_copy_unless_asked_to_update(self):
         with tempfile.TemporaryDirectory() as temp:
             design = Path(temp) / "design"
-            tokens.init(design, "g10", "g100", False, io.StringIO())
+            tokens.init(design, None, None, False, io.StringIO())
             changed = design / "corthex" / "light.tokens.json"
             changed.write_text("{}\n", encoding="utf-8")
             out = io.StringIO()
-            self.assertEqual(tokens.init(design, "g10", "g100", False, out), 1)
+            self.assertEqual(tokens.init(design, None, None, False, out), 1)
             self.assertIn("Nothing written", out.getvalue())
             self.assertEqual(read_text(changed), "{}\n")
-            self.assertEqual(tokens.init(design, "g10", "g100", True, io.StringIO()), 0)
+            self.assertEqual(tokens.init(design, None, None, True, io.StringIO()), 0)
             self.assertEqual(changed.read_bytes(), (LAYER / "light.tokens.json").read_bytes())
 
     def test_the_command_line_rejects_an_unknown_theme(self):
@@ -250,6 +284,14 @@ class ResolveTest(unittest.TestCase):
             self.assertIn("  --cds-corthex-radius-box: 4px;\n", prefixed)
             self.assertIn("  --cds-corthex-radius-panel: 1rem;\n", prefixed)
             self.assertNotIn("--cds-background", prefixed)
+
+    def test_the_documented_dark_mode_command_runs(self):
+        text = read_text(MOCKUP)
+        self.assertIn("tokens.py' css --input theme=dark -- '<project>/design/tokens.resolver.json'`", text)
+        with Project() as project:
+            result = run("css", "--input", "theme=dark", "--only", "background", "--", project.resolver)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(b"--background: #161616;", result.stdout)
 
     def test_the_resolver_and_aliases_fail_clearly(self):
         loop = tokens.Tokens({"a": {"$type": "color", "$value": "{b}"}, "b": {"$type": "color", "$value": "{a}"}})
@@ -306,9 +348,29 @@ class CheckTest(unittest.TestCase):
     def test_token_colours_pass_in_every_form(self):
         code, out = self.check({"a.css": ".a { color: #f4f4f4; background: #161616; border: 1px solid #FFF; }\n"
                                          ".b { color: rgb(15 98 254); fill: rgba(141, 141, 141, 0.5); }\n"
-                                         ".c { color: hsl(0 0% 100%); outline-color: #8d8d8d80; }\n"})
+                                         ".c { color: hsl(0 0% 100%); outline-color: #8d8d8d80; background: white; }\n"})
         self.assertEqual(code, 0, out)
-        self.assertIn("7 colour literals, 0 off the tokens", out)
+        self.assertIn("8 colour literals, 0 off the tokens", out)
+
+    def test_names_and_functions_it_cannot_compare_are_found(self):
+        code, out = self.check({"a.css": ".a { color: tomato; background: oklch(70% 0.1 200); }\n",
+                                "b.svg": '<rect fill="red" stroke="var(--red)"/>\n',
+                                "c.js": "const s = { backgroundColor: 'gold', color: theme.red }; d3.lab(1, 2, 3);\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("a.css:1:13: tomato is not a token colour; nearest", out)
+        self.assertIn("a.css:1:33: oklch(70% 0.1 200) is a colour function this check cannot compare", out)
+        self.assertIn("b.svg:1:13: red is not a token colour", out)
+        self.assertIn("c.js:1:31: gold is not a token colour", out)
+        self.assertIn("4 colour literals, 4 off the tokens", out)
+
+    def test_selectors_variables_and_unparsed_values_are_not_colours(self):
+        code, out = self.check({
+            "a.css": "#add, #bad:hover,\n#cafe > a { border: 1px solid #f4f4f4; background: url(red.png); fill: var(--red); }\n",
+            "b.scss": ".a { color: $green; stroke: rgba($r, $g, $b, $a); }\n",
+            "c.js": "const c = `rgba(${r}, ${g}, ${b}, ${a})`; const d = 'rgb(0 0 0 / x)';\n",
+        })
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 colour literals, 0 off the tokens", out)
 
     def test_an_off_token_colour_is_found_with_its_place_and_nearest_token(self):
         code, out = self.check({"a.css": ".a { color: #f4f4f4; }\n.b { color: #123456; }\n"})

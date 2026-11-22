@@ -1,8 +1,8 @@
 CORTHEX
 Copyright 2026 kodonghui
 
-This product includes design tokens from the IBM Carbon Design System
-(https://github.com/carbon-design-system/carbon), Copyright 2015 IBM Corp.,
-licensed under the Apache License, Version 2.0. They are unchanged copies in
-plugins/corthex/skills/corthex-screen/assets/carbon/ of the CORTHEX repository,
-with their license and sources.
+The corthex plugin of this product includes design tokens from the IBM Carbon
+Design System (https://github.com/carbon-design-system/carbon), Copyright 2015
+IBM Corp., licensed under the Apache License, Version 2.0. They are unchanged
+copies in plugins/corthex/skills/corthex-screen/assets/carbon/ of the CORTHEX
+repository, with their license and sources. The other plugins do not include them.

@@ -26,6 +26,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE.parent / "assets"
 THEMES = ("white", "g10", "g90", "g100")
+DEFAULT_LIGHT, DEFAULT_DARK = "g10", "g100"
 THEME_FILES = ("theme", "button", "tag", "notification", "status", "content-switcher")
 FORMAT_SCHEMA = "https://www.designtokens.org/schemas/2025.10/format.json"
 RESOLVER_SCHEMA = "https://www.designtokens.org/schemas/2025.10/resolver.json"
@@ -328,6 +329,44 @@ HEX = re.compile(r"(?<![\w&#/.])#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[
 FUNC = re.compile(r"\b(rgba?|hsla?)\(\s*([^()]*?)\s*\)", re.I)
 URL = re.compile(r"url\(\s*['\"]?#[^)]*\)", re.I)
 LINK_ATTR = re.compile(r"""\b(?:href|xlink:href|src|action|id|for|name)\s*=\s*("[^"]*"|'[^']*')""", re.I)
+# Colour functions the check cannot compare with the tokens' sRGB values: each one is reported.
+OTHER_FUNC = re.compile(r"(?<![\w.$-])(?:oklch|oklab|lab|lch|hwb|color(?=\(\s*(?:srgb|srgb-linear|display-p3|a98-rgb|prophoto-rgb"
+                        r"|rec2020|xyz|xyz-d50|xyz-d65)\b))\([^()]*\)", re.I)
+# A declaration or attribute that takes a colour, in CSS, markup or a script's style object.
+SIDE = r"(?:-?(?:top|right|bottom|left|block|inline)(?:-?(?:start|end))?)?"
+PROPERTY = re.compile(r"(?<![\w-])(?:(?:background|border" + SIDE + r"|outline|text-?decoration|caret|accent|column-?rule|stop"
+                      r"|flood|lighting)-?color|color|background|border" + SIDE + r"|outline|fill|stroke|box-?shadow"
+                      r"|text-?shadow|column-?rule|text-?decoration)\s*[:=]\s*([^;{}\n]*)", re.I)
+WORD = re.compile(r"(?<![\w$@.#-])([A-Za-z]+)(?![\w-])")
+SELECTOR = re.compile(r"(^|[{};])([^{};]*)(?=\{)")
+CSS_SUFFIXES = (".css", ".scss", ".sass", ".less")
+# The CSS named colours (CSS Color Module Level 4), as name and sRGB hex.
+NAMED = dict(zip(*[iter((
+    "aliceblue f0f8ff antiquewhite faebd7 aqua 00ffff aquamarine 7fffd4 azure f0ffff beige f5f5dc bisque ffe4c4 "
+    "black 000000 blanchedalmond ffebcd blue 0000ff blueviolet 8a2be2 brown a52a2a burlywood deb887 cadetblue "
+    "5f9ea0 chartreuse 7fff00 chocolate d2691e coral ff7f50 cornflowerblue 6495ed cornsilk fff8dc crimson dc143c "
+    "cyan 00ffff darkblue 00008b darkcyan 008b8b darkgoldenrod b8860b darkgray a9a9a9 darkgreen 006400 darkgrey "
+    "a9a9a9 darkkhaki bdb76b darkmagenta 8b008b darkolivegreen 556b2f darkorange ff8c00 darkorchid 9932cc darkred "
+    "8b0000 darksalmon e9967a darkseagreen 8fbc8f darkslateblue 483d8b darkslategray 2f4f4f darkslategrey 2f4f4f "
+    "darkturquoise 00ced1 darkviolet 9400d3 deeppink ff1493 deepskyblue 00bfff dimgray 696969 dimgrey 696969 "
+    "dodgerblue 1e90ff firebrick b22222 floralwhite fffaf0 forestgreen 228b22 fuchsia ff00ff gainsboro dcdcdc "
+    "ghostwhite f8f8ff gold ffd700 goldenrod daa520 gray 808080 green 008000 greenyellow adff2f grey 808080 "
+    "honeydew f0fff0 hotpink ff69b4 indianred cd5c5c indigo 4b0082 ivory fffff0 khaki f0e68c lavender e6e6fa "
+    "lavenderblush fff0f5 lawngreen 7cfc00 lemonchiffon fffacd lightblue add8e6 lightcoral f08080 lightcyan e0ffff "
+    "lightgoldenrodyellow fafad2 lightgray d3d3d3 lightgreen 90ee90 lightgrey d3d3d3 lightpink ffb6c1 lightsalmon "
+    "ffa07a lightseagreen 20b2aa lightskyblue 87cefa lightslategray 778899 lightslategrey 778899 lightsteelblue "
+    "b0c4de lightyellow ffffe0 lime 00ff00 limegreen 32cd32 linen faf0e6 magenta ff00ff maroon 800000 "
+    "mediumaquamarine 66cdaa mediumblue 0000cd mediumorchid ba55d3 mediumpurple 9370db mediumseagreen 3cb371 "
+    "mediumslateblue 7b68ee mediumspringgreen 00fa9a mediumturquoise 48d1cc mediumvioletred c71585 midnightblue "
+    "191970 mintcream f5fffa mistyrose ffe4e1 moccasin ffe4b5 navajowhite ffdead navy 000080 oldlace fdf5e6 olive "
+    "808000 olivedrab 6b8e23 orange ffa500 orangered ff4500 orchid da70d6 palegoldenrod eee8aa palegreen 98fb98 "
+    "paleturquoise afeeee palevioletred db7093 papayawhip ffefd5 peachpuff ffdab9 peru cd853f pink ffc0cb plum "
+    "dda0dd powderblue b0e0e6 purple 800080 rebeccapurple 663399 red ff0000 rosybrown bc8f8f royalblue 4169e1 "
+    "saddlebrown 8b4513 salmon fa8072 sandybrown f4a460 seagreen 2e8b57 seashell fff5ee sienna a0522d silver c0c0c0 "
+    "skyblue 87ceeb slateblue 6a5acd slategray 708090 slategrey 708090 snow fffafa springgreen 00ff7f steelblue "
+    "4682b4 tan d2b48c teal 008080 thistle d8bfd8 tomato ff6347 turquoise 40e0d0 violet ee82ee wheat f5deb3 white "
+    "ffffff whitesmoke f5f5f5 yellow ffff00 yellowgreen 9acd32 "
+).split())] * 2))
 
 
 def channel(text, scale):
@@ -354,26 +393,26 @@ def parse_colour(text):
     kind = match.group(1).lower()
     body = match.group(2).replace("/", " / ")
     parts = [p for p in re.split(r"[\s,]+", body) if p]
-    alpha = 1.0
+    alpha = "1"
     if "/" in parts:
         index = parts.index("/")
         parts, alpha_parts = parts[:index], parts[index + 1:]
         if len(alpha_parts) != 1:
             return None
-        alpha = channel(alpha_parts[0], 1)
+        alpha = alpha_parts[0]
     elif len(parts) == 4:
-        alpha = channel(parts[3], 1)
+        alpha = parts[3]
         parts = parts[:3]
     if len(parts) != 3:
         return None
     try:
+        alpha = channel(alpha, 1)
         if kind.startswith("rgb"):
             rgb = [channel(p, 255) for p in parts]
         else:
             hue = float(parts[0][:-3] if parts[0].endswith("deg") else parts[0]) / 360.0
             light, saturation = (float(part.rstrip("%")) / 100.0 for part in (parts[2], parts[1]))
             rgb = [c * 255 for c in colorsys.hls_to_rgb(hue % 1.0, light, saturation)]
-        alpha = float(alpha)
     except ValueError:
         return None
     return tuple(int(round(max(0, min(255, c)))) for c in rgb) + (round(max(0.0, min(1.0, alpha)), 4),)
@@ -403,15 +442,35 @@ def nearest(rgba, colours):
     return best, colours[best]
 
 
+def blank(match, group=0):
+    """The text with one match's group replaced by spaces, keeping line breaks and columns."""
+    start, end = match.span(group)
+    return re.sub(r"[^\n]", " ", match.string[start:end])
+
+
 def literals(text, suffix):
+    """(line, column, literal, kind, kept) for each colour written in the text: kind is "value" when the
+    literal can be compared with the tokens, "named" for a CSS colour name and "other" for a function the
+    check cannot compare."""
     if suffix in (".html", ".htm", ".svg", ".vue", ".svelte", ".jsx", ".tsx"):
-        text = LINK_ATTR.sub(lambda m: " " * len(m.group(0)), text)
-    text = URL.sub(lambda m: " " * len(m.group(0)), text)
+        text = LINK_ATTR.sub(blank, text)
+    if suffix in CSS_SUFFIXES:
+        text = SELECTOR.sub(lambda m: m.group(1) + blank(m, 2), text)
+    text = URL.sub(blank, text)
     for number_, line in enumerate(text.splitlines(), 1):
-        found = [(m.start(), m.group(0)) for m in HEX.finditer(line)]
-        found += [(m.start(), m.group(0)) for m in FUNC.finditer(line)]
-        for column, literal in sorted(found):
-            yield number_, column + 1, literal, bool(KEEP.search(line))
+        found = [(m.start(), m.group(0), "value") for m in HEX.finditer(line)]
+        found += [(m.start(), m.group(0), "value") for m in FUNC.finditer(line)]
+        found += [(m.start(), m.group(0), "other") for m in OTHER_FUNC.finditer(line)]
+        seen = set()
+        for declaration in PROPERTY.finditer(line):
+            value = re.sub(r"url\([^)]*\)|var\([^)]*\)", lambda m: " " * len(m.group(0)), declaration.group(1))
+            for word in WORD.finditer(value):
+                column = declaration.start(1) + word.start(1)
+                if word.group(1).lower() in NAMED and column not in seen:
+                    seen.add(column)
+                    found.append((column, word.group(1), "named"))
+        for column, literal, kind in sorted(found):
+            yield number_, column + 1, literal, kind, bool(KEEP.search(line))
 
 
 def source_files(paths):
@@ -440,21 +499,28 @@ def check(resolver, paths, out):
         except (OSError, UnicodeDecodeError) as error:
             out.write("%s: not read: %s\n" % (path, error))
             continue
-        for line, column, literal, keep in literals(text, path.suffix.lower()):
-            rgba = parse_colour(literal)
-            if rgba is None:
-                continue
+        for line, column, literal, kind, keep in literals(text, path.suffix.lower()):
+            if kind == "other":
+                rgba, problem = None, "is a colour function this check cannot compare with the tokens"
+            else:
+                rgba = parse_colour("#" + NAMED[literal.lower()] if kind == "named" else literal)
+                if rgba is None:
+                    continue
+                problem = "is not a token colour"
             counted += 1
-            if any(same(rgba, colour) for colour in colours):
+            if rgba is not None and any(same(rgba, colour) for colour in colours):
                 continue
             if keep:
                 kept += 1
                 continue
             off += 1
-            close, name = nearest(rgba, colours)
-            out.write("%s:%d:%d: %s is not a token colour; nearest %s is %s\n"
-                      % (path, line, column, literal, name, colour_css({"colorSpace": "srgb",
-                         "components": [c / 255.0 for c in close[:3]], "alpha": close[3]})))
+            place = "%s:%d:%d: %s %s" % (path, line, column, literal, problem)
+            if rgba is not None:
+                close, name = nearest(rgba, colours)
+                place += "; nearest %s is %s" % (name, colour_css({"colorSpace": "srgb",
+                                                                  "components": [c / 255.0 for c in close[:3]],
+                                                                  "alpha": close[3]}))
+            out.write(place + "\n")
     out.write("%d colour literals, %d off the tokens, %d kept with an off-token reason\n" % (counted, off, kept))
     return 1 if off else 0
 
@@ -513,42 +579,75 @@ def as_json(data):
     return (json.dumps(data, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def resolver_plan(target, light, dark):
+    """What init does with the resolver document: (data to write or None, state, note). A theme left as
+    None keeps the one an earlier init chose, else takes the default."""
+    current, before = None, None
+    if target.exists():
+        try:
+            current = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = None
+        before = next(((one, two) for one in THEMES for two in THEMES if current == resolver_document(one, two)), None)
+    light = light or (before[0] if before else DEFAULT_LIGHT)
+    dark = dark or (before[1] if before else DEFAULT_DARK)
+    data = as_json(resolver_document(light, dark))
+    if not target.exists():
+        return data, "written", "light theme %s, dark theme %s" % (light, dark)
+    if before == (light, dark):
+        return None, "same", ""
+    if before:
+        return data, "updated", "the light theme is now %s and the dark theme %s" % (light, dark)
+    note = "it is not the one init writes, so it was kept"
+    if "carbon/" not in json.dumps(current):
+        note += "; it lists no Carbon file, so the default base is not used until its sets are added"
+    return None, "kept", note + " (see Default base in references/09-mockup.md)"
+
+
 def init(dest, light, dark, update, out):
     dest = Path(dest)
     if dest.exists() and not dest.is_dir():
         raise TokenError("%s is not a folder" % dest)
-    plan, conflicts = [], []
+    plan, conflicts, stale = [], [], []
     for kind in ("carbon", "corthex"):
+        shipped = set()
         for source in sorted((ASSETS / kind).rglob("*")):
             if source.is_file():
+                shipped.add(source.relative_to(ASSETS / kind).as_posix())
                 target = dest / kind / source.relative_to(ASSETS / kind)
                 data = source.read_bytes()
                 if not target.exists():
-                    plan.append((target, data, "copied"))
+                    plan.append((target, data, "copied", ""))
                 elif target.read_bytes().replace(b"\r\n", b"\n") == data.replace(b"\r\n", b"\n"):
-                    plan.append((target, None, "same"))
+                    plan.append((target, None, "same", ""))
                 elif update:
-                    plan.append((target, data, "updated"))
+                    plan.append((target, data, "updated", ""))
                 else:
                     conflicts.append(target)
+        if (dest / kind).is_dir():
+            stale += [path for path in sorted((dest / kind).rglob("*"))
+                      if path.is_file() and path.relative_to(dest / kind).as_posix() not in shipped]
     if conflicts:
         for target in conflicts:
             out.write("differs: %s\n" % target)
         out.write("Nothing written. These files differ from this version's; run again with --update to replace them.\n")
         return 1
-    extra = [(dest / "tokens.resolver.json", as_json(resolver_document(light, dark))),
-             (dest / "base.tokens.json", as_json({"$schema": FORMAT_SCHEMA, "$description":
-                 "This project's own tokens. A token here replaces a Carbon or CORTHEX token of the same name."}))]
-    for target, data in extra:
-        plan.append((target, None, "kept") if target.exists() else (target, data, "written"))
+    resolver = dest / "tokens.resolver.json"
+    data, state, note = resolver_plan(resolver, light, dark)
+    plan.append((resolver, data, state, note))
+    base = dest / "base.tokens.json"
+    plan.append((base, None, "kept", "") if base.exists() else (base, as_json({"$schema": FORMAT_SCHEMA, "$description":
+                "This project's own tokens. A token here replaces a Carbon or CORTHEX token of the same name."}), "written", ""))
     counts = {}
-    for target, data, state in plan:
+    for target, data, state, note in plan:
         if data is not None:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
         counts[state] = counts.get(state, 0) + 1
         if target.parent == dest:
-            out.write("%s %s\n" % (state, target))
+            out.write("%s %s%s\n" % (state, target, ": " + note if note else ""))
+    for path in stale:
+        out.write("not in this version: %s; the resolver init writes does not use it\n" % path)
     out.write(", ".join("%s %d" % (state, counts[state]) for state in sorted(counts)) + "\n")
     return 0
 
@@ -567,8 +666,8 @@ def main(argv=None):
     commands.required = True
     one = commands.add_parser("init", help="copy the default base into a project's design folder")
     one.add_argument("dest")
-    one.add_argument("--light", choices=THEMES, default="g10")
-    one.add_argument("--dark", choices=THEMES, default="g100")
+    one.add_argument("--light", choices=THEMES, help="Carbon theme of the light mode; first time %s" % DEFAULT_LIGHT)
+    one.add_argument("--dark", choices=THEMES, help="Carbon theme of the dark mode; first time %s" % DEFAULT_DARK)
     one.add_argument("--update", action="store_true", help="replace copied files that differ from this version")
     two = commands.add_parser("css", help="print one mode's tokens as CSS custom properties")
     two.add_argument("resolver")
