@@ -18,13 +18,15 @@ KNOWN = (OLD, NEW)
 FORMAT = re.compile(r"corthex-hub/([0-9]{1,3})\.([0-9]{1,3})\Z")
 # A v3 server takes a snapshot of up to 8 MiB (8,388,608 bytes); this leaves room for `replaces`.
 MAX_SNAPSHOT_BYTES = 8 * 1000 * 1000
-# The Snapshot schema's longest source.text and picture key.
+# The Snapshot schema's longest source.text and picture key, and its most pictures and left_out entries.
 MAX_TEXT_CHARS = 1024 * 1024
 MAX_KEY_CHARS = 300
+MAX_PICTURES = 1000
+MAX_LEFT_OUT = 1000
 TEXT_STAGES = ("03-user-flow", "08-screen-states", "09-mockup")
-# A file of stage 03 or 08 is a picture when the hub reads it as defining an item of this kind.
+# A file of stage 03 or 08 is a picture when the hub reads it as defining an item of this kind; the hub's
+# Markdown extensions (h.MARKDOWN) say which files those are.
 DEFINES = {"03-user-flow": "flow", "08-screen-states": "screen"}
-MARKDOWN = {".md", ".markdown"}
 PAGES = {".html", ".htm"}
 
 
@@ -77,22 +79,23 @@ def defines(text, name, key, h):
     return any(h.picture_ids.kind(ident) == DEFINES[key] for ident in src.defined)
 
 
-def leave_out(snapshot, checks, h, part, key, why, message=None, name=None, rule="picture-left-out"):
+def leave_out(snapshot, checks, h, part, key, why, message, name=None):
     omission = {"part": part, "stage": key, "why": why}
     if name is not None:
         omission["key"] = name
-    snapshot["left_out"].append(omission)
-    warning = h.check(rule, "warn", message, stage=key, args=omission if rule == "picture-left-out" else None)
+    if len(snapshot["left_out"]) < MAX_LEFT_OUT:
+        snapshot["left_out"].append(omission)
+    warning = h.check("picture-left-out", "warn", message, stage=key, args=omission)
     if part:
         warning["part"] = part
     checks.append(warning)
 
 
-def source_of(key, given, default):
+def source_of(key, given, default, h):
     """(the path to read, the extensions of its pictures) of one stage; stage 09 reads the page that `page` names."""
     if key == "09-mockup":
         return (given or {}).get("page"), PAGES
-    return (given.get("source") if given is not None else default), MARKDOWN
+    return (given.get("source") if given is not None else default), h.MARKDOWN
 
 
 def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
@@ -107,7 +110,7 @@ def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
         given = settings.get(key) if isinstance(settings.get(key), dict) else None
         if given is not None and given.get("skip") is True:
             continue
-        source, extensions = source_of(key, given, default_source)
+        source, extensions = source_of(key, given, default_source, h)
         if source is None:
             continue
         if not isinstance(source, str) or not source.strip():
@@ -130,18 +133,24 @@ def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
             checks.append(h.check("picture-partial", "warn", names[h.MAX_FILES] + ":1: first of " +
                 str(len(names) - h.MAX_FILES) + " supported sources omitted after " + str(h.MAX_FILES) + " files",
                 stage=key, args={"limit": h.MAX_FILES, "omitted": len(names) - h.MAX_FILES}))
-        for name in names[:h.MAX_FILES]:
+        names = names[:h.MAX_FILES]
+        for index, name in enumerate(names):
+            if len(snapshot["pictures"]) >= MAX_PICTURES:
+                rest = len(names) - index
+                checks.append(h.check("picture-partial", "warn", name + ":1: first of " + str(rest) + " files not read after the snapshot's " +
+                    str(MAX_PICTURES) + " pictures", stage=key, args={"limit": MAX_PICTURES, "omitted": rest}))
+                break
             if key in DEFINES and reading(key, name, h).listing:
                 continue
             part = part_of(name, rel, parts)
             text = tree.read(name)
             if text is None:
-                message = name + ": source object is unreadable or exceeds 1 MB"
                 if tree.sizes.get(name, 0) > h.MAX_FILE_BYTES:
-                    # SPEC-001: a file over 1 MiB is left out of the snapshot, and counted.
-                    leave_out(snapshot, checks, h, part, key, "size", message, name[:MAX_KEY_CHARS], "picture-partial")
+                    # SPEC-001: a file over 1 MiB is left out of the snapshot, and counted, as a whole picture left out for size.
+                    leave_out(snapshot, checks, h, part, key, "size", h.one_line(name, 200) + ": the file is over 1 MiB",
+                              name[:MAX_KEY_CHARS])
                 else:
-                    checks.append(h.check("picture-partial", "warn", message, stage=key))
+                    checks.append(h.check("picture-partial", "warn", name + ": source object is unreadable", stage=key))
                 continue
             if key in DEFINES and not defines(text, name, key, h):
                 continue

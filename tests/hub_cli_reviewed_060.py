@@ -13,6 +13,48 @@ REVIEWED_060 = {
     'hub.py': (
         (b'VERSION = "0.6.0"\n',
          b'VERSION = "0.5.1"\n'),
+        (b'SECRET_KEYS = (r"(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"\n'
+         b'               r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})|-----BEGIN [A-Z ]*PRIVATE KEY-----")\n'
+         b'EMAIL_TEXT = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}"\n'
+         b'\n'
+         b'\n'
+         b'class SecretText:\n'
+         b'    """The matches of one pattern, SECRET_KEYS or EMAIL_TEXT, found leftmost first as re.sub finds them.\n'
+         b'\n'
+         b'    0.6.0: a 0.3 page can hold a long run of the characters an address starts with, such as an encoded image.\n'
+         b"    Tried at every place in such a run, the pattern takes time that grows with the square of the run's length.\n"
+         b'    An address can start only where its run starts, or where the match before it ended, so `fast` tries it\n'
+         b'    there and `pattern` is tried once where a match ended: the same matches, in time that grows with the text.\n'
+         b'    """\n'
+         b'\n'
+         b'    def __init__(self):\n'
+         b'        self.pattern = re.compile(SECRET_KEYS + "|" + EMAIL_TEXT)\n'
+         b'        self.fast = re.compile(SECRET_KEYS + r"|(?<![A-Za-z0-9._%+-])" + EMAIL_TEXT)\n'
+         b'\n'
+         b'    def finditer(self, text):\n'
+         b'        found = self.fast.search(text)\n'
+         b'        while found:\n'
+         b'            yield found\n'
+         b'            found = self.pattern.match(text, found.end()) or self.fast.search(text, found.end())\n'
+         b'\n'
+         b'    def search(self, text):\n'
+         b'        return self.fast.search(text)\n'
+         b'\n'
+         b'    def sub(self, replacement, text):\n'
+         b'        """text with each match replaced by replacement, which is plain text."""\n'
+         b'        parts, last = [], 0\n'
+         b'        for found in self.finditer(text):\n'
+         b'            parts += [text[last:found.start()], replacement]\n'
+         b'            last = found.end()\n'
+         b'        return "".join(parts) + text[last:]\n'
+         b'\n'
+         b'\n'
+         b'SECRET_TEXT = SecretText()\n',
+         b'SECRET_TEXT = re.compile(\n'
+         b'    r"(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"\n'
+         b'    r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})|-----BEGIN [A-Z ]*PRIVATE KEY-----"\n'
+         b'    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}"\n'
+         b')\n'),
         (b'    if name not in {"snapshot02", "snapshot03", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci", "publication_v2"}:\n',
          b'    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci", "publication_v2"}:\n'),
         (b'def make_snapshot(project, status=None, now=None, home=None, schema=SCHEMA):\n'

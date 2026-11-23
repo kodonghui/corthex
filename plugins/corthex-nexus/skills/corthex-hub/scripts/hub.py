@@ -99,11 +99,43 @@ SECRET_NAME = re.compile(
     r"|access[-_]?tokens?|auth[-_]?tokens?)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$"
 )
 # A key starts a word, so "Task-board-…" in a title or a page address is not one.
-SECRET_TEXT = re.compile(
-    r"(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
-    r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})|-----BEGIN [A-Z ]*PRIVATE KEY-----"
-    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
-)
+SECRET_KEYS = (r"(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9_-]{20,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}"
+               r"|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})|-----BEGIN [A-Z ]*PRIVATE KEY-----")
+EMAIL_TEXT = r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}"
+
+
+class SecretText:
+    """The matches of one pattern, SECRET_KEYS or EMAIL_TEXT, found leftmost first as re.sub finds them.
+
+    0.6.0: a 0.3 page can hold a long run of the characters an address starts with, such as an encoded image.
+    Tried at every place in such a run, the pattern takes time that grows with the square of the run's length.
+    An address can start only where its run starts, or where the match before it ended, so `fast` tries it
+    there and `pattern` is tried once where a match ended: the same matches, in time that grows with the text.
+    """
+
+    def __init__(self):
+        self.pattern = re.compile(SECRET_KEYS + "|" + EMAIL_TEXT)
+        self.fast = re.compile(SECRET_KEYS + r"|(?<![A-Za-z0-9._%+-])" + EMAIL_TEXT)
+
+    def finditer(self, text):
+        found = self.fast.search(text)
+        while found:
+            yield found
+            found = self.pattern.match(text, found.end()) or self.fast.search(text, found.end())
+
+    def search(self, text):
+        return self.fast.search(text)
+
+    def sub(self, replacement, text):
+        """text with each match replaced by replacement, which is plain text."""
+        parts, last = [], 0
+        for found in self.finditer(text):
+            parts += [text[last:found.start()], replacement]
+            last = found.end()
+        return "".join(parts) + text[last:]
+
+
+SECRET_TEXT = SecretText()
 
 csv.field_size_limit(max(csv.field_size_limit(), MAX_FILE_BYTES))
 

@@ -13,10 +13,13 @@ kodonghui/corthex-nexus at f557726), copied here.
 import io
 import json
 import os
+import random
+import re
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -218,9 +221,20 @@ class Snapshot03Test(SourcesFixture):
         self.git("update-ref", "refs/remotes/origin/main", self.head)
         snapshot = self.make()
         self.assertNotIn(("03-user-flow", "docs/03-user-flow/FL-009-big.md"), self.keys(snapshot))
-        self.assertEqual(snapshot["left_out"], [{"part": "", "stage": "03-user-flow", "why": "size", "key": "docs/03-user-flow/FL-009-big.md"}])
-        (partial,) = [c for c in self.found(snapshot, "picture-partial") if "FL-009" in c["message"]]
-        self.assertEqual(partial["level"], "warn")
+        omission = {"part": "", "stage": "03-user-flow", "why": "size", "key": "docs/03-user-flow/FL-009-big.md"}
+        self.assertEqual(snapshot["left_out"], [omission])
+        # A whole picture left out for size, as reading.md's rules say, with the omission as its arguments.
+        (left,) = self.found(snapshot, "picture-left-out")
+        self.assertEqual((left["level"], left["stage"], left["args"]), ("warn", "03-user-flow", omission))
+        self.assertIn("FL-009-big.md: the file is over 1 MiB", left["message"])
+        self.assertFalse([c for c in self.found(snapshot, "picture-partial") if "FL-009" in c["message"]])
+
+    def test_a_flow_in_any_markdown_file_that_the_hub_reads(self):
+        self.write(self.repo / "docs/03-user-flow/FL-004-returns.mdx", FLOW.format(n="004", title="Returns"))
+        self.head = self.commit("a flow in MDX")
+        self.git("update-ref", "refs/remotes/origin/main", self.head)
+        self.assertIn(".mdx", hub.MARKDOWN)
+        self.assertIn(("03-user-flow", "docs/03-user-flow/FL-004-returns.mdx"), self.keys(self.make()))
 
     def test_the_text_is_redacted_as_every_other_string(self):
         self.write(self.repo / "docs/08-screens/SCR-003.md", SCREEN.format(n="003", title="Help", path="help") +
@@ -230,6 +244,74 @@ class Snapshot03Test(SourcesFixture):
         text = next(p for p in self.texts(self.make()) if p["key"].endswith("SCR-003.md"))["source"]["text"]
         self.assertIn("Write to [redacted] for a refund.", text)
         self.assertNotIn("help@example.com", text)
+
+    def test_a_page_with_a_long_encoded_image_is_redacted_in_time(self):
+        page = PAGE.format(body='<i style="background:url(data:image/svg+xml,' + encoded(200 * 1000) + ')"></i> Write to help@example.com')
+        self.write(self.repo / "design/mockup/shop.html", page)
+        self.head = self.commit("a page with an encoded image")
+        self.git("update-ref", "refs/remotes/origin/main", self.head)
+        started = time.monotonic()
+        snapshot = self.make()
+        self.assertLess(time.monotonic() - started, 30)
+        text = next(p for p in self.texts(snapshot) if p["stage"] == "09-mockup")["source"]["text"]
+        self.assertIn(encoded(200 * 1000), text)
+        self.assertIn("Write to [redacted]", text)
+        self.assertNotIn("help@example.com", text)
+
+    def test_no_more_than_the_formats_1000_pictures(self):
+        self.assertEqual((FORMATS.MAX_PICTURES, FORMATS.MAX_LEFT_OUT), (1000, 1000))
+        with mock.patch.object(FORMATS, "MAX_PICTURES", 4):
+            snapshot = self.make()
+        self.assertEqual([p.get("key") for p in snapshot["pictures"]], [None, None, None, "docs/03-user-flow/FL-001-sign-up.md"])
+        partial = [c for c in self.found(snapshot, "picture-partial") if c.get("args", {}).get("limit") == 4]
+        self.assertEqual([(c["stage"], c["args"]["omitted"]) for c in partial],
+                         [("03-user-flow", 3), ("08-screen-states", 3), ("09-mockup", 1)])
+        self.assertIn("docs/03-user-flow/FL-002-check-out.md:1: first of 3 files not read after the snapshot's 4 pictures", partial[0]["message"])
+
+    def test_no_more_than_the_formats_1000_left_out(self):
+        self.project(repos={"design": "https://example.com/team/shop-design"},
+                     stages={"08-screen-states": {"source": "design:screens/"}, "09-mockup": {"page": "design:mockup/shop.html"}})
+        with mock.patch.object(FORMATS, "MAX_LEFT_OUT", 1):
+            snapshot = self.make()
+        self.assertEqual(snapshot["left_out"], [{"part": "", "stage": "08-screen-states", "why": "other-repository"}])
+        self.assertEqual([c["stage"] for c in self.found(snapshot, "picture-left-out")], ["08-screen-states", "09-mockup"])
+
+
+def encoded(length):
+    """An encoded SVG image: one long run of the characters that an address's local part may hold."""
+    image = "%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M12%202L2%207z%22%2F%3E"
+    return (image * (length // len(image) + 1))[:length]
+
+
+class SecretTextTest(unittest.TestCase):
+    """0.6.0: SECRET_TEXT finds what the one pattern finds, in time that grows with the text, not with its square."""
+
+    ORIGINAL = re.compile(hub.SECRET_KEYS + "|" + hub.EMAIL_TEXT)
+
+    def test_a_long_run_takes_time_in_line_with_its_length(self):
+        # Tried at every place of the run, the one pattern takes about 1.3 seconds for 40 KB and 30 for 200 KB.
+        for length in (200 * 1000, 1024 * 1024):
+            with self.subTest(length=length):
+                text = encoded(length) + " to help@example.com"
+                started = time.monotonic()
+                cleaned = hub.SECRET_TEXT.sub("[redacted]", text)
+                self.assertLess(time.monotonic() - started, 5)
+                self.assertEqual(cleaned, encoded(length) + " to [redacted]")
+
+    def test_the_same_matches_as_the_one_pattern(self):
+        cases = ["x " + "a" * 70 + "@mail.example.com y", "x " + "a" * 60 + ".b+c@mail.example.com y",
+                 "sk-" + "a" * 24 + ".john@corp.example.com", "x@ab.example.com.y@cd.example.org", "a@b.cc.dd@e.com",
+                 "ghp_" + "A" * 36 + "%jo@x.io", "-----BEGIN RSA PRIVATE KEY-----me@x.io", "AKIA" + "B" * 16 + "+q@x.io"]
+        pieces = ["a", "Z", "7", ".", "%", "+", "-", "_", "@", " ", "x.io", "sk-", "ghp_", "AKIA", "xoxb-", "github_pat_",
+                  "-----BEGIN ", "PRIVATE KEY-----", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "BBBBBBBBBBBBBBBB"]
+        draw = random.Random(428)
+        cases += ["".join(draw.choice(pieces) for _ in range(draw.randint(1, 16))) for _ in range(4000)]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(hub.SECRET_TEXT.sub("[redacted]", text), self.ORIGINAL.sub("[redacted]", text))
+                self.assertEqual(bool(hub.SECRET_TEXT.search(text)), bool(self.ORIGINAL.search(text)))
+        self.assertEqual(hub.SECRET_TEXT.sub("[redacted]", cases[0]), "x [redacted] y")
+        self.assertEqual(hub.SECRET_TEXT.sub("[redacted]", cases[2]), "[redacted][redacted]")
 
 
 class Budget03Test(SourcesFixture):
