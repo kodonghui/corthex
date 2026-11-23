@@ -21,6 +21,7 @@ from hub_cli_reviewed_050 import REVIEWED_050
 from hub_cli_reviewed_v2 import REVIEWED_V2
 from hub_cli_reviewed_deferred import REVIEWED_DEFERRED
 from hub_cli_reviewed_051 import REVIEWED_051
+from hub_cli_reviewed_060 import REVIEWED_060
 
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "hub_cli"
@@ -44,6 +45,7 @@ PRIVATE_MARKER = "qa-sensitive@example.com"
 # so that these pairs then meet the 0.3.0 bytes that they were made for.
 # Core 0.16.0 reads the QA folder by default for the plan and separate bug files.
 # corthex-nexus 0.5.1 releases that change; its version fields are in hub_cli_reviewed_051.py, applied first.
+# corthex-nexus 0.6.0 adds the corthex-hub/0.3 snapshot; its changes are in hub_cli_reviewed_060.py, applied before those.
 REVIEWED = {
     "hub.py": (
         (b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),
@@ -150,7 +152,7 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        for new, old in REVIEWED_051.get(name, ()) + REVIEWED_DEFERRED.get(name, ()) + REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
+        for new, old in REVIEWED_060.get(name, ()) + REVIEWED_051.get(name, ()) + REVIEWED_DEFERRED.get(name, ()) + REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
             if source.count(new) == 1:
                 source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:

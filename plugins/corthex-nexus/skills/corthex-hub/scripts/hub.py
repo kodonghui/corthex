@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
 SCHEMA = "corthex-hub/0.2"
 PAGE_SCHEMA = "corthex-hub-page/0.2"
 TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "hub.html"
@@ -182,7 +182,7 @@ DEFERRED = {"deferred", "postponed", "보류", "연기"}
 _COMPANIONS = {}
 
 def companion(name):
-    if name not in {"snapshot02", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci", "publication_v2"}:
+    if name not in {"snapshot02", "snapshot03", "domain", "erd", "sitemap", "records", "transport", "outbox", "commands", "ci", "publication_v2"}:
         raise ValueError("unknown hub companion")
     if name not in _COMPANIONS:
         path = Path(__file__).resolve().with_name(name + ".py")
@@ -1696,8 +1696,8 @@ def stage_order(item):
     return (STAGE_KEYS.index(item["stage"]) if item["stage"] in STAGE_KEYS else 99,) + id_key(item["id"])
 
 
-def make_snapshot(project, status=None, now=None, home=None):
-    """The snapshot of one project: settings, repositories, stages, items and checks."""
+def make_snapshot(project, status=None, now=None, home=None, schema=SCHEMA):
+    """The snapshot of one project: settings, repositories, stages, items and checks, in 0.2 or in 0.3 (snapshot03)."""
     settings = project.settings
     ids = IdFormat(settings.get("ids"))
     scan = Scan(ids)
@@ -1714,7 +1714,7 @@ def make_snapshot(project, status=None, now=None, home=None):
     ordered = sorted(items.values(), key=stage_order)
     records = settings.get("records") if isinstance(settings.get("records"), dict) else {}
     snapshot = {
-        "schema": SCHEMA,
+        "schema": schema,
         "generator": "corthex-nexus " + VERSION,
         "generated_at": now or now_text(),
         "project": {
@@ -1735,8 +1735,10 @@ def make_snapshot(project, status=None, now=None, home=None):
         "summary": summary(ordered, checks, stages),
         "truncated": False,
     }
-    snapshot = companion("snapshot02").augment(snapshot, project, home, globals(), parse_picture)
-    return fit(snapshot)
+    # 0.6.0: corthex-hub/0.3 adds the sources of stages 03, 08 and 09 and has a larger budget (snapshot03).
+    limit = companion("snapshot03").budget(schema, MAX_SNAPSHOT_BYTES)
+    snapshot = companion("snapshot02").augment(snapshot, project, home, dict(globals(), MAX_SNAPSHOT_BYTES=limit), parse_picture)
+    return fit(snapshot, limit)
 
 
 def repos_of(project):
@@ -1775,15 +1777,16 @@ def summary(items, checks, stages):
     }
 
 
-def fit(snapshot):
+def fit(snapshot, limit=None):
     """Keep a snapshot under the size limits by dropping items, then checks, from the end."""
+    limit = MAX_SNAPSHOT_BYTES if limit is None else limit
     items, checks = snapshot["items"], snapshot["checks"]
     shown_items, shown_checks = min(len(items), MAX_ITEMS), min(len(checks), MAX_CHECKS)
     while True:
         cut = shown_items < len(items) or shown_checks < len(checks)
         notice = [truncation(shown_items, len(items), shown_checks, len(checks))] if cut else []
         result = dict(snapshot, items=items[:shown_items], checks=notice + checks[:shown_checks], truncated=cut)
-        if len(dump(result, compact=True).encode("utf-8")) <= MAX_SNAPSHOT_BYTES:
+        if len(dump(result, compact=True).encode("utf-8")) <= limit:
             return result
         if shown_items:
             shown_items = shown_items * 3 // 4
@@ -1832,7 +1835,7 @@ def stored_snapshots(home):
         return result
     for path in sorted(folder.glob("*.json")):
         data = load_json(path)
-        if data and data.get("schema") in ("corthex-hub/0.1", SCHEMA) and isinstance(data.get("project"), dict):
+        if data and data.get("schema") in ("corthex-hub/0.1", SCHEMA, "corthex-hub/0.3") and isinstance(data.get("project"), dict):
             name = data["project"].get("name")
             if isinstance(name, str) and NAME.match(name):
                 result[name] = data
@@ -2128,7 +2131,7 @@ def run_snapshot(args, home):
                 say("%s: %s" % (name or "project", reason), sys.stderr)
             status = 1
             continue
-        snapshot = make_snapshot(project, load_status(home, project.name), home=home)
+        snapshot = make_snapshot(project, load_status(home, project.name), home=home, schema=args.format)
         if args.json:
             if not args.print:
                 save_snapshot(home, snapshot)
@@ -2227,6 +2230,8 @@ def parser():
     snap.add_argument("--path", help="read the project in this folder instead")
     snap.add_argument("--repo", action="append", metavar="ALIAS=FOLDER", help="local checkout of another repository of the project")
     snap.add_argument("--print", action="store_true", help="print the snapshot instead of saving it")
+    snap.add_argument("--format", choices=(SCHEMA, "corthex-hub/0.3"), default=SCHEMA,
+                      help="the snapshot format (default: %(default)s); a push picks it from the server's answer")
 
     stat = commands.add_parser("status", help="record a stage's progress, last checkpoint and next action")
     stat.add_argument("project")

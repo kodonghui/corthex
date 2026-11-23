@@ -21,7 +21,7 @@
     "06-api": { "human": "swagger-ui", "source": "api/openapi.yaml", "truth": "source" },
     "07-sitemap": { "human": "board", "source": "docs/07-sitemap/sitemap.yaml", "truth": "source" },
     "08-screen-states": { "human": "wireframes", "source": "docs/08-screens/", "truth": "source" },
-    "09-mockup": { "human": "figma", "link": "<link to the file>", "source": "design/base.tokens.json", "truth": "human" },
+    "09-mockup": { "human": "figma", "link": "<link to the file>", "source": "design/base.tokens.json", "page": "design/mockup/shop.html", "truth": "human" },
     "10-wbs": { "human": "github", "truth": "human", "note": "Tasks live only in the project board for now." },
     "11-development": { "human": "github", "source": ".", "truth": "source" },
     "13-presentation": { "human": "slides", "source": "docs/13-presentation/script.md", "truth": "source" }

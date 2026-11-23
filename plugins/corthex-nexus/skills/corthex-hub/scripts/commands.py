@@ -333,13 +333,16 @@ def push_job(args, home, env, h, client_factory=None):
         if not problem.get("code") and held.get("failure") == "HTTP 404":
             return outcome("push", own, {"outcome": "refused", "failure": "the server needs the 0.2 release"})
         return outcome("push", own, held)
-    snapshot = h.make_snapshot(project, h.load_status(home, own), home=home)
-    h.save_snapshot(home, snapshot)
     answer = held.get("answer") or {}
+    # 0.6.0: the newest format that the server lists; a commit held in an older one goes again once (API-243).
+    formats = h.companion("snapshot03")
+    snapshot = h.make_snapshot(project, h.load_status(home, own), home=home, schema=formats.choose(answer))
+    h.save_snapshot(home, snapshot)
     current = answer.get("default_commit")
     incoming = snapshot.get("repos", {}).get(".", {}).get("default", {}).get("commit")
     if (isinstance(current, str) and COMMIT.fullmatch(current) and isinstance(incoming, str) and
-            (incoming == current or h.git(project.root, "cat-file", "-t", current) == "commit" and
+            (incoming == current and not formats.completes(answer, snapshot["schema"]) or
+             incoming != current and h.git(project.root, "cat-file", "-t", current) == "commit" and
              h.run_git(project.root, ["merge-base", "--is-ancestor", incoming, current]) is not None)):
         # The agent's push, or a later commit's job, stored this commit or a newer one.
         return outcome("push", own, {"outcome": "done", "answer": {"sent": False, "why": "already-held"}})
@@ -728,7 +731,9 @@ def execute(args, home, api, env=None, client_factory=None):
                         # The server holds no such project, also after a removal: its first push waits for the user's yes.
                         value = {"outcome": "refused", "failure": FIRST_PUSH}
                     else:
-                        snapshot = h.make_snapshot(project, h.load_status(home, name), home=home)
+                        # 0.6.0: the newest format that the server lists; a first push has no answer to read, so 0.2.
+                        snapshot = h.make_snapshot(project, h.load_status(home, name), home=home,
+                                                   schema=h.companion("snapshot03").choose(held.get("answer")))
                         h.save_snapshot(home, snapshot)
                         failure = commit_replacement(snapshot, held.get("answer") or {}, project, args.replace_held, h)
                         if failure:

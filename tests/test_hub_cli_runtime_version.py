@@ -25,9 +25,9 @@ class RuntimeVersionPinTest(unittest.TestCase):
         changed = {row['file'] for row in rows if row['reviewedNormalization']}
         self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py', 'outbox.py'})
         manifest = json.loads((ROOT / 'plugins/corthex-nexus/plugin.json').read_text(encoding='utf-8'))
-        self.assertEqual(manifest['version'], '0.5.1')
-        self.assertIn('VERSION = "0.5.1"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
-        self.assertIn('version="0.5.1", timeout=30', (self.scripts / 'transport.py').read_text(encoding='utf-8'))
+        self.assertEqual(manifest['version'], '0.6.0')
+        self.assertIn('VERSION = "0.6.0"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
+        self.assertIn('version="0.6.0", timeout=30', (self.scripts / 'transport.py').read_text(encoding='utf-8'))
 
     def test_a_wire_schema_change_is_still_refused(self):
         path = self.scripts / 'hub.py'
@@ -39,7 +39,7 @@ class RuntimeVersionPinTest(unittest.TestCase):
 
     def test_an_unreviewed_version_field_is_still_refused(self):
         path = self.scripts / 'transport.py'
-        path.write_text(path.read_text(encoding='utf-8').replace('version="0.5.1"', 'version="0.5.2"', 1), encoding='utf-8')
+        path.write_text(path.read_text(encoding='utf-8').replace('version="0.6.0"', 'version="0.6.1"', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)
 
@@ -56,5 +56,14 @@ class RuntimeVersionPinTest(unittest.TestCase):
         source = path.read_text(encoding='utf-8')
         self.assertIn('ASKS = ("answer", "recommended", "checkpoint")', source)
         path.write_text(source.replace('"checkpoint")', '"checkpoint", "maybe")', 1), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'runtime differs'):
+            fixture.verify_runtime(self.root)
+
+    def test_another_format_change_is_still_refused(self):
+        # 0.6.0 sends 0.3 only to a server that lists it; any other change to that choice is not reviewed.
+        path = self.scripts / 'commands.py'
+        source = path.read_text(encoding='utf-8')
+        self.assertIn('schema=h.companion("snapshot03").choose(held.get("answer"))', source)
+        path.write_text(source.replace('choose(held.get("answer"))', 'NEW', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)

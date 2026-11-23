@@ -344,13 +344,18 @@ def augment(snapshot, project, home, api, parse_picture):
                 picture = parse_picture(key, documents, checks, h, part)
                 if picture is not None:
                     snapshot["pictures"].append({"part": part, "stage": key, "commit": default["commit"], "time": default["time"], "source": picture})
+        if snapshot["schema"] != "corthex-hub/0.2":
+            # 0.6.0: corthex-hub/0.3 adds the sources of stages 03, 08 and 09, one picture per file (snapshot03).
+            h.companion("snapshot03").pictures(snapshot, project, parts, tree, default, checks, h, home)
     snapshot["checks"].extend(checks)
     snapshot = h.companion("commands").scrub(snapshot, home or Path.home(), os.environ, h)
     while snapshot["pictures"] and len(h.dump(snapshot, compact=True).encode("utf-8")) > h.MAX_SNAPSHOT_BYTES:
         biggest = max(snapshot["pictures"], key=lambda p: len(h.dump(p, compact=True).encode("utf-8")))
         snapshot["pictures"].remove(biggest)
         omission = {"part": biggest["part"], "stage": biggest["stage"], "why": "size"}
+        if "key" in biggest:
+            omission["key"] = biggest["key"]
         snapshot["left_out"].append(omission)
-        snapshot["checks"].append(h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under 1 MB", stage=biggest["stage"], args=omission))
+        snapshot["checks"].append(h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under its size limit", stage=biggest["stage"], args=omission))
     snapshot["summary"] = h.summary(snapshot["items"], snapshot["checks"], snapshot["stages"])
     return snapshot
