@@ -30,6 +30,7 @@ Each entry in `stages` is keyed by a stage key (`01-domain` to `13-presentation`
 | `truth` | Which side wins when the two differ: `source` (the text) or `human` (the tool named in `human`) |
 | `note` | Optional. Why the stage is set up this way, with the decision and its date |
 | `skip` | Optional. `true` when the project does not use this stage |
+| `page` | Optional, stage `09-mockup` only. The mockup page that NEXUS shows in a frame: the path of an HTML file in the project's own repository, or of a folder of them, relative to its root with forward slashes, such as `design/mockup/shop.html`. The stage's `source` stays the design tokens. A hub from `corthex-nexus` 0.6.0 sends each page, with its whole text, only to a NEXUS server that takes the `corthex-hub/0.3` snapshot; a translation beside its original, such as `shop.ko.html`, is not sent. The page's whole text is sent, so keep secrets and personal data out of it |
 
 A stage without an entry uses the default paths in its contract, with `truth` set to `source`. A stage with an entry but no `source` has only the human view; say so when you report on the stage, and offer to start a text copy.
 

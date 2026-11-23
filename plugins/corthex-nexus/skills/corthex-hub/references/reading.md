@@ -94,3 +94,18 @@ Git text objects use the same UTF-8 BOM handling as working-tree sources. Pictur
 | `parts-invalid` | warn | Ignore invalid project parts |
 | `picture-left-out` | warn | A whole picture was omitted for size or because its source is in another repository |
 | `picture-partial` | warn | The place named in the check was not fully readable or exceeded a picture limit |
+
+## Picture sources added in 0.3
+
+A `corthex-hub/0.3` snapshot, which a push sends only to a server that lists that format, also carries stages 03, 08 and 09 from the same default commit. NEXUS parses them itself, so the hub sends text, not a parsed picture: one picture per file, with the file's repository path as `key` and its whole text as `source.text`, redacted as every other string is. A translation beside its original, such as `FL-001-signup.ko.md` beside `FL-001-signup.md`, is never sent.
+
+- **User flows (`03-user-flow`)**: each Markdown file of the stage's source that the hub reads as defining a flow, such as `FL-001-signup.md` with its Mermaid flowchart. A listing such as `README.md` or `index.md` is not a flow.
+- **Screen states (`08-screen-states`)**: each Markdown file of the stage's source that the hub reads as defining a screen, such as `SCR-001.md`. Listings and other formats, such as wireframe pages, are not sent.
+- **Mockup (`09-mockup`)**: each HTML page that the stage's `page` setting names, a file or a folder of them. The stage's `source` stays the design tokens, which the hub does not send. Without `page`, the snapshot has no mockup.
+
+A file over 1 MiB is left out, named in `left_out` with `why: size` and counted by a `picture-left-out` check. The 400-file limit counts each stage's files as in 0.2. A snapshot holds at most 1,000 pictures, as the format allows, and the files after that are not read; nor are the files after the texts read pass the snapshot's budget. A `picture-partial` check counts them. Past the format's 1,000 `left_out` entries, an omission is named only by its `picture-left-out` check. The file's part follows the 0.2 rule: a name that starts with a part name followed by `/`, `.` or `-`, or the project as a whole.
+
+| Added rule | Level | Meaning |
+| --- | --- | --- |
+| `mockup-page-invalid` | warn | Stage 09's `page` is not a relative path with forward slashes |
+| `mockup-page-missing` | warn | No HTML page is at stage 09's `page` on the default branch |

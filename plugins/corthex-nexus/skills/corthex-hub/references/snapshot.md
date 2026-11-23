@@ -14,9 +14,9 @@ The hub's generated files are under `~/.corthex/hub/` (on Windows, `%USERPROFILE
 
 Files are written through a temporary file, so a failed write keeps the old one. Rebuilding regenerates snapshots and the page. Preserve stage records and unsent writes: rebuilding cannot recover either.
 
-## Current snapshot: `corthex-hub/0.2`
+## Snapshot `corthex-hub/0.2`
 
-0.2 keeps the legacy fields below and adds:
+`snapshot`, `build`, a dry run and a push to a server that does not list a newer format make 0.2. It keeps the legacy fields below and adds:
 
 | Field | Meaning |
 | --- | --- |
@@ -27,13 +27,25 @@ Files are written through a temporary file, so a failed write keeps the old one.
 | `stages.<stage>.checkpoints` | Repository checkpoint list for a project without parts; legacy `checkpoint`/`checkpoint_date` keep the last approval |
 | `stages.<stage>.parts.<part>` | That part's `state`, `checkpoints`, `next`, `updated`; an absent record remains unknown |
 | `pictures` | Each has `part`, pictured `stage`, full default `commit`, `time` and format-1 `source` |
-| `left_out` | Picture omissions with `part`, `stage`, `why: size` or `other-repository` |
+| `left_out` | Picture omissions with `part`, `stage`, `why: size` or `other-repository`, and in 0.3 the `key` of a file |
 | `ask_before` | Up to 30 `entries`, their `source: project/profile/default`, and the inherited entries a project override leaves out, `left_out`. A project entry keeps an inherited one when it repeats it, ignoring case, alone or followed by a space or `(`: `deletions (data)` keeps `deletions` |
 | `replaces` | Added only by a sending push when replacing the server's held commit |
 
 Only pictures and repository stage records come from the fetched default commit. `ls-tree` and `cat-file` read regular blobs without a checkout, filters, hooks, submodules or the working branch's text. Replacement refs and automatic object fetches are disabled, so a local replacement or missing partial-clone blob cannot silently change the reported bytes or turn a local command into a network request. Missing Git, origin or origin HEAD gives no pictures and `pictures-not-sent`, with the command to record the head. Sources in another repository are omitted explicitly. A document starts a part name followed by `/`, `.` or `-`; the longest matching name wins. An unmatched document is pictured for the whole project with `part-unknown`.
 
-Picture formats are described in [reading.md](reading.md). The snapshot carries interpreted picture data, never arbitrary source files. Limits remain 3,000 items, 2,000 checks and 1,000,000 compact UTF-8 bytes: remove whole pictures, largest first, before trimming items and checks. Each omitted picture is named in `left_out` and a check. All strings are redacted, including the actual service-token components and the user's home folder. A sensitive link is omitted whole.
+Picture formats are described in [reading.md](reading.md). A 0.2 snapshot carries interpreted picture data, never arbitrary source files. Limits remain 3,000 items, 2,000 checks and 1,000,000 compact UTF-8 bytes: remove whole pictures, largest first, before trimming items and checks. Each omitted picture is named in `left_out` and a check. All strings are redacted, including the actual service-token components and the user's home folder. A sensitive link is omitted whole.
+
+## Snapshot `corthex-hub/0.3`
+
+0.3 is 0.2 with the sources of stages 03, 08 and 09 added to `pictures`, since NEXUS parses those itself. Each user flow, screen definition and mockup page of the default commit is one picture:
+
+| Field | Meaning |
+| --- | --- |
+| `part`, `stage`, `commit`, `time` | As in 0.2; `stage` is `03-user-flow`, `08-screen-states` or `09-mockup` |
+| `key` | The file's path in the repository, at most 300 characters; NEXUS keeps the picture by it |
+| `source.text` | The file's whole text, redacted as every other string, at most 1,048,576 characters |
+
+Which files are sent, and the mockup page that stage 09's `page` setting names, are in [reading.md](reading.md). A translation beside its original is not sent. A file over 1 MiB is left out with `why: size` and its `key`. A snapshot holds at most 1,000 pictures and 1,000 `left_out` entries; files are not read past 1,000 pictures, or once the texts read pass the budget. The budget is 8,000,000 compact UTF-8 bytes, under the 8 MiB that a server taking 0.3 accepts; whole pictures of every stage go first, largest first, before items and checks. `hub.py snapshot --format corthex-hub/0.3 --print` prints the 0.3 snapshot that a push would send.
 
 ## Repository stage records
 
@@ -106,11 +118,11 @@ No network, no answer within 30 seconds, missing/refused token, HTTP 429/500/502
 
 ### What a snapshot leaves out
 
-- Arbitrary file contents; 0.2 additionally carries the interpreted picture data described above.
+- Arbitrary file contents; 0.2 additionally carries the interpreted picture data described above, and 0.3 the whole text of the user flows, screen definitions and mockup pages it sends.
 - Local paths: `where` and `source` are relative to their repository.
 - Secrets and email addresses in titles and fields, which become `[redacted]`, and user names and passwords in links. A link that holds a secret or an email address, even percent-encoded, is left out whole, since it would not work with the secret taken out.
 
-Limits: 3,000 items, 2,000 checks and 1,000,000 bytes per snapshot. After whole-picture omission in 0.2, items are dropped from the end, then checks, and a `truncated` check gives how many of each were kept. A project whose settings alone are over the limit gets no snapshot. Titles have up to 120 characters, and an item up to 60 links.
+Limits: 3,000 items, 2,000 checks and 1,000,000 bytes per snapshot, 8,000,000 in 0.3. After whole-picture omission in 0.2, items are dropped from the end, then checks, and a `truncated` check gives how many of each were kept. A project whose settings alone are over the limit gets no snapshot. Titles have up to 120 characters, and an item up to 60 links.
 
 ## Status file
 
@@ -152,13 +164,13 @@ Settings in `~/.corthex/profile.json`:
 
 - `url`: the server. `--url` and the environment variable `CORTHEX_NEXUS_URL` take precedence. It must use `https`; `http` works only for `localhost`, `127.0.0.1` and `::1`, for testing.
 - `push`: the projects that may be sent. `hub.py push` with no names sends these; a name that is not listed is refused.
-- `hub.py push --job` is a repository's push job. It needs neither a profile nor names: it pushes the checkout's own project to `CORTHEX_NEXUS_URL` with the token's two variables, sends only a commit newer than the held one, never a first push or a replacement, and sends no outbox. With the address or a variable of the token not set it sends nothing and exits 0, naming what is missing.
+- `hub.py push --job` is a repository's push job. It needs neither a profile nor names: it pushes the checkout's own project to `CORTHEX_NEXUS_URL` with the token's two variables, sends only a commit newer than the held one, or the held one once more in a newer format that the server lists, never a first push or a replacement, and sends no outbox. With the address or a variable of the token not set it sends nothing and exits 0, naming what is missing.
 - `hub.py remove` sends no removal: for each project it names, listed in `push` or not, it reads `GET /api/spaces/<project>/data` and gives the address of the project's data, `<url>/p/<project>#data`, where the user removes the project under their own sign-in.
 - The service token is read from `CORTHEX_NEXUS_CLIENT_ID` and `CORTHEX_NEXUS_CLIENT_SECRET` and sent as the Cloudflare Access headers `CF-Access-Client-Id` and `CF-Access-Client-Secret`. A server on this machine may be used without a token.
 
-Each push first drains the outbox and reads `GET /api/snapshots/<project>/held`, then makes a fresh snapshot. No held snapshot or the same commit needs no `replaces`; a descendant replaces the held commit. An older or missing commit needs a fetch; divergence needs explicit user agreement before `--replace-held`. Commit times never decide ancestry. `--dry-run` sends nothing, including the outbox and held question. A server from before the design revision has no project's data, so `remove` reads its removal preview, `GET /api/snapshots/<project>/removal`, with the remark `server-older`. `remove` keeps the local queue; a write for a removed project is dropped with its `404` at the next contact.
+Each push first drains the outbox and reads `GET /api/snapshots/<project>/held`, then makes a fresh snapshot in the newest format that the answer lists in `formats` and the hub makes: 0.3 when it lists `corthex-hub/0.3`, otherwise 0.2. A server from before lists no formats, and a project that the server does not hold has no answer, so a first push goes as 0.2. No held snapshot or the same commit needs no `replaces`; a descendant replaces the held commit. `push --job` sends the held commit again when the answer's `format` is older than the one it chose, which completes that commit's revision; the server then names the new format, so it does this once. An older or missing commit needs a fetch; divergence needs explicit user agreement before `--replace-held`. Commit times never decide ancestry. `--dry-run` sends nothing, including the outbox and held question. A server from before the design revision has no project's data, so `remove` reads its removal preview, `GET /api/snapshots/<project>/removal`, with the remark `server-older`. `remove` keeps the local queue; a write for a removed project is dropped with its `404` at the next contact.
 
-`POST <url>/api/snapshots` sends compact JSON and returns the revision and 0.2 space/picture/checkpoint counts. Redirects are not followed. A phase-1 held endpoint without a Problem code requires a server upgrade. The hub reports the server's Problem Details and retains only retryable agent writes, never pushes.
+`POST <url>/api/snapshots` sends compact JSON and returns the revision and the server's counts of what it stored or drew. Redirects are not followed. A phase-1 held endpoint without a Problem code requires a server upgrade. The hub reports the server's Problem Details and retains only retryable agent writes, never pushes.
 
 ## NEXUS server
 

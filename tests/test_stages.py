@@ -30,7 +30,7 @@ ID_KINDS = [
     "screen", "task", "test", "bug", "decision", "scene",
 ]
 PROJECT_FIELDS = {"name", "title", "team", "language", "records", "ask_before", "parts", "on_nexus", "repos", "ids", "stages"}
-STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip"}
+STAGE_FIELDS = {"human", "link", "source", "truth", "note", "skip", "page"}
 PREFIX = re.compile(r"^[A-Z][A-Z0-9]*$")
 # Sticky colours a Miro board accepts by name.
 MIRO_COLOURS = {
@@ -237,6 +237,11 @@ class StageContractTest(unittest.TestCase):
             with self.subTest(stage=key):
                 self.assertIn(key, keys)
                 self.assertLessEqual(set(stage), STAGE_FIELDS)
+                if "page" in stage:
+                    # The mockup page that NEXUS shows is a setting of stage 09 only (project.md).
+                    self.assertEqual(key, "09-mockup")
+                    self.assertNotIn("\\", stage["page"])
+                    self.assertFalse(stage["page"].startswith("/"), "page paths are relative")
                 self.assertIn(stage["truth"], TRUTH)
                 self.assertTrue(stage["human"])
                 source = stage.get("source")
