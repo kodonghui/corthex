@@ -349,13 +349,32 @@ def augment(snapshot, project, home, api, parse_picture):
             h.companion("snapshot03").pictures(snapshot, project, parts, tree, default, checks, h, home)
     snapshot["checks"].extend(checks)
     snapshot = h.companion("commands").scrub(snapshot, home or Path.home(), os.environ, h)
-    while snapshot["pictures"] and len(h.dump(snapshot, compact=True).encode("utf-8")) > h.MAX_SNAPSHOT_BYTES:
-        biggest = max(snapshot["pictures"], key=lambda p: len(h.dump(p, compact=True).encode("utf-8")))
-        snapshot["pictures"].remove(biggest)
-        omission = {"part": biggest["part"], "stage": biggest["stage"], "why": "size"}
-        if "key" in biggest:
-            omission["key"] = biggest["key"]
-        snapshot["left_out"].append(omission)
-        snapshot["checks"].append(h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under its size limit", stage=biggest["stage"], args=omission))
+    # 0.6.0: a 0.3 snapshot can hold many pictures, so each one's size is measured once and the snapshot's is kept
+    # as they go; the second loop checks the exact size, as the only loop did before.
+    measure = lambda value: len(h.dump(value, compact=True).encode("utf-8"))
+    total = measure(snapshot)
+    sizes = {id(picture): measure(picture) for picture in snapshot["pictures"]} if total > h.MAX_SNAPSHOT_BYTES else {}
+    while snapshot["pictures"] and total > h.MAX_SNAPSHOT_BYTES:
+        biggest = max(snapshot["pictures"], key=lambda p: sizes[id(p)])
+        total += drop(snapshot, biggest, h, measure) - sizes[id(biggest)]
+    while snapshot["pictures"] and measure(snapshot) > h.MAX_SNAPSHOT_BYTES:
+        drop(snapshot, max(snapshot["pictures"], key=measure), h, measure)
     snapshot["summary"] = h.summary(snapshot["items"], snapshot["checks"], snapshot["stages"])
     return snapshot
+
+
+def drop(snapshot, biggest, h, measure):
+    """Leave a whole picture out for size; the bytes this adds to the compact snapshot, the picture's own aside."""
+    added = -1 if len(snapshot["pictures"]) > 1 else 0
+    snapshot["pictures"].remove(biggest)
+    omission = {"part": biggest["part"], "stage": biggest["stage"], "why": "size"}
+    if "key" in biggest:
+        omission["key"] = biggest["key"]
+    # 0.6.0: at most the format's 1,000 entries; an omission past them is named by its check only.
+    if len(snapshot["left_out"]) < h.companion("snapshot03").MAX_LEFT_OUT:
+        added += measure(omission) + (1 if snapshot["left_out"] else 0)
+        snapshot["left_out"].append(omission)
+    check = h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under its size limit", stage=biggest["stage"], args=omission)
+    added += measure(check) + (1 if snapshot["checks"] else 0)
+    snapshot["checks"].append(check)
+    return added

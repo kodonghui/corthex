@@ -4,8 +4,10 @@
 format and its budget, fit takes the budget, the snapshot command takes --format, a saved 0.3 snapshot
 is read back, snapshot02 calls snapshot03 for a 0.3 snapshot and names the key of a picture it leaves
 out, the two push paths choose the format from the held-commit answer and the push job sends a commit
-held in an older format again, and the version fields move from 0.5.1 to 0.6.0. The new snapshot03.py
-is not a pinned runtime file. These pairs run first, so the later layers meet the 0.5.1 bytes that
+held in an older format again, and the version fields move from 0.5.1 to 0.6.0. SECRET_TEXT becomes
+SecretText, which finds the same matches as the one pattern in time that grows with the text: the
+redaction itself. The budget loop measures each picture once and keeps at most 1,000 left_out entries.
+The new snapshot03.py is not a pinned runtime file. These pairs run first, so the later layers meet the 0.5.1 bytes that
 they were made for. They are made from the whole diff against the 0.5.1 runtime.
 """
 
@@ -107,11 +109,40 @@ REVIEWED_060 = {
          b'            # 0.6.0: corthex-hub/0.3 adds the sources of stages 03, 08 and 09, one picture per file (snapshot03).\n'
          b'            h.companion("snapshot03").pictures(snapshot, project, parts, tree, default, checks, h, home)\n',
          b''),
-        (b'        if "key" in biggest:\n'
-         b'            omission["key"] = biggest["key"]\n',
-         b''),
-        (b'        snapshot["checks"].append(h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under its size limit", stage=biggest["stage"], args=omission))\n',
+        (b"    # 0.6.0: a 0.3 snapshot can hold many pictures, so each one's size is measured once and the snapshot's is kept\n"
+         b'    # as they go; the second loop checks the exact size, as the only loop did before.\n'
+         b'    measure = lambda value: len(h.dump(value, compact=True).encode("utf-8"))\n'
+         b'    total = measure(snapshot)\n'
+         b'    sizes = {id(picture): measure(picture) for picture in snapshot["pictures"]} if total > h.MAX_SNAPSHOT_BYTES else {}\n'
+         b'    while snapshot["pictures"] and total > h.MAX_SNAPSHOT_BYTES:\n'
+         b'        biggest = max(snapshot["pictures"], key=lambda p: sizes[id(p)])\n'
+         b'        total += drop(snapshot, biggest, h, measure) - sizes[id(biggest)]\n'
+         b'    while snapshot["pictures"] and measure(snapshot) > h.MAX_SNAPSHOT_BYTES:\n'
+         b'        drop(snapshot, max(snapshot["pictures"], key=measure), h, measure)\n',
+         b'    while snapshot["pictures"] and len(h.dump(snapshot, compact=True).encode("utf-8")) > h.MAX_SNAPSHOT_BYTES:\n'
+         b'        biggest = max(snapshot["pictures"], key=lambda p: len(h.dump(p, compact=True).encode("utf-8")))\n'
+         b'        snapshot["pictures"].remove(biggest)\n'
+         b'        omission = {"part": biggest["part"], "stage": biggest["stage"], "why": "size"}\n'
+         b'        snapshot["left_out"].append(omission)\n'
          b'        snapshot["checks"].append(h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under 1 MB", stage=biggest["stage"], args=omission))\n'),
+        (b'\n'
+         b'\n'
+         b'def drop(snapshot, biggest, h, measure):\n'
+         b'    """Leave a whole picture out for size; the bytes this adds to the compact snapshot, the picture\'s own aside."""\n'
+         b'    added = -1 if len(snapshot["pictures"]) > 1 else 0\n'
+         b'    snapshot["pictures"].remove(biggest)\n'
+         b'    omission = {"part": biggest["part"], "stage": biggest["stage"], "why": "size"}\n'
+         b'    if "key" in biggest:\n'
+         b'        omission["key"] = biggest["key"]\n'
+         b"    # 0.6.0: at most the format's 1,000 entries; an omission past them is named by its check only.\n"
+         b'    if len(snapshot["left_out"]) < h.companion("snapshot03").MAX_LEFT_OUT:\n'
+         b'        added += measure(omission) + (1 if snapshot["left_out"] else 0)\n'
+         b'        snapshot["left_out"].append(omission)\n'
+         b'    check = h.check("picture-left-out", "warn", "a whole picture is left out to keep the snapshot under its size limit", stage=biggest["stage"], args=omission)\n'
+         b'    added += measure(check) + (1 if snapshot["checks"] else 0)\n'
+         b'    snapshot["checks"].append(check)\n'
+         b'    return added\n',
+         b''),
     ),
     'transport.py': (
         (b'    def __init__(self, base, env, version="0.6.0", timeout=30, publisher=None):\n',

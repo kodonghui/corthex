@@ -45,7 +45,7 @@ Picture formats are described in [reading.md](reading.md). A 0.2 snapshot carrie
 | `key` | The file's path in the repository, at most 300 characters; NEXUS keeps the picture by it |
 | `source.text` | The file's whole text, redacted as every other string, at most 1,048,576 characters |
 
-Which files are sent, and the mockup page that stage 09's `page` setting names, are in [reading.md](reading.md). A translation beside its original is not sent. A file over 1 MiB is left out with `why: size` and its `key`. A snapshot holds at most 1,000 pictures and 1,000 `left_out` entries. The budget is 8,000,000 compact UTF-8 bytes, under the 8 MiB that a server taking 0.3 accepts; whole pictures of every stage go first, largest first, before items and checks. `hub.py snapshot --format corthex-hub/0.3 --print` prints the 0.3 snapshot that a push would send.
+Which files are sent, and the mockup page that stage 09's `page` setting names, are in [reading.md](reading.md). A translation beside its original is not sent. A file over 1 MiB is left out with `why: size` and its `key`. A snapshot holds at most 1,000 pictures and 1,000 `left_out` entries; files are not read past 1,000 pictures, or once the texts read pass the budget. The budget is 8,000,000 compact UTF-8 bytes, under the 8 MiB that a server taking 0.3 accepts; whole pictures of every stage go first, largest first, before items and checks. `hub.py snapshot --format corthex-hub/0.3 --print` prints the 0.3 snapshot that a push would send.
 
 ## Repository stage records
 

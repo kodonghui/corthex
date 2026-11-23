@@ -245,14 +245,13 @@ class Snapshot03Test(SourcesFixture):
         self.assertIn("Write to [redacted] for a refund.", text)
         self.assertNotIn("help@example.com", text)
 
-    def test_a_page_with_a_long_encoded_image_is_redacted_in_time(self):
+    def test_a_page_with_a_long_encoded_image_is_redacted(self):
+        # SecretTextTest times the redaction itself; this is the same text sent whole in a snapshot.
         page = PAGE.format(body='<i style="background:url(data:image/svg+xml,' + encoded(200 * 1000) + ')"></i> Write to help@example.com')
         self.write(self.repo / "design/mockup/shop.html", page)
         self.head = self.commit("a page with an encoded image")
         self.git("update-ref", "refs/remotes/origin/main", self.head)
-        started = time.monotonic()
         snapshot = self.make()
-        self.assertLess(time.monotonic() - started, 30)
         text = next(p for p in self.texts(snapshot) if p["stage"] == "09-mockup")["source"]["text"]
         self.assertIn(encoded(200 * 1000), text)
         self.assertIn("Write to [redacted]", text)
@@ -351,6 +350,36 @@ class Budget03Test(SourcesFixture):
         (check,) = self.found(snapshot, "picture-left-out")
         self.assertEqual(check["message"], "a whole picture is left out to keep the snapshot under its size limit")
         self.assertFalse(snapshot["truncated"])
+
+    def test_no_file_is_read_once_the_texts_pass_the_budget(self):
+        self.write(self.repo / "docs/03-user-flow/FL-001-sign-up.md", FLOW.format(n="001", title="Sign up") + "z" * 600000)
+        self.head = self.commit("a flow larger than the budget below")
+        self.git("update-ref", "refs/remotes/origin/main", self.head)
+        with mock.patch.object(FORMATS, "MAX_SNAPSHOT_BYTES", 500 * 1000):
+            snapshot = self.make()
+        partial = [c for c in self.found(snapshot, "picture-partial") if c.get("args", {}).get("limit") == 500 * 1000]
+        self.assertEqual([(c["stage"], c["args"]["omitted"]) for c in partial],
+                         [("03-user-flow", 3), ("08-screen-states", 3), ("09-mockup", 1)])
+        self.assertIn("FL-002-check-out.md:1: first of 3 files not read after the snapshot's size limit", partial[0]["message"])
+        # The one text read is then left out whole, as any picture over the budget is.
+        self.assertEqual(snapshot["left_out"], [{"part": "", "stage": "03-user-flow", "why": "size", "key": "docs/03-user-flow/FL-001-sign-up.md"}])
+        self.assertEqual(self.texts(snapshot), [])
+
+    def test_the_bytes_a_drop_adds_are_exact(self):
+        # The budget loop keeps the snapshot's size from these, so they must match a fresh measure.
+        snapshot02 = hub.companion("snapshot02")
+        def picture(n):
+            return {"part": "", "stage": "09-mockup", "key": "p%d.html" % n, "commit": "a" * 40, "time": "t", "source": {"text": "é" * n}}
+        for count, left, checks in ((1, 0, 0), (3, 0, 0), (2, 2, 5), (2, FORMATS.MAX_LEFT_OUT, 1)):
+            with self.subTest(count=count, left=left, checks=checks):
+                snapshot = {"schema": NEW, "pictures": [picture(n) for n in range(10, 10 + count)],
+                            "left_out": [{"why": "size"}] * left, "checks": [{"rule": "r"}] * checks}
+                before, biggest = size(snapshot), snapshot["pictures"][-1]
+                alone = size(biggest)
+                added = snapshot02.drop(snapshot, biggest, hub, size)
+                self.assertEqual(size(snapshot), before + added - alone)
+                self.assertEqual(len(snapshot["left_out"]), min(left + 1, FORMATS.MAX_LEFT_OUT))
+                self.assertEqual(len(snapshot["checks"]), checks + 1)
 
 
 class SnapshotCommandTest(SourcesFixture):

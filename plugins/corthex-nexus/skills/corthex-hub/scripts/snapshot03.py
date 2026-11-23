@@ -104,6 +104,7 @@ def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
     part_of = h.companion("snapshot02").part_of
     settings = project.settings.get("stages")
     settings = settings if isinstance(settings, dict) else {}
+    read = 0  # the UTF-8 bytes of the texts added so far
     for key, _, default_source, _, _ in h.STAGES:
         if key not in TEXT_STAGES:
             continue
@@ -135,10 +136,13 @@ def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
                 stage=key, args={"limit": h.MAX_FILES, "omitted": len(names) - h.MAX_FILES}))
         names = names[:h.MAX_FILES]
         for index, name in enumerate(names):
-            if len(snapshot["pictures"]) >= MAX_PICTURES:
+            # The format's most pictures, or the budget: past that the snapshot would leave the pictures out again.
+            full = len(snapshot["pictures"]) >= MAX_PICTURES
+            if full or read > h.MAX_SNAPSHOT_BYTES:
                 rest = len(names) - index
                 checks.append(h.check("picture-partial", "warn", name + ":1: first of " + str(rest) + " files not read after the snapshot's " +
-                    str(MAX_PICTURES) + " pictures", stage=key, args={"limit": MAX_PICTURES, "omitted": rest}))
+                    (str(MAX_PICTURES) + " pictures" if full else "size limit"), stage=key,
+                    args={"limit": MAX_PICTURES if full else h.MAX_SNAPSHOT_BYTES, "omitted": rest}))
                 break
             if key in DEFINES and reading(key, name, h).listing:
                 continue
@@ -164,3 +168,4 @@ def pictures(snapshot, project, parts, tree, default, checks, h, home=None):
                 continue
             snapshot["pictures"].append({"part": part, "stage": key, "key": name, "commit": default["commit"],
                                          "time": default["time"], "source": {"text": text}})
+            read += len(text.encode("utf-8"))
