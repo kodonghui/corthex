@@ -12,7 +12,7 @@ It does not add a service of its own. Installation and updates use the hosts' pl
 
 Two optional plugins build on it. `corthex-memory` starts each session with the principles, your profile and the current project's settings. `corthex-nexus` puts the stages, checks and trace links of all your projects on one page.
 
-> Status: core `corthex` 0.15.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
+> Status: core `corthex` 0.16.0; `corthex-memory` 0.2.1 is the C1 package with project approval context; release decisions and known limits are tracked in the MEMORY WBS and QA report; `corthex-nexus` is 0.4.0. The stage skills grow with real use. Memory model curation/recall are C2 work; NEXUS has its local hub and a first server you deploy yourself.
 
 For a first run from installation to one reviewed requirement and a progress record, follow [Your first project](docs/first-project.md).
 
@@ -73,7 +73,7 @@ For an authorized server, the core entry and stage skills read agent work at a s
 | `corthex-define` | 02–04 | write requirements, user flows and the functional spec |
 | `corthex-contract` | 05–06 | keep the database schema and the API contract in line with the spec |
 | `corthex-screen` | 07–09 | sitemap, screen states, mockups and design tokens, starting from IBM Carbon's tokens |
-| `corthex-build` | 10–12 | work breakdown, development and QA, and bug fixes: the document with the cause first, then a regression test that fails before the code is fixed |
+| `corthex-build` | 10–12 | work breakdown, development and QA with browser, desktop and Android walks, a release gate, after-release checks and one Markdown file per bug |
 | `corthex-present` | 13 | script, scene table and slides for the presentation |
 | `corthex-record` | any | minutes, decision log, progress records and retrospectives |
 | `corthex-uxui` | 08, 09, 13, or on its own | turn design words into named parts and numbers for screens, motion and video, and measure line breaks, contrast, target size, flashes and loudness before showing the result |

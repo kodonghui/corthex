@@ -1,12 +1,17 @@
 # Walking every flow with browser agents
 
-QA (stage 12) uses this on every QA run, without waiting for the user to ask, and on top of the project's own tests: a project that already has unit, API or end-to-end tests, or a QA script of its own, runs them as before, and browser agents then walk the flows. Each run walks the user flows (stage 03) that its changes touch, and every flow before a release, after a large change, such as a new flow or a redesign, and when the user asks. Browser agents walk each flow in a real browser, as each role that uses it, and report what works, what does not and how it felt to use. The flows that work then become end-to-end tests that run on every pull request, since browser agents cannot run in CI. Only a product with no screens, in a browser or on the desktop, skips the walk, and its report says so.
+QA (stage 12) walks flows on every QA run, without waiting for the user to ask, and on top of the project's own tests. Walk the flows the changes touch, and every flow before a release, after a large change and when the user asks. Use a real browser for web screens, agent-desktop for desktop windows and [device-agents.md](device-agents.md) for phones. Walk even a single screen. A product with no screens records why the walk was skipped.
+
+## Two passes
+
+- **Coverage walk.** Fan out the rows from the run list. Walk as each role that uses the flow. Report what works, what fails and what is blocked, with the evidence. Pin rows that work as end-to-end tests that run on every pull request.
+- **Persona pass.** Give one or two testers goals about finding things as first-time users, drawing on the PRD's users where available. Give them the goal without the route, such as finding where to turn on update notices. Record their impressions and screenshots. A persona pass never passes a case.
 
 ## Where it runs
 
-- On localhost, or on a deployed development or staging site, never on production. On production, only when the user asks, and only flows that change nothing, such as browsing and searching.
-- Against one commit, which the report names.
-- With test accounts from the seed script, one per role and per tester, so that testers running at the same time do not change each other's data.
+- Run the QA plan, including its coverage walks and any write flows, on localhost or a deployed development or staging site, never on production. Use test accounts from the seed script, one per role and tester, so concurrent testers keep their data separate.
+- After each production release, use browser agents to walk only flows that change nothing on production, such as browsing and searching. Walk anonymously or use a production test account provided by the user. Never seed data or create accounts on production. Use the released commit and record the result in the [after-release check](12-qa.md#after-release).
+- Name the commit for each run in its report.
 
 ## Tools
 
@@ -24,7 +29,7 @@ Do not judge a step by the exit code, whichever tool runs. When checked in Novem
 
 ### ego lite
 
-ego lite is a free browser from Citro Labs with no AI model of its own: the agent drives it with the `ego-browser` command, which the app installs together with an `ego-browser` skill for the agents on that computer. Each tester works in a Space of its own. ego lite keeps a Space's tabs apart from the user's and gives each task in it its own cookies and storage, so testers run side by side without touching the user's tabs. When this was last checked, in November 2026 (ego lite 0.6.2.8, guide 2.2.0), it ran on macOS and, as a beta, on Windows; its site listed Linux as planned.
+ego lite is a free browser from Citro Labs with no AI model of its own. The agent drives it with the `ego-browser` command, which the app installs with its matching skill. Each tester uses its own Space for tabs. Spaces on the same browser profile share cookies and site state. Run rows for different accounts on the same site one after another within a profile. To run those rows concurrently, use separate test profiles authorized by the user. Check the role before each row. This follows the installed Windows `ego-browser` 0.6.3.17 guide 2.2.1 and its `clearing-state.md` reference.
 
 Its guide changes between versions, so check before each run:
 
@@ -42,7 +47,7 @@ The commands of `aside` change between versions, so check them before each run:
 
 1. `aside --version` answers, and `aside --help`, with `aside guide` and `aside guide repl`, lists the commands. Where they differ from this file, follow them.
 2. One small script that opens the site and prints a marker works. If the app does not open or is signed out, ask the user once to open it and sign in, then try again. On Windows, `aside` has to run as the Windows user who runs Aside: inside an agent's sandbox, which uses another Windows account, it fails with "Cannot open Windows installation key", so ask the user to let it run outside the sandbox.
-3. The test accounts sign in through Aside Vault. Passwords and codes never pass through an agent, a prompt or a report. The user saves the seed script's test accounts in Aside Vault once, or a tester makes an account through the product's own sign-up with Aside's agent (`aside exec`), which keeps the login in the vault; Aside's agent then signs the row's account in. The rules are in the `corthex` skill's computer-and-web reference. Hand the user only a step that Aside cannot fill, such as a CAPTCHA or a code sent to a phone. Aside's REPL guide says that REPL sessions started by `aside` run incognito, and its help pages say that incognito runs leave out the normal browser profile's state and cannot use Aside Vault. Yet in a run on Windows in November 2026 (`aside` 1.26.1104), a test sign-in made in Aside's window showed in a later `aside repl` session, both in a new tab and in `fetch`, and the help of `aside` 1.26.1115 lists `--incognito` as an option of `aside repl`. So a session may start signed out, or signed in as whichever account Aside last used on that site: check in the small script which account the session is signed in as before walking a row. Where it is not the row's test account, sign it in again with `aside exec`, or mark the rows that need it `blocked` and tell the user. Rows that need different accounts on one site run one after another, since their sessions can share one sign-in.
+3. The test accounts sign in through Aside Vault. Passwords and codes never pass through an agent, a prompt or a report. For development and staging, the user saves the seed script's test accounts in Aside Vault once, or a tester creates a test account through the product's own sign-up with Aside's agent (`aside exec`), which keeps the login in the vault. Aside's agent then signs the row's account in. The rules are in the `corthex` skill's computer-and-web reference. Hand the user only a step that Aside cannot fill, such as a CAPTCHA or a code sent to a phone. Aside's REPL guide says that REPL sessions started by `aside` run incognito, and its help pages say that incognito runs leave out the normal browser profile's state and cannot use Aside Vault. Yet in a run on Windows in November 2026 (`aside` 1.26.1104), a test sign-in made in Aside's window showed in a later `aside repl` session, both in a new tab and in `fetch`, and the help of `aside` 1.26.1115 lists `--incognito` as an option of `aside repl`. So a session may start signed out, or signed in as whichever account Aside last used on that site: check in the small script which account the session is signed in as before walking a row. Where it is not the row's test account, sign it in again with `aside exec`, or mark the rows that need it `blocked` and tell the user. Rows that need different accounts on one site run one after another, since their sessions can share one sign-in.
 
 The commands this file relies on:
 
@@ -72,7 +77,7 @@ Hosts cap how many agents run at once and how deeply agents can start others, fo
 
 ## The run list
 
-One row per flow, path and role: the main path and each failure path of every flow, for every role that uses it, with the test cases (TC) it covers and their expected results. Give a persona to the rows that a person would feel differently, such as a first-time visitor or a user on a phone, from the users in the PRD (stage 02). Add the kinds of cases that show on the screen, as listed in [12-qa.md](12-qa.md): access, repeats, limits, outside services, empty and streamed answers, and screen states. A row that needs data first gets it from the seed script, not from another tester.
+Build the coverage run list from the stage 03 transitions in [12-qa.md](12-qa.md). A row can walk several transitions along one path. Name the flow, the start and end steps of each transition, the TC IDs and their expected results. Include failure transitions for risky states and use the pairwise table to assign roles and other environment factors. Development and staging rows that need data first get it from the seed script.
 
 ## How wide
 
@@ -88,8 +93,9 @@ A tester:
 2. Takes each step of the flow with a script (`aside repl` or the `repl` tool of `aside mcp`, or `ego-browser nodejs` in its Space), or with `agent-desktop` commands for a desktop app, saving a screenshot and the visible text after each step, at the widths that the screen definitions name.
 3. Compares what it saw with the expected result: the screen state, the message and, where the test case names one, the effect on the data. It checks the data through the API or a read-only query, not from the screen alone.
 4. Gives the row a verdict: `works` when every step matched; `fails`, with the step, what was expected, what happened and the evidence; or `blocked` when the row could not run, such as at a sign-in wall, with missing data or after a tool error, with the reason.
-5. Writes down its impressions as the row's persona: what was hard to find, slow or confusing, and what looked wrong, such as text cut off on a narrow screen, parts out of line, low contrast or words that differ from the glossary. Each impression names its screen and has a screenshot.
-6. Where Aside runs, may hand a task to `aside exec` to explore around the flow as a new user would. The answer is a claim: count it only when the tester's own screenshots back it.
+5. Writes down its impressions: what was hard to find, slow or confusing, and what looked wrong, such as text cut off on a narrow screen, parts out of line, low contrast or words that differ from the glossary. Each impression names its screen and has a screenshot.
+
+An agent's verdict is a claim. Use screenshots and the data check or the pinned test's assertions to pass a case. Where Aside runs, a persona tester may use `aside exec` to explore as a new user would and collect its own evidence.
 
 Every tester also keeps to these rules:
 
@@ -101,7 +107,7 @@ Every tester also keeps to these rules:
 
 ## The report
 
-The orchestrator writes one report per run, by default `docs/12-qa/runs/<date>-<where>.md`, with the evidence in a folder of the same name beside it. Keep only the screenshots that the report cites, and attach each bug's screenshots to it in the tracker.
+The orchestrator writes one report per run, by default `docs/12-qa/runs/<date>-<where>.md`, with the evidence in a folder of the same name beside it. Use a run row ID in the first column and mention trace IDs in the descriptions, as in [12-qa.md](12-qa.md#output-template). Keep only the screenshots that the report cites, and link each bug's screenshots from its bug file.
 
 ```markdown
 # Run 2026-10-24 on staging (commit abc1234)
@@ -111,31 +117,31 @@ Roles: anonymous, signed-in user, another user, administrator
 
 ## Works
 
-| Flow | Role | Path | Test cases | Evidence |
-| --- | --- | --- | --- | --- |
-| FL-001 | signed-in user | main | TC-001 | `2026-10-24-staging/fl001-main-4.jpg` |
+| Run row | Role | Transition and case | Evidence |
+| --- | --- | --- | --- |
+| R01 | signed-in user | In FL-001, submit payment → show result. Checked by TC-001 | `2026-10-24-staging/fl001-main-4.jpg` and its data check |
 
 ## Does not work
 
-| Flow | Role | Step | Expected | Actual | Bug |
-| --- | --- | --- | --- | --- | --- |
-| FL-002 | another user | 2 | 403 `forbidden` and a link home (SCR-002#permission) | The order opened | BUG-003 |
+| Run row | Role | Step | Expected | Observed |
+| --- | --- | --- | --- | --- |
+| R02 | another user | Open the order in FL-002 | 403 `forbidden` and a link home (SCR-002#permission) | The order opened. Filed BUG-003 |
 
 ## Impressions
 
-| Screen | Persona | Impression | Evidence |
+| Run row | Persona | Impression | Evidence |
 | --- | --- | --- | --- |
-| SCR-002 | user on a phone | The cancel button is below the fold at 360 pixels | `2026-10-24-staging/fl002-phone-2.jpg` |
+| R03 | user on a phone | The cancel button on SCR-002 is below the fold at 360 pixels | `2026-10-24-staging/fl002-phone-2.jpg` |
 
 ## Not run
 
-FL-004 as administrator: blocked, the seed script makes no administrator.
+Row R04 is blocked. The seed script makes no administrator for the FL-004 check.
 
-Counts: 9 of 11 flows walked; 14 rows work, 2 do not, 1 is blocked.
+Coverage: 9 of 11 transitions on commit abc1234 with Aside. Rows: 14 work, 2 fail, 1 is blocked.
 ```
 
 A row that fails becomes a bug (BUG) with its test case and the trace ID of the failing response. Impressions are not bugs: the user decides which of them become bugs, tasks or changes to the requirements.
 
 ## Pinning what works
 
-Turn each row that works into an end-to-end test, such as with Playwright, written from the steps the tester took, with the TC ID in the test's name, and run those tests on every pull request. When a pinned test fails, file a bug as for any other failure. Walk every flow with browser agents again before the next release, since pinned tests only repeat the paths that someone already walked.
+Turn each coverage row that works into an end-to-end test, such as with Playwright, written from the steps the tester took, with the TC ID in the test's name. Run those tests on every pull request. A test agent may repair locators and waits while preserving assertions and expected results. A skip it adds counts as not passed. When a pinned test fails, file a bug as for any other failure. Walk every flow again before the next release.

@@ -14,6 +14,8 @@ Take the most precise tool that can do the job, in this order:
 
 Say in the reply or the report which tool ran and why each tool above it did not.
 
+Android emulators and devices follow the `corthex-build` skill's `device-agents.md` reference.
+
 ## agent-desktop
 
 [agent-desktop](https://github.com/vercel-labs/agent-desktop), from Vercel Labs under Apache-2.0, reads a desktop app through the operating system's accessibility interface (UI Automation on Windows, the AX API on macOS, AT-SPI on Linux) and prints it as JSON, with a ref for each element an agent can act on. The agent acts on a ref, then reads the app again to check the result. It has no AI model of its own, so the loop runs in the agent and costs only the agent's own model use. When this was last checked, in November 2026 (agent-desktop 1.3.1), it ran on Windows 10 1809 or later and Windows Server 2019 or later, on macOS 13 or later and on Ubuntu 24.04 or later, on x64 and ARM64, and `agent-desktop mcp` served the same commands as MCP tools.

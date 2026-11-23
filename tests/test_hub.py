@@ -35,7 +35,8 @@ TEMPLATES = (
     ("docs/07-sitemap/sitemap.yaml", "corthex-screen", "07-sitemap", 0),
     ("docs/08-screens/SCR-002.md", "corthex-screen", "08-screen-states", 0),
     ("docs/10-wbs/wbs.md", "corthex-build", "10-wbs", 0),
-    ("docs/12-qa/test-plan.md", "corthex-build", "12-qa", None),
+    ("docs/12-qa/test-plan.md", "corthex-build", "12-qa", 0),
+    ("docs/12-qa/bugs/BUG-001.md", "corthex-build", "12-qa", 1),
     ("docs/13-presentation/script.md", "corthex-present", "13-presentation", 0),
 )
 
@@ -166,7 +167,7 @@ class TemplateTest(HubCase):
         super().setUp()
         for path, skill, stage, block in TEMPLATES:
             blocks = output_blocks(skill, stage)
-            self.write(self.repo / path, "\n".join(blocks) if block is None else blocks[block])
+            self.write(self.repo / path, blocks[block])
         self.project()
 
     def test_domain_template_keeps_nested_mermaid_and_later_sections(self):
@@ -227,7 +228,7 @@ class TemplateTest(HubCase):
             "TASK-001": {"SPEC-001", "API-001", "TBL-001"},
             "TC-001": {"FL-001", "SPEC-001", "API-001"},
             "TC-002": {"FL-002", "API-002", "SCR-002"},
-            "BUG-001": {"TC-004", "SCR-002", "SPEC-005"},
+            "BUG-001": {"TC-004", "SCR-002", "SPEC-005", "API-001"},
             "SCENE-001": {"FL-001"},
         }
         for ident, links in expected.items():
@@ -253,6 +254,78 @@ class TemplateTest(HubCase):
         self.assertEqual(stages["09-mockup"]["source_state"], "missing")
         self.assertNotIn("read", stages["09-mockup"])
         self.assertEqual(stages["11-development"]["source_state"], "none")
+        self.assertTrue(stages["12-qa"]["default_source"])
+        self.assertEqual((stages["12-qa"]["files"], stages["12-qa"]["items"]), (2, 3))
+
+    def test_qa_statuses_and_bug_file_keep_the_existing_snapshot_fields(self):
+        before = self.snapshot()
+        path = self.repo / "docs/12-qa/test-plan.md"
+        rows, summary = read_text(path).split("\n\n", 1)
+        rows += (
+            "\n| TC-005 | Failing check | FL-001, SPEC-001 | e2e | gate | Open checkout | Checkout opens | fail | Staging on abc1234. Checkout did not open |"
+            "\n| TC-006 | Blocked check | FL-001, SPEC-001 | device | gate | Open checkout | Checkout opens | blocked | Device lab on abc1234. No test device available |"
+            "\n| TC-007 | Waived check | FL-001, SPEC-001 | manual | | Open help | Help fits a narrow screen | waived | Planned for staging on abc1234. User decision DEC-001 |"
+        )
+        self.write(path, rows + "\n\n" + summary)
+        self.write(self.repo / "docs/12-qa/runs/R01.md",
+                   "# QA run R01\n\n| Run row | Test case | Bug |\n| --- | --- | --- |\n"
+                   "| R01 | TC-005 | BUG-001 |\n\nChecked TC-001 and BUG-001.\n")
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertEqual(snapshot["checks"], before["checks"])
+        self.assertEqual((snapshot["stages"]["12-qa"]["files"], snapshot["stages"]["12-qa"]["items"]), (2, 6))
+        self.assertEqual([items[ident]["status"] for ident in ("TC-001", "TC-005", "TC-006", "TC-002", "TC-007")],
+                         ["pass", "fail", "blocked", "not run", "waived"])
+        bug = items["BUG-001"]
+        self.assertEqual((bug["status"], bug["priority"], bug["where"]), ("fixed", "P1", "docs/12-qa/bugs/BUG-001.md:1"))
+        self.assertTrue({"severity", "found_in", "defect_type", "cause_stage"}.isdisjoint(bug))
+        self.assertTrue({"gate", "runs_as", "run_evidence"}.isdisjoint(items["TC-001"]))
+
+    def test_default_qa_ignores_other_table_bearing_reports(self):
+        before = self.snapshot()
+        self.write(self.repo / "docs/12-qa/test-report.md",
+                   "| ID | Case | Status |\n| --- | --- | --- |\n"
+                   "| TC-001 | Report copy | fail |\n\n## BUG-001 Report copy\n")
+        after = self.snapshot()
+        self.assertFalse(self.found(after, "duplicate-id"))
+        self.assertEqual(after["checks"], before["checks"])
+        self.assertEqual(after["items"], before["items"])
+        self.assertEqual(after["stages"]["12-qa"]["files"], 2)
+
+    def test_default_qa_keeps_run_evidence_out_of_the_file_budget(self):
+        before = self.snapshot()
+        runs = self.repo / "docs/12-qa/runs"
+        runs.mkdir()
+        for number in range(hub.MAX_FILES + 1):
+            (runs / ("evidence-%03d.txt" % number)).write_text("Log mentions TC-001.\n", encoding="utf-8")
+        after = self.snapshot()
+        self.assertEqual(after["checks"], before["checks"])
+        self.assertEqual(after["items"], before["items"])
+        stage = after["stages"]["12-qa"]
+        self.assertEqual(stage["files"], 2)
+        self.assertNotIn("skipped", stage)
+
+    def test_qa_still_reads_an_explicit_legacy_plan_with_inline_bugs(self):
+        self.project(stages={"12-qa": {"source": "docs/12-qa/test-plan.md"}})
+        self.write(self.repo / "docs/12-qa/test-plan.md",
+                   "| ID | Case | From | Last result |\n| --- | --- | --- | --- |\n"
+                   "| TC-001 | Order with a failing payment | FL-001 | pass on staging |\n\n"
+                   "## BUG-001 Inline bug\n\nFrom: TC-001\n")
+        snapshot = self.snapshot()
+        items = self.items(snapshot)
+        self.assertEqual(items["TC-001"]["title"], "Order with a failing payment")
+        self.assertEqual(items["TC-001"]["links"], ["FL-001"])
+        self.assertEqual(items["BUG-001"]["title"], "Inline bug")
+        self.assertEqual(items["BUG-001"]["links"], ["TC-001"])
+        self.assertEqual(snapshot["stages"]["12-qa"]["files"], 1)
+
+    def test_explicit_qa_folder_can_read_a_plan_with_a_project_specific_name(self):
+        self.project(stages={"12-qa": {"source": "docs/12-qa/"}})
+        self.write(self.repo / "docs/12-qa/feature-plan.md",
+                   "| ID | Case | From | Last result |\n| --- | --- | --- | --- |\n"
+                   "| TC-005 | Check order details | FL-001 | pass on staging |\n")
+        item = self.items(self.snapshot())["TC-005"]
+        self.assertEqual(item["where"], "docs/12-qa/feature-plan.md:3")
 
     def test_requirement_rules(self):
         path = self.repo / "docs/02-prd/requirements.md"

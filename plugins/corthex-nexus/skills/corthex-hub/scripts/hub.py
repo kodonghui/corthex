@@ -49,7 +49,7 @@ STAGES = (
     ("09-mockup", "Mockup", "design/base.tokens.json", (), False),
     ("10-wbs", "WBS", "docs/10-wbs/wbs.md", ("task",), True),
     ("11-development", "Development", None, (), False),
-    ("12-qa", "QA", "docs/12-qa/test-plan.md", ("test", "bug"), True),
+    ("12-qa", "QA", "docs/12-qa/", ("test", "bug"), True),
     ("13-presentation", "Presentation", "docs/13-presentation/script.md", ("scene",), True),
 )
 STAGE_KEYS = tuple(stage[0] for stage in STAGES)
@@ -1130,15 +1130,22 @@ def scan_file(scan, src, text):
         scan_text(scan, src, text)
 
 
-def source_files(target, root, skipped):
+def source_files(target, root, skipped, qa_default=False):
     """The text files of a stage source, in a stable order, counting what is skipped."""
     if is_file(target):
         candidates = [target]
     else:
         candidates = []
         for folder, dirs, files in os.walk(target):
+            folder = Path(folder)
+            if qa_default and folder == target:
+                dirs[:] = [name for name in dirs if name == "bugs"]
+                files = [name for name in files if name == "test-plan.md"]
+            elif qa_default:
+                dirs.clear()
+                files = [name for name in files if Path(name).suffix.lower() in MARKDOWN]
             dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in SKIP_DIRS)
-            candidates.extend(Path(folder) / name for name in sorted(files) if not name.startswith("."))
+            candidates.extend(folder / name for name in sorted(files) if not name.startswith("."))
     chosen = []
     for path in candidates:
         reason = None
@@ -1497,7 +1504,7 @@ def read_stages(project, scan, problems):
         if state != "found" or not readable:
             continue
         skipped = {}
-        files = source_files(target, root, skipped)
+        files = source_files(target, root, skipped, qa_default=key == "12-qa" and given is None)
         stage["read"] = True
         present = set(files)
         originals = {path: original_of(path, present) for path in files}

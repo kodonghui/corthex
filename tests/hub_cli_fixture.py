@@ -41,8 +41,26 @@ PRIVATE_MARKER = "qa-sensitive@example.com"
 # the stage as a whole and no quote needed, and gives `comment` and `reply` `--asks`; nothing else.
 # 0.4.0's changes, the design revision's commands, are in hub_cli_reviewed.py and are applied first,
 # so that these pairs then meet the 0.3.0 bytes that they were made for.
+# Core 0.16.0 reads the QA folder by default for the plan and separate bug files.
 REVIEWED = {
-    "hub.py": ((b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),),
+    "hub.py": (
+        (b'VERSION = "0.3.0"\n', b'VERSION = "0.2.0"\n'),
+        (b'    ("12-qa", "QA", "docs/12-qa/", ("test", "bug"), True),\n',
+         b'    ("12-qa", "QA", "docs/12-qa/test-plan.md", ("test", "bug"), True),\n'),
+        (b'def source_files(target, root, skipped, qa_default=False):\n',
+         b'def source_files(target, root, skipped):\n'),
+        (b'            folder = Path(folder)\n'
+         b'            if qa_default and folder == target:\n'
+         b'                dirs[:] = [name for name in dirs if name == "bugs"]\n'
+         b'                files = [name for name in files if name == "test-plan.md"]\n'
+         b'            elif qa_default:\n'
+         b'                dirs.clear()\n'
+         b'                files = [name for name in files if Path(name).suffix.lower() in MARKDOWN]\n', b''),
+        (b'            candidates.extend(folder / name for name in sorted(files) if not name.startswith("."))\n',
+         b'            candidates.extend(Path(folder) / name for name in sorted(files) if not name.startswith("."))\n'),
+        (b'        files = source_files(target, root, skipped, qa_default=key == "12-qa" and given is None)\n',
+         b'        files = source_files(target, root, skipped)\n'),
+    ),
     "transport.py": ((b'version="0.3.0", timeout=30', b'version="0.2.0", timeout=30'),),
     "commands.py": (
         (b'PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")\n'
