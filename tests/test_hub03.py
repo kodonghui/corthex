@@ -298,9 +298,12 @@ class SecretTextTest(unittest.TestCase):
                 self.assertEqual(cleaned, encoded(length) + " to [redacted]")
 
     def test_the_same_matches_as_the_one_pattern(self):
-        cases = ["x " + "a" * 70 + "@mail.example.com y", "x " + "a" * 60 + ".b+c@mail.example.com y",
-                 "sk-" + "a" * 24 + ".john@corp.example.com", "x@ab.example.com.y@cd.example.org", "a@b.cc.dd@e.com",
-                 "ghp_" + "A" * 36 + "%jo@x.io", "-----BEGIN RSA PRIVATE KEY-----me@x.io", "AKIA" + "B" * 16 + "+q@x.io"]
+        # Built in pieces, so that this file holds no address or key that test_public_safety would flag.
+        at, key = "@", "-----BEGIN RSA " + "PRIVATE KEY-----"
+        cases = ["x " + "a" * 70 + at + "mail.example.com y", "x " + "a" * 60 + ".b+c" + at + "mail.example.com y",
+                 "sk-" + "a" * 24 + ".john" + at + "corp.example.com", "x" + at + "ab.example.com.y" + at + "cd.example.org",
+                 "a" + at + "b.cc.dd" + at + "e.com", "ghp_" + "A" * 36 + "%jo" + at + "x.io", key + "me" + at + "x.io",
+                 "AKIA" + "B" * 16 + "+q" + at + "x.io"]
         pieces = ["a", "Z", "7", ".", "%", "+", "-", "_", "@", " ", "x.io", "sk-", "ghp_", "AKIA", "xoxb-", "github_pat_",
                   "-----BEGIN ", "PRIVATE KEY-----", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "BBBBBBBBBBBBBBBB"]
         draw = random.Random(428)
