@@ -68,6 +68,10 @@ Reply on the comment when the discussion continues in the session. A reply that 
 
 While that PR is open, reply with its link and leave the comment open. After the decision is written in the records or the source PR is merged, use `decide PROJECT COMMENT --link HTTPS_URL` to link the written decision; it closes the comment. A link is required and must not contain secrets or an email address. A closed unmerged PR requires another question to the user on the comment. Never claim an AI recommendation was the user's decision.
 
+## Propose a change
+
+A proposal puts a change on a stage's picture for the user to accept or reject, with the change and its reason. NEXUS has no field for another way. When you have another way worth weighing, write it inside the proposal's reason, as its last sentence, in the form NEXUS shows, in the user's language: `Other way: …` in English, `다른 방법: …` in Korean. The hub's own skill gives the command and what it checks before it sends.
+
 ## Reflect an accepted change
 
 An accepted proposal authorizes preparing its described change. It does not authorize release, unrelated edits or overriding the project's permissions.
@@ -135,7 +139,7 @@ Write the stage's state, next action and checked findings in the same PR as the 
 
 - Keep `in_progress` until the user passes the required checkpoint. `done` requires completed stage work and its last human checkpoint. A file, a read receipt and permission to continue are not approval.
 - A checkpoint records what the user approved (their words when given), `--by` as a role such as `the maintainer`, `--date`, and a safe `--where` link to the approval. No personal name or email belongs in the repository. Session approvals link to their record in the project's records.
-- For a checkpoint passed in NEXUS, claim it first; include its `--nexus CHECKPOINT` ID and the overview link. Once the PR is open, report `record PROJECT CHECKPOINT opened --pr HTTPS_URL`.
+- For a checkpoint passed in NEXUS, claim it first; include its `--nexus CHECKPOINT` ID. The hub links the checkpoint's stage page after reading the server once; when it cannot read the server, it writes nothing, and you pass the link with `--where`. Once the PR is open, report `record PROJECT CHECKPOINT opened --pr HTTPS_URL`.
 - Immediately before merge, use `show` to confirm the NEXUS checkpoint is still passed. A withdrawal means close the PR unmerged or remove that checkpoint. Report the actual merged/closed outcome. Do not say the state is recorded until the merged record has been pushed and read back.
 - A pushed withdrawn checkpoint produces `checkpoint-withdrawn`. Correct the repository record through a PR; never erase the server warning by pretending the checkpoint is passed.
 

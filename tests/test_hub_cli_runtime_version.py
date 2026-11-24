@@ -23,7 +23,7 @@ class RuntimeVersionPinTest(unittest.TestCase):
     def test_actual_version_hashes_are_retained_with_the_old_protocol_anchor(self):
         _, rows = fixture.verify_runtime(self.root)
         changed = {row['file'] for row in rows if row['reviewedNormalization']}
-        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py', 'outbox.py'})
+        self.assertEqual(changed, {'hub.py', 'transport.py', 'snapshot02.py', 'commands.py', 'outbox.py', 'records.py'})
         manifest = json.loads((ROOT / 'plugins/corthex-nexus/plugin.json').read_text(encoding='utf-8'))
         self.assertEqual(manifest['version'], '0.6.0')
         self.assertIn('VERSION = "0.6.0"', (self.scripts / 'hub.py').read_text(encoding='utf-8'))
@@ -56,6 +56,24 @@ class RuntimeVersionPinTest(unittest.TestCase):
         source = path.read_text(encoding='utf-8')
         self.assertIn('ASKS = ("answer", "recommended", "checkpoint")', source)
         path.write_text(source.replace('"checkpoint")', '"checkpoint", "maybe")', 1), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'runtime differs'):
+            fixture.verify_runtime(self.root)
+
+    def test_another_checkpoint_link_change_is_still_refused(self):
+        # NEXUS v3: status builds v3's stage address only for a server that lists corthex-hub/0.3.
+        path = self.scripts / 'records.py'
+        source = path.read_text(encoding='utf-8')
+        self.assertIn('return base.rstrip("/") + "/p/" + place\n', source)
+        path.write_text(source.replace('"/p/" + place\n', '"/p/" + place + "#" + checkpoint\n', 1), encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'runtime differs'):
+            fixture.verify_runtime(self.root)
+
+    def test_another_source_path_change_is_still_refused(self):
+        # NEXUS v3: propose sends source_path only with source_text, after its local checks.
+        path = self.scripts / 'commands.py'
+        source = path.read_text(encoding='utf-8')
+        self.assertIn('SOURCE_PATH_CHARS = 300\n', source)
+        path.write_text(source.replace('SOURCE_PATH_CHARS = 300\n', 'SOURCE_PATH_CHARS = 3000\n', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)
 
