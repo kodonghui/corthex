@@ -55,7 +55,7 @@ Update both plugin manifests and every skill's `metadata.version` together, as s
 
 Release tags are annotated tags named `<plugin>--v<version>`, created only with `claude plugin tag plugins/<plugin>` from a passing `main` commit whose `check` workflow passed with macOS included. Do not create lightweight release tags, move published tags or delete them.
 
-Release notes have a human-readable summary of 3–5 lines and an automatically generated PR list.
+Release notes have a human-readable summary of 3–5 lines and an automatically generated PR list. There is no `CHANGELOG.md` for now.
 
 ## CI and security
 
