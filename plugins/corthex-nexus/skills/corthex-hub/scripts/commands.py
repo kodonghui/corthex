@@ -211,13 +211,18 @@ def repository_path(value):
 
 
 class Beside:
-    """The files of a checkout, for the hub's rule that a translation beside its original is not a source."""
+    """The files that a stage's source selects, as snapshot02's source_files reads them, for the translation rule."""
 
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, root, base, extensions, h):
+        self.root, self.base, self.extensions, self.h = root, base, extensions, h
 
     def __contains__(self, rel):
-        return self.root.joinpath(*PurePosixPath(rel).parts).is_file()
+        rel = PurePosixPath(rel)
+        name = rel.as_posix()
+        if self.base and name != self.base and not name.startswith(self.base + "/") or rel.suffix.lower() not in self.extensions:
+            return False
+        path = self.root.joinpath(*rel.parts)
+        return path.is_file() and not self.h.secret_path(path, self.root)
 
 
 def source_path(args, project, h):
@@ -263,7 +268,7 @@ def source_path(args, project, h):
                           (path, stage, " or ".join(sorted(pictures.EXTENSIONS[stage]))))
     if h.secret_path(root.joinpath(*PurePosixPath(path).parts), root):
         raise CommandLine("%s has a name that looks like a secret's, so the picture never reads it and the hub does not send it" % path)
-    original =h.original_of(PurePosixPath(path), Beside(root))
+    original = h.original_of(PurePosixPath(path), Beside(root, base, pictures.EXTENSIONS[stage], h))
     if original is not None:
         raise CommandLine("%s is a translation of %s, which the picture reads instead: propose on the original" %
                           (path, original.as_posix()))
@@ -429,6 +434,8 @@ def push_job(args, home, env, h, client_factory=None):
     answer = held.get("answer") or {}
     # 0.6.0: the newest format that the server lists; a commit held in an older one goes again once (API-243).
     formats = h.companion("snapshot03")
+    # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.
+    h.companion("records").remember_server(home, url, formats.choose(answer) == formats.NEW, h)
     snapshot = h.make_snapshot(project, h.load_status(home, own), home=home, schema=formats.choose(answer))
     h.save_snapshot(home, snapshot)
     current = answer.get("default_commit")
@@ -836,7 +843,11 @@ def execute(args, home, api, env=None, client_factory=None):
                         value = {"outcome": "refused", "failure": FIRST_PUSH}
                     else:
                         # 0.6.0: the newest format that the server lists; a first push has no answer to read, so 0.2.
-                        snapshot = h.make_snapshot(project, h.load_status(home, name), home=home,
+                        if held["outcome"] == "done":
+                            formats = h.companion("snapshot03")
+                            # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.
+                            h.companion("records").remember_server(home, place.url, formats.choose(held.get("answer")) == formats.NEW, h)
+                        snapshot =h.make_snapshot(project, h.load_status(home, name), home=home,
                                                    schema=h.companion("snapshot03").choose(held.get("answer")))
                         h.save_snapshot(home, snapshot)
                         failure = commit_replacement(snapshot, held.get("answer") or {}, project, args.replace_held, h)
@@ -862,6 +873,10 @@ def execute(args, home, api, env=None, client_factory=None):
                         value = dict(value, address=place.url.rstrip("/") + "/p/" + name + "#data")
                 elif command == "todo":
                     value = read_todo(client, home, name, session, kept, boxes)
+                    todo = value.get("answer") if value.get("outcome") == "done" else None
+                    if isinstance(todo, dict) and "read_at" in todo:
+                        # NEXUS v3's to-do always has steps and v2's never has; status builds its links from this record.
+                        h.companion("records").remember_server(home, place.url, "steps" in todo, h)
                 elif command == "show":
                     kind = {"c": "comments", "p": "proposals", "e": "edits", "k": "checkpoints"}[args.entry[1]]
                     value = client.call("GET", "/api/spaces/" + name + "/" + kind + "/" + args.entry)

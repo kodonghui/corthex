@@ -60,11 +60,11 @@ class RuntimeVersionPinTest(unittest.TestCase):
             fixture.verify_runtime(self.root)
 
     def test_another_checkpoint_link_change_is_still_refused(self):
-        # NEXUS v3: status builds v3's stage address only for a server that lists corthex-hub/0.3.
+        # NEXUS v3: status builds v3's stage address, offline, only for a server recorded as v3.
         path = self.scripts / 'records.py'
         source = path.read_text(encoding='utf-8')
-        self.assertIn('return base.rstrip("/") + "/p/" + place\n', source)
-        path.write_text(source.replace('"/p/" + place\n', '"/p/" + place + "#" + checkpoint\n', 1), encoding='utf-8')
+        self.assertIn('("/p/" + place if v3 else', source)
+        path.write_text(source.replace('("/p/" + place if v3 else', '("/p/" + place + "#" + checkpoint if v3 else', 1), encoding='utf-8')
         with self.assertRaisesRegex(ValueError, 'runtime differs'):
             fixture.verify_runtime(self.root)
 

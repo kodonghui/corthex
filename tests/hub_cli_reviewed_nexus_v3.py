@@ -42,13 +42,18 @@ REVIEWED_NEXUS_V3 = {
          b'\n'
          b'\n'
          b'class Beside:\n'
-         b'    """The files of a checkout, for the hub\'s rule that a translation beside its original is not a source."""\n'
+         b'    """The files that a stage\'s source selects, as snapshot02\'s source_files reads them, for the translation rule."""\n'
          b'\n'
-         b'    def __init__(self, root):\n'
-         b'        self.root = root\n'
+         b'    def __init__(self, root, base, extensions, h):\n'
+         b'        self.root, self.base, self.extensions, self.h = root, base, extensions, h\n'
          b'\n'
          b'    def __contains__(self, rel):\n'
-         b'        return self.root.joinpath(*PurePosixPath(rel).parts).is_file()\n'
+         b'        rel = PurePosixPath(rel)\n'
+         b'        name = rel.as_posix()\n'
+         b'        if self.base and name != self.base and not name.startswith(self.base + "/") or rel.suffix.lower() not in self.extensions:\n'
+         b'            return False\n'
+         b'        path = self.root.joinpath(*rel.parts)\n'
+         b'        return path.is_file() and not self.h.secret_path(path, self.root)\n'
          b'\n'
          b'\n'
          b'def source_path(args, project, h):\n'
@@ -94,7 +99,7 @@ REVIEWED_NEXUS_V3 = {
          b'                          (path, stage, " or ".join(sorted(pictures.EXTENSIONS[stage]))))\n'
          b'    if h.secret_path(root.joinpath(*PurePosixPath(path).parts), root):\n'
          b'        raise CommandLine("%s has a name that looks like a secret\'s, so the picture never reads it and the hub does not send it" % path)\n'
-         b'    original =h.original_of(PurePosixPath(path), Beside(root))\n'
+         b'    original = h.original_of(PurePosixPath(path), Beside(root, base, pictures.EXTENSIONS[stage], h))\n'
          b'    if original is not None:\n'
          b'        raise CommandLine("%s is a translation of %s, which the picture reads instead: propose on the original" %\n'
          b'                          (path, original.as_posix()))\n'
@@ -111,6 +116,9 @@ REVIEWED_NEXUS_V3 = {
         (b'            body["source_path"] = source_path(args, checkout, h)\n'
          b'        elif args.source_path is not None:\n'
          b'            raise CommandLine("--source-path goes only with --source-file")\n',
+         b''),
+        (b"    # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.\n"
+         b'    h.companion("records").remember_server(home, url, formats.choose(answer) == formats.NEW, h)\n',
          b''),
         (b'def project_checkout(name, home, h, place):\n'
          b'    """(the project\'s checkout on this device or None, why not), from the list of projects or the current folder."""\n'
@@ -150,66 +158,94 @@ REVIEWED_NEXUS_V3 = {
          b'            raise CommandLine("--source-file needs the project\'s checkout on this device, to check the file\'s path: " + reason)\n'
          b'    request = write_request(args, names[0], home, env, h, place.url, checkout) if command in WRITES else None\n',
          b'    request = write_request(args, names[0], home, env, h, place.url) if command in WRITES else None\n'),
+        (b'                        if held["outcome"] == "done":\n'
+         b'                            formats = h.companion("snapshot03")\n'
+         b"                            # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.\n"
+         b'                            h.companion("records").remember_server(home, place.url, formats.choose(held.get("answer")) == formats.NEW, h)\n'
+         b'                        snapshot =h.make_snapshot(project, h.load_status(home, name), home=home,\n',
+         b'                        snapshot = h.make_snapshot(project, h.load_status(home, name), home=home,\n'),
+        (b'                    todo = value.get("answer") if value.get("outcome") == "done" else None\n'
+         b'                    if isinstance(todo, dict) and "read_at" in todo:\n'
+         b"                        # NEXUS v3's to-do always has steps and v2's never has; status builds its links from this record.\n"
+         b'                        h.companion("records").remember_server(home, place.url, "steps" in todo, h)\n',
+         b''),
         (b'            parser.add_argument("--source-path", help="with --source-file outside the project\'s checkout: the file\'s path in the repository")\n',
          b''),
     ),
     'records.py': (
-        (b'\n'
+        (b'import sys\n',
+         b''),
+        (b'from urllib.parse import quote, urlsplit\n'
+         b'\n'
          b'CHECKPOINT = r"nk_[0-9a-hjkmnp-tv-z]{12}"\n'
-         b"# NEXUS v3: status reads the held commit only to build a checkpoint's link, so it waits at most this long.\n"
-         b'HELD_SECONDS = 10\n'
-         b'UNREAD = ("could not read the NEXUS server\'s held commit to tell NEXUS v3 from v2 (%s), so nothing was written; "\n'
-         b'          "pass --where with the checkpoint\'s https link")\n'
+         b'NO_LINK = ("%s %s: checkpoint %s is recorded without its link, because no server command on this device has read the "\n'
+         b'           "NEXUS server at %s yet; pass --where with the checkpoint\'s https link, or run todo once against that server")\n'
          b'\n'
          b'\n'
-         b'def checkpoint_link(project, part, stage, checkpoint, home, h, env=None, client_factory=None):\n'
-         b'    """The link of a checkpoint passed in NEXUS, for status --nexus without --where.\n'
+         b'def server_url(url):\n'
+         b'    """A NEXUS address as the hub\'s record of servers names it: lowercase scheme and host, no trailing /, or None."""\n'
+         b'    parts = urlsplit(url.strip()) if isinstance(url, str) else None\n'
+         b'    if parts is None or not parts.scheme or not parts.netloc:\n'
+         b'        return None\n'
+         b'    return parts.scheme.lower() + "://" + parts.netloc.lower() + parts.path.rstrip("/")\n'
          b'\n'
-         b'    The held-commit answer (API-243) tells the two servers apart, as it does for push: a server that lists\n'
-         b'    corthex-hub/0.3 in formats is NEXUS v3, which shows a stage at /p/<project>/<part or _>/<stage> (its\n'
-         b"    sitemap's SCR-145); any other answer, and a bare 404 from a server older than the held commit, keeps v2's\n"
-         b"    overview link as it was. This is the only request that status makes: one GET to the profile's nexus.url, for a\n"
-         b'    project in nexus.push, with the token from the environment as push sends it. When the answer cannot be read,\n'
-         b'    status writes nothing.\n'
+         b'\n'
+         b'def server_file(home, url, h):\n'
+         b'    folder = h.hub_dir(Path(home)) / "servers"\n'
+         b'    path = folder / (hashlib.sha256(url.encode("utf8")).hexdigest()[:32] + ".json")\n'
+         b'    return None if folder.is_symlink() or path.is_symlink() else path\n'
+         b'\n'
+         b'\n'
+         b'def remember_server(home, url, v3, h):\n'
+         b'    """Keep what a server command read of the NEXUS server at url: whether it is v3, and when. No token, no project data.\n'
+         b'\n'
+         b"    push and push --job read it from the held commit's formats (API-243); todo, whose answer has no formats, from\n"
+         b"    the steps that v3's to-do always has and v2's never has. A failed write is ignored: the command's own work stands.\n"
          b'    """\n'
-         b'    env = os.environ if env is None else env\n'
+         b'    url = server_url(url)\n'
+         b'    try:\n'
+         b'        path = server_file(home, url, h) if url else None\n'
+         b'        if path is not None:\n'
+         b'            h.companion("outbox").atomic(path, {"format": 1, "url": url, "v3": v3 is True, "read": h.now_text()})\n'
+         b'    except OSError:\n'
+         b'        pass\n'
+         b'\n'
+         b'\n'
+         b'def known_server(home, url, h):\n'
+         b'    """True for NEXUS v3, False for an older server, None without a record of the server at url on this device."""\n'
+         b'    url = server_url(url)\n'
+         b'    path = server_file(home, url, h) if url else None\n'
+         b'    try:\n'
+         b'        data = json.loads(path.read_text(encoding="utf8")) if path is not None and path.is_file() else None\n'
+         b'    except (OSError, ValueError):\n'
+         b'        return None\n'
+         b'    if not isinstance(data, dict) or data.get("url") != url or type(data.get("v3")) is not bool:\n'
+         b'        return None\n'
+         b'    return data["v3"]\n'
+         b'\n'
+         b'\n'
+         b'def checkpoint_link(project, part, stage, checkpoint, home, h):\n'
+         b'    """The link of a checkpoint passed in NEXUS, for status --nexus without --where, made offline.\n'
+         b'\n'
+         b"    status contacts no server. The link follows the last read of the profile's nexus.url by push, push --job or\n"
+         b"    todo: NEXUS v3 shows a stage at /p/<project>/<part or _>/<stage> (its sitemap's SCR-145), and an older server\n"
+         b"    keeps v2's overview link as it was. Without a record of that server, there is no link (None).\n"
+         b'    """\n'
          b'    profile = h.profile_of(home)\n'
          b'    config = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}\n'
          b'    base = config.get("url")\n'
          b'    if not isinstance(base, str) or not base.strip():\n'
          b'        raise ValueError("set nexus.url or --where for the checkpoint\'s link")\n'
-         b'    listed = config.get("push") if isinstance(config.get("push"), list) else []\n'
-         b'    if project.name not in listed:\n'
-         b'        raise ValueError(UNREAD % "the project is not in nexus.push")\n'
-         b'    try:\n'
-         b'        client = (client_factory or h.companion("transport").Client)(base, env, version=h.VERSION, timeout=HELD_SECONDS)\n'
-         b'    except ValueError:\n'
-         b'        raise ValueError(UNREAD % "nexus.url is not a valid NEXUS address")\n'
-         b'    held = client.call("GET", "/api/snapshots/" + project.name + "/held")\n'
+         b'    v3 = known_server(home, base, h)\n'
+         b'    if v3 is None:\n'
+         b'        sys.stderr.write(NO_LINK % (project.name, stage, checkpoint, base.rstrip("/")) + "\\n")\n'
+         b'        return None\n'
          b'    place = quote(project.name, safe="") + "/" + quote(part or "_", safe="") + "/" + stage\n'
-         b'    overview = base.rstrip("/") + "/overview/" + place + "#" + checkpoint\n'
-         b'    if held.get("outcome") != "done":\n'
-         b'        code = (held.get("problem") or {}).get("code")\n'
-         b'        failure = held.get("failure")\n'
-         b'        if not code and failure == "HTTP 404":\n'
-         b'            # A server without the held commit is older still, as push reads it ("needs the 0.2 release"): not v3.\n'
-         b'            return overview\n'
-         b'        code = code if isinstance(code, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,59}", code) else None\n'
-         b'        reason = ("the server holds no such project" if code == "project_not_found" else\n'
-         b'                  "the server answered " + code if code else\n'
-         b'                  "no service token: set CORTHEX_NEXUS_CLIENT_ID and CORTHEX_NEXUS_CLIENT_SECRET" if failure == "no service token" else\n'
-         b'                  failure if isinstance(failure, str) and failure else "no answer")\n'
-         b'        raise ValueError(UNREAD % reason)\n'
-         b'    formats = h.companion("snapshot03")\n'
-         b'    if formats.choose(held.get("answer")) == formats.NEW:\n'
-         b'        return base.rstrip("/") + "/p/" + place\n'
-         b'    return overview\n',
-         b''),
-        (b'def write(project, home, args, api, now=None, client_factory=None):\n',
-         b'def write(project, home, args, api, now=None):\n'),
+         b'    return base.rstrip("/") + ("/p/" + place if v3 else "/overview/" + place + "#" + checkpoint)\n',
+         b'from urllib.parse import quote\n'),
         (b'    def link(nexus):\n'
-         b"        # NEXUS v3: the server's held commit says which link to build; update() asks once every local check passed.\n"
-         b'        return checkpoint_link(project, part, args.stage, nexus, home, h, client_factory=client_factory)\n'
+         b"        # NEXUS v3: the link follows this device's last read of the server; status itself contacts none.\n"
+         b'        return checkpoint_link(project, part, args.stage, nexus, home, h)\n'
          b'\n',
          b''),
         (b'            return update(project, home, args, h, target, part, now, link)\n',
@@ -230,13 +266,12 @@ REVIEWED_NEXUS_V3 = {
         (b'                    ("nexus" in cp and (not isinstance(cp["nexus"], str) or not re.fullmatch(CHECKPOINT, cp["nexus"])))):\n',
          b'                    ("nexus" in cp and (not isinstance(cp["nexus"], str) or not re.fullmatch(r"nk_[0-9a-hjkmnp-tv-z]{12}", cp["nexus"])))):\n'),
         (b'        if approval and nexus and where is None:\n'
-         b'            # A checkpoint passed in NEXUS without --where: its link comes from the server, read last, after every local check.\n'
+         b'            # A checkpoint passed in NEXUS without --where: its link, when this device knows the server, comes last.\n'
          b'            where = link(nexus) if link is not None else None\n'
-         b'            if where is None:\n'
-         b'                raise ValueError("set nexus.url or --where for the checkpoint\'s link")\n'
-         b'            if not safe_link(where, h, home):\n'
-         b'                raise ValueError("--where must be an HTTPS link without secrets or email addresses")\n'
-         b'            checkpoints[-1] = {"approved": checkpoint["approved"], "by": by, "nexus": nexus, "where": where, "date": args.date}\n',
+         b'            if where is not None:\n'
+         b'                if not safe_link(where, h, home):\n'
+         b'                    raise ValueError("--where must be an HTTPS link without secrets or email addresses")\n'
+         b'                checkpoints[-1] = {"approved": checkpoint["approved"], "by": by, "nexus": nexus, "where": where, "date": args.date}\n',
          b''),
     ),
     'snapshot02.py': (
