@@ -33,6 +33,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 - The product repository's own rules for branches, reviews and merges come first. CORTHEX only adds the trace IDs and the checks.
 - A test plan comes from the user flows and the acceptance criteria, not from the code, so it can find what the code forgot.
 - On every QA run, walk the screens using [browser and desktop agents](references/browser-agents.md) or [device agents](references/device-agents.md). Apply the [release gate](references/12-qa.md#release-gate) before go/no-go and record the [after-release check](references/12-qa.md#after-release).
+- After the TC runs, consider [optional exploratory testing](references/12-qa.md#exploratory-testing-optional) when the AI subscription's usage limit has room to spare.
 - Work found while building that adds, removes, defers or changes an approved requirement, flow or spec row is a feature change: follow the `corthex` skill's change procedure from stage 01, never fold it into the current tasks.
 
 ## Fixing a bug
