@@ -757,6 +757,8 @@ class ChangeProcedureTest(unittest.TestCase):
         self.assertIn("has a `Stopped by:` line with the layer that now stops it, and why no stronger layer could hold it",
                       section(text, "## Checks"))
         self.assertIn("for a repeat follow [A mistake seen twice](#a-mistake-seen-twice)", section(text, "## Steps"))
+        qa = read_text(SKILLS / "corthex-build" / "references" / "12-qa.md")
+        self.assertIn("A repeated bug has its `Stopped by:` line", section(qa, "## Checks"))
         self.assertIn("as [bug-fix.md](bug-fix.md#a-mistake-seen-twice) says, instead of adding text",
                       self.reference_steps("11-development"))
         # The same rule holds where CORTHEX itself may need the change.
@@ -764,6 +766,7 @@ class ChangeProcedureTest(unittest.TestCase):
                       section(text, "## Defect types"))
         retrospective = read_text(SKILLS / "corthex-record" / "references" / "retrospective.md")
         for rule in ("A mistake that has happened before is not answered with more text", order,
+                     "look through the earlier retrospectives and bug files for the same mistake",
                      "List it under Repeated mistakes, not in the checklist",
                      "## Repeated mistakes\n| Mistake | Seen before in | Stopped by | Why no stronger layer |"):
             with self.subTest(rule=rule):

@@ -6,7 +6,7 @@
 | Outputs | Code and tests on a branch, in a pull request whose title or description names the TASK and SPEC IDs |
 | Human view | Pull request review on the code host, by default GitHub; on a project on NEXUS, with the stage's record, talk and checkpoint in NEXUS |
 | Sync | The pull request moves the task's status. Merged counts as done only after the review and the checks pass |
-| Human checkpoints | Review approval and the merge, under the repository's own rules. A delegate can answer the review approval; the merge stays the user's unless their own words gave it to the delegate |
+| Human checkpoints | Review approval and the merge, under the repository's own rules. A delegate can answer the review approval; the merge stays the user's unless their own words gave it to the delegate, and so does an approval that merges by itself, as with auto-merge |
 | Trace IDs | No new IDs; pull requests and commits name TASK and SPEC IDs |
 
 ## Steps

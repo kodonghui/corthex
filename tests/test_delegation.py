@@ -126,7 +126,8 @@ class CheckpointOwnerTest(unittest.TestCase):
         self.assertIn("A checkpoint that a delegate passes, or an item that a delegate answers, is recorded with", decisions)
         self.assertIn("Never record it as the user's words", decisions)
         changes = section(read_text(SKILLS / "corthex" / "references" / "changes.md"), "## Feature change")
-        for rule in ("an item that the user approved in person, or that belongs to a stage the user answers, always goes "
+        for rule in ("\"the user\" in this step is whoever answers for the item",
+                     "an item that the user approved in person, or that belongs to a stage the user answers, always goes "
                      "to the user", "a delegate's answer is recorded as the delegate's, never as the user's words",
                      "and so does a decision in the user's words, an open pull request and any item that belongs to no "
                      "stage"):
@@ -138,7 +139,8 @@ class CheckpointOwnerTest(unittest.TestCase):
             ("corthex-define", "04-functional-spec", "from the user or, for a row that a delegate froze, from whoever the "
                                                      "`corthex` skill's stage contract names"),
             ("corthex-build", "11-development", "A delegate can answer the review approval; the merge stays the user's "
-                                                "unless their own words gave it to the delegate"),
+                                                "unless their own words gave it to the delegate, and so does an approval "
+                                                "that merges by itself, as with auto-merge"),
             ("corthex-build", "12-qa", "The user answers it, whatever `checkpoints` says"),
         ):
             text = read_text(SKILLS / skill / "references" / (stage + ".md"))
@@ -210,7 +212,6 @@ class RunbookTest(unittest.TestCase):
         # The stage's own step carries the rule, since a product with a runbook does not open the reference.
         self.assertIn("A runbook's commands are code that a change can edit: read a changed one before running it, and use "
                       "test credentials only", section(qa, "## Steps"))
-        self.assertIn("A repeated bug has its `Stopped by:` line", section(qa, "## Checks"))
         outputs = next(line for line in qa.splitlines() if line.startswith("| Outputs |"))
         self.assertIn("`verify/`, with the verification runbook", outputs)
         self.assertIn("(references/verify-runbook.md)", read_text(BUILD / "SKILL.md"))
@@ -241,7 +242,9 @@ class ReadPathBudgetTest(unittest.TestCase):
             self.assertIn(heading, calls)
         qa = read_text(BUILD / "references" / "12-qa.md")
         self.assertNotIn("## Red-team cases", qa)
-        self.assertIn("[ai-cases.md](ai-cases.md)", section(qa, "## Steps"))
+        self.assertIn("add the cases that [ai-cases.md](ai-cases.md) asks for", section(qa, "## Steps"))
+        # Red-team cases are for a model that talks with people or holds tools, as ai-cases.md says, not for every call.
+        self.assertNotIn("red-team", section(qa, "## Steps"))
         cases = read_text(BUILD / "references" / "ai-cases.md")
         self.assertIn("## Red-team cases", cases)
         self.assertIn("the red-team cases below in this file", section(cases, "## Cases"))
