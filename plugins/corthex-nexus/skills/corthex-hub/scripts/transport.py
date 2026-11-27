@@ -90,15 +90,19 @@ def result(outcome, answer=None, problem=None, failure=None, retry=False):
     return {"outcome": outcome, "answer": answer, "problem": problem, "failure": failure, "retry": retry}
 
 
+class AuthHeaderError(ValueError):
+    pass
+
+
 def auth_headers(env, configured=None, known=None):
     """Choose one credential pair without contacting the server."""
-    mode = env.get("CORTHEX_NEXUS_AUTH_HEADERS")
+    mode = env.get("CORTHEX_NEXUS_AUTH_HEADERS") or None
     if mode is None:
         mode = configured
     if mode is None:
         mode = "cf-access" if known is False else "nexus-agent"
     if mode not in ("cf-access", "nexus-agent"):
-        raise ValueError("auth_headers must be cf-access or nexus-agent")
+        raise AuthHeaderError("auth_headers must be cf-access or nexus-agent")
     return mode
 
 
@@ -115,7 +119,7 @@ class Client:
         if not isinstance(timeout, (float, int)) or not 0 < timeout <= 30:
             raise ValueError("the request timeout must be positive and at most 30 seconds")
         self.base, self.local, self.version, self.timeout = base.rstrip("/"), local, version, timeout
-        self._auth_headers = auth_headers(env)
+        self._auth_headers = auth_headers(env) if publisher is None else None
         self._token = (env.get("CORTHEX_NEXUS_CLIENT_ID"), env.get("CORTHEX_NEXUS_CLIENT_SECRET"))
         if publisher is not None and (parsed.scheme != "https" or parsed.path not in ("", "/")):
             raise ValueError("v2 publication requires the configured HTTPS origin")

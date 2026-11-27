@@ -176,7 +176,7 @@ def look_first(args, project, home, env, h, url):
         if args.command == "reply":
             return "stage"
         try:
-            base = h.companion("transport").Client(url, env, version=h.VERSION).base if isinstance(url, str) and url else None
+            base = h.companion("transport").Client(url, {}, version=h.VERSION).base if isinstance(url, str) and url else None
         except ValueError:
             base = None
         if base is None:
@@ -415,7 +415,7 @@ def push_job(args, home, env, h, client_factory=None):
         missing.append("CORTHEX_NEXUS_URL")
     else:
         try:
-            local = transport.Client(url, env, version=h.VERSION).local
+            local = transport.Client(url, {}, version=h.VERSION).local
         except ValueError:
             return outcome("push", own, {"outcome": "refused", "failure": "the address in " + ("--url" if named else "CORTHEX_NEXUS_URL") + " is invalid"})
     if not local:
@@ -423,6 +423,10 @@ def push_job(args, home, env, h, client_factory=None):
     if missing:
         # A secret that is not set, as in a fork: the job passes and names what is missing, never a value.
         return outcome("push", own, {"outcome": "done", "answer": {"sent": False, "why": "not-set", "missing": missing}})
+    try:
+        client_env = transport_env(home, url, env, h)
+    except transport.AuthHeaderError:
+        return outcome("push", own, {"outcome": "refused", "failure": "auth_headers must be cf-access or nexus-agent"})
     if args.dry_run:
         snapshot = h.make_snapshot(project, h.load_status(home, own), home=home)
         h.save_snapshot(home, snapshot)
@@ -431,9 +435,11 @@ def push_job(args, home, env, h, client_factory=None):
             "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
             "held_commit": "checked when sent", "first_push": "checked when sent"}})
     try:
-        client = (client_factory or transport.Client)(url, transport_env(home, url, env, h), version=h.VERSION)
+        client = (client_factory or transport.Client)(url, client_env, version=h.VERSION)
+    except transport.AuthHeaderError:
+        return outcome("push", own, {"outcome": "refused", "failure": "auth_headers must be cf-access or nexus-agent"})
     except ValueError:
-        return outcome("push", own, {"outcome": "refused", "failure": "invalid NEXUS address or auth_headers setting"})
+        return outcome("push", own, {"outcome": "refused", "failure": "the NEXUS address is invalid"})
     held = client.call("GET", "/api/snapshots/" + own + "/held")
     problem = held.get("problem") or {}
     if held["outcome"] != "done":
@@ -510,9 +516,13 @@ def can_send(args, home, env, h, place):
     try:
         if not isinstance(place.url, str) or not place.url.strip():
             raise ValueError("no NEXUS address")
-        local = h.companion("transport").Client(place.url, env, version=h.VERSION).local
+        local = h.companion("transport").Client(place.url, {}, version=h.VERSION).local
     except ValueError:
         missing.append(place.url_name)
+    try:
+        transport_env(home, place.url, env, h)
+    except h.companion("transport").AuthHeaderError:
+        missing.append("CORTHEX_NEXUS_AUTH_HEADERS or nexus.auth_headers")
     if name not in place.allowed:
         missing.append(place.push)
     if not local:
@@ -762,6 +772,8 @@ def execute(args, home, api, env=None, client_factory=None):
             if not isinstance(base, str) or not base:
                 raise ValueError("no NEXUS address")
             client = (client_factory or transport.Client)(base, transport_env(home, base, env, h), version=h.VERSION)
+        except transport.AuthHeaderError:
+            setup_failure = "auth_headers must be cf-access or nexus-agent"
         except ValueError:
             setup_failure = "no NEXUS address, or the configured address is invalid"
     rows = []
