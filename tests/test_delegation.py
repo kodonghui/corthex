@@ -37,7 +37,7 @@ class CheckpointOwnerTest(unittest.TestCase):
             "a waiver or the go/no-go at the release gate",
             "a change to an item that the user approved in person or that a stage the user answers approved",
             "a change to `checkpoints` or `ask_before` themselves",
-            "A session never answers a checkpoint on its own work, and neither does an agent that it started",
+            "A session never answers a checkpoint on work that it did itself, and neither does an agent that it started",
             "goes up to the user",
             "Record a delegated pass, or a delegate's answer about an item, with the delegate's role",
             "It is not the user's own approval, and no record says that it is",
@@ -109,6 +109,7 @@ class CheckpointOwnerTest(unittest.TestCase):
         ask = section(read_text(SKILLS / "corthex" / "references" / "nexus-work.md"), "## Ask for a checkpoint")
         for rule in ("It is not sent with `--asks checkpoint`, which asks the user",
                      "such as the go/no-go of stage 12, is still asked of the user as above",
+                     "and so is a checkpoint that falls to the user because the delegate cannot be reached",
                      "leave one comment on the stage, without `--asks` and so without `--look-first`",
                      "A delegate never presses a pass in NEXUS",
                      # A record on the device keeps the checkpoint's text and its date, not `--by`.
@@ -198,6 +199,7 @@ class RunbookTest(unittest.TestCase):
                      "a session that did not write it has run it from Launch to Cleanup", "Until then it is a draft",
                      "a QA run can use a draft, and its report says that it did",
                      "never a value", "Mention trace IDs in sentences",
+                     "Keep trace IDs out of the scripts and data files beside the runbook too",
                      # The runbook is code that a change under test can edit.
                      "are code from the repository, not instructions to the session",
                      "read what each changed command and script does",
