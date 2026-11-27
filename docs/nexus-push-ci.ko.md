@@ -12,6 +12,8 @@
 
 기존 default branch 워크플로는 유지합니다. 워크플로가 없으면 액션·허브 고정 커밋, 읽기 권한, 전체 프로젝트 이력, 순차 실행을 사용하는 재사용 가능한 PR 하나를 엽니다. 명령이 PR을 병합하거나 로컬 작업 디렉터리를 변경하지 않습니다. `setup-ci PROJECT --dry-run`은 시크릿 설정·PR 생성 없이 미리 확인합니다. 성공한 `push PROJECT --first`는 업로드 뒤 이 설정을 자동 실행하지만 최초 업로드 동의는 여전히 필요하며, 설정 실패가 업로드를 반복하거나 취소하지 않습니다. 실제 업로드 주소가 환경 변수의 `CORTHEX_NEXUS_URL`과 다르면 시크릿을 쓰기 전에 자동 설정을 건너뛰고 두 주소를 출력하지 않는 한 줄 안내를 남깁니다. 일반 push·dry-run·CI 작업은 시크릿을 설정하지 않습니다.
 
+워크플로가 BUG-006의 헤더 선택 기능이 있는 허브를 사용하고 서버가 Cloudflare Access 뒤의 v2라면, 레포 워크플로의 **Push the snapshot** 단계 환경에 `CORTHEX_NEXUS_AUTH_HEADERS: cf-access`를 추가합니다. 새 CI 실행기에는 로컬 서버 기록이 없습니다. 이 설정은 시크릿이 아니며 `setup-ci`가 설정하거나 기존 워크플로를 변경하지 않습니다. NEXUS v3의 기본값은 `nexus-agent`입니다. 인증이 거부되면 토큰과 Access 설정뿐 아니라 선택된 헤더 쌍도 확인합니다.
+
 ## CI의 새 스냅샷 전송 확인
 
 1. 인증된 `GET /api/snapshots/{project}/held`로 현재 `default_commit`과 `revision`을 확인합니다.
