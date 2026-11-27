@@ -1152,8 +1152,11 @@ class CommandOutcomesTest(HubCase):
             self.execute(["reply", "acme-shop", COMMENT, "--text-file", str(bad), "--session", SESSION])
         source = self.base / "source.sql"
         source.write_text("CREATE TABLE example (id INT);\n", encoding="utf8")
-        _, rows, client = self.execute(["propose", "acme-shop", "--stage", "05-erd", "--item", "TBL-001", "--reason", "Reason", "--change", "Change", "--source-file", str(source), "--session", SESSION])
+        # NEXUS v3: a file outside the checkout names its repository path with --source-path (API-256's source_path).
+        _, rows, client = self.execute(["propose", "acme-shop", "--stage", "05-erd", "--item", "TBL-001", "--reason", "Reason", "--change", "Change",
+                                        "--source-file", str(source), "--source-path", "db/schema.sql", "--session", SESSION])
         self.assertEqual(client.calls[0][2]["source_text"], source.read_text(encoding="utf8"))
+        self.assertEqual(client.calls[0][2]["source_path"], "db/schema.sql")
 
     def test_a_concurrent_append_cannot_bypass_the_prequeued_fresh_write(self):
         box = BOX.Outbox(self.home, "acme-shop")

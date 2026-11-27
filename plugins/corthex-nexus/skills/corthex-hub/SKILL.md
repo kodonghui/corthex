@@ -42,6 +42,7 @@ hub.py status <project> 05-erd --part orders --repository --state done --checkpo
 - `--check LEVEL MESSAGE` adds a finding from your own review, such as a spec row that contradicts its requirement. LEVEL is `error`, `warn` or `info`. Name the IDs in the message so the page links them. `--clear-checks` removes the stage's earlier findings first, and `--reset` removes everything recorded for the stage.
 - Each write keeps the previous file as `~/.corthex/hub/status/<project>.json.bak`.
 - From 0.2, `--repository` creates the first repository record. Once records exist, `status` updates them automatically. Projects with `parts` require `--part`; each part has its own `.corthex/stages/<part>.json`, otherwise `.corthex/stages.json`. A repository checkpoint needs `--by ROLE` and a valid `--date`, optional safe HTTPS `--where` and optional `--nexus CHECKPOINT`. Commit it with the work's pull request, after checking the source; the script never does so. Snapshots show only the version merged into the fetched default branch.
+- `--nexus CHECKPOINT` names a checkpoint passed in NEXUS, and the record keeps its link. `status` contacts no server. Without `--where`, the link comes from this device's last read of the profile's `nexus.url` by `push`, `push --job` or `todo`, which keep a small record per server under `~/.corthex/hub/servers/`: whether it is NEXUS v3, and when it was read, with no token or project data. For NEXUS v3 the link is the stage's page, `<nexus.url>/p/<project>/<part or _>/<stage>`; an older server gets its overview link, `<nexus.url>/overview/<project>/<part or _>/<stage>#<checkpoint>`, as before. Without a record of that server, `status` records the checkpoint without a link and says so: pass `--where` with the checkpoint's https link, or run `todo` once against that server to refresh the record, then run `status` again.
 
 ## Act on the checks
 
@@ -98,7 +99,7 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 | `reply PROJECT COMMENT --text TEXT` | Reply to a comment; optional `--asks`, and `--look-first` with `--asks checkpoint` |
 | `answered PROJECT COMMENT` | Mark it answered |
 | `decide PROJECT COMMENT --link HTTPS_URL [--text TEXT]` | Report where the user's decision was recorded |
-| `propose PROJECT --stage STAGE --item ID --reason TEXT --change TEXT` | Propose a change; optional repeated items, `--adds`, `--source-file` and one comment/discrepancy target |
+| `propose PROJECT --stage STAGE --item ID --reason TEXT --change TEXT` | Propose a change; optional repeated items, `--adds`, `--source-file` with `--source-path`, and one comment/discrepancy target. See Propose a change, below |
 | `withdraw PROJECT PROPOSAL` | Withdraw the session's proposal |
 | `reflect PROJECT EDIT EVENT` | Report opened/merged/closed/reflected/needs-user; PR events need `--pr`, reflected needs full `--commit` |
 | `record PROJECT CHECKPOINT EVENT --pr HTTPS_URL` | Report its record PR opened/merged/closed |
@@ -113,6 +114,23 @@ When your comment or reply leaves a question for the user, `--asks` says what it
 A checkpoint request is a comment with `--asks checkpoint` on the stage as a whole, or a reply with it on the stage's open request. It names one thing to look at first in `--look-first`: an item's trace ID that the pushed snapshot holds, an `https` address, or `stage` for the stage's page, which the hub sends as `<nexus.url>/p/<project>/<part>/<stage>`, with `_` for the project as a whole. Keep it to at most 10 lines and 1,200 characters, counted after redaction, and leave out `--item`; a request out of form, or `--look-first` without `--asks checkpoint`, is a wrong command line that sends and keeps nothing. Before it sends, the hub reads the to-do, whatever the time of the session's last read. When entries came in since the session's read before, it holds the request back once, `refused` with `read the to-do first` and the result's `new`: answer the entries on the stage, or name them in the request as open, and send it again. When the stage already has an open request, the hub sends the same text as a reply on it, with the remark `sent-as-reply`, also from the outbox. A server from before the design revision gets the thing to look at first as the text's last line, with the remark `server-older`. A request that cannot be sent waits in the outbox, exit 3, and you make the request in the session meanwhile; at the next contact the hub reads the to-do again before it sends the request, in the form that the server then takes, and that read changes nothing of what `todo` says is new. A reply with `--look-first stage` needs its comment's stage from the server, so when the hub cannot read it, nothing is kept and the result is `failed`: send it again, or name an ID or an address.
 
 Writes and claims require `--session` or `CORTHEX_NEXUS_SESSION`. Choose a label without personal data. Check source and explicit user work before taking agent work. A proposal is a suggestion, an accepted proposal is authorization to prepare the described change, and a passed checkpoint must come from the user; the agent never passes one.
+
+### Propose a change
+
+A proposal puts a change on a stage's picture, 01, 05 or 07, for the user to accept or reject: `--change` says what changes and `--reason` why. NEXUS has no field for another way. When you have another way worth weighing, write it inside `--reason`, as its last sentence, in the form NEXUS shows, in the user's language: `Other way: …` in English, `다른 방법: …` in Korean.
+
+`--source-file` gives the whole proposed text of one file, from which NEXUS works out the changes. The hub sends it with that file's repository path, `source_path`, which tells NEXUS which of the drawing's files the text replaces. The path is the file's own in the project's checkout, found as `can-send` finds it, or `--source-path` for a file outside it. Before anything is sent or kept, the hub checks the path, and refuses the command line (exit 2) when:
+
+- `--source-file` is outside the checkout without `--source-path`, `--source-path` names another path than the file has in the checkout, or `--source-path` comes without `--source-file`;
+- `--source-path` is not a plain repository path: the hub turns `\` into `/` on every platform, and refuses a leading `/`, a drive letter, empty, `.` or `..` segments and more than 300 characters, since NEXUS reads only paths in the repository;
+- the stage is skipped, has no source, or has its source in another repository, so NEXUS has no picture of it from this checkout;
+- the path is not under the stage's `source` in the project's settings, which is where the picture reads its files;
+- it does not end in an extension that the stage's picture reads: `.md` or `.markdown` for 01, `.sql` for 05, `.yaml` or `.yml` for 07;
+- it is a translation beside its original, such as `orders.ko.md` next to `orders.md`, which the picture does not read;
+- its name, or a folder on its path, looks like a secret's, such as `secrets.md`, which the picture never reads;
+- it belongs to another part than `--part`, by the picture's own rule: a file belongs to the part that its path under the stage's source starts with, followed by `/`, `.` or `-`; without `--part`, it belongs to no part.
+
+NEXUS refuses a `source_path` that names no file the drawing reads, and needs one when the drawing reads several files. The hub prints its answer's detail: `source_path names no file the drawing reads`, or `source_path is needed: the drawing reads several files`. A NEXUS server from before v3 takes no `source_path` and refuses such a proposal as it stands; the hub prints that answer too.
 
 Every result also has `remarks`, names for what the hub did otherwise than the command line says, which the lines for a person say in words; the list is usually empty.
 

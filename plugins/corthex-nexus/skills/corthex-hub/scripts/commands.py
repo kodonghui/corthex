@@ -5,7 +5,7 @@ import os
 import re
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
 
@@ -49,6 +49,9 @@ READ_FIRST = "read the to-do first"
 UNKNOWN_STAGE = "the comment's stage could not be read, so nothing was kept; send the request again"
 NOTES = {READ_FIRST: "entries came in since the session's read before: answer those on the stage, or name them in the request as open, and send it again",
          FIRST_PUSH: "the first push of this project to this server waits for the user's yes: push it with --first only after the user agrees"}
+# NEXUS v3 (API-256): source_text comes with source_path, the repository path of the file that it is the whole
+# proposed text of, as the picture names its files. The hub checks the path before it sends or keeps anything.
+SOURCE_PATH_CHARS = 300
 
 
 class CommandLine(ValueError):
@@ -184,6 +187,98 @@ def look_first(args, project, home, env, h, url):
     raise CommandLine("--look-first needs an item's trace ID, an https address without secrets or email addresses, or the word stage")
 
 
+def checkout_path(file, root):
+    """The repository path, with / on every platform, of a resolved file in the resolved checkout root; None outside it."""
+    try:
+        parts = file.relative_to(root).parts
+    except ValueError:
+        return None
+    return "/".join(parts) or None
+
+
+def repository_path(value):
+    """--source-path as a repository path: / for \\ on every platform, relative, plain and 1 to 300 characters."""
+    path = value.replace("\\", "/")
+    if not path or len(path) > SOURCE_PATH_CHARS:
+        raise CommandLine("--source-path needs a repository path of 1 to 300 characters")
+    if any(ord(c) < 32 or ord(c) == 127 for c in path):
+        raise CommandLine("--source-path must not hold control characters")
+    if path.startswith("/") or re.match(r"[A-Za-z]:", path):
+        raise CommandLine("--source-path is relative to the repository's root, with no leading / and no drive letter")
+    if any(piece in ("", ".", "..") for piece in path.split("/")):
+        raise CommandLine("--source-path must not hold empty, . or .. segments")
+    return path
+
+
+class Beside:
+    """The files that a stage's source selects, as snapshot02's source_files reads them, for the translation rule."""
+
+    def __init__(self, root, base, extensions, h):
+        self.root, self.base, self.extensions, self.h = root, base, extensions, h
+
+    def __contains__(self, rel):
+        rel = PurePosixPath(rel)
+        name = rel.as_posix()
+        if self.base and name != self.base and not name.startswith(self.base + "/") or rel.suffix.lower() not in self.extensions:
+            return False
+        path = self.root.joinpath(*rel.parts)
+        return path.is_file() and not self.h.secret_path(path, self.root)
+
+
+def source_path(args, project, h):
+    """API-256's source_path for --source-file, checked as the stage's picture reads its files (snapshot02).
+
+    The path is --source-file's in the project's checkout, or --source-path for a file outside it. It must be under
+    the stage's source in the project's settings, belong to the command's part, end in an extension that the
+    stage reads and not be a translation beside its original. A failure is a wrong command line: nothing is sent or kept.
+    """
+    if project is None:
+        raise CommandLine("--source-file needs the project's checkout on this device, to check the file's path")
+    given = repository_path(args.source_path) if args.source_path is not None else None
+    root = h.plain_path(Path(project.root).resolve())
+    found = None if args.source_file == "-" else checkout_path(h.plain_path(Path(args.source_file).resolve()), root)
+    if found is not None and given is not None and found != given:
+        raise CommandLine("--source-path names %s, but --source-file is %s in the project's checkout: leave out --source-path, "
+                          "or name the same path" % (given, found))
+    path = found or given
+    if path is None:
+        raise CommandLine("--source-file is outside the project's checkout: add --source-path with the file's path in the "
+                          "repository, such as db/schema.sql")
+    if len(path) > SOURCE_PATH_CHARS:
+        raise CommandLine("the file's repository path has more than 300 characters, more than NEXUS takes")
+    stage, pictures = args.stage, h.companion("snapshot02")
+    stages = project.settings.get("stages")
+    entry = stages.get(stage) if isinstance(stages, dict) else None
+    source = entry.get("source") if isinstance(entry, dict) else next(row[2] for row in h.STAGES if row[0] == stage)
+    if isinstance(entry, dict) and entry.get("skip") is True:
+        raise CommandLine("%s is skipped in the project's settings, so NEXUS has no picture of it" % stage)
+    if not isinstance(source, str) or not source:
+        raise CommandLine("%s has no source in the project's settings, so NEXUS has no picture of it" % stage)
+    alias, folder = h.split_source(source)
+    if alias != ".":
+        raise CommandLine("%s's source is in another repository, which the hub does not send, so NEXUS has no picture of it" % stage)
+    if h.is_absolute(folder) or "\\" in folder or ".." in PurePosixPath(folder).parts:
+        raise CommandLine("%s's source in the project's settings is not a path in the repository" % stage)
+    base = folder.rstrip("/")
+    base = "" if base == "." else base
+    if base and path != base and not path.startswith(base + "/"):
+        raise CommandLine("%s is not under %s's source in the project's settings, %s" % (path, stage, source))
+    if PurePosixPath(path).suffix.lower() not in pictures.EXTENSIONS[stage]:
+        raise CommandLine("%s is not a file that %s's picture reads, which ends in %s" %
+                          (path, stage, " or ".join(sorted(pictures.EXTENSIONS[stage]))))
+    if h.secret_path(root.joinpath(*PurePosixPath(path).parts), root):
+        raise CommandLine("%s has a name that looks like a secret's, so the picture never reads it and the hub does not send it" % path)
+    original = h.original_of(PurePosixPath(path), Beside(root, base, pictures.EXTENSIONS[stage], h))
+    if original is not None:
+        raise CommandLine("%s is a translation of %s, which the picture reads instead: propose on the original" %
+                          (path, original.as_posix()))
+    part, wanted = pictures.part_of(path, folder, pictures.parts_of(project.settings, [], h)), args.part or ""
+    if part != wanted:
+        raise CommandLine("%s belongs to %s, not to %s" % (path, "the part " + part if part else "no part",
+                                                           "--part " + wanted if wanted else "the project as a whole: add --part " + part))
+    return path
+
+
 def checkpoint_form(args, body, home, env, h):
     """SPEC-197: a checkpoint request has no --item, at most 10 lines and 1,200 characters after redaction, and --look-first."""
     wrong = []
@@ -200,7 +295,7 @@ def checkpoint_form(args, body, home, env, h):
         raise CommandLine("a checkpoint request is out of form: " + "; ".join(wrong))
 
 
-def write_request(args, project, home, env, h, url=None):
+def write_request(args, project, home, env, h, url=None, checkout=None):
     base = "/api/spaces/" + project
     command = args.command
     body = {}
@@ -238,6 +333,9 @@ def write_request(args, project, home, env, h, url=None):
             body["adds"] = args.adds
         if args.source_file:
             body["source_text"] = text_value(SimpleNamespace(source=None, source_file=args.source_file), "source", True)
+            body["source_path"] = source_path(args, checkout, h)
+        elif args.source_path is not None:
+            raise CommandLine("--source-path goes only with --source-file")
         if args.comment:
             body["comment"] = args.comment
         name, path = "proposal", base + "/proposals"
@@ -336,6 +434,8 @@ def push_job(args, home, env, h, client_factory=None):
     answer = held.get("answer") or {}
     # 0.6.0: the newest format that the server lists; a commit held in an older one goes again once (API-243).
     formats = h.companion("snapshot03")
+    # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.
+    h.companion("records").remember_server(home, url, formats.choose(answer) == formats.NEW, h)
     snapshot = h.make_snapshot(project, h.load_status(home, own), home=home, schema=formats.choose(answer))
     h.save_snapshot(home, snapshot)
     current = answer.get("default_commit")
@@ -374,21 +474,26 @@ def where(args, home, env, h):
                            url_name="CORTHEX_NEXUS_URL" if not url and env.get("CORTHEX_NEXUS_URL") else "nexus.url", remarks=ignored, own=None)
 
 
-def can_send(args, home, env, h, place):
-    """API-179: whether the session can send for the project, by the names of what is missing (SPEC-190)."""
-    name = args.project
+def project_checkout(name, home, h, place):
+    """(the project's checkout on this device or None, why not), from the list of projects or the current folder."""
     if place.source == "environment":
         own, project, _ = place.own
         if project is None or name != own:
-            failure = "no project in this checkout" if project is None else "not this checkout's project: the checkout holds %s, not %s" % (own, name)
-            return outcome("can-send", name, {"outcome": "refused", "failure": failure})
-    else:
-        _, project, failure = h.select_projects(home, [name])[0]
-        if project is None:
-            here = h.select_projects(home, [], None)[0]
-            project = here[1] if here[0] == name else None
-        if project is None:
-            return outcome("can-send", name, {"outcome": "refused", "failure": failure})
+            return None, "no project in this checkout" if project is None else "not this checkout's project: the checkout holds %s, not %s" % (own, name)
+        return project, None
+    _, project, failure = h.select_projects(home, [name])[0]
+    if project is None:
+        here = h.select_projects(home, [], None)[0]
+        project = here[1] if here[0] == name else None
+    return project, failure
+
+
+def can_send(args, home, env, h, place):
+    """API-179: whether the session can send for the project, by the names of what is missing (SPEC-190)."""
+    name = args.project
+    project, failure = project_checkout(name, home, h, place)
+    if project is None:
+        return outcome("can-send", name, {"outcome": "refused", "failure": failure})
     missing, local = [], False
     try:
         if not isinstance(place.url, str) or not place.url.strip():
@@ -628,7 +733,13 @@ def execute(args, home, api, env=None, client_factory=None):
         raise CommandLine("a project name uses lowercase letters, digits and hyphens")
     if not names and command == "push":
         return [outcome(command, "", {"outcome": "refused", "failure": "no project is listed in nexus.push"})]
-    request = write_request(args, names[0], home, env, h, place.url) if command in WRITES else None
+    # NEXUS v3: a proposal's source path is checked against the project's checkout and settings before anything goes.
+    checkout = None
+    if command == "propose" and args.source_file:
+        checkout, reason = project_checkout(names[0], home, h, place)
+        if checkout is None:
+            raise CommandLine("--source-file needs the project's checkout on this device, to check the file's path: " + reason)
+    request = write_request(args, names[0], home, env, h, place.url, checkout) if command in WRITES else None
     asks_checkpoint = request is not None and request[2].get("asks") == "checkpoint"
     reaches = not (command == "outbox" and not args.send)
     remarks = place.remarks if reaches else []
@@ -732,7 +843,11 @@ def execute(args, home, api, env=None, client_factory=None):
                         value = {"outcome": "refused", "failure": FIRST_PUSH}
                     else:
                         # 0.6.0: the newest format that the server lists; a first push has no answer to read, so 0.2.
-                        snapshot = h.make_snapshot(project, h.load_status(home, name), home=home,
+                        if held["outcome"] == "done":
+                            formats = h.companion("snapshot03")
+                            # NEXUS v3: status builds a checkpoint's link offline from this device's record of the server.
+                            h.companion("records").remember_server(home, place.url, formats.choose(held.get("answer")) == formats.NEW, h)
+                        snapshot =h.make_snapshot(project, h.load_status(home, name), home=home,
                                                    schema=h.companion("snapshot03").choose(held.get("answer")))
                         h.save_snapshot(home, snapshot)
                         failure = commit_replacement(snapshot, held.get("answer") or {}, project, args.replace_held, h)
@@ -758,6 +873,10 @@ def execute(args, home, api, env=None, client_factory=None):
                         value = dict(value, address=place.url.rstrip("/") + "/p/" + name + "#data")
                 elif command == "todo":
                     value = read_todo(client, home, name, session, kept, boxes)
+                    todo = value.get("answer") if value.get("outcome") == "done" else None
+                    if isinstance(todo, dict) and "read_at" in todo:
+                        # NEXUS v3's to-do always has steps and v2's never has; status builds its links from this record.
+                        h.companion("records").remember_server(home, place.url, "steps" in todo, h)
                 elif command == "show":
                     kind = {"c": "comments", "p": "proposals", "e": "edits", "k": "checkpoints"}[args.entry[1]]
                     value = client.call("GET", "/api/spaces/" + name + "/" + kind + "/" + args.entry)
@@ -894,6 +1013,7 @@ def configure(top, commands, existing, h):
             parser.add_argument("--adds", nargs="*", default=[])
             text(parser, "reason", True); text(parser, "change", True)
             parser.add_argument("--source-file")
+            parser.add_argument("--source-path", help="with --source-file outside the project's checkout: the file's path in the repository")
             target = parser.add_mutually_exclusive_group()
             target.add_argument("--comment")
             target.add_argument("--discrepancy")

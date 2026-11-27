@@ -12,6 +12,8 @@ from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 
 PICTURE_STAGES = ("01-domain", "05-erd", "07-sitemap")
+# The extensions of the files that each picture stage reads; propose checks a proposal's source_path by them.
+EXTENSIONS = {"01-domain": {".md", ".markdown"}, "05-erd": {".sql"}, "07-sitemap": {".yaml", ".yml"}}
 DEFAULT_ASK_BEFORE = ["external messages", "deploys", "payments", "deletions", "publishing"]
 PART = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 COMMIT = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
@@ -326,7 +328,7 @@ def augment(snapshot, project, home, api, parse_picture):
             if h.is_absolute(rel) or "\\" in rel or ".." in PurePosixPath(rel).parts:
                 continue
             groups = {}
-            names = tree.source_files(rel, {"01-domain": {".md", ".markdown"}, "05-erd": {".sql"}, "07-sitemap": {".yaml", ".yml"}}[key])
+            names = tree.source_files(rel, EXTENSIONS[key])
             if len(names) > h.MAX_FILES:
                 checks.append(h.check("picture-partial", "warn", names[h.MAX_FILES] + ":1: first of " +
                     str(len(names) - h.MAX_FILES) + " supported sources omitted after " + str(h.MAX_FILES) + " files",
