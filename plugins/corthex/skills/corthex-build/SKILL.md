@@ -38,7 +38,7 @@ This skill covers three stages. Each stage's contract, steps, checks and output 
 
 ## Fixing a bug
 
-Fix every bug by [references/bug-fix.md](references/bug-fix.md), whichever stage finds it: record it, reproduce it, fix the document of the stage with its cause first, then the code behind a regression test that failed before the fix. A fix that needs a new or different requirement or flow is a feature change instead.
+Fix every bug by [references/bug-fix.md](references/bug-fix.md), whichever stage finds it: record it, reproduce it, fix the document of the stage with its cause first, then the code behind a regression test that failed before the fix. A production incident restores the service first. A fix that needs a new or different requirement or flow is a feature change instead.
 
 ## Work in NEXUS
 

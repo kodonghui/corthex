@@ -49,7 +49,7 @@ Before a document, record, prompt or handoff written in Korean goes out, run [sc
 
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
 
-When you start another agent or session for part of the work, begin its brief with `Read '<absolute skill directory>/references/worker.md' before anything else.`, or with that file's lines where it cannot read this machine's files ([references/worker.md](references/worker.md)). Name its stops in the brief, the `ask_before` list in force among them.
+When you start another agent or session for part of the work, begin its brief with `Read '<absolute skill directory>/references/worker.md' before anything else.`, or with that file's lines where it cannot read this machine's files ([references/worker.md](references/worker.md)). State its bar in the brief, with the stage reference whose steps and checks apply, and name its stops, the `ask_before` list in force among them.
 
 When a reply, a document or a record explains a flow, a structure, a comparison or a change, draw it with the `corthex-diagram` skill, in its grammar, and check it with its lint before it goes out.
 

@@ -4,7 +4,7 @@ import json
 import re
 import unittest
 
-from _common import KEBAB, PLUGINS, read_text
+from _common import KEBAB, PLUGINS, read_text, section
 
 SKILLS = PLUGINS / "corthex" / "skills"
 STAGES = [
@@ -47,12 +47,6 @@ KINDS = [
     "Outside services", "Data exposure", "Empty and streamed answers", "Screen states", "AI answers",
 ]
 RUNS_AS = {"contract", "api", "e2e", "agent", "manual", "device"}
-
-
-def section(text, heading):
-    start = text.index(heading)
-    end = text.find("\n## ", start + len(heading))
-    return text[start:] if end == -1 else text[start:end]
 
 
 def table(text):
