@@ -34,3 +34,5 @@ Sources: <Git range, records, memory scope>. Not seen: <what>.
 ```
 
 Keep each "Next time" line and next rule to one sentence, so that similar work can read them first. A next rule becomes a harness rule only after the user approves it.
+
+A mistake that has happened before is not answered with more text. Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a rule or a skill. Write in its "Next time" line or next rule which layer now stops it, and below the table why each stronger layer could not hold it.

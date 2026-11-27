@@ -4,7 +4,7 @@ description: Entry point for CORTHEX project work. Use at the start of multi-ste
 license: Apache-2.0
 metadata:
   author: kodonghui
-  version: "0.17.0"
+  version: "0.18.0"
 ---
 
 # CORTHEX
@@ -17,6 +17,7 @@ Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json
 
 - If the file is missing, offer to create it. Ask only for what you cannot infer: how to address the user, the language, where records go, and what to ask before doing. Show the file before you write it.
 - Address the user as `address_as` and write in `language`. If `language` is `ko` and `address_as` is not set, use 사용자님 and polite speech (존댓말).
+- `checkpoints` says which stages' checkpoints the user answers in person and who answers the others. Without it the user answers every one. Never write or widen it yourself.
 - Never write a secret into the profile. Keys and tokens belong in the host's secret store or environment variables.
 
 ## 2. Find the project
@@ -47,6 +48,8 @@ Follow [references/principles.md](references/principles.md) for the whole task. 
 Before a document, record, prompt or handoff written in Korean goes out, run [scripts/term-check.py](scripts/term-check.py) on it. Resolve the script relative to this SKILL.md and invoke its absolute path, never a `scripts/term-check.py` of the project or the working folder: `python3 '<absolute skill directory>/scripts/term-check.py' -- '<file>'`, on Windows `py -3`. Put every path in single quotes and write a `'` inside one as `'\''` (in PowerShell as `''`): a file name can hold shell syntax such as `$(...)`, which double quotes still run, and `--` keeps a name that starts with `-` from being read as an option. Replace each word it finds with the standard term it names, or keep one that is right in its sentence, such as 길 for a road, and say why.
 
 In long sessions, before and after a compaction and when work moves to another session or agent, follow [references/long-sessions.md](references/long-sessions.md).
+
+When you start another agent or session for part of the work, begin its brief with `Read '<absolute skill directory>/references/worker.md' before anything else.`, or with that file's lines where it cannot read this machine's files ([references/worker.md](references/worker.md)). Name its stops in the brief, the `ask_before` list in force among them.
 
 When a reply, a document or a record explains a flow, a structure, a comparison or a change, draw it with the `corthex-diagram` skill, in its grammar, and check it with its lint before it goes out.
 

@@ -741,6 +741,35 @@ class ChangeProcedureTest(unittest.TestCase):
         self.assertIn("For a Test or gate defect, record the corrected case or gate checked against the evidence",
                       section(text, "## Checks"))
 
+    def test_a_mistake_seen_twice_is_stopped_at_the_strongest_layer(self):
+        # Text is the weakest layer: a repeated bug or review finding gets a stronger one, and the record says which.
+        order = ("Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design "
+                 "of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a "
+                 "rule or a skill.")
+        text = self.bug_fix()
+        twice = section(text, "## A mistake seen twice")
+        for rule in ("comes a second time, as a bug or as a review finding",
+                     "do not answer it with more text in a skill, a rule file or a checklist", order,
+                     "The same kind means the same cause in the same place",
+                     "The regression test of step 5 is the third layer",
+                     "Record in the bug file, on a line that starts `Stopped by:`, or in the pull request for a review "
+                     "finding, which layer now stops it",
+                     "for each stronger layer passed over, why it could not hold it"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, twice)
+        self.assertIn("a change to the test plan alone is not enough: see [A mistake seen twice](#a-mistake-seen-twice)",
+                      section(text, "## Escape analysis"))
+        self.assertIn("has a `Stopped by:` line with the layer that now stops it, and why no stronger layer could hold it",
+                      section(text, "## Checks"))
+        self.assertIn("for a repeat follow [A mistake seen twice](#a-mistake-seen-twice)", section(text, "## Steps"))
+        self.assertIn("as [bug-fix.md](bug-fix.md#a-mistake-seen-twice) says, instead of adding text",
+                      self.reference_steps("11-development"))
+        retrospective = read_text(SKILLS / "corthex-record" / "references" / "retrospective.md")
+        for rule in ("A mistake that has happened before is not answered with more text", order,
+                     "which layer now stops it, and below the table why each stronger layer could not hold it"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, retrospective)
+
 
 class DefaultHumanViewTest(unittest.TestCase):
     """Each stage proposes a default human view, and another choice is recorded as a decision."""
