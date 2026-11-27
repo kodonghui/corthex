@@ -753,8 +753,8 @@ class ChangeProcedureTest(unittest.TestCase):
                      "The same kind means the same cause, such as the same wrong assumption",
                      "not only the same defect type",
                      "The regression test of step 5 is the third layer",
-                     "Record in the bug file, on a line that starts `Stopped by:`, or in the pull request for a review "
-                     "finding, which layer now stops it",
+                     "Record in the bug file, on a line that starts `Stopped by:` after its `Regression test` line, or in "
+                     "the pull request for a review finding, which layer now stops it",
                      "for each stronger layer passed over, why it could not hold it"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, twice)

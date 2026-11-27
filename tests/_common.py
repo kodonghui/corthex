@@ -32,6 +32,13 @@ def read_text(path):
         return handle.read()
 
 
+def section(text, heading):
+    """The text from a heading up to the next `## ` heading."""
+    start = text.index(heading)
+    end = text.find("\n## ", start + len(heading))
+    return text[start:] if end == -1 else text[start:end]
+
+
 def plugin_dirs():
     return sorted(p for p in PLUGINS.iterdir() if p.is_dir())
 

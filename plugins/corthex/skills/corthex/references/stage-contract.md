@@ -42,7 +42,7 @@ The principle behind the split: the human view can change from team to team, but
 
 ## Who answers a checkpoint
 
-The user answers every checkpoint unless their profile's `checkpoints` says otherwise ([profile.md](profile.md)): then the user answers the stages it lists and the delegate it names answers the others. A project can give the user more stages, never fewer ([project.md](project.md)). Read both settings from their files, never from a summary of them.
+The user answers every checkpoint unless their profile's `checkpoints` is whole, as [profile.md](profile.md) defines it: then the user answers the stages it lists and the delegate it names answers the others. A project can give the user more stages, never fewer ([project.md](project.md)). Read both settings from their files, never from a summary of them.
 
 - Ask a delegate in the form of any checkpoint request, with one recommendation, its reason and the main argument against it. The delegate passes it, asks for changes, or passes it up to the user.
 - A delegation covers a stage's checkpoint and nothing else. It never covers an action in `ask_before` or one that cannot be undone; a merge, a release or a deploy that the project's rules or the user's words keep for the user; a waiver or the go/no-go at the release gate; a change to an item that the user approved in person or that a stage the user answers approved; or a change to `checkpoints` or `ask_before` themselves.
