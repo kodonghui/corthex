@@ -1272,7 +1272,7 @@ class PushTest(HubCase):
         self.assertEqual(lines, ["acme-shop: sent, HTTP 200, revision 3"])
         ((method, path, headers, body),) = Server.received
         self.assertEqual((method, path), ("POST", "/api/snapshots"))
-        self.assertEqual((headers["cf-access-client-id"], headers["cf-access-client-secret"]), ("test-id", "test-secret"))
+        self.assertEqual((headers["nexus-agent-client-id"], headers["nexus-agent-client-secret"]), ("test-id", "test-secret"))
         self.assertEqual(headers["content-type"], "application/json")
         self.assertEqual(json.loads(body.decode("utf-8")), json.loads(read_text(hub.snapshot_path(self.home, "acme-shop"))))
 
@@ -1332,7 +1332,7 @@ class PushTest(HubCase):
         self.assertEqual(hub.remove(self.home, ["acme-shop"], env=self.env), ["acme-shop: removed from the server"])
         ((method, path, headers, body),) = Server.received
         self.assertEqual((method, path, body), ("DELETE", "/api/snapshots/acme-shop", b""))
-        self.assertEqual((headers["cf-access-client-id"], headers["cf-access-client-secret"]), ("test-id", "test-secret"))
+        self.assertEqual((headers["nexus-agent-client-id"], headers["nexus-agent-client-secret"]), ("test-id", "test-secret"))
         Server.reply = (404, b'{"error": "no such project"}', {"Content-Type": "application/json"})
         self.assertEqual(hub.remove(self.home, ["blog"], env=self.env), ["blog: not on the server"])
         Server.reply = (404, b"", {})

@@ -2022,14 +2022,15 @@ def service_token(env, local, dry_run):
     return (client_id, secret) if client_id and secret else None
 
 
-def nexus_request(base, path, method, token, body=None):
+def nexus_request(base, path, method, token, body=None, auth_headers="nexus-agent"):
     request = urllib.request.Request(base + path, data=body, method=method)
     if body is not None:
         request.add_header("Content-Type", "application/json")
     request.add_header("User-Agent", "corthex-nexus/" + VERSION)
     if token:
-        request.add_header("CF-Access-Client-Id", token[0])
-        request.add_header("CF-Access-Client-Secret", token[1])
+        prefix = "CF-Access" if auth_headers == "cf-access" else "Nexus-Agent"
+        request.add_header(prefix + "-Client-Id", token[0])
+        request.add_header(prefix + "-Client-Secret", token[1])
     return request
 
 
@@ -2060,7 +2061,7 @@ def push(home, names=(), url=None, dry_run=False, env=None, timeout=30):
         if dry_run:
             lines.append("%s: would send %d bytes to %s/api/snapshots" % (name, len(body), base))
             continue
-        code, reply = send(opener, nexus_request(base, "/api/snapshots", "POST", token, body), timeout)
+        code, reply = send(opener, nexus_request(base, "/api/snapshots", "POST", token, body, companion("commands").transport_env(home, base, env, SimpleNamespace(**globals()))["CORTHEX_NEXUS_AUTH_HEADERS"]), timeout)
         try:
             revision = json.loads(reply).get("revision")
         except (ValueError, AttributeError):
@@ -2087,7 +2088,7 @@ def remove(home, names, url=None, dry_run=False, env=None, timeout=30):
             lines.append("%s: would remove it from %s" % (name, base))
             continue
         try:
-            send(opener, nexus_request(base, "/api/snapshots/" + name, "DELETE", token), timeout)
+            send(opener, nexus_request(base, "/api/snapshots/" + name, "DELETE", token, auth_headers=companion("commands").transport_env(home, base, env, SimpleNamespace(**globals()))["CORTHEX_NEXUS_AUTH_HEADERS"]), timeout)
         except ServerRefused as error:
             if error.code == 404 and error.reason:
                 lines.append("%s: not on the server" % name)

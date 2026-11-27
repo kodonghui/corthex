@@ -128,7 +128,7 @@ class Peer:
         raw = handler.rfile.read(length) if length else b""
         call = {"method": handler.command, "path": handler.path, "body": json.loads(raw.decode("utf8")) if raw else None,
                 "session": handler.headers.get("Nexus-Session"), "write": handler.headers.get("Idempotency-Key"),
-                "token": (handler.headers.get("CF-Access-Client-Id"), handler.headers.get("CF-Access-Client-Secret"))}
+                "token": (handler.headers.get("Nexus-Agent-Client-Id"), handler.headers.get("Nexus-Agent-Client-Secret"))}
         self.calls.append(call)
         answers = self.routes.get((handler.command, handler.path))
         if not answers:
