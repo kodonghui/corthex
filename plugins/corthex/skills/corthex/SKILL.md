@@ -17,7 +17,7 @@ Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json
 
 - If the file is missing, offer to create it. Ask only for what you cannot infer: how to address the user, the language, where records go, and what to ask before doing. Show the file before you write it.
 - Address the user as `address_as` and write in `language`. If `language` is `ko` and `address_as` is not set, use 사용자님 and polite speech (존댓말).
-- `checkpoints` says which stages' checkpoints the user answers in person and who answers the others. Without it the user answers every one. Never write or widen it yourself.
+- `checkpoints` says which stages' checkpoints the user answers in person and who answers the others. Without it the user answers every one. Change it only on the user's word.
 - Never write a secret into the profile. Keys and tokens belong in the host's secret store or environment variables.
 
 ## 2. Find the project

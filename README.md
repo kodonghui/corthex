@@ -83,7 +83,7 @@ For an authorized server, the core entry and stage skills read agent work at a s
 
 ## Profile and projects
 
-- `~/.corthex/profile.json` holds how to address you, your language, where records and study documents go, and what to ask about first. The `corthex` skill offers to create it. It never holds secrets. By default you answer every stage's checkpoint. With `checkpoints` you name the stages whose checkpoints you answer in person and a delegate who answers the others; what you listed in `ask_before`, anything that cannot be undone and the release decision still come to you.
+- `~/.corthex/profile.json` holds how to address you, your language, where records and study documents go, and what to ask about first. The `corthex` skill offers to create it. It never holds secrets. By default you answer every stage's checkpoint. With `checkpoints` you name the stages whose checkpoints you answer in person and a delegate who answers the others; what you listed in `ask_before`, anything that cannot be undone, the release decision, and a merge or a deploy that you did not hand over in your own words still come to you.
 - `.corthex/project.json` in each product repository says, stage by stage, where people look at the work (`human`), where the text source lives (`source`) and which side wins when they differ (`truth`).
 - `~/.corthex/projects.json` lists the projects on one machine.
 - `~/.corthex/hub/` holds the hub's snapshots, the progress you recorded and the page, when `corthex-nexus` is installed.

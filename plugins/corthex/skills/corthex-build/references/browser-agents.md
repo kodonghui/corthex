@@ -11,7 +11,6 @@ QA (stage 12) walks flows on every QA run, without waiting for the user to ask, 
 
 - Run the QA plan, including its coverage walks and any write flows, on localhost or a deployed development or staging site, never on production. Use test accounts from the seed script, one per role and tester, so concurrent testers keep their data separate.
 - After each production release, use browser agents to walk only flows that change nothing on production, such as browsing and searching. Walk anonymously or use a production test account provided by the user. Never seed data or create accounts on production. Record it as the [after-release check](12-qa.md#after-release) says.
-- Name the commit for each run in its report.
 
 ## Tools
 
@@ -21,7 +20,7 @@ Use the first browser on this list that the session can reach, and say in the re
 2. ego lite, where it is installed.
 3. Playwright, or the host's own browser tool, where neither can be reached, such as in CI. The testers drive it in the same way.
 
-Aside comes first: it is the browser that the rest of CORTHEX's web work uses, as the `corthex` skill's computer-and-web reference says, and its agent can sign the test accounts in through Aside Vault, or make them through the product's own sign-up, so that a walk does not wait for a person at each sign-in. ego lite comes next: each tester gets a Space of its own, and the browser has no model of its own to pay for. A session on another machine, such as a cloud session, reaches Aside with `aside --host` and ego lite only through a session on the computer where it is installed. When Playwright runs instead, say in the report what to install or turn on so that the next run can use Aside or ego lite.
+Aside comes first: it is the browser that the rest of CORTHEX's web work uses, as the `corthex` skill's computer-and-web reference says, and its agent can sign the test accounts in through Aside Vault, or make them through the product's own sign-up, so that a walk does not wait for a person at each sign-in. A session on another machine, such as a cloud session, reaches Aside with `aside --host` and ego lite only through a session on the computer where it is installed. When Playwright runs instead, say in the report what to install or turn on so that the next run can use Aside or ego lite.
 
 Do not judge a step by the exit code, whichever tool runs. When checked in November 2026, `ego-browser` (ego lite 0.6.2.8) exited with 1 when a script failed, while `aside` 1.26.1104 exited with 0 even when a script failed, its output ending with `[error | …]` instead of `[ok | …]`. The help of `aside` 1.26.1115 says that `aside repl` exits with 1 when the script throws; that was read, not run. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
 

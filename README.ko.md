@@ -83,7 +83,7 @@ codex plugin add corthex-nexus@corthex        # Codex, corthex를 추가한 뒤
 
 ## 프로필과 프로젝트
 
-- `~/.corthex/profile.json`: 호칭, 언어, 기록과 스터디 문서를 둘 곳, 먼저 물어볼 일. `corthex` 스킬이 만들기를 제안합니다. 비밀값은 넣지 않습니다. 기본은 모든 단계의 체크포인트에 사용자가 직접 답하는 것입니다. `checkpoints`에 직접 답할 단계와 나머지에 답할 위임받는 쪽을 적을 수 있으며, `ask_before`에 적은 일과 되돌릴 수 없는 일, 출시 여부 결정은 계속 사용자에게 묻습니다.
+- `~/.corthex/profile.json`: 호칭, 언어, 기록과 스터디 문서를 둘 곳, 먼저 물어볼 일. `corthex` 스킬이 만들기를 제안합니다. 비밀값은 넣지 않습니다. 기본은 모든 단계의 체크포인트에 사용자가 직접 답하는 것입니다. `checkpoints`에 직접 답할 단계와 나머지에 답할 위임받는 쪽을 적을 수 있으며, `ask_before`에 적은 일과 되돌릴 수 없는 일, 출시 여부 결정, 그리고 사용자가 직접 말로 맡기지 않은 병합과 배포는 계속 사용자에게 묻습니다.
 - 제품 저장소의 `.corthex/project.json`: 단계마다 사람이 보는 곳(`human`), 텍스트 원본의 위치(`source`), 둘이 다를 때 어느 쪽을 따를지(`truth`).
 - `~/.corthex/projects.json`: 한 기기에 있는 프로젝트 목록.
 - `~/.corthex/hub/`: `corthex-nexus`를 설치했을 때 허브의 스냅샷, 기록한 진행 상태, 페이지.

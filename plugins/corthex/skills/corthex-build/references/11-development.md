@@ -6,7 +6,7 @@
 | Outputs | Code and tests on a branch, in a pull request whose title or description names the TASK and SPEC IDs |
 | Human view | Pull request review on the code host, by default GitHub; on a project on NEXUS, with the stage's record, talk and checkpoint in NEXUS |
 | Sync | The pull request moves the task's status. Merged counts as done only after the review and the checks pass |
-| Human checkpoints | Review approval and the merge, under the repository's own rules. A delegate can answer the review approval, never a merge that is kept for the user |
+| Human checkpoints | Review approval and the merge, under the repository's own rules. A delegate can answer the review approval; the merge stays the user's unless their own words gave it to the delegate |
 | Trace IDs | No new IDs; pull requests and commits name TASK and SPEC IDs |
 
 ## Steps
@@ -18,7 +18,7 @@
 5. When the product calls an AI model's API itself, such as OpenAI's or Anthropic's, follow [ai-calls.md](ai-calls.md): where the key lives, how the client is built and tested, how a response is read, and what a change to a live AI service needs.
 6. Front end: build each screen against the mock server first (stage 06), show each response the way the screen definition says, then switch to the real server.
 7. Write tests for each acceptance criterion the change touches. For a bug fix, write its regression test first and see it fail, as [bug-fix.md](bug-fix.md) says.
-8. Open a pull request that names the TASK and SPEC IDs and says what was tested and what was not, and update the use, build and test documentation that the change affects.
+8. Open a pull request that names the TASK and SPEC IDs and says what was tested and what was not, and update the use, build and test documentation that the change affects; a new guide is written only when the user asks.
 9. When a review finding or a bug is of a kind seen before, stop it at the strongest layer that can hold it and record that layer, as [bug-fix.md](bug-fix.md#a-mistake-seen-twice) says, instead of adding text.
 
 ## Checks

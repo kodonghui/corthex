@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from _common import PLUGINS, read_text
+from _common import PLUGINS, read_text, section
 
 SKILL = PLUGINS / "corthex-nexus" / "skills" / "corthex-hub"
 SCRIPT = SKILL / "scripts" / "hub.py"
@@ -333,8 +333,8 @@ class TemplateTest(HubCase):
         self.project(stages={"12-qa": {"source": "docs/12-qa/"}})
         before = self.snapshot()
         reference = read_text(CORE / "corthex-build" / "references" / "verify-runbook.md")
-        table = reference[reference.index("## Sections"):reference.index("## Rules")]
-        names = [row.split("|")[1].strip() for row in table.splitlines() if row.startswith("| ")][2:]
+        names = [row.split("|")[1].strip() for row in section(reference, "## Sections").splitlines()
+                 if row.startswith("| ")][2:]
         self.assertEqual(len(names), 5)
         self.write(self.repo / "docs/12-qa/verify/README.md", "# Verification runbook\n\n" + "".join(
             "## %s\n\nThis step serves TC-001 on the screen SCR-002, which FL-001 walks.\n\n" % name for name in names))
