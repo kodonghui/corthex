@@ -12,6 +12,8 @@ The explicit command configures encrypted repository Actions secrets through `gh
 
 An existing default-branch workflow stays unchanged. A missing workflow gets one reusable PR with immutable action/hub pins, read-only permissions, full project history and serial execution. The command does not merge it or change the local worktree. `setup-ci PROJECT --dry-run` previews without setting secrets or creating a PR. A successful `push PROJECT --first` performs this setup automatically after its upload; it still requires first-upload consent, and a setup failure does not repeat or undo that upload. If the effective upload address differs from the environment's `CORTHEX_NEXUS_URL`, automatic setup skips before any secret write and names the mismatch without printing either address. Ordinary pushes, dry runs and CI jobs do not configure secrets.
 
+When the workflow uses a hub with BUG-006's header selection and the server is v2 behind Cloudflare Access, add `CORTHEX_NEXUS_AUTH_HEADERS: cf-access` to the environment of the **Push the snapshot** step in the repository's workflow. Fresh CI runners have no local server record. This setting is not a secret; `setup-ci` does not set it or change an existing workflow. NEXUS v3 uses `nexus-agent` by default. If authentication is refused, check the selected pair as well as the token and Access configuration.
+
 ## Verify a new CI delivery
 
 1. Read the current `default_commit` and `revision` with an authenticated `GET /api/snapshots/{project}/held`.
