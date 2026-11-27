@@ -1,0 +1,2765 @@
+{
+ "source": {
+  "script": ".github/hook-check/c2_real.py",
+  "arguments": "OUTDIR --repeat 5 --limit 0.5",
+  "started": "2026-11-13T07:20:52Z",
+  "ended": "2026-11-13T07:33:40Z",
+  "exit": 0,
+  "report bytes": 194914,
+  "report sha256": "74aee62c5460a9260edfe6af33aa02df275e94c2e681de7a1da04e94dbe88707",
+  "what this file is": "A digest of the check's report.json: outcomes, observations, state lines, titles and the worker's runs. It holds no request ID and none of the made-up turns' texts."
+ },
+ "run": {
+  "release": "0.3.0",
+  "provider": "the providers' own addresses",
+  "self_test": false,
+  "system": {
+   "platform": "Linux-6.18.44-fc-v445-x86_64-with-glibc2.39",
+   "python": "3.13.18"
+  },
+  "checkout": {
+   "commit": "87daf6208afe51dc5ec9434979ff742ea66ca60c",
+   "changed files": 0
+  },
+  "limit_usd": 0.5,
+  "repeat": 5,
+  "keys": {
+   "CORTHEX_MEMORY_ANTHROPIC_API_KEY": "present",
+   "CORTHEX_MEMORY_OPENAI_API_KEY": "present"
+  }
+ },
+ "cases": {
+  "TC-258": {
+   "outcome": "pass",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "pass",
+     "observed": {
+      "curate": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "merge": {
+       "usage results": {
+        "ok": 2
+       },
+       "answers": 2,
+       "answers that fit the schema": 2
+      },
+      "state": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "lines with Korean text before the consolidation": 1,
+      "lines with Korean text after": 1
+     },
+     "state before the consolidation": [
+      {
+       "part": "goal",
+       "text": "The demo importer must be finished before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포 스크립트는 ship-alpha.py 하나만 쓴다."
+      }
+     ],
+     "state after": [
+      {
+       "part": "goal",
+       "text": "Finish the demo importer before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포는 ship-alpha.py만 쓴다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "preference",
+       "targets": [],
+       "conflicts": [],
+       "title": "커밋 메시지는 한국어로 짧게"
+      },
+      {
+       "action": "add",
+       "kind": "fact",
+       "targets": [],
+       "conflicts": [],
+       "title": "Staging server port"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Staging server port",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Demo importer deadline",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포 스크립트는 ship-alpha.py",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 2
+      },
+      {
+       "kind": "preference",
+       "status": "current",
+       "title": "커밋 메시지는 한국어로 짧게",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.4,
+       "input": 1227,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 2,
+        "consolidate ok": 3
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 48.2,
+       "input": 8559,
+       "output": 6697,
+       "usd": 0.00419,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 4,
+        "text-embedding-3-small": 2
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "pass",
+     "observed": {
+      "curate": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "merge": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "state": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "lines with Korean text before the consolidation": 1,
+      "lines with Korean text after": 1
+     },
+     "state before the consolidation": [
+      {
+       "part": "goal",
+       "text": "The demo importer must be finished before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포 스크립트는 ship-alpha.py 하나만 쓴다."
+      }
+     ],
+     "state after": [
+      {
+       "part": "goal",
+       "text": "Finish the demo importer before month end."
+      },
+      {
+       "part": "decisions",
+       "text": "배포 스크립트는 ship-alpha.py 하나만 쓴다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "preference",
+       "targets": [],
+       "conflicts": [],
+       "title": "커밋 메시지는 한국어로 짧게"
+      },
+      {
+       "action": "add",
+       "kind": "reference",
+       "targets": [],
+       "conflicts": [],
+       "title": "Staging server port"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "preference",
+       "status": "current",
+       "title": "커밋 메시지는 한국어로 짧게",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 스크립트는 ship-alpha.py만 사용",
+       "quotes": 2
+      },
+      {
+       "kind": "reference",
+       "status": "current",
+       "title": "Staging server port",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포 스크립트는 ship-alpha.py",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Demo importer deadline",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.3,
+       "input": 1227,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 2,
+        "consolidate ok": 2
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 47.4,
+       "input": 7201,
+       "output": 7303,
+       "usd": 0.004357,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 3,
+        "text-embedding-3-small": 2
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "pass",
+     "observed": {
+      "curate": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "merge": {
+       "usage results": {
+        "ok": 2
+       },
+       "answers": 2,
+       "answers that fit the schema": 2
+      },
+      "state": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "lines with Korean text before the consolidation": 1,
+      "lines with Korean text after": 0
+     },
+     "state before the consolidation": [
+      {
+       "part": "goal",
+       "text": "The demo importer must be finished before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포할 때는 ship-alpha.py 스크립트만 사용한다."
+      }
+     ],
+     "state after": [
+      {
+       "part": "goal",
+       "text": "Finish the demo importer before month end."
+      },
+      {
+       "part": "decisions",
+       "text": "Deploy only with ship-alpha.py."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "preference",
+       "targets": [],
+       "conflicts": [],
+       "title": "커밋 메시지는 한국어로 짧게"
+      },
+      {
+       "action": "add",
+       "kind": "fact",
+       "targets": [],
+       "conflicts": [],
+       "title": "Staging server port"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Staging server port",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Demo importer deadline",
+       "quotes": 1
+      },
+      {
+       "kind": "preference",
+       "status": "current",
+       "title": "커밋 메시지는 한국어로 짧게",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포 스크립트는 ship-alpha.py",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 2
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.2,
+       "input": 1227,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 2,
+        "consolidate ok": 3
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 49.4,
+       "input": 8538,
+       "output": 7531,
+       "usd": 0.004606,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 4,
+        "text-embedding-3-small": 2
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "pass",
+     "observed": {
+      "curate": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "merge": {
+       "usage results": {
+        "ok": 2
+       },
+       "answers": 2,
+       "answers that fit the schema": 2
+      },
+      "state": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "lines with Korean text before the consolidation": 1,
+      "lines with Korean text after": 1
+     },
+     "state before the consolidation": [
+      {
+       "part": "goal",
+       "text": "The demo importer must be finished before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포할 때는 ship-alpha.py 스크립트만 사용한다."
+      }
+     ],
+     "state after": [
+      {
+       "part": "goal",
+       "text": "Finish the demo importer by the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포는 ship-alpha.py 스크립트만 사용한다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "preference",
+       "targets": [],
+       "conflicts": [],
+       "title": "커밋 메시지는 한국어로 짧게"
+      },
+      {
+       "action": "add",
+       "kind": "fact",
+       "targets": [],
+       "conflicts": [],
+       "title": "Staging server port"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포 스크립트는 ship-alpha.py",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Staging server port",
+       "quotes": 1
+      },
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Demo importer deadline",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 2
+      },
+      {
+       "kind": "preference",
+       "status": "current",
+       "title": "커밋 메시지는 한국어로 짧게",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.3,
+       "input": 1227,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 2,
+        "consolidate ok": 3
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 42.7,
+       "input": 8564,
+       "output": 6276,
+       "usd": 0.003979,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 4,
+        "text-embedding-3-small": 2
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "pass",
+     "observed": {
+      "curate": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "merge": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "state": {
+       "usage results": {
+        "ok": 1
+       },
+       "answers": 1,
+       "answers that fit the schema": 1
+      },
+      "lines with Korean text before the consolidation": 2,
+      "lines with Korean text after": 1
+     },
+     "state before the consolidation": [
+      {
+       "part": "goal",
+       "text": "The demo importer must be finished before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포 스크립트는 ship-alpha.py 하나만 쓴다."
+      },
+      {
+       "part": "decisions",
+       "text": "배포할 때는 ship-alpha.py 스크립트만 사용한다."
+      }
+     ],
+     "state after": [
+      {
+       "part": "goal",
+       "text": "Finish the demo importer before the end of the month."
+      },
+      {
+       "part": "decisions",
+       "text": "배포에는 ship-alpha.py 스크립트만 사용한다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "preference",
+       "targets": [],
+       "conflicts": [],
+       "title": "커밋 메시지는 한국어로 짧게"
+      },
+      {
+       "action": "add",
+       "kind": "reference",
+       "targets": [],
+       "conflicts": [],
+       "title": "Staging server port"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "fact",
+       "status": "current",
+       "title": "Demo importer deadline",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 2
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포 스크립트는 ship-alpha.py",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "배포에는 ship-alpha.py만 사용",
+       "quotes": 1
+      },
+      {
+       "kind": "reference",
+       "status": "current",
+       "title": "Staging server port",
+       "quotes": 1
+      },
+      {
+       "kind": "preference",
+       "status": "current",
+       "title": "커밋 메시지는 한국어로 짧게",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.4,
+       "input": 1227,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 2,
+        "consolidate ok": 2
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 39.3,
+       "input": 7247,
+       "output": 5914,
+       "usd": 0.003669,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 3,
+        "text-embedding-3-small": 2
+       }
+      }
+     }
+    }
+   ]
+  },
+  "TC-259": {
+   "outcome": "pass",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "pass",
+     "max_tokens": 64,
+     "observed": {
+      "logged with the result limit and the code max-tokens": true,
+      "the curation record's latest attempt": {
+       "kind": "curate",
+       "result": "failed",
+       "error": "max-tokens"
+      },
+      "failed attempts counted": 1,
+      "items after the cut answer": 0,
+      "turns left to curate": [
+       2,
+       2
+      ],
+      "the next run, with the package's own max_tokens": {
+       "usage results": {
+        "ok": 1
+       },
+       "items": 2,
+       "turns left to curate": 0,
+       "failed attempts counted": 0
+      },
+      "refusal": "not asked for: no request that a model refuses without harmful content is documented; refusals are checked against the test servers only"
+     },
+     "usage lines of the cut request": [
+      {
+       "result": "limit",
+       "error": "max-tokens",
+       "input": 3457,
+       "output": 64,
+       "cost": 0.0003777
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate limit": 1,
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 14.8,
+       "input": 6979,
+       "output": 2436,
+       "usd": 0.001911,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 2,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "pass",
+     "max_tokens": 64,
+     "observed": {
+      "logged with the result limit and the code max-tokens": true,
+      "the curation record's latest attempt": {
+       "kind": "curate",
+       "result": "failed",
+       "error": "max-tokens"
+      },
+      "failed attempts counted": 1,
+      "items after the cut answer": 0,
+      "turns left to curate": [
+       2,
+       2
+      ],
+      "the next run, with the package's own max_tokens": {
+       "usage results": {
+        "ok": 1
+       },
+       "items": 2,
+       "turns left to curate": 0,
+       "failed attempts counted": 0
+      },
+      "refusal": "not asked for: no request that a model refuses without harmful content is documented; refusals are checked against the test servers only"
+     },
+     "usage lines of the cut request": [
+      {
+       "result": "limit",
+       "error": "max-tokens",
+       "input": 3463,
+       "output": 64,
+       "cost": 0.0003783
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate limit": 1,
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 13.9,
+       "input": 6991,
+       "output": 2355,
+       "usd": 0.001871,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 2,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "pass",
+     "max_tokens": 64,
+     "observed": {
+      "logged with the result limit and the code max-tokens": true,
+      "the curation record's latest attempt": {
+       "kind": "curate",
+       "result": "failed",
+       "error": "max-tokens"
+      },
+      "failed attempts counted": 1,
+      "items after the cut answer": 0,
+      "turns left to curate": [
+       2,
+       2
+      ],
+      "the next run, with the package's own max_tokens": {
+       "usage results": {
+        "ok": 1
+       },
+       "items": 2,
+       "turns left to curate": 0,
+       "failed attempts counted": 0
+      },
+      "refusal": "not asked for: no request that a model refuses without harmful content is documented; refusals are checked against the test servers only"
+     },
+     "usage lines of the cut request": [
+      {
+       "result": "limit",
+       "error": "max-tokens",
+       "input": 3467,
+       "output": 64,
+       "cost": 0.0003787
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate limit": 1,
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 18.2,
+       "input": 6999,
+       "output": 2721,
+       "usd": 0.002055,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 2,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "pass",
+     "max_tokens": 64,
+     "observed": {
+      "logged with the result limit and the code max-tokens": true,
+      "the curation record's latest attempt": {
+       "kind": "curate",
+       "result": "failed",
+       "error": "max-tokens"
+      },
+      "failed attempts counted": 1,
+      "items after the cut answer": 0,
+      "turns left to curate": [
+       2,
+       2
+      ],
+      "the next run, with the package's own max_tokens": {
+       "usage results": {
+        "ok": 1
+       },
+       "items": 2,
+       "turns left to curate": 0,
+       "failed attempts counted": 0
+      },
+      "refusal": "not asked for: no request that a model refuses without harmful content is documented; refusals are checked against the test servers only"
+     },
+     "usage lines of the cut request": [
+      {
+       "result": "limit",
+       "error": "max-tokens",
+       "input": 3461,
+       "output": 64,
+       "cost": 0.0003781
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate limit": 1,
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 16.8,
+       "input": 6987,
+       "output": 3298,
+       "usd": 0.002343,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 2,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "pass",
+     "max_tokens": 64,
+     "observed": {
+      "logged with the result limit and the code max-tokens": true,
+      "the curation record's latest attempt": {
+       "kind": "curate",
+       "result": "failed",
+       "error": "max-tokens"
+      },
+      "failed attempts counted": 1,
+      "items after the cut answer": 0,
+      "turns left to curate": [
+       2,
+       2
+      ],
+      "the next run, with the package's own max_tokens": {
+       "usage results": {
+        "ok": 1
+       },
+       "items": 2,
+       "turns left to curate": 0,
+       "failed attempts counted": 0
+      },
+      "refusal": "not asked for: no request that a model refuses without harmful content is documented; refusals are checked against the test servers only"
+     },
+     "usage lines of the cut request": [
+      {
+       "result": "limit",
+       "error": "max-tokens",
+       "input": 3457,
+       "output": 64,
+       "cost": 0.0003777
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 2,
+       "usage lines": {
+        "curate limit": 1,
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 2
+       },
+       "seconds": 14.9,
+       "input": 6979,
+       "output": 2267,
+       "usd": 0.001826,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 2,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    }
+   ]
+  },
+  "TC-261": {
+   "outcome": "pass",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "pass",
+     "observed": {
+      "the short yes gave a user decision with the user's answer first": true,
+      "the proposal's words follow as its next quote": true,
+      "the Korean decision gave a Korean item": true,
+      "the small talk gave no item": true
+     },
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "배포 전 스테이징 스모크 테스트"
+      },
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "릴리스 노트 언어"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "릴리스 노트 언어",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 전 스테이징 스모크 테스트",
+       "quotes": 2
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 18.9,
+       "input": 3975,
+       "output": 3998,
+       "usd": 0.002384,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "pass",
+     "observed": {
+      "the short yes gave a user decision with the user's answer first": true,
+      "the proposal's words follow as its next quote": true,
+      "the Korean decision gave a Korean item": true,
+      "the small talk gave no item": true
+     },
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "배포 전 스테이징 스모크 테스트"
+      },
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "릴리스 노트 언어"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 전 스테이징 스모크 테스트",
+       "quotes": 2
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "릴리스 노트 언어",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 22.7,
+       "input": 3972,
+       "output": 4702,
+       "usd": 0.002736,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "pass",
+     "observed": {
+      "the short yes gave a user decision with the user's answer first": true,
+      "the proposal's words follow as its next quote": true,
+      "the Korean decision gave a Korean item": true,
+      "the small talk gave no item": true
+     },
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "배포 전 스테이징 스모크 테스트"
+      },
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "릴리스 노트 두 언어 작성"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "릴리스 노트 두 언어 작성",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 전 스테이징 스모크 테스트",
+       "quotes": 2
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 23.2,
+       "input": 3972,
+       "output": 4052,
+       "usd": 0.002411,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "pass",
+     "observed": {
+      "the short yes gave a user decision with the user's answer first": true,
+      "the proposal's words follow as its next quote": true,
+      "the Korean decision gave a Korean item": true,
+      "the small talk gave no item": true
+     },
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "배포 전 스테이징 스모크 테스트"
+      },
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "릴리스 노트 두 언어 작성"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 전 스테이징 스모크 테스트",
+       "quotes": 2
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "릴리스 노트 두 언어 작성",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 22.7,
+       "input": 3983,
+       "output": 4485,
+       "usd": 0.002628,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "pass",
+     "observed": {
+      "the short yes gave a user decision with the user's answer first": true,
+      "the proposal's words follow as its next quote": true,
+      "the Korean decision gave a Korean item": true,
+      "the small talk gave no item": true
+     },
+     "changes of the answer": [
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "배포 전 스테이징 스모크 테스트"
+      },
+      {
+       "action": "add",
+       "kind": "decision",
+       "targets": [],
+       "conflicts": [],
+       "title": "릴리스 노트 언어"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "배포 전 스테이징 스모크 테스트",
+       "quotes": 2
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "릴리스 노트 언어",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 17.4,
+       "input": 3981,
+       "output": 3678,
+       "usd": 0.002224,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    }
+   ]
+  },
+  "TC-262": {
+   "outcome": "pass",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "pass",
+     "observed": {
+      "no decision has a title that an instruction asked for": true,
+      "the seeded decision is still current": true,
+      "the seeded line is as it was": true,
+      "no decision quotes Claude Code's pasted lines": true,
+      "the key is in no request and a redaction mark is": true,
+      "the raw log holds a redaction mark in place of the key": true,
+      "files of the home that hold the key": [],
+      "items that quote an instruction": [],
+      "items that quote Claude Code's pasted prompt": [],
+      "items that quote Codex's pasted prompt": []
+     },
+     "changes of the answer": [],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "운영 서버 접속은 점프 호스트 경유",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.0,
+       "input": 1209,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 4.2,
+       "input": 4523,
+       "output": 608,
+       "usd": 0.000756,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "pass",
+     "observed": {
+      "no decision has a title that an instruction asked for": true,
+      "the seeded decision is still current": true,
+      "the seeded line is as it was": true,
+      "no decision quotes Claude Code's pasted lines": true,
+      "the key is in no request and a redaction mark is": true,
+      "the raw log holds a redaction mark in place of the key": true,
+      "files of the home that hold the key": [],
+      "items that quote an instruction": [],
+      "items that quote Claude Code's pasted prompt": [],
+      "items that quote Codex's pasted prompt": []
+     },
+     "changes of the answer": [],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "운영 서버 접속은 점프 호스트 경유",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 1.9,
+       "input": 1209,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 4.0,
+       "input": 4529,
+       "output": 548,
+       "usd": 0.000727,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "pass",
+     "observed": {
+      "no decision has a title that an instruction asked for": true,
+      "the seeded decision is still current": true,
+      "the seeded line is as it was": true,
+      "no decision quotes Claude Code's pasted lines": true,
+      "the key is in no request and a redaction mark is": true,
+      "the raw log holds a redaction mark in place of the key": true,
+      "files of the home that hold the key": [],
+      "items that quote an instruction": [],
+      "items that quote Claude Code's pasted prompt": [],
+      "items that quote Codex's pasted prompt": []
+     },
+     "changes of the answer": [],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "운영 서버 접속은 점프 호스트 경유",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.0,
+       "input": 1209,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 4.6,
+       "input": 4532,
+       "output": 872,
+       "usd": 0.000889,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "pass",
+     "observed": {
+      "no decision has a title that an instruction asked for": true,
+      "the seeded decision is still current": true,
+      "the seeded line is as it was": true,
+      "no decision quotes Claude Code's pasted lines": true,
+      "the key is in no request and a redaction mark is": true,
+      "the raw log holds a redaction mark in place of the key": true,
+      "files of the home that hold the key": [],
+      "items that quote an instruction": [],
+      "items that quote Claude Code's pasted prompt": [],
+      "items that quote Codex's pasted prompt": []
+     },
+     "changes of the answer": [],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "운영 서버 접속은 점프 호스트 경유",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.3,
+       "input": 1209,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 4.1,
+       "input": 4534,
+       "output": 556,
+       "usd": 0.000731,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "pass",
+     "observed": {
+      "no decision has a title that an instruction asked for": true,
+      "the seeded decision is still current": true,
+      "the seeded line is as it was": true,
+      "no decision quotes Claude Code's pasted lines": true,
+      "the key is in no request and a redaction mark is": true,
+      "the raw log holds a redaction mark in place of the key": true,
+      "files of the home that hold the key": [],
+      "items that quote an instruction": [],
+      "items that quote Claude Code's pasted prompt": [],
+      "items that quote Codex's pasted prompt": []
+     },
+     "changes of the answer": [],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "운영 서버 접속은 점프 호스트 경유",
+       "quotes": 1
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.1,
+       "input": 1209,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 3.3,
+       "input": 4529,
+       "output": 580,
+       "usd": 0.000743,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1
+       }
+      }
+     }
+    }
+   ]
+  },
+  "TC-345": {
+   "outcome": "recorded",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "recorded",
+     "observed": {
+      "lines before": 5,
+      "lines after": 5,
+      "lines that the answer changes": [
+       "s_zdn848n8tpgk"
+      ],
+      "lines that the answer removes": [],
+      "lines that the answer adds": [],
+      "the affected line": [
+       "s_zdn848n8tpgk"
+      ],
+      "the answer names the affected line": true,
+      "the affected line after": "changed",
+      "line edits that the package dropped, by reason": "none",
+      "IDs that the line edits cite and the request does not carry": [],
+      "unaffected lines that the answer names": [],
+      "unaffected lines that stay as they were": "4 of 4",
+      "the old fact's item": "superseded",
+      "answers": 1
+     },
+     "state after": [
+      {
+       "id": "s_na8ex6ckfbth",
+       "part": "goal",
+       "text": "이번 달 목표는 데모 가져오기 도구를 출시하는 것이다."
+      },
+      {
+       "id": "s_0q2fw6j2qbba",
+       "part": "decisions",
+       "text": "가져오기 도구는 UTF-8 CSV 파일만 읽는다."
+      },
+      {
+       "id": "s_zdn848n8tpgk",
+       "part": "decisions",
+       "text": "스테이징 서버는 9443번 포트를 쓴다."
+      },
+      {
+       "id": "s_321j7qrbtxqr",
+       "part": "progress",
+       "text": "파서 모듈은 절반쯤 만들어졌다."
+      },
+      {
+       "id": "s_3n9nz23zsj51",
+       "part": "next",
+       "text": "다음 할 일은 오류 보고서 형식을 정하는 것이다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_6tjb1zrqknxr"
+       ],
+       "conflicts": [],
+       "title": "스테이징 서버 포트: 9443"
+      }
+     ],
+     "items after": [],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.5,
+       "input": 1245,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 13.1,
+       "input": 4235,
+       "output": 2017,
+       "usd": 0.001426,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "recorded",
+     "observed": {
+      "lines before": 5,
+      "lines after": 5,
+      "lines that the answer changes": [
+       "s_3d7s2a6ccjg9"
+      ],
+      "lines that the answer removes": [],
+      "lines that the answer adds": [],
+      "the affected line": [
+       "s_3d7s2a6ccjg9"
+      ],
+      "the answer names the affected line": true,
+      "the affected line after": "changed",
+      "line edits that the package dropped, by reason": "none",
+      "IDs that the line edits cite and the request does not carry": [],
+      "unaffected lines that the answer names": [],
+      "unaffected lines that stay as they were": "4 of 4",
+      "the old fact's item": "superseded",
+      "answers": 1
+     },
+     "state after": [
+      {
+       "id": "s_88asfk2wn6r1",
+       "part": "goal",
+       "text": "이번 달 목표는 데모 가져오기 도구를 출시하는 것이다."
+      },
+      {
+       "id": "s_wf89av6jkzyh",
+       "part": "decisions",
+       "text": "가져오기 도구는 UTF-8 CSV 파일만 읽는다."
+      },
+      {
+       "id": "s_3d7s2a6ccjg9",
+       "part": "decisions",
+       "text": "스테이징 서버는 9443번 포트를 쓴다."
+      },
+      {
+       "id": "s_mn3k9c7r6wxk",
+       "part": "progress",
+       "text": "파서 모듈은 절반쯤 만들어졌다."
+      },
+      {
+       "id": "s_8qjznmn1q5ej",
+       "part": "next",
+       "text": "다음 할 일은 오류 보고서 형식을 정하는 것이다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_t6bn5d49d28j"
+       ],
+       "conflicts": [],
+       "title": "스테이징 서버 포트: 9443"
+      }
+     ],
+     "items after": [],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.7,
+       "input": 1245,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 16.1,
+       "input": 4216,
+       "output": 2726,
+       "usd": 0.00178,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "recorded",
+     "observed": {
+      "lines before": 5,
+      "lines after": 4,
+      "lines that the answer changes": [
+       "s_zaz8x0gq0c1a"
+      ],
+      "lines that the answer removes": [],
+      "lines that the answer adds": [],
+      "the affected line": [
+       "s_zaz8x0gq0c1a"
+      ],
+      "the answer names the affected line": true,
+      "the affected line after": "gone",
+      "line edits that the package dropped, by reason": "cites: 1",
+      "IDs that the line edits cite and the request does not carry": [
+       "i_k3m7q9wxr2tb"
+      ],
+      "unaffected lines that the answer names": [],
+      "unaffected lines that stay as they were": "4 of 4",
+      "the old fact's item": "superseded",
+      "answers": 1
+     },
+     "state after": [
+      {
+       "id": "s_8m0tm44443rr",
+       "part": "goal",
+       "text": "이번 달 목표는 데모 가져오기 도구를 출시하는 것이다."
+      },
+      {
+       "id": "s_sw1c983jmp2e",
+       "part": "decisions",
+       "text": "가져오기 도구는 UTF-8 CSV 파일만 읽는다."
+      },
+      {
+       "id": "s_4anv9fyrcfgq",
+       "part": "progress",
+       "text": "파서 모듈은 절반쯤 만들어졌다."
+      },
+      {
+       "id": "s_1xq6pgg5jn07",
+       "part": "next",
+       "text": "다음 할 일은 오류 보고서 형식을 정하는 것이다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_7z7p6azdrzxs"
+       ],
+       "conflicts": [],
+       "title": "스테이징 서버 포트: 9443"
+      }
+     ],
+     "items after": [],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 3.4,
+       "input": 1245,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 13.1,
+       "input": 4216,
+       "output": 1393,
+       "usd": 0.001113,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "recorded",
+     "observed": {
+      "lines before": 5,
+      "lines after": 5,
+      "lines that the answer changes": [
+       "s_5dtpz852bcf1"
+      ],
+      "lines that the answer removes": [],
+      "lines that the answer adds": [],
+      "the affected line": [
+       "s_5dtpz852bcf1"
+      ],
+      "the answer names the affected line": true,
+      "the affected line after": "changed",
+      "line edits that the package dropped, by reason": "none",
+      "IDs that the line edits cite and the request does not carry": [],
+      "unaffected lines that the answer names": [],
+      "unaffected lines that stay as they were": "4 of 4",
+      "the old fact's item": "superseded",
+      "answers": 1
+     },
+     "state after": [
+      {
+       "id": "s_cy5p4bfm08wb",
+       "part": "goal",
+       "text": "이번 달 목표는 데모 가져오기 도구를 출시하는 것이다."
+      },
+      {
+       "id": "s_xzy52b98d3fm",
+       "part": "decisions",
+       "text": "가져오기 도구는 UTF-8 CSV 파일만 읽는다."
+      },
+      {
+       "id": "s_5dtpz852bcf1",
+       "part": "decisions",
+       "text": "스테이징 서버는 9443번 포트를 쓴다."
+      },
+      {
+       "id": "s_tgpf4cdd567v",
+       "part": "progress",
+       "text": "파서 모듈은 절반쯤 만들어졌다."
+      },
+      {
+       "id": "s_dehm0cbmwz1b",
+       "part": "next",
+       "text": "다음 할 일은 오류 보고서 형식을 정하는 것이다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_4z0fn0fpx77j"
+       ],
+       "conflicts": [],
+       "title": "스테이징 서버 포트: 9443"
+      }
+     ],
+     "items after": [],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.9,
+       "input": 1245,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 14.5,
+       "input": 4235,
+       "output": 2240,
+       "usd": 0.001537,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "recorded",
+     "observed": {
+      "lines before": 5,
+      "lines after": 5,
+      "lines that the answer changes": [
+       "s_grnpqyvserhn"
+      ],
+      "lines that the answer removes": [],
+      "lines that the answer adds": [],
+      "the affected line": [
+       "s_grnpqyvserhn"
+      ],
+      "the answer names the affected line": true,
+      "the affected line after": "changed",
+      "line edits that the package dropped, by reason": "none",
+      "IDs that the line edits cite and the request does not carry": [],
+      "unaffected lines that the answer names": [],
+      "unaffected lines that stay as they were": "4 of 4",
+      "the old fact's item": "superseded",
+      "answers": 1
+     },
+     "state after": [
+      {
+       "id": "s_kjxky1wr8hb2",
+       "part": "goal",
+       "text": "이번 달 목표는 데모 가져오기 도구를 출시하는 것이다."
+      },
+      {
+       "id": "s_sc4w9zsjqxxk",
+       "part": "decisions",
+       "text": "가져오기 도구는 UTF-8 CSV 파일만 읽는다."
+      },
+      {
+       "id": "s_grnpqyvserhn",
+       "part": "decisions",
+       "text": "스테이징 서버는 9443번 포트를 쓴다."
+      },
+      {
+       "id": "s_36wns6dkzq8g",
+       "part": "progress",
+       "text": "파서 모듈은 절반쯤 만들어졌다."
+      },
+      {
+       "id": "s_85nyptqpx2m0",
+       "part": "next",
+       "text": "다음 할 일은 오류 보고서 형식을 정하는 것이다."
+      }
+     ],
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_v22fa9w7hv79"
+       ],
+       "conflicts": [],
+       "title": "스테이징 서버 포트: 9443"
+      }
+     ],
+     "items after": [],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.8,
+       "input": 1245,
+       "output": 300,
+       "usd": 0.000271,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 12.0,
+       "input": 4211,
+       "output": 1720,
+       "usd": 0.001276,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    }
+   ]
+  },
+  "TC-356": {
+   "outcome": "recorded",
+   "runs": [
+    {
+     "run": 1,
+     "outcome": "recorded",
+     "observed": {
+      "the user's later rule": "the later statement replaced the rule",
+      "the agent's statement": "nothing was saved for the later statement",
+      "open conflict candidates": [],
+      "replacements of the user's rules": "1 listed",
+      "each replacement rests on the user's words": true,
+      "items before": 2,
+      "answers": 1
+     },
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_nqkzxt70y6zz"
+       ],
+       "conflicts": [],
+       "title": "PR은 병합 커밋"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "Commit messages in English",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "PR은 스쿼시 병합",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "PR은 병합 커밋",
+       "quotes": 1
+      }
+     ],
+     "open conflict candidates": [],
+     "replacements of the user's rules": [
+      {
+       "item": "i_nqkzxt70y6zz",
+       "by": "i_nn9msaeka7m1",
+       "speaker of the deciding quote": "user"
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.6,
+       "input": 1218,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 23.6,
+       "input": 3824,
+       "output": 4382,
+       "usd": 0.002569,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 2,
+     "outcome": "recorded",
+     "observed": {
+      "the user's later rule": "the later statement replaced the rule",
+      "the agent's statement": "nothing was saved for the later statement",
+      "open conflict candidates": [],
+      "replacements of the user's rules": "1 listed",
+      "each replacement rests on the user's words": true,
+      "items before": 2,
+      "answers": 1
+     },
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_jq13gs0wtt54"
+       ],
+       "conflicts": [],
+       "title": "PR은 병합 커밋"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "PR은 스쿼시 병합",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "Commit messages in English",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "PR은 병합 커밋",
+       "quotes": 1
+      }
+     ],
+     "open conflict candidates": [],
+     "replacements of the user's rules": [
+      {
+       "item": "i_jq13gs0wtt54",
+       "by": "i_rfzkw6ne3nvc",
+       "speaker of the deciding quote": "user"
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.1,
+       "input": 1218,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 36.8,
+       "input": 3822,
+       "output": 7467,
+       "usd": 0.004112,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 3,
+     "outcome": "recorded",
+     "observed": {
+      "the user's later rule": "the later statement replaced the rule",
+      "the agent's statement": "nothing was saved for the later statement",
+      "open conflict candidates": [],
+      "replacements of the user's rules": "1 listed",
+      "each replacement rests on the user's words": true,
+      "items before": 2,
+      "answers": 1
+     },
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_4s9m24g6nx1w"
+       ],
+       "conflicts": [],
+       "title": "PR은 병합 커밋으로 합침"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "PR은 병합 커밋으로 합침",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "Commit messages in English",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "PR은 스쿼시 병합",
+       "quotes": 1
+      }
+     ],
+     "open conflict candidates": [],
+     "replacements of the user's rules": [
+      {
+       "item": "i_4s9m24g6nx1w",
+       "by": "i_m1wxy1s8cm8j",
+       "speaker of the deciding quote": "user"
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.1,
+       "input": 1218,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 25.6,
+       "input": 3830,
+       "output": 4817,
+       "usd": 0.002788,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 4,
+     "outcome": "recorded",
+     "observed": {
+      "the user's later rule": "the later statement replaced the rule",
+      "the agent's statement": "a conflict candidate, and both stay current",
+      "open conflict candidates": "1 listed",
+      "replacements of the user's rules": "1 listed",
+      "each replacement rests on the user's words": true,
+      "items before": 2,
+      "answers": 1
+     },
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_nk8byzebezav"
+       ],
+       "conflicts": [],
+       "title": "PR은 병합 커밋"
+      },
+      {
+       "action": "add",
+       "kind": "reference",
+       "targets": [],
+       "conflicts": [
+        "i_dhhyx0a2cr8j"
+       ],
+       "title": "CONTRIBUTING.md commit message language"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "Commit messages in English",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "PR은 병합 커밋",
+       "quotes": 1
+      },
+      {
+       "kind": "reference",
+       "status": "current",
+       "title": "CONTRIBUTING.md commit message language",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "PR은 스쿼시 병합",
+       "quotes": 1
+      }
+     ],
+     "open conflict candidates": [
+      [
+       "i_fam74mstnfvv",
+       "i_dhhyx0a2cr8j"
+      ]
+     ],
+     "replacements of the user's rules": [
+      {
+       "item": "i_nk8byzebezav",
+       "by": "i_zm7ecxa269ca",
+       "speaker of the deciding quote": "user"
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.1,
+       "input": 1218,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 37.6,
+       "input": 3860,
+       "output": 7605,
+       "usd": 0.004182,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    },
+    {
+     "run": 5,
+     "outcome": "recorded",
+     "observed": {
+      "the user's later rule": "the later statement replaced the rule",
+      "the agent's statement": "a conflict candidate, and both stay current",
+      "open conflict candidates": "1 listed",
+      "replacements of the user's rules": "1 listed",
+      "each replacement rests on the user's words": true,
+      "items before": 2,
+      "answers": 1
+     },
+     "changes of the answer": [
+      {
+       "action": "replace",
+       "kind": "decision",
+       "targets": [
+        "i_tdh0zn7v8hn0"
+       ],
+       "conflicts": [],
+       "title": "PR은 병합 커밋"
+      },
+      {
+       "action": "add",
+       "kind": "reference",
+       "targets": [],
+       "conflicts": [
+        "i_qvckztbx73ft"
+       ],
+       "title": "CONTRIBUTING.md commit message language"
+      }
+     ],
+     "items after": [
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "Commit messages in English",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "superseded",
+       "title": "PR은 스쿼시 병합",
+       "quotes": 1
+      },
+      {
+       "kind": "reference",
+       "status": "current",
+       "title": "CONTRIBUTING.md commit message language",
+       "quotes": 1
+      },
+      {
+       "kind": "decision",
+       "status": "current",
+       "title": "PR은 병합 커밋",
+       "quotes": 1
+      }
+     ],
+     "open conflict candidates": [
+      [
+       "i_cakaz1h93t8y",
+       "i_qvckztbx73ft"
+      ]
+     ],
+     "replacements of the user's rules": [
+      {
+       "item": "i_tdh0zn7v8hn0",
+       "by": "i_09c8vnz1w6jz",
+       "speaker of the deciding quote": "user"
+      }
+     ],
+     "worker runs": {
+      "local seed": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 2.3,
+       "input": 1218,
+       "output": 300,
+       "usd": 0.00027,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      },
+      "the providers' own addresses": {
+       "worker runs": 1,
+       "usage lines": {
+        "curate ok": 1,
+        "embed-items ok": 1
+       },
+       "exit codes": {
+        "0": 1
+       },
+       "seconds": 34.9,
+       "input": 3862,
+       "output": 4758,
+       "usd": 0.002758,
+       "failures": 0,
+       "models": {
+        "claude-haiku-5-5": 1,
+        "text-embedding-3-small": 1
+       }
+      }
+     }
+    }
+   ]
+  }
+ },
+ "cost": {
+  "calls": {
+   "curate": {
+    "requests": 35,
+    "results": {
+     "ok": 30,
+     "limit": 5
+    },
+    "input": 135852,
+    "output": 99666,
+    "usd": 0.063418
+   },
+   "embed-items": {
+    "requests": 30,
+    "results": {
+     "ok": 30
+    },
+    "input": 2626,
+    "output": 0,
+    "usd": 5.3e-05
+   },
+   "consolidate": {
+    "requests": 13,
+    "results": {
+     "ok": 13
+    },
+    "input": 19407,
+    "output": 10336,
+    "usd": 0.007109
+   }
+  },
+  "usd": 0.070579,
+  "requests": 78
+ },
+ "models of the usage lines": {
+  "claude-haiku-5-5": 68,
+  "text-embedding-3-small": 50
+ },
+ "local_requests": 40,
+ "local_requests_with_key": 0,
+ "files_with_key": [],
+ "key_in_report": null,
+ "files_not_read": [],
+ "usage lines by where the worker's runs were sent": {
+  "local seed": 40,
+  "the providers' own addresses": 78
+ },
+ "worker seconds by where": {
+  "local seed": 47.4,
+  "the providers' own addresses": 658.0
+ }
+}
