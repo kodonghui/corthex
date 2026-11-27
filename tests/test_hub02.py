@@ -29,6 +29,21 @@ CHECKPOINT = "nk_" + "d" * 12
 DISCREPANCY = "nd_" + "e" * 12
 
 
+class AuthSelectionTest(HubCase):
+    def test_profile_and_address_scoped_records(self):
+        url = "https://example.invalid"
+        self.assertEqual(CMD.transport_env(self.home, url, {}, H)["CORTHEX_NEXUS_AUTH_HEADERS"], "nexus-agent")
+        RECORD.remember_server(self.home, url, False, H)
+        self.assertEqual(CMD.transport_env(self.home, url, {}, H)["CORTHEX_NEXUS_AUTH_HEADERS"], "cf-access")
+        self.assertEqual(CMD.transport_env(self.home, "https://other.invalid", {}, H)["CORTHEX_NEXUS_AUTH_HEADERS"], "nexus-agent")
+        RECORD.remember_server(self.home, url, True, H)
+        self.assertEqual(CMD.transport_env(self.home, url, {}, H)["CORTHEX_NEXUS_AUTH_HEADERS"], "nexus-agent")
+        with mock.patch.object(hub, "profile_of", return_value={"nexus": {"auth_headers": "cf-access"}}):
+            context = SimpleNamespace(**vars(hub))
+            self.assertEqual(CMD.transport_env(self.home, url, {}, context)["CORTHEX_NEXUS_AUTH_HEADERS"], "cf-access")
+            self.assertEqual(CMD.transport_env(self.home, url, {"CORTHEX_NEXUS_AUTH_HEADERS": "nexus-agent"}, context)["CORTHEX_NEXUS_AUTH_HEADERS"], "nexus-agent")
+
+
 class GitSourcesFixture(HubCase):
     def setUp(self):
         super().setUp()
@@ -1280,8 +1295,32 @@ class TransportTest(unittest.TestCase):
         headers = {key.lower(): value for key, value in Peer.received[0]["headers"].items()}
         self.assertEqual(headers["idempotency-key"], '"' + write + '"')
         self.assertEqual(headers["nexus-session"], SESSION)
-        self.assertEqual(headers["cf-access-client-id"], "synthetic-id")
+        self.assertEqual(headers["nexus-agent-client-id"], "synthetic-id")
+        self.assertNotIn("cf-access-client-id", headers)
         self.assertNotIn("synthetic-id", repr(client))
+
+    def test_auth_header_selection(self):
+        token = {"CORTHEX_NEXUS_CLIENT_ID": "fake-id", "CORTHEX_NEXUS_CLIENT_SECRET": "fake-secret"}
+        for mode, prefix in (("cf-access", "cf-access"), ("nexus-agent", "nexus-agent")):
+            with self.subTest(mode=mode):
+                Peer.received = []
+                client = HTTP.Client(self.base, dict(token, CORTHEX_NEXUS_AUTH_HEADERS=mode))
+                self.assertEqual(client.call("GET", "/api/check")["outcome"], "done")
+                headers = {k.lower(): v for k, v in Peer.received[0]["headers"].items()}
+                self.assertEqual(headers[prefix + "-client-id"], "fake-id")
+                self.assertEqual(headers[prefix + "-client-secret"], "fake-secret")
+                other = "nexus-agent" if mode == "cf-access" else "cf-access"
+                self.assertNotIn(other + "-client-id", headers)
+                self.assertNotIn(other + "-client-secret", headers)
+        with self.assertRaises(ValueError):
+            HTTP.Client(self.base, dict(token, CORTHEX_NEXUS_AUTH_HEADERS="invalid"))
+
+    def test_auth_header_precedence(self):
+        self.assertEqual(HTTP.auth_headers({}, known=False), "cf-access")
+        self.assertEqual(HTTP.auth_headers({}, known=True), "nexus-agent")
+        self.assertEqual(HTTP.auth_headers({}, known=None), "nexus-agent")
+        self.assertEqual(HTTP.auth_headers({}, "nexus-agent", False), "nexus-agent")
+        self.assertEqual(HTTP.auth_headers({"CORTHEX_NEXUS_AUTH_HEADERS": "cf-access"}, "nexus-agent", True), "cf-access")
 
     def test_redirect_is_not_followed_and_access_failure_is_retryable(self):
         Peer.status, Peer.redirect = 302, self.base + "/forbidden"

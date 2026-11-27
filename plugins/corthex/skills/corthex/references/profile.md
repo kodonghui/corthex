@@ -17,7 +17,7 @@ Claude Code and Codex read the same file. The file never holds secrets.
 | `records.hub` | string | unset | Link or path to the records hub, such as a Notion database or a folder |
 | `records.study` | string | unset | Link or path to where study documents go, such as a Notion database or a folder. When unset, `corthex-study` uses `records.hub` |
 | `ask_before` | array of strings | the list in the example | Kinds of actions to ask about first, in addition to anything that cannot be undone. A project's own valid `ask_before` replaces this list for that project |
-| `nexus` | object | unset | Settings of the optional `corthex-nexus` plugin: `url`, the address of your own NEXUS server, and `push`, the projects that may be sent there. With a `url`, NEXUS is the default human view of the projects on it, and the entry skill asks once for each new project whether to put it there. The service token stays in environment variables |
+| `nexus` | object | unset | Settings of the optional `corthex-nexus` plugin: `url`, the address of your own NEXUS server, and `push`, the projects that may be sent there. With a `url`, NEXUS is the default human view of the projects on it, and the entry skill asks once for each new project whether to put it there. Optional `auth_headers` selects `cf-access` or `nexus-agent`; `CORTHEX_NEXUS_AUTH_HEADERS` overrides it. The service token stays in environment variables |
 
 Unknown fields are kept and ignored, so a newer version can add fields without breaking an older one.
 

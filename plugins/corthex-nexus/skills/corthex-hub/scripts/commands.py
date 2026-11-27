@@ -387,6 +387,15 @@ def commit_replacement(snapshot, held, project, replace_held, h):
     return "default branch diverged: held " + current + ", incoming " + incoming + "; use --replace-held only after the user agrees"
 
 
+def transport_env(home, url, env, h):
+    """Resolve explicit settings before the offline per-address server record."""
+    profile = h.profile_of(home)
+    settings = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}
+    known = h.companion("records").known_server(home, url, h)
+    mode = h.companion("transport").auth_headers(env, settings.get("auth_headers"), known)
+    return dict(env, CORTHEX_NEXUS_AUTH_HEADERS=mode)
+
+
 def push_job(args, home, env, h, client_factory=None):
     """API-136 push --job: the push of a repository's push job, by the contract guide's table (SPEC-193).
 
@@ -421,7 +430,10 @@ def push_job(args, home, env, h, client_factory=None):
             "bytes": len(h.dump(snapshot, compact=True).encode("utf8")), "summary": snapshot["summary"],
             "pictures": [{"part": p["part"], "stage": p["stage"]} for p in snapshot["pictures"]], "left_out": snapshot["left_out"],
             "held_commit": "checked when sent", "first_push": "checked when sent"}})
-    client = (client_factory or transport.Client)(url, env, version=h.VERSION)
+    try:
+        client = (client_factory or transport.Client)(url, transport_env(home, url, env, h), version=h.VERSION)
+    except ValueError:
+        return outcome("push", own, {"outcome": "refused", "failure": "invalid NEXUS address or auth_headers setting"})
     held = client.call("GET", "/api/snapshots/" + own + "/held")
     problem = held.get("problem") or {}
     if held["outcome"] != "done":
@@ -749,7 +761,7 @@ def execute(args, home, api, env=None, client_factory=None):
             base = place.url
             if not isinstance(base, str) or not base:
                 raise ValueError("no NEXUS address")
-            client = (client_factory or transport.Client)(base, env, version=h.VERSION)
+            client = (client_factory or transport.Client)(base, transport_env(home, base, env, h), version=h.VERSION)
         except ValueError:
             setup_failure = "no NEXUS address, or the configured address is invalid"
     rows = []

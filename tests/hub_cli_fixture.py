@@ -16,6 +16,7 @@ import sys
 import threading
 from pathlib import Path
 
+from hub_cli_reviewed_bug006 import REVIEWED_BUG006
 from hub_cli_reviewed import REVIEWED_040
 from hub_cli_reviewed_050 import REVIEWED_050
 from hub_cli_reviewed_v2 import REVIEWED_V2
@@ -154,7 +155,7 @@ def verify_runtime(checkout):
     for name in RUNTIME:
         source = (checkout / PREFIX / name).read_bytes().replace(b"\r\n", b"\n")
         actual = sha(source)
-        for new, old in REVIEWED_NEXUS_V3.get(name, ()) + REVIEWED_060.get(name, ()) + REVIEWED_051.get(name, ()) + REVIEWED_DEFERRED.get(name, ()) + REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
+        for new, old in tuple(REVIEWED_BUG006.get(name, ())) + REVIEWED_NEXUS_V3.get(name, ()) + REVIEWED_060.get(name, ()) + REVIEWED_051.get(name, ()) + REVIEWED_DEFERRED.get(name, ()) + REVIEWED_V2.get(name, ()) + REVIEWED_050.get(name, ()) + REVIEWED_040.get(name, ()) + REVIEWED.get(name, ()):
             if source.count(new) == 1:
                 source = source.replace(new, old, 1)
         if sha(source) != pin["files"][name]:
@@ -260,7 +261,7 @@ class Fixture:
             body, error = None, "request_not_json"
         write_header = handler.headers.get("Idempotency-Key")
         session_header = handler.headers.get("Nexus-Session")
-        has_auth = any(handler.headers.get(name) is not None for name in ("Authorization", "Cookie", "CF-Access-Client-Id", "CF-Access-Client-Secret"))
+        has_auth = any(handler.headers.get(name) is not None for name in ("Authorization", "Cookie", "CF-Access-Client-Id", "CF-Access-Client-Secret", "Nexus-Agent-Client-Id", "Nexus-Agent-Client-Secret"))
         if has_auth:
             error = "credential_header_forbidden"
         is_write = command in WRITES and not held

@@ -90,6 +90,18 @@ def result(outcome, answer=None, problem=None, failure=None, retry=False):
     return {"outcome": outcome, "answer": answer, "problem": problem, "failure": failure, "retry": retry}
 
 
+def auth_headers(env, configured=None, known=None):
+    """Choose one credential pair without contacting the server."""
+    mode = env.get("CORTHEX_NEXUS_AUTH_HEADERS")
+    if mode is None:
+        mode = configured
+    if mode is None:
+        mode = "cf-access" if known is False else "nexus-agent"
+    if mode not in ("cf-access", "nexus-agent"):
+        raise ValueError("auth_headers must be cf-access or nexus-agent")
+    return mode
+
+
 class Client:
     def __init__(self, base, env, version="0.6.0", timeout=30, publisher=None):
         parsed = urllib.parse.urlsplit(base)
@@ -103,6 +115,7 @@ class Client:
         if not isinstance(timeout, (float, int)) or not 0 < timeout <= 30:
             raise ValueError("the request timeout must be positive and at most 30 seconds")
         self.base, self.local, self.version, self.timeout = base.rstrip("/"), local, version, timeout
+        self._auth_headers = auth_headers(env)
         self._token = (env.get("CORTHEX_NEXUS_CLIENT_ID"), env.get("CORTHEX_NEXUS_CLIENT_SECRET"))
         if publisher is not None and (parsed.scheme != "https" or parsed.path not in ("", "/")):
             raise ValueError("v2 publication requires the configured HTTPS origin")
@@ -153,8 +166,9 @@ class Client:
         if self._publisher:
             request.add_header("Authorization", "Bearer " + self._publisher)
         elif all(self._token):
-            request.add_header("CF-Access-Client-Id", self._token[0])
-            request.add_header("CF-Access-Client-Secret", self._token[1])
+            prefix = "CF-Access" if self._auth_headers == "cf-access" else "Nexus-Agent"
+            request.add_header(prefix + "-Client-Id", self._token[0])
+            request.add_header(prefix + "-Client-Secret", self._token[1])
         try:
             with opener.open(request, timeout=self.timeout) as response:
                 raw = response.read(MAX_ANSWER_BYTES + 1)
