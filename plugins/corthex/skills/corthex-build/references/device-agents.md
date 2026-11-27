@@ -2,6 +2,8 @@
 
 Use this for Android screens in stage 12. Follow the coverage and persona passes in [browser-agents.md](browser-agents.md) and the release gate in [12-qa.md](12-qa.md). iOS device walks are not covered yet. Use the host's simulator tool where one is available, such as the Xcode Simulator on macOS, and record the coverage the session can show.
 
+The TC runs and real-device checks (`device`) still apply when you use [optional exploratory testing](12-qa.md#exploratory-testing-optional).
+
 ## Devices and tools
 
 - Use Android Virtual Devices (AVDs), remote real devices in Samsung Remote Test Lab or Android Device Streaming, or a phone connected by USB or wireless debugging. Use someone's own phone only with that person's explicit yes.
