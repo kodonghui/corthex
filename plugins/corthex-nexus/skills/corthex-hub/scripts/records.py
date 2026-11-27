@@ -3,10 +3,77 @@ import hashlib
 import json
 import os
 import re
+import sys
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
+
+CHECKPOINT = r"nk_[0-9a-hjkmnp-tv-z]{12}"
+NO_LINK = ("%s %s: checkpoint %s is recorded without its link, because no server command on this device has read the "
+           "NEXUS server at %s yet; pass --where with the checkpoint's https link, or run todo once against that server")
+
+
+def server_url(url):
+    """A NEXUS address as the hub's record of servers names it: lowercase scheme and host, no trailing /, or None."""
+    parts = urlsplit(url.strip()) if isinstance(url, str) else None
+    if parts is None or not parts.scheme or not parts.netloc:
+        return None
+    return parts.scheme.lower() + "://" + parts.netloc.lower() + parts.path.rstrip("/")
+
+
+def server_file(home, url, h):
+    folder = h.hub_dir(Path(home)) / "servers"
+    path = folder / (hashlib.sha256(url.encode("utf8")).hexdigest()[:32] + ".json")
+    return None if folder.is_symlink() or path.is_symlink() else path
+
+
+def remember_server(home, url, v3, h):
+    """Keep what a server command read of the NEXUS server at url: whether it is v3, and when. No token, no project data.
+
+    push and push --job read it from the held commit's formats (API-243); todo, whose answer has no formats, from
+    the steps that v3's to-do always has and v2's never has. A failed write is ignored: the command's own work stands.
+    """
+    url = server_url(url)
+    try:
+        path = server_file(home, url, h) if url else None
+        if path is not None:
+            h.companion("outbox").atomic(path, {"format": 1, "url": url, "v3": v3 is True, "read": h.now_text()})
+    except OSError:
+        pass
+
+
+def known_server(home, url, h):
+    """True for NEXUS v3, False for an older server, None without a record of the server at url on this device."""
+    url = server_url(url)
+    path = server_file(home, url, h) if url else None
+    try:
+        data = json.loads(path.read_text(encoding="utf8")) if path is not None and path.is_file() else None
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("url") != url or type(data.get("v3")) is not bool:
+        return None
+    return data["v3"]
+
+
+def checkpoint_link(project, part, stage, checkpoint, home, h):
+    """The link of a checkpoint passed in NEXUS, for status --nexus without --where, made offline.
+
+    status contacts no server. The link follows the last read of the profile's nexus.url by push, push --job or
+    todo: NEXUS v3 shows a stage at /p/<project>/<part or _>/<stage> (its sitemap's SCR-145), and an older server
+    keeps v2's overview link as it was. Without a record of that server, there is no link (None).
+    """
+    profile = h.profile_of(home)
+    config = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}
+    base = config.get("url")
+    if not isinstance(base, str) or not base.strip():
+        raise ValueError("set nexus.url or --where for the checkpoint's link")
+    v3 = known_server(home, base, h)
+    if v3 is None:
+        sys.stderr.write(NO_LINK % (project.name, stage, checkpoint, base.rstrip("/")) + "\n")
+        return None
+    place = quote(project.name, safe="") + "/" + quote(part or "_", safe="") + "/" + stage
+    return base.rstrip("/") + ("/p/" + place if v3 else "/overview/" + place + "#" + checkpoint)
 
 
 def safe_link(value, h, home=None):
@@ -106,15 +173,19 @@ def write(project, home, args, api, now=None):
         if current_path.is_symlink():
             raise ValueError("repository records must not follow a symbolic link")
         current_path = current_path.parent
+    def link(nexus):
+        # NEXUS v3: the link follows this device's last read of the server; status itself contacts none.
+        return checkpoint_link(project, part, args.stage, nexus, home, h)
+
     boxes = h.companion("outbox")
     try:
         with boxes.guard(guard_path(target, project.root)):
-            return update(project, home, args, h, target, part, now)
+            return update(project, home, args, h, target, part, now, link)
     except boxes.Busy:
         raise ValueError("another hub is recording this file; try status again")
 
 
-def update(project, home, args, h, target, part, now):
+def update(project, home, args, h, target, part, now, link=None):
     if target.exists():
         data = h.load_json(target)
         if (not isinstance(data, dict) or type(data.get("format")) is not int or data.get("format") != 1 or
@@ -158,16 +229,9 @@ def update(project, home, args, h, target, part, now):
                 raise ValueError("--date must be a valid YYYY-MM-DD")
             checkpoint = {"approved": h.one_line(approval, 2000), "by": by}
             if nexus:
-                if not re.fullmatch(r"nk_[0-9a-hjkmnp-tv-z]{12}", nexus):
+                if not re.fullmatch(CHECKPOINT, nexus):
                     raise ValueError("--nexus must name a checkpoint ID")
                 checkpoint["nexus"] = nexus
-                if where is None:
-                    profile = h.profile_of(home)
-                    config = profile.get("nexus") if isinstance(profile.get("nexus"), dict) else {}
-                    base = config.get("url")
-                    if not isinstance(base, str):
-                        raise ValueError("set nexus.url or --where for the checkpoint's overview link")
-                    where = base.rstrip("/") + "/overview/" + quote(project.name, safe="") + "/" + quote(part or "_", safe="") + "/" + args.stage + "#" + nexus
             if where is not None:
                 if not safe_link(where, h, home):
                     raise ValueError("--where must be an HTTPS link without secrets or email addresses")
@@ -182,7 +246,7 @@ def update(project, home, args, h, target, part, now):
                     len(cp["approved"]) > 2000 or not role(cp.get("by"), h, home) or
                     not h.companion("snapshot02").calendar_date(cp.get("date")) or
                     ("where" in cp and not safe_link(cp["where"], h, home)) or
-                    ("nexus" in cp and (not isinstance(cp["nexus"], str) or not re.fullmatch(r"nk_[0-9a-hjkmnp-tv-z]{12}", cp["nexus"])))):
+                    ("nexus" in cp and (not isinstance(cp["nexus"], str) or not re.fullmatch(CHECKPOINT, cp["nexus"])))):
                 raise ValueError("the existing checkpoint list is invalid; preserve and repair it before writing")
         if getattr(args, "next") is None and not isinstance(old.get("next", ""), str):
             raise ValueError("the existing next action is invalid; set --next or repair it before writing")
@@ -198,6 +262,13 @@ def update(project, home, args, h, target, part, now):
             checks.append({"level": level, "message": h.one_line(message, 300), "at": now[:10]})
         if checks:
             entry["checks"] = checks
+        if approval and nexus and where is None:
+            # A checkpoint passed in NEXUS without --where: its link, when this device knows the server, comes last.
+            where = link(nexus) if link is not None else None
+            if where is not None:
+                if not safe_link(where, h, home):
+                    raise ValueError("--where must be an HTTPS link without secrets or email addresses")
+                checkpoints[-1] = {"approved": checkpoint["approved"], "by": by, "nexus": nexus, "where": where, "date": args.date}
         entry["updated"] = now
         entry = h.companion("commands").scrub(entry, home, os.environ, h)
         stages[args.stage] = entry
