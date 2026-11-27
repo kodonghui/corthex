@@ -6,7 +6,7 @@
 | Outputs | `spec.md`, by default `docs/04-functional-spec/spec.md`: one SPEC row per behaviour, with its REQ and FL links, preconditions, main behaviour, exceptions and acceptance criteria |
 | Human view | On a project on NEXUS, by default NEXUS's list of the SPEC rows; otherwise by default a Notion database with one row per SPEC, as set in `human`. See [notion-database.md](notion-database.md) |
 | Sync | When the shared database is the truth, the repository copy is read-only. Refresh it at each checkpoint and before a later stage reads it, and note the refresh time |
-| Human checkpoints | Spec freeze for the release. A later change to a frozen row needs the user's decision |
+| Human checkpoints | Spec freeze for the release. A later change to a frozen row needs a decision of its own, from the user or, for a row that a delegate froze, from whoever the `corthex` skill's stage contract names |
 | Trace IDs | SPEC-001… |
 
 ## Steps

@@ -750,7 +750,8 @@ class ChangeProcedureTest(unittest.TestCase):
         twice = section(text, "## A mistake seen twice")
         for rule in ("comes a second time, as a bug or as a review finding",
                      "do not answer it with more text in a skill, a rule file or a checklist", order,
-                     "The same kind means the same cause in the same place",
+                     "The same kind means the same cause, such as the same wrong assumption",
+                     "not only the same defect type",
                      "The regression test of step 5 is the third layer",
                      "Record in the bug file, on a line that starts `Stopped by:`, or in the pull request for a review "
                      "finding, which layer now stops it",
@@ -764,9 +765,13 @@ class ChangeProcedureTest(unittest.TestCase):
         self.assertIn("for a repeat follow [A mistake seen twice](#a-mistake-seen-twice)", section(text, "## Steps"))
         self.assertIn("as [bug-fix.md](bug-fix.md#a-mistake-seen-twice) says, instead of adding text",
                       self.reference_steps("11-development"))
+        # The same rule holds where CORTHEX itself may need the change.
+        self.assertIn("CORTHEX itself may need a change, at the strongest layer that can hold it",
+                      section(text, "## Defect types"))
         retrospective = read_text(SKILLS / "corthex-record" / "references" / "retrospective.md")
         for rule in ("A mistake that has happened before is not answered with more text", order,
-                     "which layer now stops it, and below the table why each stronger layer could not hold it"):
+                     "List it under Repeated mistakes, not in the checklist",
+                     "## Repeated mistakes\n| Mistake | Seen before in | Stopped by | Why no stronger layer |"):
             with self.subTest(rule=rule):
                 self.assertIn(rule, retrospective)
 

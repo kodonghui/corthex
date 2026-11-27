@@ -45,14 +45,14 @@ By default the user answers every stage's checkpoint. The user can hand the chec
 "checkpoints": {
   "user": ["01-domain", "09-mockup"],
   "delegate": { "role": "the delegate", "reach": "<how a session asks them>" },
-  "decision": "<link or ID of the record with your words>"
+  "decision": "<link to the record with your words, or its project and ID>"
 }
 ```
 
 - `user` holds stage keys from [stage-contract.md](stage-contract.md): the stages whose checkpoints the user answers in person. The delegate answers every stage it leaves out, so it lists each stage that the user keeps.
-- `delegate.role` is the word that records use for the delegate, never a personal name in a repository. `reach` is optional and says, in the user's words, how a session asks them.
-- `decision` points to the user's own words, recorded as a decision with the `corthex-record` skill before this is written. Without it the setting does not count.
-- The setting counts only whole. Without `user`, `delegate.role` or `decision`, or with an entry in `user` that is not a stage key, the user answers every checkpoint, and the session says what is wrong with the setting.
+- `delegate.role` is the word that records use for the delegate, never a personal name in a repository. `reach` is optional and says, in the user's words, how a session asks them. The delegate is never an agent that the asking session starts itself.
+- `decision` points to the user's own words, recorded as a decision with the `corthex-record` skill before this is written: a link, or an ID with the project whose log holds it, since the setting holds for every project on the machine and a decision ID belongs to one. Without it the setting does not count.
+- The setting counts only whole. Without `user`, `delegate.role` or `decision`, or with an entry in `user` that is not a stage key, the user answers every checkpoint, and the session says what is wrong with the setting. An empty `user` list is whole: the user then keeps no stage in person.
 - Stage 12's checkpoint is the go/no-go at the release gate, which no delegation covers: the user answers it whether `user` lists `12-qa` or not. The rest of what a delegation never covers is in the stage contract, under Who answers a checkpoint.
 - Write, widen or remove this setting only on the user's word, and show the change first. A delegate cannot change it, and a project's settings can only give the user more stages.
 

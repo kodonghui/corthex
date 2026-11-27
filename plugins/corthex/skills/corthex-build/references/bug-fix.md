@@ -46,7 +46,7 @@ Set priority separately from severity:
 | Spec | A stage 04 to 09 document is wrong or silent | Fix it first, then update the later documents it affects |
 | Missing requirement | A stage 01 to 03 document lacks the required rule, requirement or flow | Follow the feature change procedure |
 | Platform assumption | A document assumed OS or device behaviour that does not hold, such as a scheduled job finishing within 15 minutes | Fix the requirement or spec that made the assumption, record the assumption and how it was checked, and add a `device` case |
-| Test or gate | A case was wrong or the gate let a failure through | Fix the test plan. When the same kind recurs in two or more projects, tell the user it may need a change to CORTHEX's skills and cite the bugs |
+| Test or gate | A case was wrong or the gate let a failure through | Fix the test plan. When the same kind recurs in two or more projects, tell the user that CORTHEX itself may need a change, at the strongest layer that can hold it, and cite the bugs |
 
 ## Escape analysis
 
@@ -54,7 +54,7 @@ For every bug found after release, record which case should have caught it, why 
 
 ## A mistake seen twice
 
-When the same kind of mistake comes a second time, as a bug or as a review finding, do not answer it with more text in a skill, a rule file or a checklist. The same kind means the same cause in the same place, such as one defect type in one module, or a finding that a review has made before. Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a rule or a skill. The regression test of step 5 is the third layer: before settling for it, say why the structure and a lint rule or a type could not hold the mistake. Record in the bug file, on a line that starts `Stopped by:`, or in the pull request for a review finding, which layer now stops it and, for each stronger layer passed over, why it could not hold it.
+When the same kind of mistake comes a second time, as a bug or as a review finding, do not answer it with more text in a skill, a rule file or a checklist. The same kind means the same cause, such as the same wrong assumption, the same missing check or the same misuse of one interface, not only the same defect type; or a finding that a review has made before. Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a rule or a skill. The regression test of step 5 is the third layer: before settling for it, say why the structure and a lint rule or a type could not hold the mistake. Record in the bug file, on a line that starts `Stopped by:`, or in the pull request for a review finding, which layer now stops it and, for each stronger layer passed over, why it could not hold it.
 
 ## Production incidents
 

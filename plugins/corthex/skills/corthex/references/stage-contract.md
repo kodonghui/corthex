@@ -46,7 +46,7 @@ The user answers every checkpoint unless their profile's `checkpoints` says othe
 
 - Ask a delegate in the form of any checkpoint request, with one recommendation, its reason and the main argument against it. The delegate passes it, asks for changes, or passes it up to the user.
 - A delegation covers a stage's checkpoint and nothing else. It never covers an action in `ask_before` or one that cannot be undone; a merge, a release or a deploy that the project's rules or the user's words keep for the user; a waiver or the go/no-go at the release gate; a change to an item that the user approved in person or that a stage the user answers approved; or a change to `checkpoints` or `ask_before` themselves.
-- A session never answers a checkpoint on its own work.
+- A session never answers a checkpoint on its own work, and neither does an agent that it started.
 - A question that the delegate cannot judge, or that reads as product direction or taste, goes up to the user.
 - Record a delegated pass, or a delegate's answer about an item, with the delegate's role, their words, where and when, and the decision that set the delegation. It is not the user's own approval, and no record says that it is.
 

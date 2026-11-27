@@ -25,6 +25,9 @@ Sources: <Git range, records, memory scope>. Not seen: <what>.
 ## The AI's mistakes
 | What the AI said or did | What was true | The user's words, where and when | Next rule |
 | --- | --- | --- | --- |
+## Repeated mistakes
+| Mistake | Seen before in | Stopped by | Why no stronger layer |
+| --- | --- | --- | --- |
 ## The user's reactions
 - "<exact words>" (<where>, <when>)
 ## Checklist for next time
@@ -35,4 +38,4 @@ Sources: <Git range, records, memory scope>. Not seen: <what>.
 
 Keep each "Next time" line and next rule to one sentence, so that similar work can read them first. A next rule becomes a harness rule only after the user approves it.
 
-A mistake that has happened before is not answered with more text. Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a rule or a skill. Write in its "Next time" line or next rule which layer now stops it, and below the table why each stronger layer could not hold it.
+A mistake that has happened before is not answered with more text. Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a rule or a skill. List it under Repeated mistakes, not in the checklist, with where it was seen before, the layer that now stops it and why each stronger layer could not hold it.
