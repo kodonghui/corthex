@@ -2,7 +2,7 @@
 
 import unittest
 
-from _common import PLUGINS, read_text
+from _common import PLUGINS, read_text, section
 
 SKILLS = PLUGINS / "corthex" / "skills"
 # The entry skill and the stage skills, each with its own copy, since a skill's links stay inside its folder.
@@ -10,12 +10,6 @@ OWNERS = [
     "corthex", "corthex-build", "corthex-contract", "corthex-define",
     "corthex-discover", "corthex-present", "corthex-record", "corthex-screen",
 ]
-
-
-def section(text, heading):
-    start = text.index(heading)
-    end = text.find("\n## ", start + len(heading))
-    return text[start:] if end == -1 else text[start:end]
 
 
 def workflow():

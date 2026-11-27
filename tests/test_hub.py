@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from _common import PLUGINS, read_text
+from _common import PLUGINS, read_text, section
 
 SKILL = PLUGINS / "corthex-nexus" / "skills" / "corthex-hub"
 SCRIPT = SKILL / "scripts" / "hub.py"
@@ -326,6 +326,22 @@ class TemplateTest(HubCase):
                    "| TC-005 | Check order details | FL-001 | pass on staging |\n")
         item = self.items(self.snapshot())["TC-005"]
         self.assertEqual(item["where"], "docs/12-qa/feature-plan.md:3")
+
+    def test_explicit_qa_folder_reads_no_item_from_a_verification_runbook(self):
+        # A project that names the whole folder as its source has the runbook read too, so a runbook mentions
+        # trace IDs in sentences only, as verify-runbook.md says.
+        self.project(stages={"12-qa": {"source": "docs/12-qa/"}})
+        before = self.snapshot()
+        reference = read_text(CORE / "corthex-build" / "references" / "verify-runbook.md")
+        names = [row.split("|")[1].strip() for row in section(reference, "## Sections").splitlines()
+                 if row.startswith("| ")][2:]
+        self.assertEqual(len(names), 5)
+        self.write(self.repo / "docs/12-qa/verify/README.md", "# Verification runbook\n\n" + "".join(
+            "## %s\n\nThis step serves TC-001 on the screen SCR-002, which FL-001 walks.\n\n" % name for name in names))
+        after = self.snapshot()
+        self.assertEqual(after["items"], before["items"])
+        self.assertEqual(after["checks"], before["checks"])
+        self.assertEqual(after["stages"]["12-qa"]["files"], before["stages"]["12-qa"]["files"] + 1)
 
     def test_requirement_rules(self):
         path = self.repo / "docs/02-prd/requirements.md"

@@ -8,7 +8,7 @@ Every CORTHEX stage fills the same six slots. The slots make each stage's work t
 | Outputs | Text sources this stage writes in the product repository |
 | Human view | Where people look at and edit the stage's work |
 | Sync | How the human view and the text source are kept in line, and which side is the truth |
-| Human checkpoints | Moments when the user fixes or approves the work before the next stage uses it. Each one first lists the approved items the work drops or changes, and asks about each on its own |
+| Human checkpoints | Moments when the user, or the delegate that the user named for the stage, fixes or approves the work before the next stage uses it. Each one first lists the approved items the work drops or changes, and asks about each on its own |
 | Trace IDs | IDs this stage creates and passes on |
 
 The principle behind the split: the human view can change from team to team, but the text source the AI reads and writes stays in one place in the repository. Tools are joined to it through MCP servers or exports.
@@ -39,6 +39,16 @@ The principle behind the split: the human view can change from team to team, but
 - Never reuse or renumber an ID. Mark a removed item as removed, with the date, and keep its ID. Mark a deferred item as deferred, with the decision, the date to look at it again and its owner, and keep its ID.
 - Each item names the IDs it comes from, such as `SPEC-014 ← REQ-003, FL-002`.
 - A screen state or an API response is written after its ID with `#`: `SCR-002#empty`, `API-001#401`. Test cases name the responses and states they check.
+
+## Who answers a checkpoint
+
+The user answers every checkpoint unless their profile's `checkpoints` is whole, as [profile.md](profile.md) defines it: then the user answers the stages it lists and the delegate it names answers the others. A project can give the user more stages, never fewer ([project.md](project.md)). Read both settings from their files, never from a summary of them.
+
+- Ask a delegate in the form of any checkpoint request, with one recommendation, its reason and the main argument against it. The delegate passes it, asks for changes, or passes it up to the user.
+- A delegation covers a stage's checkpoint and nothing else. It never covers an action in `ask_before` or one that cannot be undone; a merge, a release or a deploy, unless the user's own words gave that one to the delegate; a waiver or the go/no-go at the release gate; a change to an item that the user approved in person or that a stage the user answers approved; or a change to `checkpoints` or `ask_before` themselves.
+- A session never answers a checkpoint on work that it did itself, and neither does an agent that it started.
+- A question that the delegate cannot judge, or that reads as product direction or taste, goes up to the user.
+- Record a delegated pass, or a delegate's answer about an item, with the delegate's role, their words, where and when, and the decision that set the delegation. It is not the user's own approval, and no record says that it is.
 
 ## Changing approved work
 

@@ -1,6 +1,6 @@
 # Non-streaming FastAPI AI example
 
-This complete product example illustrates [Stage 11](11-development.md), not a production starter or a CORTHEX runtime dependency. It has no authentication, persistence, tools, streaming or provider-quality evaluation. Adapt its error catalog and schemas to the product's API contract before use.
+This complete product example illustrates the AI model calls of stage 11 ([ai-calls.md](ai-calls.md)), not a production starter or a CORTHEX runtime dependency. It has no authentication, persistence, tools, streaming or provider-quality evaluation. Adapt its error catalog and schemas to the product's API contract before use.
 
 ## Starting state and files
 

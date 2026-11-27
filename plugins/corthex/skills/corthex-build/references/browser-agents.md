@@ -1,17 +1,16 @@
 # Walking every flow with browser agents
 
-QA (stage 12) walks flows on every QA run, without waiting for the user to ask, and on top of the project's own tests. Walk the flows the changes touch, and every flow before a release, after a large change and when the user asks. Use a real browser for web screens, agent-desktop for desktop windows and [device-agents.md](device-agents.md) for phones. Walk even a single screen. A product with no screens records why the walk was skipped.
+QA (stage 12) walks flows on every QA run, without waiting for the user to ask, as step 9 of [12-qa.md](12-qa.md) says. This file says how: a real browser for web screens, agent-desktop for desktop windows and [device-agents.md](device-agents.md) for phones.
 
 ## Two passes
 
-- **Coverage walk.** Fan out the rows from the run list. Walk as each role that uses the flow. Report what works, what fails and what is blocked, with the evidence. Pin rows that work as end-to-end tests that run on every pull request.
+- **Coverage walk.** Fan out the rows from the run list. Walk as each role that uses the flow. Report what works, what fails and what is blocked, with the evidence, and pin the rows that work.
 - **Persona pass.** Give one or two testers goals about finding things as first-time users, drawing on the PRD's users where available. Give them the goal without the route, such as finding where to turn on update notices. Record their impressions and screenshots. A persona pass never passes a case.
 
 ## Where it runs
 
 - Run the QA plan, including its coverage walks and any write flows, on localhost or a deployed development or staging site, never on production. Use test accounts from the seed script, one per role and tester, so concurrent testers keep their data separate.
-- After each production release, use browser agents to walk only flows that change nothing on production, such as browsing and searching. Walk anonymously or use a production test account provided by the user. Never seed data or create accounts on production. Use the released commit and record the result in the [after-release check](12-qa.md#after-release).
-- Name the commit for each run in its report.
+- After each production release, use browser agents to walk only flows that change nothing on production, such as browsing and searching. Walk anonymously or use a production test account provided by the user. Never seed data or create accounts on production. Record it as the [after-release check](12-qa.md#after-release) says.
 
 ## Tools
 
@@ -21,9 +20,7 @@ Use the first browser on this list that the session can reach, and say in the re
 2. ego lite, where it is installed.
 3. Playwright, or the host's own browser tool, where neither can be reached, such as in CI. The testers drive it in the same way.
 
-Aside comes first: it is the browser that the rest of CORTHEX's web work uses, as the `corthex` skill's computer-and-web reference says, and its agent can sign the test accounts in through Aside Vault, or make them through the product's own sign-up, so that a walk does not wait for a person at each sign-in. ego lite comes next: each tester gets a Space of its own, and the browser has no model of its own to pay for. A session on another machine, such as a cloud session, reaches Aside with `aside --host` and ego lite only through a session on the computer where it is installed. When neither Aside nor ego lite can be reached, still walk the flows with Playwright, and say in the report what to install or turn on so that the next run can use one of them.
-
-A product whose screens are desktop windows, such as a native or an Electron app, is walked in the same way with agent-desktop, as [Desktop apps](#desktop-apps) says.
+Aside comes first: it is the browser that the rest of CORTHEX's web work uses, as the `corthex` skill's computer-and-web reference says, and its agent can sign the test accounts in through Aside Vault, or make them through the product's own sign-up, so that a walk does not wait for a person at each sign-in. A session on another machine, such as a cloud session, reaches Aside with `aside --host` and ego lite only through a session on the computer where it is installed. When Playwright runs instead, say in the report what to install or turn on so that the next run can use Aside or ego lite.
 
 Do not judge a step by the exit code, whichever tool runs. When checked in November 2026, `ego-browser` (ego lite 0.6.2.8) exited with 1 when a script failed, while `aside` 1.26.1104 exited with 0 even when a script failed, its output ending with `[error | …]` instead of `[ok | …]`. The help of `aside` 1.26.1115 says that `aside repl` exits with 1 when the script throws; that was read, not run. End each script by printing a marker with what it saw, and count the step as run only when the marker is there.
 
@@ -35,7 +32,7 @@ Its guide changes between versions, so check before each run:
 
 1. `ego-browser skill` prints the guide for the installed version. Read it, and where it differs from this file, follow it.
 2. One small script, sent as `ego-browser nodejs <<'EOF'` … `EOF`, opens the site in the tester's own Space and prints a marker. The command starts ego lite and talks to it, so it has to run outside the agent's sandbox. ego lite's own pages tell the user to turn the agent's permission checks off, with Claude Code's bypass permissions mode or Codex's Full access. That choice is the user's: ask once, and say that allowing only the `ego-browser` command, where the host can do that, is the narrower option.
-3. A person signs the test accounts in, in the tester's Space. Passwords and codes never pass through an agent, a prompt or a report. The tester opens the sign-in page and hands the Space to the user (`handOff()` in guide 2.2.0), naming the role whose account to use; the user signs in and says so, and the tester takes the Space back (`takeOverTaskSpace()`). While the user holds a Space, ego lite refuses the tester's commands. A Space can also start with sign-ins that ego lite already has, so check in the small script which account the session is signed in as before walking a row. Where it is not the row's test account, hand the Space over again, or mark the rows that need it `blocked` and tell the user.
+3. A person signs the test accounts in, in the tester's Space. Passwords and codes never pass through an agent, a prompt or a report. The tester opens the sign-in page and hands the Space to the user (`handOff()` in guide 2.2.0), telling the orchestrator, which asks the user, the role whose account to use; the user signs in and says so, and the tester takes the Space back (`takeOverTaskSpace()`). While the user holds a Space, ego lite refuses the tester's commands. A Space can also start with sign-ins that ego lite already has, so check in the small script which account the session is signed in as before walking a row. Where it is not the row's test account, hand the Space over again, or mark the rows that need it `blocked` and tell the user.
 
 Each script runs in a new Node.js process. The Space, its tabs and their labels stay from one script to the next, but the script's variables do not, so a tester names its Space after its row and opens it again by that name.
 
@@ -77,7 +74,7 @@ Hosts cap how many agents run at once and how deeply agents can start others, fo
 
 ## The run list
 
-Build the coverage run list from the stage 03 transitions in [12-qa.md](12-qa.md). A row can walk several transitions along one path. Name the flow, the start and end steps of each transition, the TC IDs and their expected results. Include failure transitions for risky states and use the pairwise table to assign roles and other environment factors. Development and staging rows that need data first get it from the seed script.
+Build the coverage run list from the transitions and the pairwise table of step 1 in [12-qa.md](12-qa.md), failure transitions included. A row can walk several transitions along one path. Name the flow, the start and end steps of each transition, the TC IDs and their expected results. Development and staging rows that need data first get it from the seed script.
 
 ## How wide
 
@@ -95,7 +92,7 @@ A tester:
 4. Gives the row a verdict: `works` when every step matched; `fails`, with the step, what was expected, what happened and the evidence; or `blocked` when the row could not run, such as at a sign-in wall, with missing data or after a tool error, with the reason.
 5. Writes down its impressions: what was hard to find, slow or confusing, and what looked wrong, such as text cut off on a narrow screen, parts out of line, low contrast or words that differ from the glossary. Each impression names its screen and has a screenshot.
 
-An agent's verdict is a claim. Use screenshots and the data check or the pinned test's assertions to pass a case. Where Aside runs, a persona tester may use `aside exec` to explore as a new user would and collect its own evidence.
+A tester's verdict is a claim, which step 10 of [12-qa.md](12-qa.md) settles. Where Aside runs, a persona tester may use `aside exec` to explore as a new user would and collect its own evidence.
 
 Every tester also keeps to these rules:
 
@@ -140,8 +137,8 @@ Row R04 is blocked. The seed script makes no administrator for the FL-004 check.
 Coverage: 9 of 11 transitions on commit abc1234 with Aside. Rows: 14 work, 2 fail, 1 is blocked.
 ```
 
-A row that fails becomes a bug (BUG) with its test case and the trace ID of the failing response. Impressions are not bugs: the user decides which of them become bugs, tasks or changes to the requirements.
+A row that fails becomes a bug (BUG) with its test case. Impressions are not bugs (step 12 of [12-qa.md](12-qa.md)).
 
 ## Pinning what works
 
-Turn each coverage row that works into an end-to-end test, such as with Playwright, written from the steps the tester took, with the TC ID in the test's name. Run those tests on every pull request. A test agent may repair locators and waits while preserving assertions and expected results. A skip it adds counts as not passed. When a pinned test fails, file a bug as for any other failure. Walk every flow again before the next release.
+Pin as step 10 of [12-qa.md](12-qa.md) says. Write each end-to-end test, such as with Playwright, from the steps the tester took, with the TC ID in the test's name. When a pinned test fails, file a bug as for any other failure. Walk every flow again before the next release.

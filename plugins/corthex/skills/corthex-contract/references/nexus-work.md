@@ -115,6 +115,8 @@ Make the request in the session, with the stage's NEXUS address as Show the work
 - The remark `server-older`: the server does not know the new form yet, and the hub sent what that server takes. Nothing more is needed.
 - The request waits in the outbox, the server refuses it, or the session cannot send: the request in the session stands. Do not reword it to get it through.
 
+A stage whose checkpoint the user has delegated, as the `corthex` skill's stage contract says, is asked of the delegate in this same form, in the session or wherever the delegate is reached. It is not sent with `--asks checkpoint`, which asks the user. What a delegation never covers, such as the go/no-go of stage 12, is still asked of the user as above, and so is a checkpoint that falls to the user because the delegate cannot be reached or does not answer. Where these sections say that the user passes a checkpoint, the delegate passes that stage's. After the pass, leave one comment on the stage, without `--asks` and so without `--look-first`, whose text says who passed it and names one thing to look at first, so that the user can look at any time. A delegate never presses a pass in NEXUS, where the server records every press as the user's own: record the pass with the delegate's role in `--by` and in the `--checkpoint` text, since a record on the device keeps only that text, and without `--nexus`.
+
 ## Tell the user where the work stands
 
 The user cannot see the work between checkpoints. Say each of these once, in the session and in the user's language. A notice asks nothing.

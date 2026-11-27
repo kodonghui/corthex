@@ -4,7 +4,7 @@ import json
 import re
 import unittest
 
-from _common import KEBAB, PLUGINS, read_text
+from _common import KEBAB, PLUGINS, read_text, section
 
 SKILLS = PLUGINS / "corthex" / "skills"
 STAGES = [
@@ -47,12 +47,6 @@ KINDS = [
     "Outside services", "Data exposure", "Empty and streamed answers", "Screen states", "AI answers",
 ]
 RUNS_AS = {"contract", "api", "e2e", "agent", "manual", "device"}
-
-
-def section(text, heading):
-    start = text.index(heading)
-    end = text.find("\n## ", start + len(heading))
-    return text[start:] if end == -1 else text[start:end]
 
 
 def table(text):
@@ -740,6 +734,43 @@ class ChangeProcedureTest(unittest.TestCase):
                 self.assertIn(rule, escape)
         self.assertIn("For a Test or gate defect, record the corrected case or gate checked against the evidence",
                       section(text, "## Checks"))
+
+    def test_a_mistake_seen_twice_is_stopped_at_the_strongest_layer(self):
+        # Text is the weakest layer: a repeated bug or review finding gets a stronger one, and the record says which.
+        order = ("Stop it at the strongest layer that can hold it, in this order: the structure of the code or the design "
+                 "of the API, a lint rule or a type, a test, a check that runs the product, and only then text such as a "
+                 "rule or a skill.")
+        text = self.bug_fix()
+        twice = section(text, "## A mistake seen twice")
+        for rule in ("comes a second time, as a bug or as a review finding",
+                     "do not answer it with more text in a skill, a rule file or a checklist", order,
+                     "The same kind means the same cause, such as the same wrong assumption",
+                     "not only the same defect type",
+                     "The regression test of step 5 is the third layer",
+                     "Record in the bug file, on a line that starts `Stopped by:` after its `Regression test` line, or in "
+                     "the pull request for a review finding, which layer now stops it",
+                     "for each stronger layer passed over, why it could not hold it"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, twice)
+        self.assertIn("a change to the test plan alone is not enough: see [A mistake seen twice](#a-mistake-seen-twice)",
+                      section(text, "## Escape analysis"))
+        self.assertIn("has a `Stopped by:` line with the layer that now stops it, and why no stronger layer could hold it",
+                      section(text, "## Checks"))
+        self.assertIn("for a repeat follow [A mistake seen twice](#a-mistake-seen-twice)", section(text, "## Steps"))
+        qa = read_text(SKILLS / "corthex-build" / "references" / "12-qa.md")
+        self.assertIn("A repeated bug has its `Stopped by:` line", section(qa, "## Checks"))
+        self.assertIn("as [bug-fix.md](bug-fix.md#a-mistake-seen-twice) says, instead of adding text",
+                      self.reference_steps("11-development"))
+        # The same rule holds where CORTHEX itself may need the change.
+        self.assertIn("CORTHEX itself may need a change, at the strongest layer that can hold it",
+                      section(text, "## Defect types"))
+        retrospective = read_text(SKILLS / "corthex-record" / "references" / "retrospective.md")
+        for rule in ("A mistake that has happened before is not answered with more text", order,
+                     "look through the earlier retrospectives and bug files for the same mistake",
+                     "List it under Repeated mistakes, not in the checklist",
+                     "## Repeated mistakes\n| Mistake | Seen before in | Stopped by | Why no stronger layer |"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, retrospective)
 
 
 class DefaultHumanViewTest(unittest.TestCase):
