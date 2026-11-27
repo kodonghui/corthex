@@ -16,3 +16,9 @@ For a product whose AI talks with people or holds tools:
 4. Run each scenario three times; one break is a failure.
 5. Run them again whenever the prompt, the knowledge or the model changes.
 6. For crisis signals, check the contacts and the laws for the country and the date.
+
+## Checks
+
+- Every behaviour that calls an AI model has cases inside and outside its scope.
+- Every evaluation of the real model says how many times each case ran and the uncertainty, and compares before and after on the same cases.
+- A product whose AI talks with people or holds tools has red-team cases for each category that applies, run three times on the current prompt, knowledge and model, and names the categories left out with the reason.

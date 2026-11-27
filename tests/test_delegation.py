@@ -233,6 +233,29 @@ class ReadPathBudgetTest(unittest.TestCase):
         cases = read_text(BUILD / "references" / "ai-cases.md")
         self.assertIn("## Red-team cases", cases)
         self.assertIn("the red-team cases below in this file", section(cases, "## Cases"))
+        # The checks of AI behaviour go with their cases, and the stage's checks point to them.
+        self.assertIn("passes the checks of [ai-cases.md](ai-cases.md)", section(qa, "## Checks"))
+        for check in ("has cases inside and outside its scope", "how many times each case ran and the uncertainty",
+                      "has red-team cases for each category that applies"):
+            with self.subTest(check=check):
+                self.assertIn(check, section(cases, "## Checks"))
+                self.assertNotIn(check, qa)
+
+    def test_the_browser_reference_points_to_the_steps_it_no_longer_repeats(self):
+        # browser-agents.md is read with 12-qa.md, so a rule that both carried is kept in the stage's steps only.
+        steps = {int(line.split(".", 1)[0]): line for line in section(read_text(BUILD / "references" / "12-qa.md"),
+                                                                    "## Steps").splitlines() if re.match(r"\d+\. ", line)}
+        agents = read_text(BUILD / "references" / "browser-agents.md")
+        for number, pointer, kept in (
+            (1, "the pairwise table of step 1 in [12-qa.md](12-qa.md)", "add failure transitions for risky states"),
+            (9, "as step 9 of [12-qa.md](12-qa.md) says", "A product with no screens records why the walk was skipped"),
+            (10, "which step 10 of [12-qa.md](12-qa.md) settles", "Treat an agent's verdict as a claim"),
+            (10, "Pin as step 10 of [12-qa.md](12-qa.md) says", "A skip it adds counts as not passed"),
+            (12, "(step 12 of [12-qa.md](12-qa.md))", "The user decides which become bugs, tasks or changes"),
+        ):
+            with self.subTest(step=number, pointer=pointer):
+                self.assertIn(pointer, agents)
+                self.assertIn(kept, steps[number])
 
 
 if __name__ == "__main__":
