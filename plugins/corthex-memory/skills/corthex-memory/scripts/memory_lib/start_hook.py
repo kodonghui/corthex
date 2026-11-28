@@ -27,6 +27,13 @@ class Start:
         cwd = event.get("cwd") if event else None
         folder = Path(cwd if isinstance(cwd, str) and cwd else os.getcwd()).expanduser().resolve()
         self.base = context.build_context(folder, Path.home(), limit=None)
+        try:
+            from . import profile_guard
+            notice = profile_guard.observe(Path.home() / '.corthex')
+            if notice:
+                self.base = notice + "\n\n" + self.base
+        except Exception:
+            pass  # Guard failure must not suppress the rest of the session context.
 
     def _notice(self, error=None):
         error = self.error if error is None else error

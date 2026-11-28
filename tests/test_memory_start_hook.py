@@ -95,6 +95,24 @@ class StartHookTest(HookCase):
         path = self.root / "projects/sample/raw" / (log_name(host, session) + ".jsonl")
         return files.read_jsonl(path) if path.exists() else []
 
+    def test_bug251_external_overwrite_is_in_real_start_context(self):
+        profile = self.home / '.corthex/profile.json'
+        profile.write_text(json.dumps({'nexus': {'url': 'v3', 'push': ['a', 'b']}, 'ask_before': ['deploys', 'merges']}))
+        self.text()
+        profile.write_text(json.dumps({'nexus': {'url': 'v2', 'push': ['a']}, 'ask_before': ['deploys']}))
+        text = self.text()
+        for value in ('External settings change', 'WARNING protected change', 'nexus.url', 'nexus.push', 'ask_before', 'profile-guard'):
+            self.assertIn(value, text)
+        self.assertIn('External settings change', self.text())
+
+    def test_bug251_corrupt_guard_keeps_start_context(self):
+        self.text()
+        (self.home / '.corthex/profile-guard/projects.json').write_text('[]')
+        text = self.text()
+        self.assertIn('## Working principles', text)
+        self.assertIn('WARNING', text)
+        self.assertIn('digest:', text)
+
     def test_tc053_empty_memory_and_start_boundary_use_the_real_entry(self):
         text = self.text()
         self.assertIn("## Memory\n\n" + start_memory.REFERENCE + "\n\n" + start_memory.NOTHING, text)

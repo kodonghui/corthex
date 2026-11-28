@@ -77,3 +77,15 @@ Stage settings remain shared. Sources in one stage folder can have one file or s
 When splitting a repository or adding parts, first inspect existing repository and device records. Copy only verified states/checkpoints for the matching part, preserving approval links, dates, next actions and review findings. Do not infer `done` from a file, a release or another part's checkpoint. Preserve unavailable records and report their scope; never reset all parts to make one change. Source/control repositories do not need to duplicate another product's source records.
 
 For a new part, a missing record means unknown/not recorded, not an approved checkpoint. The optional hub cannot block ordinary local work. Before sending a repository for the first time, follow the explicit first-send confirmation in [nexus-work.md](nexus-work.md).
+
+## Safe local updates
+
+Use [settings.py](../scripts/settings.py) for every change to `~/.corthex/profile.json` or `~/.corthex/projects.json`. Never replace an existing file wholesale: read and merge only the requested fields, preserving all others including unknown fields. Before writing, keep a timestamped backup beside the file; report the before and after in one line. Reducing or removing `nexus.url`, `nexus.push`, `ask_before`, or project entries requires the user’s own words, place and time. Ask separately before reducing `ask_before`: it changes approval rules. Never invent evidence.
+
+The optional CORTHEX Memory session-start hook compares the machine's project list to a private last-seen copy and warns of external changes; see [profile.md](profile.md). It cannot detect a change before its first observation or prevent another program writing the file.
+
+Updating or removing an existing project entry requires the user's words, place and time; additions do not remove existing entries.
+
+A reduction or replacement of an existing project value also requires the user's specific words in `--reduction-words`; the command prints the approval evidence with its before and after.
+
+Adding a project whose name is already in `nexus.push` requires the user's words, place and time too, because the checkout path determines what that permission can send.
