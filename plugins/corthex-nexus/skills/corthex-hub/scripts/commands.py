@@ -5,6 +5,8 @@ import os
 import re
 import sys
 import time
+import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from urllib.parse import unquote, urlsplit
@@ -115,7 +117,7 @@ def text_value(args, name, required=False):
     value, file = getattr(args, name, None), getattr(args, name + "_file", None)
     if file is not None:
         try:
-            value = sys.stdin.buffer.read().decode("utf8") if file == "-" else Path(file).read_text(encoding="utf8")
+            value = sys.stdin.buffer.read().decode("utf8") if file == "-" else (Path(file).read_bytes().decode("utf8") if name == "evidence_text" else Path(file).read_text(encoding="utf8"))
         except (UnicodeError, OSError):
             raise CommandLine("--" + name.replace("_", "-") + "-file must be readable UTF-8")
     if required and (not isinstance(value, str) or not value.strip()):
@@ -323,9 +325,29 @@ def write_request(args, project, home, env, h, url=None, checkout=None):
         if not link(args.link, home, env, h):
             raise CommandLine("--link needs an HTTPS address without secrets or email addresses")
         body["link"] = args.link
+        if args.text_file == "-" and args.evidence_text_file == "-":
+            raise CommandLine("stdin can supply only one text file")
         text = text_value(args, "text")
         if text is not None:
             body["text"] = text
+        evidence = {"source_kind": args.evidence_source_kind, "location": args.evidence_location,
+                    "text": text_value(args, "evidence_text"), "at": args.evidence_at}
+        if any(value is not None for value in evidence.values()):
+            if any(not isinstance(value, str) or not value.strip() for value in evidence.values()):
+                raise CommandLine("external evidence needs source kind, location, text and at together")
+            for field, limit in (("source_kind", 100), ("location", 2000), ("text", 4000)):
+                value = evidence[field]
+                if len(value) > limit or any((unicodedata.category(c) in ("Cc", "Cs") and c not in "\t\n\r") or
+                                             c in "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff" for c in value):
+                    raise CommandLine("external evidence " + field + " has invalid characters or exceeds its limit")
+            try:
+                if not TIME.fullmatch(evidence["at"]) or datetime.strptime(evidence["at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
+                    raise ValueError()
+            except ValueError:
+                raise CommandLine("external evidence at needs a non-future UTC time with milliseconds")
+            if scrub(evidence, home, env, h) != evidence:
+                raise CommandLine("external evidence contains material that would be redacted; cannot send it verbatim")
+            body["external_evidence"] = evidence
         name, path = "decision", base + "/comments/" + args.entry + "/decisions"
     elif command == "propose":
         body.update(items=args.item, reason=text_value(args, "reason", True), change=text_value(args, "change", True))
@@ -1033,6 +1055,10 @@ def configure(top, commands, existing, h):
             parser.add_argument("--quote")
         if name == "decide":
             parser.add_argument("--link", required=True)
+            parser.add_argument("--evidence-source-kind")
+            parser.add_argument("--evidence-location")
+            text(parser, "evidence-text")
+            parser.add_argument("--evidence-at")
         if name == "propose":
             parser.add_argument("--adds", nargs="*", default=[])
             text(parser, "reason", True); text(parser, "change", True)
