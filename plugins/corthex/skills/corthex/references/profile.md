@@ -69,13 +69,15 @@ Use [settings.py](../scripts/settings.py) for every change to `~/.corthex/profil
 
 When the optional CORTHEX Memory session-start hook is installed, it keeps a private last-seen copy of both local settings files under `~/.corthex/profile-guard/`. At a later start it compares those copies with the files, warns about external changes and reductions, and points to the previous copy for recovery. The first observation cannot detect an earlier overwrite; the hook is a detector, not a lock. A warning remains until the user reviews it and explicitly accepts the external state with `settings.py check` followed by `settings.py accept-external DIGEST` with the digest shown, and the user’s words, place and time, or restores the files. Do not accept a reduced `ask_before` without separate approval.
 
+While an external-change warning remains, follow both the previous and current approval rules; if either is unknown, ask before acting. Review the saved and current files before relying on settings that changed. Registering a project while the profile is unreadable requires the user's words, place and time, because its NEXUS push status cannot be established.
+
 The last-seen files are JSON envelopes: `value` holds the previous settings object, `missing` records an absent file, and `unreadable_sha256` and `raw_base64` record an unreadable one with its original bytes. Older copies may hold only the digest. Inspect the `value` before restoring it. Unknown field names are shown as changed without their values, to avoid putting accidental secrets in session context. The previous copies are retained as timestamped backups when external state is accepted.
 
 Record the approval details printed by the command in the user's decision record. Keep backups until the user asks to remove them. A Memory temporary-device setup that creates a missing project list is reported as an external change if a baseline already recorded it as missing; review it before accepting.
 
 Pass approval flags before the subcommand. To restore a last-seen copy after review, run `settings.py --words ... --place ... --time ... restore profile DIGEST` (or `restore projects DIGEST`); the command backs up the current file first. `check` establishes the initial baselines when neither exists. Concurrent settings commands refuse to run while `profile-guard.lock` exists; inspect it for a stopped command before removing a stale lock.
 
-Changes to `checkpoints`, `nexus.url` or `nexus.push` also require the user's own words, place and time. For a valid checkpoint delegation, record its decision as described above.
+Changes to `checkpoints`, `nexus.url` or `nexus.push` also require the user's own words, place and time. For a valid checkpoint delegation, record its decision as described above. If `init` sets an `ask_before` list that removes any default, record the user's words, place and time and their separate approval of the reduction.
 
 Use `unset KEY` to remove a profile field, or `project-unset NAME KEY` to remove a field from a project; both require the user's words, place and time. `init` also needs that evidence when the new file sets checkpoints or NEXUS fields.
 

@@ -105,6 +105,15 @@ class GuardTest(unittest.TestCase):
         data = json.loads(self.projects.read_text())
         self.assertEqual(data['projects'][0]['repos']['api'], '/api')
 
+    def test_project_add_with_unreadable_profile_requires_evidence(self):
+        self.profile.write_text('{"nexus":')
+        result = self.run_guard('project', 'add', '{"name":"c","path":"/c"}')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('c', [item['name'] for item in json.loads(self.projects.read_text())['projects']])
+        result = self.run_guard('--words', 'register c', '--place', 'chat', '--time', 'today',
+                                'project', 'add', '{"name":"c","path":"/c"}')
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_invalid_approval_value_is_refused(self):
         args = ('--words', 'change', '--place', 'chat', '--time', 'today', '--ask-before-words', 'yes')
         self.assertNotEqual(self.run_guard(*args, 'set', 'ask_before', 'false').returncode, 0)
@@ -506,7 +515,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
         spec = importlib.util.spec_from_file_location('guard_defaults_test', module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        example = json.loads((SCRIPT.parents[1] / 'assets/profile.example.json').read_text())
+        example = json.loads((SCRIPT.parents[1] / 'assets/profile.example.json').read_text(encoding='utf-8'))
         self.assertEqual(list(module.DEFAULT_ASK_BEFORE), example['ask_before'])
 
     def test_inaccessible_settings_are_warned_without_losing_backup(self):

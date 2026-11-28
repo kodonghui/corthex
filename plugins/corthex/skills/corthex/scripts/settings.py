@@ -347,7 +347,10 @@ def run(args, folder):
             matches = [i for i, entry in enumerate(entries) if isinstance(entry, dict) and entry.get('name') == value['name']]
             if args.action == 'add':
                 if matches: raise ValueError('project already exists')
-                profile = profile_guard.read(folder / 'profile.json').get('value', {})
+                profile_state = profile_guard.read(folder / 'profile.json')
+                if ('unreadable_sha256' in profile_state or 'inaccessible' in profile_state) and not all((args.words, args.place, args.time)):
+                    raise ValueError('registering a project with an unreadable profile requires --words, --place and --time')
+                profile = profile_state.get('value', {})
                 push = get(profile, 'nexus', 'push')
                 if isinstance(push, list) and value['name'] in push and not all((args.words, args.place, args.time)):
                     raise ValueError('registering an already pushed project requires --words, --place and --time')
