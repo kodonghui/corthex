@@ -99,7 +99,7 @@ Use these commands only for a project in `nexus.push`. They contact the configur
 | `comment PROJECT --stage STAGE --text TEXT [--item ID]` | Comment on an item of any of the 13 stages, or on the stage as a whole without `--item`; optional `--quote`, `--asks`, and `--look-first` with `--asks checkpoint` |
 | `reply PROJECT COMMENT --text TEXT` | Reply to a comment; optional `--asks`, and `--look-first` with `--asks checkpoint` |
 | `answered PROJECT COMMENT` | Mark it answered |
-| `decide PROJECT COMMENT --link HTTPS_URL [--text TEXT]` | Report where the user's decision was recorded; external evidence options are described below |
+| `decide PROJECT COMMENT --link HTTPS_URL --session SESSION [--text TEXT]` | Report where the user's decision was recorded; external evidence options are described below |
 | `propose PROJECT --stage STAGE --item ID --reason TEXT --change TEXT` | Propose a change; optional repeated items, `--adds`, `--source-file` with `--source-path`, and one comment/discrepancy target. See Propose a change, below |
 | `withdraw PROJECT PROPOSAL` | Withdraw the session's proposal |
 | `reflect PROJECT EDIT EVENT` | Report opened/merged/closed/reflected/needs-user; PR events need `--pr`, reflected needs full `--commit` |
@@ -116,7 +116,7 @@ A checkpoint request is a comment with `--asks checkpoint` on the stage as a who
 
 Writes and claims require `--session` or `CORTHEX_NEXUS_SESSION`. Choose a label without personal data. Check source and explicit user work before taking agent work. A proposal is a suggestion, an accepted proposal is authorization to prepare the described change, and a passed checkpoint must come from the user; the agent never passes one.
 
-When the user answered outside NEXUS, include all four external evidence options with `decide`: `--evidence-source-kind`, `--evidence-location` (for example an item number or event ID), `--evidence-text-file` (or `--evidence-text`), and `--evidence-at` (UTC, `YYYY-MM-DDTHH:MM:SS.sssZ`). Preserve the user's exact words, including line breaks and quotes; prefer the file option. Never invent evidence. The server accepts source kind up to 100 characters, location up to 2,000 and text up to 4,000, and refuses future times and disallowed controls. A matching answer can resolve the conversation; otherwise the owner can confirm closure. Evidence that would be redacted is refused rather than altered.
+When the user answered outside NEXUS, include all four external evidence options with `decide`: `--evidence-source-kind`, `--evidence-location` (for example an item number or event ID), `--evidence-text-file` (or `--evidence-text`), and `--evidence-at` (UTC, `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.sssZ`; seconds are sent with `.000Z`). Preserve the user's exact words, including line breaks and quotes; prefer the file option. Never invent evidence. The server accepts source kind up to 100 characters, location up to 2,000 and text up to 4,000, and refuses future times and disallowed controls. A matching answer can resolve the conversation; otherwise the owner can confirm closure. Evidence that would be redacted is refused rather than altered.
 
 ### Propose a change
 
