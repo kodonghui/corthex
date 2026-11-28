@@ -1,5 +1,10 @@
 """Reviewed API-255 additions reverse to the prior audited runtime."""
 REVIEWED_EVIDENCE = {"commands.py": (
+    # Normalize the reviewed seconds input and session guidance before API-255.
+    (b'            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", evidence["at"]):\n                evidence["at"] = evidence["at"][:-1] + ".000Z"\n', b''),
+    (b'external evidence at needs a non-future UTC time with seconds or milliseconds', b'external evidence at needs a non-future UTC time with milliseconds'),
+    (b'provide --session <session-name> or set CORTHEX_NEXUS_SESSION to the session name', b'set --session or CORTHEX_NEXUS_SESSION'),
+    (b'parser.add_argument("--session", help="session name (or set CORTHEX_NEXUS_SESSION)")', b'parser.add_argument("--session")'),
     (b'import unicodedata\nfrom datetime import datetime, timezone\n', b''),
     (b'            value = sys.stdin.buffer.read().decode("utf8") if file == "-" else (Path(file).read_bytes().decode("utf8") if name == "evidence_text" else Path(file).read_text(encoding="utf8"))\n', b'            value = sys.stdin.buffer.read().decode("utf8") if file == "-" else Path(file).read_text(encoding="utf8")\n'),
     (b'        if args.text_file == "-" and args.evidence_text_file == "-":\n            raise CommandLine("stdin can supply only one text file")\n', b''),

@@ -31,6 +31,22 @@ class EvidenceTest(unittest.TestCase):
             self.assertEqual(body['external_evidence'], dict(source_kind='chat', location='item 123',
                                                               text=original, at='2026-01-01T00:00:00.000Z'))
 
+    def test_seconds_are_sent_as_milliseconds(self):
+        body = self.request(evidence_source_kind='chat', evidence_location='item 123',
+                            evidence_text='Yes', evidence_at='2026-01-01T00:00:00Z')[2]
+        self.assertEqual(body['external_evidence']['at'], '2026-01-01T00:00:00.000Z')
+
+    def test_session_help_and_missing_session(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import hub
+        parser = hub.parser()
+        args = parser.parse_args(['decide', 'example', 'nc_' + 'a' * 12, '--link', 'https://example.invalid'])
+        with self.assertRaisesRegex(commands.CommandLine, r'--session <session-name>.*CORTHEX_NEXUS_SESSION'):
+            commands.validate(args, {}, None)
+        help_text = parser._subparsers._group_actions[0].choices['decide'].format_help()
+        self.assertIn('CORTHEX_NEXUS_SESSION', help_text)
+
     def test_partial_and_redacted_are_refused(self):
         with self.assertRaises(commands.CommandLine):
             self.request(evidence_source_kind='chat')
@@ -42,7 +58,8 @@ class EvidenceTest(unittest.TestCase):
         base = dict(evidence_source_kind='chat', evidence_location='item 123',
                     evidence_text='Yes', evidence_at='2026-01-01T00:00:00.000Z')
         for field, invalid in [('evidence_source_kind', 'x' * 101), ('evidence_text', '\ufeffYes'),
-                               ('evidence_at', '2026-01-01'), ('evidence_at', '2999-01-01T00:00:00.000Z')]:
+                               ('evidence_at', '2026-01-01'), ('evidence_at', '2026-01-01T00:00:00'),
+                               ('evidence_at', '2999-01-01T00:00:00Z'), ('evidence_at', '2999-01-01T00:00:00.000Z')]:
             with self.subTest(field=field, invalid=invalid):
                 with self.assertRaises(commands.CommandLine):
                     self.request(**dict(base, **{field: invalid}))

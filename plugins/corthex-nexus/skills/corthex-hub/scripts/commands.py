@@ -128,7 +128,7 @@ def text_value(args, name, required=False):
 def validate(args, env, h):
     session = (getattr(args, "session", None) or env.get("CORTHEX_NEXUS_SESSION")) if args.command in SESSION_REQUIRED | {"todo"} else None
     if args.command in SESSION_REQUIRED and not session:
-        raise CommandLine("set --session or CORTHEX_NEXUS_SESSION")
+        raise CommandLine("provide --session <session-name> or set CORTHEX_NEXUS_SESSION to the session name")
     if session is not None and (not isinstance(session, str) or not SESSION.fullmatch(session)):
         raise CommandLine("a session label uses 1 to 100 ASCII letters, digits, dot, underscore, colon or hyphen")
     for field in ("commit",):
@@ -340,11 +340,13 @@ def write_request(args, project, home, env, h, url=None, checkout=None):
                 if len(value) > limit or any((unicodedata.category(c) in ("Cc", "Cs") and c not in "\t\n\r") or
                                              c in "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff" for c in value):
                     raise CommandLine("external evidence " + field + " has invalid characters or exceeds its limit")
+            if re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", evidence["at"]):
+                evidence["at"] = evidence["at"][:-1] + ".000Z"
             try:
                 if not TIME.fullmatch(evidence["at"]) or datetime.strptime(evidence["at"], "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
                     raise ValueError()
             except ValueError:
-                raise CommandLine("external evidence at needs a non-future UTC time with milliseconds")
+                raise CommandLine("external evidence at needs a non-future UTC time with seconds or milliseconds")
             if scrub(evidence, home, env, h) != evidence:
                 raise CommandLine("external evidence contains material that would be redacted; cannot send it verbatim")
             body["external_evidence"] = evidence
@@ -1014,7 +1016,7 @@ def configure(top, commands, existing, h):
     def common(parser, session=False):
         parser.add_argument("--url")
         if session:
-            parser.add_argument("--session")
+            parser.add_argument("--session", help="session name (or set CORTHEX_NEXUS_SESSION)")
         parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     def text(parser, name, required=False):
         choice = parser.add_mutually_exclusive_group(required=required)

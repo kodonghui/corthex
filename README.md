@@ -53,7 +53,7 @@ In Codex, open `/hooks` and review and trust the plugin's hooks. Manage recordin
 
 ### Optional: project hub
 
-A hub decision can include the user’s exact answer from outside NEXUS, with its source and time, as external evidence.
+A hub decision can include the user’s exact answer from outside NEXUS, with its source and time, as external evidence. Use `--session SESSION` (or set `CORTHEX_NEXUS_SESSION`); evidence times may be UTC seconds or milliseconds, and seconds are sent with `.000Z`.
 
 `corthex-nexus` reads the stage sources of every registered project and writes one page, `~/.corthex/hub/index.html`, with each project's 13 stages, the checks on its trace IDs and the links between its items. Each stage shows the progress you recorded, such as its last checkpoint. The page works offline and loads nothing from the network.
 
