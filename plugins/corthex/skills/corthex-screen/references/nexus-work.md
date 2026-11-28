@@ -66,7 +66,7 @@ Read the full entry and the latest relevant stage source, using `show PROJECT EN
 
 Reply on the comment when the discussion continues in the session. A reply that leaves a question open stays a reply. When the user's choice settles it, write their words, where and when they said them in the project's records. Change stage sources through a PR as the repository requires.
 
-While that PR is open, reply with its link and leave the comment open. After the decision is written in the records or the source PR is merged, use `decide PROJECT COMMENT --link HTTPS_URL` to link the written decision; it closes the comment. A link is required and must not contain secrets or an email address. A closed unmerged PR requires another question to the user on the comment. Never claim an AI recommendation was the user's decision.
+While that PR is open, reply with its link and leave the comment open. After the decision is written in the records or the source PR is merged, use `decide PROJECT COMMENT --link HTTPS_URL` to link the written decision; it closes the comment. A link is required and must not contain secrets or an email address. If the user answered outside NEXUS, include their exact words without changes using `--evidence-text-file`, with `--evidence-source-kind`, `--evidence-location` (item number or event ID) and `--evidence-at` (UTC `YYYY-MM-DDTHH:MM:SS.sssZ`). Supply all four together; never invent evidence. A matching answer can resolve the conversation; otherwise the owner can confirm closure. A closed unmerged PR requires another question to the user on the comment. Never claim an AI recommendation was the user's decision.
 
 ## Propose a change
 
