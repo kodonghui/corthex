@@ -131,10 +131,16 @@ def valid_baseline(state):
 def differences(folder):
     folder = Path(folder)
     state_dir = folder / 'profile-guard'
+    marker = state_dir / '.established'
     result = []
-    established = (any((state_dir / name).exists() for name in NAMES) or
-                   (state_dir.is_dir() and any(state_dir.glob('*.bak'))) or
-                   any(folder.glob('profile.json.*.bak')) or any(folder.glob('projects.json.*.bak')))
+    # Empty directories can be left by an interrupted first observation.
+    # A marker, any surviving baseline, or a guard archive is evidence of
+    # history; compact UTC names also cover a deleted guard directory.
+    established = (marker.exists() or marker.is_symlink() or
+                   any((state_dir / name).exists() for name in NAMES) or
+                   (state_dir.is_dir() and any(state_dir.glob('*.bak'))) or any(
+        re.fullmatch(r'(?:profile|projects)\.json\.\d{8}T\d{12}Z(?:\.pending-[A-Za-z0-9_-]+)?\.bak', path.name)
+        for path in folder.glob('*.bak')))
     for name in NAMES:
         path, backup = folder / name, state_dir / name
         current = read(path)
@@ -216,6 +222,17 @@ def differences(folder):
                     approval_reduced(field(old, 'ask_before'), field(new, 'ask_before')) or
                     project_reduced(old_projects, new_projects))
             result.append((name, backup, diff, warn))
+    if all((state_dir / name).is_file() for name in NAMES):
+        try:
+            fd = os.open(str(marker), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        except OSError:
+            # Do not lose already computed changes when the marker cannot be
+            # saved; without it a later loss of both baselines can go unseen.
+            result.append(('.established', marker, [('history marker unavailable', None, None)], True))
+        else:
+            os.close(fd)
     return result
 
 

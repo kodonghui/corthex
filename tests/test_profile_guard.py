@@ -2,10 +2,12 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[1] / 'plugins/corthex/skills/corthex/scripts/settings.py'
 
@@ -177,6 +179,81 @@ class ExternalChangeTest(GuardTest):
         core = SCRIPT.with_name('profile_guard.py')
         memory = SCRIPT.parents[4] / 'corthex-memory/skills/corthex-memory/scripts/memory_lib/profile_guard.py'
         self.assertEqual(core.read_bytes(), memory.read_bytes())
+
+    def test_bug251_pre_guard_backups_do_not_prevent_first_baseline(self):
+        folder = self.home / '.corthex'
+        profile_before, projects_before = self.profile.read_bytes(), self.projects.read_bytes()
+        for name in ('profile.json', 'projects.json'):
+            (folder / (name + '.2026-11-28T0426.bak')).write_bytes(b'old manual backup')
+        result = self.run_guard('check')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), 'No external changes')
+        self.assertEqual(self.hook(), '')
+        self.assertEqual(self.profile.read_bytes(), profile_before)
+        self.assertEqual(self.projects.read_bytes(), projects_before)
+        self.assertEqual(json.loads((folder / 'profile-guard/profile.json').read_text(encoding='utf-8'))['value'], json.loads(profile_before))
+        self.assertEqual(json.loads((folder / 'profile-guard/projects.json').read_text(encoding='utf-8'))['value'], json.loads(projects_before))
+        self.assertEqual((folder / 'profile.json.2026-11-28T0426.bak').read_bytes(), b'old manual backup')
+
+    def test_bug251_both_baselines_deleted_from_guard_directory_warn(self):
+        self.assertEqual(self.hook(), '')
+        guard = self.home / '.corthex/profile-guard'
+        (guard / 'profile.json').unlink()
+        (guard / 'projects.json').unlink()
+        self.profile.write_text('{}')
+        self.assertIn('WARNING', self.hook())
+        self.assertFalse((guard / 'profile.json').exists())
+
+    def test_bug251_interrupted_empty_guard_directory_can_initialize(self):
+        guard = self.home / '.corthex/profile-guard'
+        guard.mkdir()
+        (guard / '.guard-interrupted').write_text('partial', encoding='utf-8')
+        self.assertEqual(self.run_guard('check').stdout.strip(), 'No external changes')
+        self.assertEqual(self.hook(), '')
+
+    def test_bug251_existing_baselines_acquire_marker_before_loss(self):
+        guard = self.home / '.corthex/profile-guard'
+        guard.mkdir()
+        for name, source in (('profile.json', self.profile), ('projects.json', self.projects)):
+            (guard / name).write_text(json.dumps({'value': json.loads(source.read_text(encoding='utf-8'))}), encoding='utf-8')
+        self.assertEqual(self.hook(), '')
+        (guard / 'profile.json').unlink()
+        (guard / 'projects.json').unlink()
+        self.profile.write_text('{}')
+        self.assertIn('WARNING', self.hook())
+
+    def test_bug251_marker_write_failure_preserves_change_warning(self):
+        import importlib.util
+        self.assertEqual(self.hook(), '')
+        guard = self.home / '.corthex/profile-guard'
+        marker = guard / '.established'
+        marker.unlink()
+        self.profile.write_text('{"ask_before": []}', encoding='utf-8')
+        file = SCRIPT.parents[4] / 'corthex-memory/skills/corthex-memory/scripts/memory_lib/profile_guard.py'
+        spec = importlib.util.spec_from_file_location('guard_marker_failure_test', file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        original_open = os.open
+        def fail_marker(path, *args, **kwargs):
+            if Path(path) == marker:
+                raise PermissionError('fixture')
+            return original_open(path, *args, **kwargs)
+        with mock.patch.object(module.os, 'open', side_effect=fail_marker):
+            warning = module.observe(self.home / '.corthex')
+        self.assertIn('removed ask_before', warning)
+        self.assertIn('history marker unavailable', warning)
+
+    def test_bug251_guard_pending_backup_indicates_lost_history(self):
+        (self.home / '.corthex/profile.json.20261128T042600000000Z.pending-abc12345.bak').write_text('{}', encoding='utf-8')
+        self.assertIn('WARNING', self.run_guard('check').stdout)
+
+    def test_bug251_deleted_guard_directory_with_guard_backup_warns(self):
+        self.assertEqual(self.run_guard('set', 'language', '"ko"').returncode, 0)
+        shutil.rmtree(self.home / '.corthex/profile-guard')
+        self.profile.write_text('{}')
+        result = self.run_guard('check')
+        self.assertIn('WARNING', result.stdout)
+        self.assertFalse((self.home / '.corthex/profile-guard/profile.json').exists())
 
     def test_external_reduction_remains_visible(self):
         self.assertEqual(self.hook(), '')
