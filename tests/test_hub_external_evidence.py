@@ -1,6 +1,8 @@
 """External decision evidence uses synthetic content and no network."""
 import importlib.util
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,14 +39,10 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual(body['external_evidence']['at'], '2026-01-01T00:00:00.000Z')
 
     def test_session_help_and_missing_session(self):
-        import sys
-        sys.path.insert(0, str(SCRIPT.parent))
-        import hub
-        parser = hub.parser()
-        args = parser.parse_args(['decide', 'example', 'nc_' + 'a' * 12, '--link', 'https://example.invalid'])
+        args = SimpleNamespace(command='decide', session=None)
         with self.assertRaisesRegex(commands.CommandLine, r'--session <session-name>.*CORTHEX_NEXUS_SESSION'):
             commands.validate(args, {}, None)
-        help_text = parser._subparsers._group_actions[0].choices['decide'].format_help()
+        help_text = subprocess.check_output([sys.executable, str(SCRIPT.parent / 'hub.py'), 'decide', '--help'], text=True)
         self.assertIn('CORTHEX_NEXUS_SESSION', help_text)
 
     def test_partial_and_redacted_are_refused(self):
