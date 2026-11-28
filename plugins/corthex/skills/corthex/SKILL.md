@@ -13,9 +13,10 @@ CORTHEX helps one person run software projects with an AI collaborator, stage by
 
 ## 1. Read the profile
 
-Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json`). The fields are in [references/profile.md](references/profile.md).
+Run [settings.py](scripts/settings.py) `check`; review changes before use. Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json`). See [profile.md](references/profile.md).
 
-- If the file is missing, offer to create it. Ask only for what you cannot infer: how to address the user, the language, where records go, and what to ask before doing. Show the file before you write it.
+- If missing, offer to create it. Ask only what you cannot infer: how to address the user, the language, where records go, and what to ask before doing. Show the file before you write it.
+- Change `profile.json` and `projects.json` only with [scripts/settings.py](scripts/settings.py), preserving unknown fields, with timestamped backup and one-line before/after. Protected reductions require the user's words, place and time; ask separately for `ask_before` reductions. See [profile.md](references/profile.md) for external-change warnings and recovery.
 - Address the user as `address_as` and write in `language`. If `language` is `ko` and `address_as` is not set, use 사용자님 and polite speech (존댓말).
 - `checkpoints` says which stages' checkpoints the user answers in person and who answers the others. Without it the user answers every one. Change it only on the user's word.
 - Never write a secret into the profile. Keys and tokens belong in the host's secret store or environment variables.
@@ -24,7 +25,7 @@ Read `~/.corthex/profile.json` (on Windows, `%USERPROFILE%\.corthex\profile.json
 
 Look for `.corthex/project.json` from the current directory up to the repository root. The fields are in [references/project.md](references/project.md).
 
-- If there is none and the work is project work, offer to register the project: create `.corthex/project.json` in the product repository and add one entry to `~/.corthex/projects.json`, the list of this user's projects on this machine.
+- If there is none and the work is project work, offer to register the project: create `.corthex/project.json` in the product repository and add an entry to `~/.corthex/projects.json` with the script above.
 - When you register a project or set up a stage, propose each stage's default human view from [references/stage-contract.md](references/stage-contract.md). When the user picks another tool, record that as a decision and say it in the stage's `note`.
 - On a project on the user's NEXUS server, that default is NEXUS for every stage. When the profile names a NEXUS server (`nexus.url`) and neither the project's `on_nexus` nor the push list says whether the project is on it, ask once whether to put it there, and write the answer, as [references/nexus-work.md](references/nexus-work.md) says.
 - If the user has several projects and the request does not say which one, ask once.
