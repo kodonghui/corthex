@@ -108,6 +108,14 @@ class StartHookTest(HookCase):
         self.assertIn('if either is unknown, ask before acting', text)
         self.assertIn('External settings change', self.text())
 
+    def test_bug251_pre_guard_backup_does_not_warn_at_real_start(self):
+        folder = self.home / '.corthex'
+        (folder / 'profile.json.2026-11-28T0426.bak').write_text('manual backup', encoding='utf-8')
+        text = self.text()
+        self.assertNotIn('External settings change', text)
+        self.assertTrue((folder / 'profile-guard/profile.json').is_file())
+        self.assertTrue((folder / 'profile-guard/projects.json').is_file())
+
     def test_bug251_corrupt_guard_keeps_start_context(self):
         self.text()
         (self.home / '.corthex/profile-guard/projects.json').write_text('[]')
